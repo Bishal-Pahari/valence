@@ -1,0 +1,127 @@
+# Valence
+
+**Write your app once, as a web app. Ship it inside a Flutter shell. Update the UI without app-store review. Keep working offline.**
+
+Every UI change to a native app normally waits on App Store and Play review, and teams end up maintaining the same logic twice, once for the web and once for mobile. Valence fixes both:
+
+- **One web codebase** (SvelteKit, or any SPA that builds to static files) is both the website and the app's UI.
+- **Over-the-air UI updates**: the web build is shipped as a signed bundle. Phones verify it, try it, and roll back automatically if it fails to start.
+- **Offline first**: data lives in native SQLite, starts from a seed bundled in the app, and updates incrementally ("give me everything after update #1234"). Corrections to bundled data are just newer rows.
+- **A typed bridge**: one schema generates the Dart host interface and the TypeScript client, so web and native can't drift apart.
+
+## How it works
+
+```
+┌──────────────────────── Flutter host (store-reviewed, rarely changes) ────────────────────────┐
+│  WebView ── http://127.0.0.1:<port>/ ──► Loopback server ──► verified files (by sha256)       │
+│     ▲  "Valence" JS channel: typed bridge generated from bridge.schema.json                 │
+│     ▼                                                                                          │
+│  Bridge ──► SQLite (kv · bucket · outbox · prefs) ◄── Sync: pull by usn, push via outbox       │
+│                 ▲ seed.db shipped in the app          Updater: pointer → signed manifest → files│
+└────────────────────────────────────────────────────────────────────────────────────────────────┘
+         static OTA host (R2 / S3 / CDN)                    your sync API (or static chunks)
+```
+
+| What changed | How it reaches users | Store review? |
+|---|---|---|
+| UI, copy, styles, web logic | Signed OTA bundle, staged rollout (10% → 50% → 100%) | No |
+| Data, or a fix to bundled data | Sync (a new row with a higher sequence number) | No |
+| A new native capability, or a new feature area | App release | Yes |
+
+**The update lifecycle:**
+
+1. The app downloads only the files whose hash changed.
+2. On the next launch it starts the new bundle as a *trial*.
+3. The web app calls `ready()` after its first paint, which commits the update.
+4. If it crashes, or `ready()` doesn't arrive within 15 s of foreground time, the device goes back to the last good version. After a second failure it marks the new one bad. The bundle built into the app is the final fallback.
+5. To roll back a release everywhere, release the last good commit again. It gets a new, higher sequence number, so devices move forward to it.
+
+**The bridge is locked down:**
+
+- it is reachable only from pages the app's own server delivered (a per-launch nonce);
+- every message is decoded strictly against the schema;
+- the page runs under a CSP that comes from the signed manifest.
+
+## Is it allowed by the stores?
+
+Yes, within limits.
+
+- **Apple:** the Developer Program License Agreement §3.3.1(B) allows downloaded *interpreted* code (JS in WebKit) as long as it doesn't change the app's advertised purpose, bypass OS security, or create a storefront.
+- **Google Play** exempts "JavaScript in a webview".
+- **Native code can never be downloaded**, and the bundler refuses it.
+
+The framework also enforces the usual rejection traps:
+
+- **"repackaged website"** (Apple guideline 4.2): the host must add real native value, such as offline use, widgets and notifications;
+- **purpose drift**: new top-level routes are flagged for a store release;
+- **untrusted pages getting bridge access** (Play): the bridge is locked to the local origin.
+
+Details and exact policy quotes are in [contracts.md §7](.claude/skills/valence/references/contracts.md).
+
+## Quick start
+
+From your project root:
+
+```
+npm create valence@latest
+```
+
+The wizard sets up everything that doesn't need AI, in a few seconds:
+
+1. **Detects** your web app (SvelteKit, Next.js static export, Astro or Vite), its package manager, an existing Flutter project, and your app id. It only asks for what it can't detect.
+2. **Writes** `valence/valence.config.json`, the bridge schema and the web bridge client. It also adds `.gitattributes` and `.gitignore` entries.
+3. **Generates** your Ed25519 signing key (outside the repo) and the typed bridge code for Dart and TypeScript.
+4. **Installs** the `/valence` Claude Code skill and its agents into `.claude/`, or into `~/.claude/` with `--global`.
+5. **Offers to launch** `claude "/valence init"`, which builds the Flutter host runtime, wires your web app, runs the tests and gets an independent review.
+
+Other commands:
+
+```
+npx create-valence@latest update    # update the vendored CLI, skill and agents to the latest version
+npx create-valence doctor           # quick health check
+npx create-valence codegen --check  # any CLI command: keygen | codegen | bundle | verify | pointer | seed | version
+```
+
+It's safe to run again: it never overwrites your config, your schema or files you've edited. Pass `--yes` to accept the detected defaults without prompts, for CI.
+
+## Use it in Claude Code
+
+```
+/valence init      # detect your web app, scaffold the Flutter host, keys, bridge, offline store, tests
+/valence release   # build, sign and stage an OTA bundle; prints upload commands, uploads only after you confirm
+/valence doctor    # audit: versions vs latest docs, policy checks, signatures, tests
+```
+
+`init` uses three agents:
+
+1. **docs-scout** checks the latest stack docs and store policies.
+2. **Two builders** work in parallel: one on the Flutter host, one on the web side.
+3. **An independent reviewer** checks the result.
+
+It hands off an `AGENTS.md` section, so every future agent and contributor follows the same rules.
+
+**Without Claude Code**, the CLI works on its own. The wizard vendors it into your repo, so CI needs no install:
+
+```
+node valence/valence.mjs keygen | codegen [--check] | bundle [--builtin|--store] | verify | pointer | seed
+```
+
+## Repository
+
+| Path | |
+|---|---|
+| [contracts.md](.claude/skills/valence/references/contracts.md) | The spec: formats, protocols, state machine, policy rules, test matrix |
+| [SKILL.md](.claude/skills/valence/SKILL.md) | The `/valence` workflows and the verified stack baseline |
+| [scripts/valence.mjs](.claude/skills/valence/scripts/valence.mjs) | Zero-dependency CLI; tests: `node --test .claude/skills/valence/scripts/valence.test.mjs` |
+| [.claude/agents/](.claude/agents/) | docs-scout, builder, reviewer |
+| [AGENTS.md](AGENTS.md) | Rules for anyone (human or agent) changing this repo |
+
+## Status
+
+**0.2, skill-first.** The CLI, the spec, codegen and the TS client are tested. The Flutter runtime is generated per app against the spec and its test matrix. Once the first production app has proven it, the runtime will be extracted into a `valence` pub package and an `@valence/bridge` npm package.
+
+**Not in scope:**
+
+- **Third-party mini-app stores** (Apple guideline 4.7).
+- **CRDTs and real-time collaboration.**
+- **Downloading native code.**

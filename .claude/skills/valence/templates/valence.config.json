@@ -1,0 +1,15 @@
+{
+  "appId": "com.example.app",
+  "keyId": "k1",
+  "web": {
+    "out": "web/build",
+    "lib": "web/src/lib/valence",
+    "routes": "web/src/routes",
+    "entry": "index.html"
+  },
+  "host": { "dir": "mobile" },
+  "ota": { "base": "https://ota.example.com" },
+  "sync": { "base": "https://api.example.com/sync" },
+  "data": {},
+  "writable": []
+}

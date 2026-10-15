@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "methods": {
+    "app.ready":          { "since": 1, "params": {}, "returns": "void" },
+    "app.info":           { "since": 1, "params": {}, "returns": "AppInfo" },
+    "data.get":           { "since": 1, "params": { "bucket": "string", "key": "string" }, "returns": "json?" },
+    "data.list":          { "since": 1, "params": { "bucket": "string", "prefix": "string?", "limit": "int?" }, "returns": "Row[]" },
+    "data.put":           { "since": 1, "params": { "bucket": "string", "key": "string", "value": "json?" }, "returns": "void" },
+    "sync.now":           { "since": 1, "params": { "buckets": "string[]?" }, "returns": "SyncResult" },
+    "prefs.get":          { "since": 1, "params": { "key": "string" }, "returns": "string?" },
+    "prefs.set":          { "since": 1, "params": { "key": "string", "value": "string?" }, "returns": "void" },
+    "open.external":      { "since": 1, "params": { "url": "string" }, "returns": "void" },
+    "bundle.applyUpdate": { "since": 1, "params": {}, "returns": "void" }
+  },
+  "events": {
+    "sync.changed":       { "since": 1, "payload": { "buckets": "string[]" } },
+    "bundle.updateReady": { "since": 1, "payload": { "seq": "int" } },
+    "app.resumed":        { "since": 1, "payload": {} }
+  },
+  "types": {
+    "AppInfo":    { "platform": "string", "host": "int", "bridge": "int", "bundle": "int", "locale": "string" },
+    "Row":        { "key": "string", "value": "json", "usn": "int" },
+    "SyncResult": { "buckets": "string[]", "changed": "int", "offline": "bool" }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "create-valence",
+  "version": "0.3.0",
+  "description": "Ship your web app inside a Flutter shell: signed over-the-air UI updates without store review, offline-first native SQLite, and a typed bridge. One command sets it up.",
+  "license": "MIT",
+  "author": "Bishal Pahari",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Bishal-Pahari/valence.git"
+  },
+  "homepage": "https://github.com/Bishal-Pahari/valence#readme",
+  "bugs": {
+    "url": "https://github.com/Bishal-Pahari/valence/issues"
+  },
+  "type": "module",
+  "bin": {
+    "create-valence": "bin/valence.mjs",
+    "valence": "bin/valence.mjs"
+  },
+  "files": [
+    "bin/valence.mjs",
+    ".claude/agents/valence-*.md",
+    ".claude/skills/valence",
+    "!.claude/skills/valence/scripts/*.test.mjs",
+    "AGENTS.md"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "test": "node --test bin/valence.test.mjs .claude/skills/valence/scripts/valence.test.mjs"
+  },
+  "keywords": [
+    "flutter",
+    "webview",
+    "ota",
+    "code-push",
+    "offline-first",
+    "sqlite",
+    "sveltekit",
+    "hybrid-app",
+    "claude-code"
+  ]
+}
