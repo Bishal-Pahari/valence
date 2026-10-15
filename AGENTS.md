@@ -14,6 +14,9 @@ Valence is an open-source architecture for shipping a web UI inside a Flutter ap
 | `.claude/skills/valence/scripts/valence.test.mjs` | CLI tests, including compiling and running the generated Dart and the TS client |
 | `.claude/skills/valence/templates/` | Files the skill copies into apps |
 | `.claude/agents/valence-*.md` | The docs-scout, builder and reviewer subagents the skill orchestrates |
+| `docs/research.md` | Landscape research (2026-10-14): store policies quoted, OTA, SDUI and hybrid options, and the gap Valence fills. Not shipped in the npm package. |
+| `LICENSE` | MIT |
+| `.gitattributes` | Keeps every file LF on every OS. The CLI and its tests compare bytes and hashes, so a CRLF checkout must not change them. |
 
 ## Rules
 
