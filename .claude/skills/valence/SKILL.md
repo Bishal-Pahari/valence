@@ -194,6 +194,7 @@ The steps below are for **OTA releases**.
 1. **Preconditions.** `codegen --check` passes and the web tests pass. State the channel (default `production`) and rollout (default `10`) back to the user.
 2. **Build and sign.** Build the web app, then run `node valence/valence.mjs bundle [--floor N] [--urgent]`.
    - If it warns about a **new top-level route**, stop and ask whether the change needs a store update instead (DPLA 3.3.1(B)(a)).
+   - If it warns that the route check is **INACTIVE**, the app routes in JavaScript and has no routes directory to scan. Add its top-level routes as `web.declaredRoutes` in `valence.config.json` and re-run, so later releases are diffed against something.
    - Raise `--floor` only when the release fixes a security bug. It can never go back down.
    - **Commit `.valence/baseline.json`** afterwards. It holds `lastSeq`, which keeps `seq` increasing across machines and CI.
 3. **Verify** the new manifest with `valence verify`.
@@ -216,7 +217,7 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
 - **Docs drift.** Spawn the docs-scout.
 - **Bundle and seed.** The built-in bundle verifies, and `seed.db` exists.
 - **Policy:**
-  - routes compared with `.valence/baseline.json`;
+  - routes compared with `.valence/baseline.json`, and whether that comparison is active at all (`web.declaredRoutes` for an app that routes in JavaScript);
   - no native files in the web output;
   - in the host (grep for each): the navigation lock, no off-origin subframes, `bridgeDispatch(… nonce:)`, the CSP header from `manifest.csp`, and the `open.external` scheme allow-list;
   - `.gitattributes` covers the built-in bundle;

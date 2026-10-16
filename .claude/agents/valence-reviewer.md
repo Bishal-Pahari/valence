@@ -60,6 +60,7 @@ You review Valence code you did **not** write. The spec is the Valence skill's `
 
 - There's no native code in the web output (`valence bundle` enforces this; also check any custom pipeline).
 - A new top-level route compared with `.valence/baseline.json` is flagged for a store release (DPLA §3.3.1(B)(a)).
+- **The route check is actually running.** If `valence bundle` reports it INACTIVE, the project routes in JavaScript and nothing is declared: say so as MEDIUM, and name `web.declaredRoutes` as the fix. A guard that cannot fire is not compliance evidence.
 - At least two native-value items from §6 are present (Apple guideline 4.2).
 - No third-party bundles are loaded (guideline 4.7); if they are, that's out of scope and gets a HIGH.
 

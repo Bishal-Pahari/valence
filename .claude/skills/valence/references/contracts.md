@@ -44,7 +44,8 @@ What ships in which update:
     assets/valence/builtin/        built-in bundle: manifest.json, manifest.json.sig, files/<sha256>  (written by `valence bundle --builtin`)
     assets/valence/seed.db         bundled SQLite seed (written by `valence seed`)
   valence/
-    valence.config.json            appId, keyId, web/host paths, OTA and sync base URLs, data schemas, writable buckets
+    valence.config.json            appId, keyId, web/host paths, OTA and sync base URLs, data schemas, writable buckets,
+                              and web.declaredRoutes for apps whose routes can't be scanned (§7)
     bridge.schema.json        bridge IDL (§4)
     keyring.json              public keys {keyId: base64 raw Ed25519}; compiled into the host by codegen
     valence.mjs                    zero-dependency CLI copied from the skill: keygen | codegen | bundle | verify | pointer | seed
@@ -505,6 +506,8 @@ The reviewer agent checks this.
 - **OTA must not change the app's purpose.**
   - `baseline.storeRoutes` records the routes of the bundle last submitted with a store build.
   - `valence bundle` warns when a release adds a new top-level route. It recurses through SvelteKit `(group)` and `[[optional]]` directories and counts Astro and Next.js page files.
+  - **A client-side-routed SPA has no routes directory,** so scanning finds only `/` and the check has nothing to compare. Declare the routes instead: `web.declaredRoutes: ["/", "/shelf"]` in `valence.config.json`. They go into the manifest and the baseline exactly like scanned ones.
+  - **`valence bundle` warns when the check is inactive** — when nothing is declared and scanning yields only `/`. An inactive guard that looks active is worse than no guard: silence has to mean "compared and fine", never "never looked".
   - New feature areas should go out with a store update.
 - **The bridge is reachable only from our own pages.**
   - The main frame is locked to `http://127.0.0.1:<port>/` through `NavigationDelegate`; other URLs open externally through `url_launcher`.
@@ -520,7 +523,7 @@ The reviewer agent checks this.
 
 | Layer | Tests |
 |---|---|
-| `valence.mjs` (the skill's `valence.test.mjs`) | key directory inside git, including through a link; keyring entry never overwritten; signing key must match the keyring; sign/verify round trip; tampering, bad signature, unknown key, other `appId` and unsafe paths rejected; native extensions rejected; `seq` monotonic with the same clock and a slow clock; floor only rises; CSP hashes (CRLF-safe, `wasm-unsafe-eval` only with `.wasm`); additive-only against `storeSchema`, recorded only by `--store`; new names need `since` above the shipped version; reserved and colliding names; SvelteKit co-located files aren't routes; atomic and validated seed, with a warning for unseeded buckets; the CLI runs through a link; generated Dart passes `analyze --fatal-infos` and the dispatch cases; `client.ts` behaviour |
+| `valence.mjs` (the skill's `valence.test.mjs`) | key directory inside git, including through a link; keyring entry never overwritten; signing key must match the keyring; sign/verify round trip; tampering, bad signature, unknown key, other `appId` and unsafe paths rejected; native extensions rejected; `seq` monotonic with the same clock and a slow clock; floor only rises; CSP hashes (CRLF-safe, `wasm-unsafe-eval` only with `.wasm`); additive-only against `storeSchema`, recorded only by `--store`; new names need `since` above the shipped version; reserved and colliding names; SvelteKit co-located files aren't routes; `web.declaredRoutes` is validated, feeds the manifest and the baseline, and silences the inactive-check warning a project with no scannable routes gets; atomic and validated seed, with a warning for unseeded buckets; the CLI runs through a link; generated Dart passes `analyze --fatal-infos` and the dispatch cases; `client.ts` behaviour |
 | updater (dart test) | each check 1–7 rejects; `pointer.seq` below `pending` drops `pending`; the rollout gate is deterministic; size cap; an update isn't pending until its data pairs are synced |
 | state machine | trial then ready → committed and floor raised; `ready()` from a `current` page after a timeout never commits the trial; a timeout counts exactly one failure; trial fails once → retried at the next UI start → fails again → marked bad; **the UI start after that serves `current`, not the bad bundle** (a `pending` in `bad` is dropped, never promoted); **an update check while a seq is on trial does not re-pend it**; **a commit clears a `pending` holding the committed seq**; a crash while `serving == trial` counts one failure; a newer built-in bundle wins and drops older pending and trial; GC keeps current, previous, pending, trial and built-in; **GC after a commit leaves writable buckets untouched**; no transition runs from a background isolate; the ready timer pauses in the background |
 | server | the same port across launches; a bind failure means a new port, a new nonce, a reload and never serving from the old port; rebinding the same port on resume keeps the nonce and the page keeps working; the nonce is in the entry page only; CSP header on the entry page; GET and HEAD only; SPA fallback |

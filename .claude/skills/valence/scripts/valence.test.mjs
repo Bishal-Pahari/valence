@@ -139,6 +139,31 @@ test('seq is monotonic (same clock, slow clock) and new routes warn', () => {
   assert.ok(!b.warnings.some((w) => w.includes('/Counter') || w.includes('/helpers')), 'SvelteKit co-located files are not routes');
 });
 
+test('a project with no detectable routes is told the store route check is off', () => {
+  const { root, cfg, key } = fixture();
+  // A client-side-routed SPA: nothing to scan, so every bundle would report just ["/"].
+  rmSync(join(root, 'web', 'src'), { recursive: true });
+  const spa = loadConfig(root);
+  const a = bundle({ root, cfg: spa, key, store: true, now: NOW });
+  assert.deepEqual(a.manifest.routes, ['/']);
+  assert.ok(a.warnings.some((w) => w.includes('INACTIVE')), 'a store build with no routes warns that the check is off');
+  assert.ok(bundle({ root, cfg: spa, key, now: NOW }).warnings.some((w) => w.includes('INACTIVE')), 'and so does an OTA build');
+
+  // declaredRoutes turns it back on: it feeds the manifest and the baseline, and the diff warns again.
+  const decl = { ...spa, web: { ...spa.web, declaredRoutes: ['/shelf', '/'] } };
+  const b = bundle({ root, cfg: decl, key, store: true, now: NOW });
+  assert.deepEqual(b.manifest.routes, ['/', '/shelf']);
+  assert.ok(!b.warnings.some((w) => w.includes('INACTIVE')));
+  const c = bundle({ root, cfg: { ...decl, web: { ...decl.web, declaredRoutes: ['/shelf', '/about'] } }, key, now: NOW });
+  assert.ok(c.warnings.some((w) => w.includes('/about')), 'a declared route the store build never had still warns');
+
+  // A single declared route is a deliberate claim, not an accident, so it does not warn.
+  assert.ok(!bundle({ root, cfg: { ...spa, web: { ...spa.web, declaredRoutes: [] } }, key, now: NOW }).warnings.some((w) => w.includes('INACTIVE')));
+  for (const bad of ['/shelf', ['shelf'], [1]]) {
+    assert.throws(() => bundle({ root, cfg: { ...spa, web: { ...spa.web, declaredRoutes: bad } }, key, now: NOW }), /declaredRoutes/);
+  }
+});
+
 test('floor only goes up and never exceeds seq', () => {
   const { root, cfg, key } = fixture();
   bundle({ root, cfg, key, floor: 5, now: NOW });
