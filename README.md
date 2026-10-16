@@ -1,6 +1,6 @@
 # Valence
 
-**Write your app once, as a web app. Ship it inside a Flutter shell. Update the UI without app-store review. Keep working offline.**
+**Keep the core. Swap the shell.** Your web app becomes your mobile app's interface. A small Flutter core ships through the stores once; every UI release after that is signed, tried on each phone and rolled back on its own if it fails. Data lives in native SQLite, so it works offline.
 
 Every UI change to a native app normally waits on App Store and Play review, and teams end up maintaining the same logic twice, once for the web and once for mobile. Valence fixes both:
 

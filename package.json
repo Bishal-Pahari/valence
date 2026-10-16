@@ -1,7 +1,7 @@
 {
   "name": "create-valence",
   "version": "0.3.0",
-  "description": "Ship your web app inside a Flutter shell: signed over-the-air UI updates without store review, offline-first native SQLite, and a typed bridge. One command sets it up.",
+  "description": "Keep the native core, swap the web shell: your web app as a Flutter app's interface, with signed UI releases that roll back on their own, offline-first SQLite and a typed bridge. One command sets it up.",
   "license": "MIT",
   "author": "Bishal Pahari",
   "repository": {

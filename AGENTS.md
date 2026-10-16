@@ -15,6 +15,7 @@ Valence is an open-source architecture for shipping a web UI inside a Flutter ap
 | `.claude/skills/valence/templates/` | Files the skill copies into apps |
 | `.claude/agents/valence-*.md` | The docs-scout, builder and reviewer subagents the skill orchestrates |
 | `docs/research.md` | Landscape research (2026-10-14): store policies quoted, OTA, SDUI and hybrid options, and the gap Valence fills. Not shipped in the npm package. |
+| *(separate repo)* `valence-site` | The website and the developer docs (Astro + Starlight), kept in their own repo next to this one. Its release console models contracts §2.3, §2.4 and §5.3, and its docs pages restate this spec: when behaviour changes here, update them there. |
 | `LICENSE` | MIT |
 | `.gitattributes` | Keeps every file LF on every OS. The CLI and its tests compare bytes and hashes, so a CRLF checkout must not change them. |
 
