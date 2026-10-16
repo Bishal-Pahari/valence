@@ -388,7 +388,17 @@ PRAGMA user_version = 1;
 
 - `value` is JSON text. HTTP gzip handles compression on the wire.
 - Migrations use `user_version` and are append-only.
-- Open the database with `PRAGMA journal_mode = WAL` and `busy_timeout = 5000`.
+- Open the database with WAL mode and a 5-second busy timeout, **through `rawQuery`, not `execute`**, in sqflite's `onConfigure`:
+
+  ```dart
+  onConfigure: (db) async {
+    await db.rawQuery('PRAGMA journal_mode = WAL');
+    await db.rawQuery('PRAGMA busy_timeout = 5000');
+  },
+  ```
+
+  Both pragmas return a row, and Android's `SQLiteDatabase` refuses a row-returning statement through `execSQL`, so `execute` throws `Queries can be performed using SQLiteDatabase query or rawQuery methods only` and the app dies on its first launch, before any UI. `sqflite_common_ffi` — the factory every `flutter test` uses — accepts `execute` for pragmas, so **no unit test catches this**. Only a run on a device or emulator does.
+- **Never close the database.** sqflite keys open databases by path inside the platform plugin, not per isolate, so a `close()` in a `workmanager` isolate or in a widget's `dispose()` invalidates the handle the UI isolate is holding and the next bridge call fails with `database_closed`. Open it once, keep one store instance both entry points use, and let the process own it (§5.6).
 
 ### 5.2 Seed
 
@@ -450,6 +460,7 @@ POST {SYNC_BASE}/{bucket}/push   {"ops":[{"id":"<uuid>","k":"…","v":{…},"d":
   - on UI start, on resume and when connectivity comes back (connectivity_plus);
   - when the web app calls `sync.now`;
   - periodically in the background via `workmanager`: on Android at least every 15 minutes; on iOS it's best effort through BGTaskScheduler.
+- **The background isolate shares the UI's database handle.** sqflite registers open databases by path in the platform plugin, so both entry points must go through one store instance and neither may close it (§5.1). The lease below serialises *syncs*; it says nothing about database lifetimes.
 - **One sync at a time,** across the UI and background isolates.
   - Take a lease row in `prefs` (`valence.sync.lease` = epoch ms, written in `BEGIN IMMEDIATE`).
   - The lease is held only if `now - 2 min < lease <= now`. A lease time in the future, from clock skew or tampering, counts as expired.
@@ -515,4 +526,4 @@ The reviewer agent checks this.
 | server | the same port across launches; a bind failure means a new port, a new nonce, a reload and never serving from the old port; rebinding the same port on resume keeps the nonce and the page keeps working; the nonce is in the entry page only; CSP header on the entry page; GET and HEAD only; SPA fallback |
 | store and sync | paged pull is atomic per page; tombstones; outbox rows aren't clobbered by a pull **or by a push echo**; push ack clears only acknowledged ids; seed import per `(bucket, schema)` only moves forward; writable buckets use schema 1; the sync lease blocks concurrent syncs, is renewed per page, and treats a future timestamp as expired |
 | bridge | missing or wrong nonce → `E_DENIED`; unknown method → `E_UNKNOWN`; bad params → `E_PARAMS`; a write to a read-only bucket → `E_DENIED`; `prefs.*` on an `valence.` key → `E_DENIED`; `open.external` rejects `javascript:` and `file:`; reply escaping round-trips U+2028 and quotes |
-| integration (`integration_test`, device or emulator) | cold start in airplane mode renders the built-in bundle with seed data; a corrupt CAS file is re-downloaded; background then resume after 10 minutes, the server is rebound and the page still works |
+| integration (`integration_test`, device or emulator) | **first launch opens the database and paints** — the store and sync rows above run on `sqflite_common_ffi`, which is more permissive than Android's `SQLiteDatabase` (it accepts `execute` for pragmas), so a green unit suite is not evidence the store opens on a phone; cold start in airplane mode renders the built-in bundle with seed data; a corrupt CAS file is re-downloaded; a background sync followed by a UI bridge call (the database must still be open); background then resume after 10 minutes, the server is rebound and the page still works |
