@@ -153,20 +153,28 @@ export function loadSigningKey(cfg, keyring, keyPath) {
 
 const PAGE_EXT = new Set(['.astro', '.md', '.mdx', '.html', '.tsx', '.jsx', '.ts', '.js']);
 
-// Returns {routes, source}. source is how we got them: 'declared' (config), 'scan' (a routes directory) or 'none'.
-// A client-side-routed SPA has no routes directory, so without 'declared' the store route check has nothing to compare
-// and would sit there looking active while warning about nothing (contracts §7).
+// Returns {routes, source}. source is how we got them: 'declared' (config only), 'both' (config plus a scan),
+// 'scan' (a routes directory) or 'none'. A client-side-routed SPA has no routes directory, so without 'declared' the
+// store route check has nothing to compare and would sit there looking active while warning about nothing (§7).
+// Declared routes are unioned with a scan rather than replacing it, so adding them can never switch a working scan off.
+function declaredRoutes(declared) {
+  const bad = (why) => new Error(`web.declaredRoutes ${why}. It is a non-empty array of single-segment top-level paths, for example ["/", "/shelf"]`);
+  if (!Array.isArray(declared)) throw bad('must be an array');
+  if (declared.length === 0) throw bad('must not be empty; use ["/"] to claim the app has exactly one route');
+  return declared.map((r) => {
+    if (typeof r !== 'string' || !r.startsWith('/')) throw bad(`entries must be strings starting with "/", got ${JSON.stringify(r)}`);
+    const t = r.replace(/\/+$/, '') || '/'; // "/shelf/" and "/shelf" are the same route; don't warn about the edit
+    // Scanning only ever yields one segment, so a deeper path would diff against something that can never appear.
+    if (t !== '/' && t.slice(1).includes('/')) throw bad(`entries are top-level routes with one segment, got "${r}"`);
+    return t;
+  });
+}
+
 function listRoutes(root, cfg) {
-  const declared = cfg.web.declaredRoutes;
-  if (declared !== undefined) {
-    if (!Array.isArray(declared) || declared.some((r) => typeof r !== 'string' || !r.startsWith('/'))) {
-      throw new Error('web.declaredRoutes must be an array of paths starting with "/", for example ["/", "/shelf"]');
-    }
-    return { routes: [...new Set(['/', ...declared])].sort(), source: 'declared' };
-  }
+  const declared = cfg.web.declaredRoutes === undefined ? null : declaredRoutes(cfg.web.declaredRoutes);
   const dir = cfg.web.routes && resolve(root, cfg.web.routes);
-  const out = new Set(['/']);
-  if (!dir || !existsSync(dir)) return { routes: [...out], source: 'none' };
+  const out = new Set(['/', ...(declared ?? [])]);
+  if (!dir || !existsSync(dir)) return { routes: [...out].sort(), source: declared ? 'declared' : 'none' };
   // SvelteKit (+page/+layout) and Next app router (page/layout) route by directory only; files beside them are components.
   const dirsOnly = readdirSync(dir, { recursive: true }).some((f) => /^\+?(page|layout)\./.test(String(f).split(/[\\/]/).pop()));
   const scan = (d) => {
@@ -183,7 +191,7 @@ function listRoutes(root, cfg) {
     }
   };
   scan(dir);
-  return { routes: [...out].sort(), source: 'scan' };
+  return { routes: [...out].sort(), source: declared ? 'both' : 'scan' };
 }
 
 // Inline <script> hashes for the entry page, so the host can send a strict CSP header (contracts §7).
@@ -232,11 +240,13 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
   if (!files[entry]) throw new Error(`entry ${entry} is missing from ${src}`);
 
   const { routes, source } = listRoutes(root, cfg);
-  if (source !== 'declared' && routes.length <= 1) {
-    const why = source === 'none'
-      ? `web.routes is ${cfg.web.routes ? `set to "${cfg.web.routes}", which does not exist` : 'unset'}`
-      : `nothing under web.routes ("${cfg.web.routes}") looks like a route file or directory`;
-    warnings.push(`the new-top-level-route check is INACTIVE: ${why}, so every bundle reports just ["/"] and an OTA could add a whole feature area unnoticed (DPLA 3.3.1(B)(a)). An app that routes in JavaScript has no routes directory to scan: list its top-level routes as "declaredRoutes" under "web" in valence.config.json.`);
+  if (source === 'none') {
+    const why = cfg.web.routes ? `web.routes is set to "${cfg.web.routes}", which does not exist` : 'web.routes is unset';
+    warnings.push(`the new-top-level-route check is INACTIVE: ${why} and nothing is declared, so every bundle reports just ["/"] and an OTA could add a whole feature area unnoticed (DPLA 3.3.1(B)(a)). An app that routes in JavaScript has no routes directory to scan: list its top-level routes as "declaredRoutes" under "web" in valence.config.json.`);
+  } else if (source === 'scan' && routes.length <= 1) {
+    // Scanning worked and found one route. That is legitimate for a genuinely single-screen app, so this is a
+    // confirmation prompt, not the INACTIVE warning: the check is running, it just has nothing to diff yet.
+    warnings.push(`scanning "${cfg.web.routes}" found only "/". If the app really has one top-level route, nothing to do; if it routes in JavaScript, the new-route check cannot see those routes and you should list them as "declaredRoutes" under "web" in valence.config.json.`);
   }
   if (!builtin && baseline.storeRoutes) {
     for (const r of routes) {

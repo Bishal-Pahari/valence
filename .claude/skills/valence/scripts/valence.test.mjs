@@ -157,11 +157,36 @@ test('a project with no detectable routes is told the store route check is off',
   const c = bundle({ root, cfg: { ...decl, web: { ...decl.web, declaredRoutes: ['/shelf', '/about'] } }, key, now: NOW });
   assert.ok(c.warnings.some((w) => w.includes('/about')), 'a declared route the store build never had still warns');
 
-  // A single declared route is a deliberate claim, not an accident, so it does not warn.
-  assert.ok(!bundle({ root, cfg: { ...spa, web: { ...spa.web, declaredRoutes: [] } }, key, now: NOW }).warnings.some((w) => w.includes('INACTIVE')));
-  for (const bad of ['/shelf', ['shelf'], [1]]) {
+  // ["/"] is a deliberate single-route claim and does not warn. [] claims nothing, so it is rejected rather than
+  // silently silencing the warning it was added to raise.
+  const one = bundle({ root, cfg: { ...spa, web: { ...spa.web, declaredRoutes: ['/'] } }, key, now: NOW });
+  assert.deepEqual(one.manifest.routes, ['/']);
+  assert.ok(!one.warnings.some((w) => w.includes('INACTIVE')));
+  for (const bad of ['/shelf', [], ['shelf'], [1], ['/a/b']]) {
     assert.throws(() => bundle({ root, cfg: { ...spa, web: { ...spa.web, declaredRoutes: bad } }, key, now: NOW }), /declaredRoutes/);
   }
+  // A trailing slash is the same route, so editing one in must not look like a new feature area.
+  assert.deepEqual(bundle({ root, cfg: { ...decl, web: { ...decl.web, declaredRoutes: ['/shelf/'] } }, key, now: NOW }).manifest.routes, ['/', '/shelf']);
+});
+
+test('declared routes are unioned with a scan, and a scan that finds one route says so differently', () => {
+  const { root, cfg, key } = fixture();
+  // Scanning works here (the fixture has web/src/routes with calendar and (app)/settings), so declaring a route adds
+  // to it rather than switching it off: a project that declares routes still gets warned about a new directory.
+  const both = bundle({ root, cfg: { ...cfg, web: { ...cfg.web, declaredRoutes: ['/shelf'] } }, key, store: true, now: NOW });
+  assert.deepEqual(both.manifest.routes, ['/', '/calendar', '/settings', '/shelf']);
+  mkdirSync(join(root, 'web', 'src', 'routes', 'admin'));
+  const after = bundle({ root, cfg: { ...cfg, web: { ...cfg.web, declaredRoutes: ['/shelf'] } }, key, now: NOW });
+  assert.ok(after.warnings.some((w) => w.includes('/admin')), 'declaring routes must not turn the scan off');
+
+  // A scannable app with exactly one route is not "INACTIVE": the check runs, it just has one route to report.
+  rmSync(join(root, 'web', 'src', 'routes'), { recursive: true });
+  mkdirSync(join(root, 'web', 'src', 'routes'));
+  writeFileSync(join(root, 'web', 'src', 'routes', '+page.svelte'), '');
+  const single = bundle({ root, cfg: loadConfig(root), key, now: NOW });
+  assert.deepEqual(single.manifest.routes, ['/']);
+  assert.ok(!single.warnings.some((w) => w.includes('INACTIVE')), 'a working scan is never reported as inactive');
+  assert.ok(single.warnings.some((w) => w.includes('found only "/"')));
 });
 
 test('floor only goes up and never exceeds seq', () => {
@@ -341,7 +366,8 @@ test('client.ts round-trips calls with the nonce, errors, events and the web shi
   const seen = [];
   const off = c.on('sync.changed', (p) => seen.push(p.buckets));
   window.__valence.e('sync.changed', { buckets: ['a'] });
-  off();
+  // void, not Set.delete's boolean: a React useEffect cleanup must return void or a destructor.
+  assert.equal(off(), undefined, "on()'s unsubscribe must return void");
   window.__valence.e('sync.changed', { buckets: ['b'] });
   assert.deepEqual(seen, [['a']]);
 
