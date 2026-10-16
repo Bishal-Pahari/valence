@@ -415,14 +415,22 @@ async function init(o) {
 
     console.log(`\n${bold('  Next')}  Claude Code builds the Flutter host runtime, wires the web app, runs the tests and an independent review.`);
     const command = 'claude "/valence init"';
+    // A skill installed during this run is not registered in a session that is already open, so /valence would
+    // come back unknown there. Say so, and name the alternative for anyone not using Claude Code at all.
+    const freshSession = [
+      dim('  That starts a new session, which matters: the skill was installed during this run, so'),
+      dim('  /valence is not registered in a session that is already open. Without Claude Code, the'),
+      dim('  host is yours to write against the spec: https://getvalence.pages.dev/docs/reference/spec/'),
+      '',
+    ].join('\n');
     const claude = tool('claude --version', root);
     if (!claude) {
-      console.log(`  Install Claude Code (https://code.claude.com/docs), then run in this folder:\n\n    ${bold(command)}\n`);
+      console.log(`  Install Claude Code (https://code.claude.com/docs), then run in this folder:\n\n    ${bold(command)}\n${freshSession}`);
       return;
     }
     // claude is interactive: never start it without a terminal (CI, pipes).
     if (!o.launch || !interactive() || /^n/i.test(await ask('Launch Claude Code now? (Y/n)', 'Y'))) {
-      console.log(`  When you're ready, run in this folder:\n\n    ${bold(command)}\n`);
+      console.log(`  When you're ready, run in this folder:\n\n    ${bold(command)}\n${freshSession}`);
       return;
     }
     ask.close();

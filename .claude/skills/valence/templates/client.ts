@@ -87,7 +87,10 @@ export function on<E extends keyof Events>(e: E, fn: (payload: Events[E]) => voi
   const set = listeners.get(e) ?? new Set();
   set.add(fn as (payload: never) => void);
   listeners.set(e, set);
-  return () => set.delete(fn as (payload: never) => void);
+  // void, not Set.delete's boolean: a React useEffect cleanup must return void or a destructor.
+  return () => {
+    set.delete(fn as (payload: never) => void);
+  };
 }
 
 /** Tell the host the first meaningful paint happened. Commits a trial bundle (contracts.md §2.4). */

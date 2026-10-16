@@ -129,14 +129,14 @@ Spawn two `valence-builder` agents in a single message. **Each one owns only its
 **Host builder.** It owns `<host.dir>/**`, except the `*.g.dart` files.
 
 - Run `flutter create --org <reverse-domain of appId> --project-name <snake name> --platforms android,ios <host.dir>` if the project doesn't exist yet.
-- Add these dependencies: `webview_flutter`, `sqflite`, `path_provider`, `cryptography`, `http`, `url_launcher`, `connectivity_plus` and `workmanager`.
+- Add these dependencies: `webview_flutter`, `sqflite`, `path_provider`, `cryptography`, `crypto`, `http`, `url_launcher`, `connectivity_plus` and `workmanager`. `crypto` gives you the synchronous `sha256.convert(bytes)` that check 7 needs per file; `cryptography` only has an async `hash()`, which is awkward inside the download-and-rename loop.
 - Write the runtime in `lib/valence/`:
   - `server.dart`: the per-install port, the nonce injected into the entry page, and the CSP header (§3)
   - `updater.dart`: the canonical check order, the state machine with `trialFails`, and GC only at commit (§2.3, §2.4)
-  - `store.dart`: per-`(bucket, schema)` storage, WAL plus `busy_timeout`, and the seed import (§5.1, §5.2, §5.4)
+  - `store.dart`: per-`(bucket, schema)` storage, WAL plus `busy_timeout` **through `rawQuery`**, one never-closed instance shared with the background isolate, and the seed import (§5.1, §5.2, §5.4)
   - `sync.dart`: pull and push, the echo skip, and the sync lease (§5.3–§5.6)
   - `bridge.dart`, which implements `BridgeHandlers`, passes the server's nonce to `bridgeDispatch`, and only allows `open.external` for `https`, `mailto` and `tel` (§4.2)
-  - `host.dart`: the WebView widget, the navigation lock, no off-origin subframes, and the foreground-only ready timer (§2.4, §7)
+  - `host.dart`: the WebView widget, the navigation lock, no off-origin subframes, the foreground-only ready timer, the queue that holds events until `onPageFinished`, and `setOnConsoleMessage` plus `onPageStarted`/`onPageFinished`/`onHttpError` logging (§2.4, §3, §4.2, §7)
 - Declare `assets/valence/builtin/`, `assets/valence/builtin/files/` and `assets/valence/seed.db` in `pubspec.yaml`.
 - Platform setup:
   - Android: the network security config allowing cleartext to `127.0.0.1` only, and `dataExtractionRules`/`fullBackupContent` excluding `valence/`;
@@ -162,11 +162,20 @@ Run these in order. Fix and rerun on any failure, up to 3 attempts per failure; 
 3. Run `node valence/valence.mjs seed --from <dumps>`. With no data yet, use an empty directory, which gives a valid empty seed. Report any "has no seed file" warnings: those buckets stay empty offline until the first sync.
 4. In `<host.dir>`, run `flutter pub get`, then `dart analyze --fatal-infos lib test`, then `flutter test`.
 5. If an Android SDK is present (`flutter doctor`), run `flutter build apk --debug`. Build iOS only on macOS.
-6. If `flutter devices` lists a device or emulator, run the offline-cold-start `integration_test`. Otherwise report "skipped: no device". Don't count it as passed.
+6. If `flutter devices` lists a device or emulator, run the offline-cold-start `integration_test`. Otherwise report "skipped: no device". Don't count it as passed, and say explicitly that **the first launch has not been shown to open the database**: `sqflite_common_ffi` accepts things Android's `SQLiteDatabase` rejects (§5.1), so the green unit suite is not evidence for that path.
 
 ### Phase 6: Independent review
 
 Spawn `valence-reviewer`, never yourself, against the changed files. Fix every CRITICAL and HIGH finding, rerun Phase 5, and re-review only the files that changed. List MEDIUM and LOW findings for the user.
+
+### Degraded mode: no subagents
+
+Phases 1, 4 and 6 spawn agents. If your harness can't (headless, or subagents disabled), don't stop — do the work in the main loop in this order, and **say in the hand-off which steps ran degraded**:
+
+1. **Instead of Phase 1,** read §Stack baseline below and check its dates. Record in `.valence/stack-check.md` that no scout ran and the baseline is unverified for this run. Then be conservative: pin the versions the baseline names rather than resolving `latest`, and treat a build failure inside a listed package as drift to investigate, not as your own bug.
+2. **Instead of Phase 4,** write the host first and the web side second, in the file order Phase 4 lists. Read `references/contracts.md` in full before the first file. Run `dart analyze --fatal-infos` after each file rather than at the end, so an error is attributable to what you just wrote.
+3. **Phase 5 is unchanged,** and it is now your only safety net. Run every step, and don't let the device step pass silently (see step 6 there).
+4. **Instead of Phase 6,** review in a **separate pass**: re-read §2.3, §2.4, §3, §5.1 and §7, then the code, and work `.claude/agents/valence-reviewer.md` as a checklist, writing down the evidence for each item. **Self-review is weaker than independent review, and the hand-off must say so,** with a recommendation to run `/valence doctor` from a fresh session before the first store submission. Never present a self-review as an independent one.
 
 ### Phase 7: Hand-off
 
@@ -194,7 +203,7 @@ The steps below are for **OTA releases**.
 1. **Preconditions.** `codegen --check` passes and the web tests pass. State the channel (default `production`) and rollout (default `10`) back to the user.
 2. **Build and sign.** Build the web app, then run `node valence/valence.mjs bundle [--floor N] [--urgent]`.
    - If it warns about a **new top-level route**, stop and ask whether the change needs a store update instead (DPLA 3.3.1(B)(a)).
-   - If it warns that the route check is **INACTIVE**, the app routes in JavaScript and has no routes directory to scan. Add its top-level routes as `web.declaredRoutes` in `valence.config.json` and re-run, so later releases are diffed against something.
+   - If it warns that the route check is **INACTIVE**, there is no routes directory to scan and nothing declared. Add the app's top-level routes as `web.declaredRoutes` in `valence.config.json` and re-run, so later releases are diffed against something. (If instead it says scanning *found only "/"*, the check is working: confirm with the user that the app really has one top-level route before declaring anything.)
    - Raise `--floor` only when the release fixes a security bug. It can never go back down.
    - **Commit `.valence/baseline.json`** afterwards. It holds `lastSeq`, which keeps `seq` increasing across machines and CI.
 3. **Verify** the new manifest with `valence verify`.
