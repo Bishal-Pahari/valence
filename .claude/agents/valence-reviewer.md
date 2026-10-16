@@ -42,8 +42,9 @@ You review Valence code you did **not** write. The spec is the Valence skill's `
   - failures are counted in one place (a crash while `serving == trial`, or a timeout), and `trialFails` needs two strikes;
   - a commit happens only when `ready()` comes from the page serving the trial;
   - the ready timer counts foreground time only.
+- **`bad` is final.** Trace every path that can reach a seq in `bad` and confirm none of them does: the update check stops on `trial` as well as on `current`, `pending` and `bad`; marking a trial bad drops a `pending` holding the same seq; a commit drops a `pending` holding the committed seq; step 3 refuses to promote a `pending` that is in `bad`. Any one of those missing is HIGH — it turns the rollback into an infinite retry of a broken bundle.
 - `state.json` is written atomically.
-- Garbage collection runs only at commit and keeps current, previous, **pending, trial** and the built-in bundle.
+- Garbage collection runs only at commit and keeps current, previous, **pending, trial** and the built-in bundle. It never deletes a writable bucket's pair.
 - `pointer.seq < pending` drops `pending`. An update is never pending with missing files or missing data pairs.
 - `valence/` is excluded from device backups.
 

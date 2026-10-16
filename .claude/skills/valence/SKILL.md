@@ -251,6 +251,7 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
 - **A pull or a push echo must not overwrite a row that has a pending outbox entry**, or user edits vanish (§5.3, §5.5).
 - **Pointing the channel at an older seq doesn't roll anyone back.** Roll forward with a new seq instead.
 - **Garbage collection must keep the `pending` and `trial` files.** Otherwise a healthy update 404s and gets marked bad.
+- **The update check has to stop on `trial` too, or the rollback never sticks.** While a seq is on trial it is above `current` and `pending` is null, so an unguarded check re-pends the bundle that is failing; after two strikes mark it bad, that stale `pending` promotes it straight back with `trialFails` reset, for ever. Stop on `trial`, drop a `pending` that equals the seq you just marked bad or committed, and never promote a `pending` that is in `bad` (§2.3 step 1, §2.4).
 - **Background launches must not touch the state machine.** iOS BGTask and workmanager runs `main()` without a UI; only the host widget moves `pending` to `trial`.
 - **Flutter asset directories aren't recursive.** Declare `assets/valence/builtin/` and `assets/valence/builtin/files/` separately.
 - **`jsonEncode` output is safe to embed in `runJavaScript`** (ES2019 allows U+2028), but never concatenate raw strings into scripts.

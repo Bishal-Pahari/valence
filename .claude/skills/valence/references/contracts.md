@@ -148,7 +148,8 @@ Run it on UI start, on resume, and every 30 minutes while in the foreground. **N
 
 1. **Fetch the pointer** (5 s timeout) and decode it strictly.
    - If `pointer.seq < state.pending`, drop `pending`. The team pulled that release.
-   - If `pointer.seq <= current`, or `pointer.seq` is in `bad`, or `pointer.seq <= state.pending`, stop.
+   - If `pointer.seq <= current`, or `pointer.seq` is in `bad`, or `pointer.seq <= state.pending`, or `pointer.seq == state.trial`, stop.
+   - **`trial` belongs in that list.** A trial is above `current` and leaves `pending` null, so without this guard the 30-minute check re-downloads the bundle that is on screen right now and sets `pending` to it. That stale `pending` then either survives the commit and re-trials a bundle already running, or survives the two-strike `bad` marking and resurrects a bundle this install has already rejected. §2.4 guards the same loop from the other end.
 2. **Rollout gate:** `fnv1a32(installId + ":" + seq) % 100 < rollout`. If it fails, stop. `installId` is a random UUID made on first launch; never use a device ID.
 3. **Fetch `manifests/<pointer.seq>.json`** (size cap 1 MB) and its `.sig`.
 4. **Run checks 1–6** from the canonical order. Any failure means stop and log; never retry the same seq within this run.
@@ -178,20 +179,23 @@ At UI start:
    - set `previous = current` and `current = builtin`;
    - drop `pending` and `trial` if they are at or below it, and clear `serving` if its trial was dropped.
 2. **A crashed trial.** If `serving == trial`, the last UI start showed the trial and the process died before the trial was confirmed or timed out. Count it as a failure (see below).
-3. **No trial but a pending bundle:** set `trial = pending`, clear `pending` and reset `trialFails` to 0.
+3. **No trial but a pending bundle:** **if `pending` is in `bad`, drop it and promote nothing** — a seq this install has judged bad is never tried again. Otherwise set `trial = pending`, clear `pending` and reset `trialFails` to 0.
 4. **Serve.** If there's a trial, serve it and set `serving = trial`. Otherwise serve `current`, or the built-in bundle if there's no `current`.
 
 **Counting a failure** happens in exactly one place. It runs from step 2 or on a ready timeout:
 
 - increment `trialFails` and set `serving = null`;
-- if `trialFails` reaches **2**, add the trial to `bad` and clear `trial` and `trialFails`;
+- if `trialFails` reaches **2**, add the trial to `bad`, clear `trial` and `trialFails`, and **drop `pending` if it holds the same seq**;
 - otherwise keep the trial: the next UI start tries it once more, since one failure can be a user who opened and closed the app at once.
+
+**`bad` is final for this install.** Nothing promotes, re-downloads or serves a seq in `bad`: not §2.3 step 1, not step 3 above, not step 4. The two-strike rule is the whole safety story, and it only holds if every one of those paths checks the list. A bad bundle is replaced by a higher seq, never retried.
 
 **The ready timer.**
 
 - It counts **15 s of foreground time**, starting at the entry page's `onPageStarted` and paused while the app is in the background.
 - **It commits only if `app.ready()` comes from the page that is serving the trial** (`serving == trial`). A `ready()` from a `current` page never commits anything. On commit:
   - `previous = current`, `current = trial`, `trial = null`, `trialFails = 0`, `serving = null`;
+  - drop `pending` if it holds the seq just committed, so the next UI start doesn't re-trial the live bundle;
   - `state.floor = max(state.floor, manifest.floor)`;
   - then run garbage collection.
 - **On timeout,** count a failure, then reload `current` right away.
@@ -507,7 +511,7 @@ The reviewer agent checks this.
 |---|---|
 | `valence.mjs` (the skill's `valence.test.mjs`) | key directory inside git, including through a link; keyring entry never overwritten; signing key must match the keyring; sign/verify round trip; tampering, bad signature, unknown key, other `appId` and unsafe paths rejected; native extensions rejected; `seq` monotonic with the same clock and a slow clock; floor only rises; CSP hashes (CRLF-safe, `wasm-unsafe-eval` only with `.wasm`); additive-only against `storeSchema`, recorded only by `--store`; new names need `since` above the shipped version; reserved and colliding names; SvelteKit co-located files aren't routes; atomic and validated seed, with a warning for unseeded buckets; the CLI runs through a link; generated Dart passes `analyze --fatal-infos` and the dispatch cases; `client.ts` behaviour |
 | updater (dart test) | each check 1–7 rejects; `pointer.seq` below `pending` drops `pending`; the rollout gate is deterministic; size cap; an update isn't pending until its data pairs are synced |
-| state machine | trial then ready → committed and floor raised; `ready()` from a `current` page after a timeout never commits the trial; a timeout counts exactly one failure; trial fails once → retried at the next UI start → fails again → marked bad; a crash while `serving == trial` counts one failure; a newer built-in bundle wins and drops older pending and trial; GC keeps current, previous, pending, trial and built-in; no transition runs from a background isolate; the ready timer pauses in the background |
+| state machine | trial then ready → committed and floor raised; `ready()` from a `current` page after a timeout never commits the trial; a timeout counts exactly one failure; trial fails once → retried at the next UI start → fails again → marked bad; **the UI start after that serves `current`, not the bad bundle** (a `pending` in `bad` is dropped, never promoted); **an update check while a seq is on trial does not re-pend it**; **a commit clears a `pending` holding the committed seq**; a crash while `serving == trial` counts one failure; a newer built-in bundle wins and drops older pending and trial; GC keeps current, previous, pending, trial and built-in; **GC after a commit leaves writable buckets untouched**; no transition runs from a background isolate; the ready timer pauses in the background |
 | server | the same port across launches; a bind failure means a new port, a new nonce, a reload and never serving from the old port; rebinding the same port on resume keeps the nonce and the page keeps working; the nonce is in the entry page only; CSP header on the entry page; GET and HEAD only; SPA fallback |
 | store and sync | paged pull is atomic per page; tombstones; outbox rows aren't clobbered by a pull **or by a push echo**; push ack clears only acknowledged ids; seed import per `(bucket, schema)` only moves forward; writable buckets use schema 1; the sync lease blocks concurrent syncs, is renewed per page, and treats a future timestamp as expired |
 | bridge | missing or wrong nonce → `E_DENIED`; unknown method → `E_UNKNOWN`; bad params → `E_PARAMS`; a write to a read-only bucket → `E_DENIED`; `prefs.*` on an `valence.` key → `E_DENIED`; `open.external` rejects `javascript:` and `file:`; reply escaping round-trips U+2028 and quotes |
