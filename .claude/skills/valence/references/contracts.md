@@ -39,7 +39,7 @@ What ships in which update:
 <root>/
   <web app>/                  existing web app (any SPA that builds to static files)
   mobile/                     Flutter host
-    lib/valence/                   server.dart  updater.dart  store.dart  sync.dart  bridge.dart  host.dart
+    lib/valence/                   server.dart  updater.dart  store.dart  sync.dart  bridge.dart  host.dart (incl. log capture, §3)
                               bridge.g.dart  config.g.dart   (generated, never edited)
     assets/valence/builtin/        built-in bundle: manifest.json, manifest.json.sig, files/<sha256>  (written by `valence bundle --builtin`)
     assets/valence/seed.db         bundled SQLite seed (written by `valence seed`)
@@ -149,8 +149,8 @@ Run it on UI start, on resume, and every 30 minutes while in the foreground. **N
 
 1. **Fetch the pointer** (5 s timeout) and decode it strictly.
    - If `pointer.seq < state.pending`, drop `pending`. The team pulled that release.
-   - If `pointer.seq <= current`, or `pointer.seq` is in `bad`, or `pointer.seq <= state.pending`, or `pointer.seq == state.trial`, stop.
-   - **`trial` belongs in that list.** A trial is above `current` and leaves `pending` null, so without this guard the 30-minute check re-downloads the bundle that is on screen right now and sets `pending` to it. That stale `pending` then either survives the commit and re-trials a bundle already running, or survives the two-strike `bad` marking and resurrects a bundle this install has already rejected. §2.4 guards the same loop from the other end.
+   - If `pointer.seq <= current`, or `pointer.seq` is in `bad`, or `pointer.seq <= state.pending`, or `pointer.seq <= state.trial`, stop.
+   - **`trial` belongs in that list.** A trial is above `current` and has not committed yet, so without this guard the 30-minute check re-downloads the bundle that is on screen right now and sets `pending` to it. That stale `pending` then either survives the commit and re-trials a bundle already running, or survives the two-strike `bad` marking and resurrects a bundle this install has already rejected. §2.4 guards the same loop from the other end.
 2. **Rollout gate:** `fnv1a32(installId + ":" + seq) % 100 < rollout`. If it fails, stop. `installId` is a random UUID made on first launch; never use a device ID.
 3. **Fetch `manifests/<pointer.seq>.json`** (size cap 1 MB) and its `.sig`.
 4. **Run checks 1–6** from the canonical order. Any failure means stop and log; never retry the same seq within this run.
@@ -179,24 +179,33 @@ At UI start:
    - first install it into CAS through the same checks as an OTA bundle, skipping check 3 because a built-in bundle has no pointer;
    - set `previous = current` and `current = builtin`;
    - drop `pending` and `trial` if they are at or below it, and clear `serving` if its trial was dropped.
-2. **A crashed trial.** If `serving == trial`, the last UI start showed the trial and the process died before the trial was confirmed or timed out. Count it as a failure (see below).
-3. **No trial but a pending bundle:** **if `pending` is in `bad`, drop it and promote nothing** — a seq this install has judged bad is never tried again. Otherwise set `trial = pending`, clear `pending` and reset `trialFails` to 0.
+2. **A crashed trial.** If **`trial != null`** and `serving == trial`, the last UI start showed the trial and the process died before the trial was confirmed or timed out. Count it as a failure (see below).
+   - **The `trial != null` half is load-bearing.** In the ordinary no-trial state both fields are null, so a condition written as just `serving == trial` is satisfied on every launch: the host counts a failure each time, reaches two strikes, and marks whatever it is serving bad. Every comparison of `serving` and `trial` in this section carries that guard.
+3. **A pending bundle, with no trial.** Promote `pending` only if it is **above `current`, at or above `state.floor`, and not in `bad`**. Then set `trial = pending`, clear `pending` and reset `trialFails` to 0. A `pending` that fails any of the three is dropped and nothing is promoted.
+   - `current` and the floor are tested here, not only at download time, because a pointer can move backwards — the team pulling a release is a documented action — which can leave a `pending` behind a `current` that a later commit raised, or behind a floor that same commit raised. §2.3 check 4 looks at the floor only when the bundle is fetched.
 4. **Serve.** If there's a trial, serve it and set `serving = trial`. Otherwise serve `current`, or the built-in bundle if there's no `current`.
 
-**Counting a failure** happens in exactly one place. It runs from step 2 or on a ready timeout:
+**Counting a failure** happens in exactly one place, and only when there is a trial to count against. It runs from step 2 or on a ready timeout:
 
+- **if `trial` is null, there is nothing to count.** Do nothing and add nothing to `bad`. A ready timeout on a `current` page means the app is slow, not that a release is bad;
 - increment `trialFails` and set `serving = null`;
-- if `trialFails` reaches **2**, add the trial to `bad`, clear `trial` and `trialFails`, and **drop `pending` if it holds the same seq**;
+- if `trialFails` reaches **2**, add the trial to `bad`, clear `trial` and `trialFails`, and **drop `pending` if it is at or below the trial's seq**;
 - otherwise keep the trial: the next UI start tries it once more, since one failure can be a user who opened and closed the app at once.
 
-**`bad` is final for this install.** Nothing promotes, re-downloads or serves a seq in `bad`: not §2.3 step 1, not step 3 above, not step 4. The two-strike rule is the whole safety story, and it only holds if every one of those paths checks the list. A bad bundle is replaced by a higher seq, never retried.
+**`bad` is the list of seqs this install refuses.** The invariant is one line: *no path promotes, re-downloads or serves a seq in `bad`.* Four places where that would otherwise be ambiguous:
+
+- **`applyUpdate` promotes only through step 3,** so it inherits all three of step 3's tests (see below);
+- **`current` is never added to `bad`.** Only a trial is, and only by the two-strike rule above. A host that can put `current` in `bad` has nothing left to serve;
+- **a built-in bundle whose seq is in `bad` is removed from `bad` as step 1 installs it.** A store install is user-initiated and is itself the replacement, so it overrides an earlier OTA judgement rather than being blocked by it;
+- **entries below `state.floor` may be pruned at commit.** §2.3 check 4 already refuses them, so the list only has to remember seqs at or above the floor. Otherwise `bad` grows for the life of the install.
 
 **The ready timer.**
 
+- It is armed **only while serving a trial** (`trial != null && serving == trial`). A `current` page is not on probation, so a slow start costs it nothing.
 - It counts **15 s of foreground time**, starting at the entry page's `onPageStarted` and paused while the app is in the background.
-- **It commits only if `app.ready()` comes from the page that is serving the trial** (`serving == trial`). A `ready()` from a `current` page never commits anything. On commit:
+- **It commits only if `app.ready()` comes from the page that is serving the trial** (`trial != null && serving == trial`). A `ready()` from a `current` page never commits anything, and neither does a late `ready()` from a page whose trial has already been given up on — by then `trial` is null, and without the guard `null == null` would commit `current = null`. On commit:
   - `previous = current`, `current = trial`, `trial = null`, `trialFails = 0`, `serving = null`;
-  - drop `pending` if it holds the seq just committed, so the next UI start doesn't re-trial the live bundle;
+  - drop `pending` if it is **at or below** the seq just committed, so the next UI start neither re-trials the live bundle nor promotes something the commit has overtaken;
   - `state.floor = max(state.floor, manifest.floor)`;
   - then run garbage collection.
 - **On timeout,** count a failure, then reload `current` right away.
@@ -205,7 +214,16 @@ At UI start:
 
 - **Keep** the manifests for `current`, `previous`, `pending`, `trial` and the built-in bundle, plus every CAS file they reference.
 - **Delete** every other manifest and CAS file.
-- **Delete** each `(bucket, schema)` pair that no kept manifest requires (§5.4). Writable buckets are never deleted this way.
+- **Delete** each **read-only** `(bucket, schema)` pair that no kept manifest requires (§5.4).
+- **Never delete a writable bucket this way.** No manifest ever lists one in `requires.data` — that field is only about read-only schema co-versioning — so a rule phrased as "delete every pair no manifest requires" destroys all of the user's own data on the first commit after an OTA. Skip `valenceWritableBuckets` before the kept-pairs test, and refuse them again in the store's drop path.
+
+**`bundle.applyUpdate`** is the only transition that runs mid-session, and it is a **full trial promotion**, not a shortcut:
+
+- if there is no `pending`, or `pending` is in `bad`, it is a no-op (drop a bad `pending` as in step 3) and returns normally;
+- otherwise run step 3 and step 4 exactly as at UI start: `trial = pending`, clear `pending`, `trialFails = 0`, serve the trial, `serving = trial`, reload the WebView and start the ready timer;
+- the ready timer and failure counting then apply unchanged, so a white-screening urgent bundle costs two strikes and reverts like any other.
+
+An urgent release must not be a rollback blind spot. The method is reachable only from the page the host is already serving, so it can't be used to skip a check.
 
 **Rollback means rolling forward.**
 
@@ -230,7 +248,8 @@ A restore then starts clean from the built-in bundle, with a new `installId` (no
 - That range avoids the OS ephemeral ranges (Android 32768+, iOS 49152+).
 - `installId` keeps the port from being precomputed from the `appId`, and gives cloned profiles (work profile, dual apps) different ports.
 - **The port is not a secret.** A loopback scan finds it in about a second. The nonce is what actually protects the bridge.
-- **If the persisted port can't be bound, never load or keep a page from it.** Pick a random free port in the range, persist it and load from that. Web storage for that origin is lost, which is acceptable: durable data lives in SQLite (§5).
+- **If the persisted port can't be bound, never load or keep a page from it.** Pick a random free port **in the same 10000 to 30000 range** — retry `rng.nextInt(20000) + 10000` until a bind succeeds, never `bind(port: 0)`, which returns an OS ephemeral port and lands exactly in the range this scheme exists to avoid — then persist it and load from that. Web storage for that origin is lost, which is acceptable: durable data lives in SQLite (§5).
+- **Swapping the active bundle restarts the server.** Applying an update and reverting a failed trial both change the manifest the server maps paths through, so **close the old server before binding again**. Otherwise the host collides with its own listening socket, moves to a new port and rotates the nonce in the middle of a fallback.
 
 ### Nonce
 
@@ -249,6 +268,10 @@ A restore then starts clean from the built-in bundle, with a new `installId` (no
   - other files: `Cache-Control: public, max-age=31536000, immutable`;
   - `Content-Type` from a small extension map;
   - `X-Content-Type-Options: nosniff`.
+
+### Logs
+
+**The host forwards the WebView's own output, or a broken bundle is undiagnosable.** Wire `setOnConsoleMessage`, plus `onPageStarted`, `onPageFinished` and `onHttpError`, in `host.dart`. Without them a JavaScript error during the bundle's bootstrap produces nothing at all — no log, no `onWebResourceError`, just a dark rectangle — while the host is working correctly. It is three lines, and it is the first thing to check when a bundle never reaches `ready()`.
 
 ### Resume
 
@@ -341,6 +364,11 @@ Error codes:
 - `open.external` accepts only `https:`, `mailto:` and `tel:` URLs.
 - **The `valence.` prefix is reserved for the host.** `prefs.get` and `prefs.set` reject `valence.*` keys with `E_DENIED`, so the web can't tamper with internal state such as the sync lease.
 
+**Emitting an event.** The host runs the generated builder in the WebView: `controller.runJavaScript(BridgeEvents.syncChanged(buckets: [...]))`. The builder renders the whole call through `jsonEncode`.
+
+- **`window.__valence` does not exist until the entry page has loaded,** so an event emitted before that is silently dropped — and the interesting ones arrive exactly then (a notification tap that cold-starts the app, connectivity returning during startup). **The host buffers event scripts and flushes them on `onPageFinished`,** and flushes again after every reload, because an update or a reverted trial reloads the page.
+- For state rather than one-shot notifications, prefer re-deriving to replaying. `sync.changed` works this way: on resume the host compares each pair's `max_usn` with the last value the page was told (§5.6).
+
 ### 4.3 Codegen (`node valence/valence.mjs codegen`)
 
 It emits three files:
@@ -399,7 +427,10 @@ PRAGMA user_version = 1;
   ```
 
   Both pragmas return a row, and Android's `SQLiteDatabase` refuses a row-returning statement through `execSQL`, so `execute` throws `Queries can be performed using SQLiteDatabase query or rawQuery methods only` and the app dies on its first launch, before any UI. `sqflite_common_ffi` — the factory every `flutter test` uses — accepts `execute` for pragmas, so **no unit test catches this**. Only a run on a device or emulator does.
-- **Never close the database.** sqflite keys open databases by path inside the platform plugin, not per isolate, so a `close()` in a `workmanager` isolate or in a widget's `dispose()` invalidates the handle the UI isolate is holding and the next bridge call fails with `database_closed`. Open it once, keep one store instance both entry points use, and let the process own it (§5.6).
+- **Never close the database.** sqflite keys open databases **by path inside the platform plugin**, not per isolate, so a `close()` in a `workmanager` isolate or in a widget's `dispose()` invalidates the handle the UI isolate is holding and the next bridge call fails with `database_closed`.
+  - A Dart object can't cross an isolate boundary, so "share the store instance" is not the rule. The rule is: **each isolate calls `openDatabase` on the same path** and gets the same plugin-side connection back, and **no isolate ever calls `close()`.** Keep one store object per isolate, lazily opened.
+  - A background isolate must call `DartPluginRegistrant.ensureInitialized()` before its first store call, or the plugin isn't registered in that isolate at all. That is the other first-run-on-device failure in this code path.
+- **Check that WAL took.** `rawQuery('PRAGMA journal_mode = WAL')` returns the mode that is now in effect; a filesystem that can't do WAL answers `delete` and you lose the concurrency the rest of §5 assumes. Log or assert the returned value rather than discarding it.
 
 ### 5.2 Seed
 
@@ -409,9 +440,11 @@ PRAGMA user_version = 1;
 - Every bucket must be in `valence.config.json` `data` with a matching schema.
 - Every row is `{k: string, v, u: integer ≥ 1, d}`.
 
-On first launch, and after a host upgrade, the host attaches the seed and, for each `(bucket, schema)` pair, copies the seed rows whose `usn` is above the local `max_usn` for that pair. It then updates the `bucket` row.
+On first launch, and after a host upgrade, the host attaches the seed and, for each `(bucket, schema)` pair, copies the seed rows whose `usn` is above the local `max_usn` for that pair. It then updates the `bucket` row. Count the copied rows with `SELECT changes()`: sqflite's `rawInsert` returns a last-insert-rowid, which is meaningless on a `WITHOUT ROWID` table, so a log line built from it reports 1 for a seed of thousands and reads as a failure.
 
 The app must be fully usable offline from the seed plus the built-in bundle. That is required by Apple guideline 4.2.3(ii).
+
+**A seeded pair does not satisfy §2.3 step 7.** That gate is about the server having rows at that schema, so it needs a pull: `synced_at` stays null after a seed import. It costs an offline-first app nothing in practice, because its first bundle is the built-in one and it ships with the matching seed.
 
 ### 5.3 Pull (incremental, by update sequence number)
 
@@ -451,9 +484,12 @@ POST {SYNC_BASE}/{bucket}/push   {"ops":[{"id":"<uuid>","k":"…","v":{…},"d":
 ```
 
 - `data.put` writes the `kv` row immediately with `usn = -1` and adds an `outbox` row. Do both in one transaction.
+- **`data.put` with a null `value` is the delete:** write a tombstone and an outbox op with `d: 1`. There is no other delete method, and no way to store a literal JSON `null` as a value.
+- **`usn = -1` is part of the contract, not an implementation detail.** `data.list` returns it, so the web app can read "written locally, not yet acknowledged" off a row. A pending *delete* leaves no row, so it can't be counted that way.
 - Push is idempotent by op `id`. The server assigns the `usn` and echoes the rows back.
 - Delete the acknowledged outbox rows, then apply the echoed rows, **except for keys that still have outbox entries**. A newer local edit waits for its own ack.
 - Conflict rule: the server applies last-writer-wins per key, in arrival order. Push is only for user-scoped buckets. **There are no CRDTs.** If an app needs collaborative editing, that's a different product.
+- **The loser is never told.** A pull applies the winning row straight over the local one, and the outbox protects a local write only until it is acknowledged, so "A writes 4, A syncs, B writes 7, A syncs" leaves A holding 7 with no record it ever said 4. An app that must show the disagreement **puts the writer in the key** (`<session>:<sku>:<device>` rather than `<session>:<sku>`), so two writers never collide and a review screen can show both. The cost is one row per writer per record, so use a key the app can enumerate.
 
 ### 5.6 When sync runs, and concurrency
 
@@ -461,7 +497,7 @@ POST {SYNC_BASE}/{bucket}/push   {"ops":[{"id":"<uuid>","k":"…","v":{…},"d":
   - on UI start, on resume and when connectivity comes back (connectivity_plus);
   - when the web app calls `sync.now`;
   - periodically in the background via `workmanager`: on Android at least every 15 minutes; on iOS it's best effort through BGTaskScheduler.
-- **The background isolate shares the UI's database handle.** sqflite registers open databases by path in the platform plugin, so both entry points must go through one store instance and neither may close it (§5.1). The lease below serialises *syncs*; it says nothing about database lifetimes.
+- **The background isolate shares the UI's database connection.** sqflite registers open databases by path in the platform plugin, so each isolate opens the same path, gets the same connection, and neither may close it; a background isolate also needs `DartPluginRegistrant.ensureInitialized()` first (§5.1). The lease below serialises *syncs*; it says nothing about database lifetimes. Because the connection is shared, keep pull pages small (§5.3 caps them at 500) so a long background transaction doesn't queue the UI's reads behind it.
 - **One sync at a time,** across the UI and background isolates.
   - Take a lease row in `prefs` (`valence.sync.lease` = epoch ms, written in `BEGIN IMMEDIATE`).
   - The lease is held only if `now - 2 min < lease <= now`. A lease time in the future, from clock skew or tampering, counts as expired.
@@ -507,7 +543,10 @@ The reviewer agent checks this.
   - `baseline.storeRoutes` records the routes of the bundle last submitted with a store build.
   - `valence bundle` warns when a release adds a new top-level route. It recurses through SvelteKit `(group)` and `[[optional]]` directories and counts Astro and Next.js page files.
   - **A client-side-routed SPA has no routes directory,** so scanning finds only `/` and the check has nothing to compare. Declare the routes instead: `web.declaredRoutes: ["/", "/shelf"]` in `valence.config.json`. They go into the manifest and the baseline exactly like scanned ones.
-  - **`valence bundle` warns when the check is inactive** — when nothing is declared and scanning yields only `/`. An inactive guard that looks active is worse than no guard: silence has to mean "compared and fine", never "never looked".
+    - Each entry is a **single-segment** top-level path starting with `/`; a trailing slash is stripped, so `/shelf/` and `/shelf` are one route. An **empty** array is refused: it claims nothing, and accepting it would silence the warning below by doing exactly the thing the warning is about. `["/"]` is how you claim a genuinely single-route app.
+    - **Declared routes are unioned with a scan, never a replacement for it.** Adding them to a project whose routes directory does scan must not quietly switch the scan off, or the next directory someone adds goes unnoticed.
+  - **`valence bundle` says so when the check can't work.** If nothing is declared and there is no routes directory to scan, the build warns that the check is **inactive**: an inactive guard that looks active is worse than no guard. If scanning *does* work and finds exactly one route, that is legitimate for a single-screen app, so the build asks for confirmation in different words rather than crying inactive.
+  - **A declared list is a self-report.** Silence then means "the declared list has not changed", not "the app's routes have not changed". Scanning is the stronger signal; prefer it where the framework allows it.
   - New feature areas should go out with a store update.
 - **The bridge is reachable only from our own pages.**
   - The main frame is locked to `http://127.0.0.1:<port>/` through `NavigationDelegate`; other URLs open externally through `url_launcher`.
@@ -523,9 +562,9 @@ The reviewer agent checks this.
 
 | Layer | Tests |
 |---|---|
-| `valence.mjs` (the skill's `valence.test.mjs`) | key directory inside git, including through a link; keyring entry never overwritten; signing key must match the keyring; sign/verify round trip; tampering, bad signature, unknown key, other `appId` and unsafe paths rejected; native extensions rejected; `seq` monotonic with the same clock and a slow clock; floor only rises; CSP hashes (CRLF-safe, `wasm-unsafe-eval` only with `.wasm`); additive-only against `storeSchema`, recorded only by `--store`; new names need `since` above the shipped version; reserved and colliding names; SvelteKit co-located files aren't routes; `web.declaredRoutes` is validated, feeds the manifest and the baseline, and silences the inactive-check warning a project with no scannable routes gets; atomic and validated seed, with a warning for unseeded buckets; the CLI runs through a link; generated Dart passes `analyze --fatal-infos` and the dispatch cases; `client.ts` behaviour |
+| `valence.mjs` (the skill's `valence.test.mjs`) | key directory inside git, including through a link; keyring entry never overwritten; signing key must match the keyring; sign/verify round trip; tampering, bad signature, unknown key, other `appId` and unsafe paths rejected; native extensions rejected; `seq` monotonic with the same clock and a slow clock; floor only rises; CSP hashes (CRLF-safe, `wasm-unsafe-eval` only with `.wasm`); additive-only against `storeSchema`, recorded only by `--store`; new names need `since` above the shipped version; reserved and colliding names; SvelteKit co-located files aren't routes; `web.declaredRoutes` is validated, feeds the manifest and the baseline, and silences the inactive-check warning a project with no scannable routes gets; atomic and validated seed, with a warning for unseeded buckets; the CLI runs through a link; generated Dart passes `analyze --fatal-infos` and the dispatch cases; `client.ts` behaviour, including that `on()`'s unsubscribe returns void so it is a valid React effect cleanup |
 | updater (dart test) | each check 1–7 rejects; `pointer.seq` below `pending` drops `pending`; the rollout gate is deterministic; size cap; an update isn't pending until its data pairs are synced |
-| state machine | trial then ready → committed and floor raised; `ready()` from a `current` page after a timeout never commits the trial; a timeout counts exactly one failure; trial fails once → retried at the next UI start → fails again → marked bad; **the UI start after that serves `current`, not the bad bundle** (a `pending` in `bad` is dropped, never promoted); **an update check while a seq is on trial does not re-pend it**; **a commit clears a `pending` holding the committed seq**; a crash while `serving == trial` counts one failure; a newer built-in bundle wins and drops older pending and trial; GC keeps current, previous, pending, trial and built-in; **GC after a commit leaves writable buckets untouched**; no transition runs from a background isolate; the ready timer pauses in the background |
+| state machine | trial then ready → committed and floor raised; `ready()` from a `current` page after a timeout never commits the trial; a timeout counts exactly one failure; trial fails once → retried at the next UI start → fails again → marked bad; **a UI start with no trial counts no failure and adds nothing to `bad`** (both `serving` and `trial` are null); **a ready timeout on a `current` page counts no failure**; **a late `ready()` after a trial was given up commits nothing**; **a `pending` below `current` or below `state.floor` is dropped rather than promoted**; **the UI start after two strikes serves `current`, not the bad bundle** (a `pending` in `bad` is dropped, never promoted); **an update check while a seq is on trial does not re-pend it**; **a commit clears a `pending` holding the committed seq**; a crash while `serving == trial` counts one failure; a newer built-in bundle wins and drops older pending and trial; GC keeps current, previous, pending, trial and built-in; **GC after a commit leaves writable buckets untouched**; no transition runs from a background isolate; the ready timer pauses in the background |
 | server | the same port across launches; a bind failure means a new port, a new nonce, a reload and never serving from the old port; rebinding the same port on resume keeps the nonce and the page keeps working; the nonce is in the entry page only; CSP header on the entry page; GET and HEAD only; SPA fallback |
 | store and sync | paged pull is atomic per page; tombstones; outbox rows aren't clobbered by a pull **or by a push echo**; push ack clears only acknowledged ids; seed import per `(bucket, schema)` only moves forward; writable buckets use schema 1; the sync lease blocks concurrent syncs, is renewed per page, and treats a future timestamp as expired |
 | bridge | missing or wrong nonce → `E_DENIED`; unknown method → `E_UNKNOWN`; bad params → `E_PARAMS`; a write to a read-only bucket → `E_DENIED`; `prefs.*` on an `valence.` key → `E_DENIED`; `open.external` rejects `javascript:` and `file:`; reply escaping round-trips U+2028 and quotes |

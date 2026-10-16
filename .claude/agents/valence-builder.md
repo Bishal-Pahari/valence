@@ -37,12 +37,13 @@ You implement **one layer** of Valence. The spec is `references/contracts.md` in
   - The state machine runs **only from the host widget, never in `main()` or a background isolate**:
     - built-in-newer first;
     - `serving` marks a trial on screen;
-    - one function counts failures (a crash while `serving == trial`, or a timeout), with 2 strikes before marking bad;
+    - stop the update check on `trial` as well as `current`, `pending` and `bad`; promote a `pending` only when it is above `current`, at or above the floor and not in `bad`; drop a `pending` at or below a seq just marked bad or committed; guard every `serving == trial` comparison with `trial != null`, or a no-trial launch counts a failure and marks `current` bad (§2.4)
+  - one function counts failures (a crash while `serving == trial`, or a timeout), with 2 strikes before marking bad;
     - commit only when `ready()` comes from the page serving the trial;
     - `state.floor` is a high-water mark.
   - GC only at commit, keeping current, previous, pending, trial and the built-in bundle.
   - Exclude `valence/` from backups.
-- **`store.dart`:** the §5.1 schema with `(bucket, schema)` keys, WAL plus `busy_timeout = 5000`, `user_version` migrations and the per-pair seed import (§5.2).
+- **`store.dart`:** the §5.1 schema with `(bucket, schema)` keys, WAL plus `busy_timeout = 5000` — both through `rawQuery` in `onConfigure`, because `execute` throws on Android and the ffi test factory hides it — the returned `journal_mode` checked, never a `close()`, `DartPluginRegistrant.ensureInitialized()` in the background entry point, `user_version` migrations and the per-pair seed import (§5.1, §5.2).
 - **`sync.dart`:**
   - paged pull in one transaction per page, skipping keys with outbox entries;
   - push with idempotent op ids, skipping echoed rows whose key still has outbox entries;

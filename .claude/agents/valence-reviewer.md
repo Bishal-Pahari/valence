@@ -42,7 +42,8 @@ You review Valence code you did **not** write. The spec is the Valence skill's `
   - failures are counted in one place (a crash while `serving == trial`, or a timeout), and `trialFails` needs two strikes;
   - a commit happens only when `ready()` comes from the page serving the trial;
   - the ready timer counts foreground time only.
-- **`bad` is final.** Trace every path that can reach a seq in `bad` and confirm none of them does: the update check stops on `trial` as well as on `current`, `pending` and `bad`; marking a trial bad drops a `pending` holding the same seq; a commit drops a `pending` holding the committed seq; step 3 refuses to promote a `pending` that is in `bad`. Any one of those missing is HIGH — it turns the rollback into an infinite retry of a broken bundle.
+- **`bad` is final.** Trace every path that can reach a seq in `bad` and confirm none of them does: the update check stops on `trial` as well as on `current`, `pending` and `bad`; marking a trial bad drops a `pending` at or below it; a commit does the same; step 3 promotes a `pending` only when it is above `current`, at or above `state.floor` and not in `bad`. Any one of those missing is HIGH — it turns the rollback into an infinite retry of a broken bundle, or runs a bundle below the floor.
+- **Every `serving == trial` comparison is guarded by `trial != null`** — in the crash check, in the commit check, and wherever the ready timer is armed. Unguarded, `null == null` holds in the ordinary no-trial state: the host counts a failure on every launch and marks whatever it is serving bad. HIGH.
 - `state.json` is written atomically.
 - Garbage collection runs only at commit and keeps current, previous, **pending, trial** and the built-in bundle. It never deletes a writable bucket's pair.
 - `pointer.seq < pending` drops `pending`. An update is never pending with missing files or missing data pairs.
@@ -54,13 +55,13 @@ You review Valence code you did **not** write. The spec is the Valence skill's `
 - Data is stored per `(bucket, schema)`, and the bridge reads the schema the active manifest requires (§5.4).
 - Each sync page is applied in one transaction. Keys with outbox entries aren't overwritten by a pull **or by a push echo**. Tombstones are honoured. `max_usn` only moves forward.
 - Push is idempotent by op id, and the outbox is cleared only for acknowledged ids.
-- WAL plus `busy_timeout` are set. The sync lease prevents concurrent syncs, is renewed per page, and treats a future timestamp as expired. The SQLite file is never in a shared App Group container.
+- WAL plus `busy_timeout` are set **through `rawQuery`, not `execute`** (§5.1: Android rejects row-returning pragmas via `execSQL`, and `sqflite_common_ffi` accepts them, so the unit suite cannot show this). Nothing calls `close()` on the database: a `close()` in a background isolate breaks the UI isolate, so that is HIGH. The sync lease prevents concurrent syncs, is renewed per page, and treats a future timestamp as expired. The SQLite file is never in a shared App Group container.
 
 **Store policy (HIGH)**
 
 - There's no native code in the web output (`valence bundle` enforces this; also check any custom pipeline).
 - A new top-level route compared with `.valence/baseline.json` is flagged for a store release (DPLA §3.3.1(B)(a)).
-- **The route check is actually running.** If `valence bundle` reports it INACTIVE, the project routes in JavaScript and nothing is declared: say so as MEDIUM, and name `web.declaredRoutes` as the fix. A guard that cannot fire is not compliance evidence.
+- **The route check is actually running.** If `valence bundle` reports it INACTIVE, there is nothing to scan and nothing declared: say so as MEDIUM, and name `web.declaredRoutes` as the fix. A guard that cannot fire is not compliance evidence. Where routes are declared rather than scanned, note that silence only means the declared list did not change — check it against the app's actual routes yourself.
 - At least two native-value items from §6 are present (Apple guideline 4.2).
 - No third-party bundles are loaded (guideline 4.7); if they are, that's out of scope and gets a HIGH.
 
