@@ -432,6 +432,15 @@ test('client.ts round-trips calls with the nonce, errors, events and the web shi
   window.__valence.e('sync.changed', { buckets: ['b'] });
   assert.deepEqual(seen, [['a']]);
 
+  // Over the cap, client.ts rejects before postMessage: Binder would otherwise kill the webview with no reply and
+  // no error either side can catch, so there has to be a promise left to reject (§4.2).
+  const before = sent.length;
+  await assert.rejects(
+    c.call('prefs.set', { key: 'big', value: 'x'.repeat(c.MAX_MESSAGE_BYTES) }),
+    (e) => e instanceof c.BridgeError && e.code === 'E_TOO_LARGE',
+  );
+  assert.equal(sent.length, before, 'nothing was posted');
+
   delete window.Valence;
   c.installShim({ 'prefs.get': async ({ key }) => `web:${key}` });
   assert.equal(await c.call('prefs.get', { key: 'theme' }), 'web:theme');

@@ -372,13 +372,21 @@ The type language is `string | int | num | bool | json | void | <TypeName>`. A `
 | host → JS (reply) | `runJavaScript(bridgeReplyScript(reply))`, which produces `window.__valence&&window.__valence.r(<json>)` | `{"id": n, "ok": true, "v": …}` or `{"id": n, "ok": false, "e": {"code", "message"}}` |
 | host → JS (event) | `runJavaScript(BridgeEvents.<name>(…))`, which produces `window.__valence&&window.__valence.e("<name>",<json>)` | the event payload |
 
-Error codes:
+Error codes. **The set is closed:** add to it here rather than inventing one per app, or four native capabilities produce four conventions and a typed bridge stops being uniform.
 
 - `E_UNKNOWN`: the method isn't in the generated table.
 - `E_PARAMS`: the params failed decoding.
 - `E_UNSUPPORTED`: the host bridge is older than the method's `since`.
 - `E_DENIED`: a bad nonce, a write to a non-writable bucket, or a disallowed URL scheme.
+- `E_CANCELLED`: the user backed out of native UI. Cancellation is not an error, not a denial and not a fault, and it is the *most common* outcome of every picker, camera, share sheet and biometric prompt — the spec's own built-ins only dodge the question because none of them opens modal UI. **Throw it only when the success type cannot express absence:** prefer a nullable return (`Media?`) where the type can say "nothing", and reserve the code for a non-nullable one.
+- `E_TOO_LARGE`: the message is over the cap below.
 - `E_INTERNAL`.
+
+**Messages are JSON strings, capped at 256 KB each way (`MAX_MESSAGE_BYTES`).**
+
+- On Android a `JavaScriptChannel` message travels through Binder, whose transaction buffer is around 1 MB and is shared across the process. Overrunning it kills the WebView, with no reply and no error either side can catch — so the cap is enforced in `client.ts` *before* `postMessage`, where there is still a promise to reject, and again in the host before decoding.
+- **So the bridge is not the path for bytes.** There is no blob, no file handle and no shared scratch directory, and base64 adds a third again on top. Native bytes reach the page over the loopback server's reserved `/_host/` prefix (§3). Bytes going the other way — an image to share, a file to upload — are either regenerated host-side from parameters, or PUT by the page to a `/_host/` endpoint; they do not go through the channel.
+- **A method that does take bytes validates in this order,** because the page is untrusted and "a share method" is otherwise a way to write attacker-chosen bytes to disk under an attacker-chosen name: cap the *encoded* length before decoding; decode; check the magic bytes against the type the method claims; require the file name to be a plain leaf matching an explicit pattern; write into a scratch directory the host wipes before each use.
 
 **The host is a trust boundary.**
 
@@ -410,7 +418,7 @@ It emits three files:
 
 The hand-written `client.ts` provides:
 
-- `call(m, params)`, where params are required whenever any field is required;
+- `call(m, params)`, where params are required whenever any field is required, and which refuses a message over `MAX_MESSAGE_BYTES`;
 - `has(m)` and `connect()`;
 - `on(event, fn)`;
 - `ready()`;
@@ -596,5 +604,5 @@ The reviewer agent checks this.
 | state machine | trial then ready → committed and floor raised; `ready()` from a `current` page after a timeout never commits the trial; a timeout counts exactly one failure; trial fails once → retried at the next UI start → fails again → marked bad; **a UI start with no trial counts no failure and adds nothing to `bad`** (both `serving` and `trial` are null); **a ready timeout on a `current` page counts no failure**; **a late `ready()` after a trial was given up commits nothing**; **a `pending` below `current` or below `state.floor` is dropped rather than promoted**; **the UI start after two strikes serves `current`, not the bad bundle** (a `pending` in `bad` is dropped, never promoted); **an update check while a seq is on trial does not re-pend it**; **a commit clears a `pending` holding the committed seq**; a crash while `serving == trial` counts one failure; a newer built-in bundle wins and drops older pending and trial; GC keeps current, previous, pending, trial and built-in; **GC after a commit leaves writable buckets untouched**; no transition runs from a background isolate; the ready timer pauses in the background |
 | server | the same port across launches; a bind failure means a new port, a new nonce, a reload and never serving from the old port; rebinding the same port on resume keeps the nonce and the page keeps working; the nonce is in the entry page only; CSP header on the entry page; GET and HEAD only; the SPA fallback answers an extensionless path; **a `/_host/` route is matched before the manifest lookup, an unknown id under it is 404 rather than the entry page, and neither a web-supplied path nor a malformed id escapes the host's directory** |
 | store and sync | paged pull is atomic per page; tombstones; outbox rows aren't clobbered by a pull **or by a push echo**; push ack clears only acknowledged ids; seed import per `(bucket, schema)` only moves forward; writable buckets use schema 1; the sync lease blocks concurrent syncs, is renewed per page, and treats a future timestamp as expired |
-| bridge | missing or wrong nonce → `E_DENIED`; unknown method → `E_UNKNOWN`; bad params → `E_PARAMS`; a write to a read-only bucket → `E_DENIED`; `prefs.*` on an `valence.` key → `E_DENIED`; `open.external` rejects `javascript:` and `file:`; reply escaping round-trips U+2028 and quotes |
+| bridge | missing or wrong nonce → `E_DENIED`; unknown method → `E_UNKNOWN`; bad params → `E_PARAMS`; a write to a read-only bucket → `E_DENIED`; `prefs.*` on an `valence.` key → `E_DENIED`; `open.external` rejects `javascript:` and `file:`; reply escaping round-trips U+2028 and quotes; **a message over `MAX_MESSAGE_BYTES` is rejected by `client.ts` before `postMessage`, with `E_TOO_LARGE`, rather than killing the webview** |
 | integration (`integration_test`, device or emulator) | **first launch opens the database and paints** — the store and sync rows above run on `sqflite_common_ffi`, which is more permissive than Android's `SQLiteDatabase` (it accepts `execute` for pragmas), so a green unit suite is not evidence the store opens on a phone; cold start in airplane mode renders the built-in bundle with seed data; a corrupt CAS file is re-downloaded; a background sync followed by a UI bridge call (the database must still be open); background then resume after 10 minutes, the server is rebound and the page still works; **each §6 item the app ships actually works on the device** — a biometric prompt appears rather than throwing `no_fragment_activity`, and a reminder scheduled N seconds out really posts and reports `exact` or `inexact` rather than `ok` |

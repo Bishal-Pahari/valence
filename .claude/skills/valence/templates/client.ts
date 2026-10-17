@@ -55,6 +55,9 @@ export function installShim(s: Shim) {
   shim = s;
 }
 
+/** contracts §4.2: the per-message cap, well under Android's ~1 MB process-wide Binder buffer. */
+export const MAX_MESSAGE_BYTES = 262_144;
+
 // Per-launch secret the host server writes into the entry page; the host rejects messages without it (contracts §4.2).
 const nonce = () => document.querySelector<HTMLMetaElement>('meta[name="valence-nonce"]')?.content ?? '';
 
@@ -69,8 +72,15 @@ export function call<M extends keyof Methods>(m: M, ...[params = {} as Params<M>
   // ponytail: no per-call timeout; a reload drops pending calls with the page. Add one if a handler can hang.
   return new Promise((resolve, reject) => {
     const id = nextId++;
+    const msg = JSON.stringify({ id, n: nonce(), m, p: params });
+    // Android routes this through Binder, whose ~1 MB transaction buffer is shared process-wide; overrunning it kills
+    // the WebView with nothing either side can catch. Refuse here, where there is still a promise to reject (§4.2).
+    if (msg.length > MAX_MESSAGE_BYTES) {
+      reject(new BridgeError('E_TOO_LARGE', `${m}: message is ${msg.length} bytes, over the ${MAX_MESSAGE_BYTES} byte bridge cap. Bytes do not go through the bridge; serve them over /_host/ instead (contracts §3).`));
+      return;
+    }
     pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
-    window.Valence!.postMessage(JSON.stringify({ id, n: nonce(), m, p: params }));
+    window.Valence!.postMessage(msg);
   });
 }
 
