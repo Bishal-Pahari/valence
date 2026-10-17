@@ -42,8 +42,28 @@ Valence is an open-source architecture for shipping a web UI inside a Flutter ap
 8. **Keep it lazy:** the smallest correct change, no speculative abstractions, and stdlib before dependencies. Mark deliberate shortcuts with a `ponytail:` comment that names the ceiling.
 9. **Import order** (JS and TS): framework builtins (`node:*`), then third party, then local, then CSS, with groups separated by a blank line. Within a group, multiline imports come first, then single-line ones, each sorted ascending by the length of the statement's last line. Members inside a multiline `{ }` are sorted by length.
 
+## Releasing
+
+One version for everything: `create-valence`, `@getvalence/bridge` and the `valence` pub package share a version number, and `VALENCE_VERSION` in `valence.mjs` equals it (a test enforces that).
+
+Every release gets:
+
+1. **A `CHANGELOG.md` section**, newest first, written in plain language for adopters — including anything they must change in their own host.
+2. **One annotated git tag** `vX.Y.Z` (for example `v0.4.0-beta.0`) on the release commit of this repo, plus the same tag on the `valence-site` repo.
+3. **A GitHub Release** for that tag with the changelog section as its notes, marked **pre-release** for any `-beta` or `-rc` version.
+
+```
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z
+gh release create vX.Y.Z --notes-file <notes> [--prerelease]
+```
+
+The maintainer runs the release: the merge, the version bump, `npm publish --otp=<code>`, the tags and pushing the site. Never publish or push from an agent session.
+
+**Platform support, wherever it is stated:** Android is tested; **iOS is experimental and untested**, because there is no Apple hardware here. Keep the iOS parts of the spec; don't claim they are verified.
+
 ## Roadmap (this order)
 
 1. Prove it in one real app (a reference app) through `/valence init`.
-2. Extract the host runtime that the builder writes into a `valence` pub package, and `client.ts` into an `@valence/bridge` npm package. Then the skill installs packages instead of generating code.
+2. Extract the host runtime that the builder writes into a `valence` pub package, and `client.ts` into an `@getvalence/bridge` npm package. Then the skill installs packages instead of generating code.
 3. Add a reference sync server (static chunks plus a minimal push endpoint) and a crash/`app.ready` telemetry hook for staged rollouts.

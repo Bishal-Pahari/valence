@@ -6,6 +6,9 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:valence/codegen.dart';
+// BridgeError, BridgeErrorCode and maxMessageBytes belong to the app-facing library, not to codegen.dart:
+// a generated file imports both, and the two surfaces deliberately do not overlap.
+import 'package:valence/valence.dart';
 
 void main() {
   Matcher throwsParams(String fragment) => throwsA(

@@ -224,7 +224,9 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
 - **CLI version.** `node valence/valence.mjs version` against the skill's copy, `node ${CLAUDE_SKILL_DIR}/scripts/valence.mjs version`.
 - **Generated code.** `codegen --check`.
 - **Docs drift.** Spawn the docs-scout.
-- **Bundle and seed.** The built-in bundle verifies, and `seed.db` exists.
+- **Bundle and seed.** The built-in bundle verifies, and `seed.db` exists. **"Verifies" only ever meant signatures and hashes, so say that in the row** — a built-in bundle whose `requires.bridge` is above the version the host reports verifies perfectly and cannot start (contracts §2.4 step 1). Compare the two numbers: `requires.bridge` in the built-in `manifest.json` against `hostBridgeVersion` in the generated `bridge.g.dart`, and against any second place the host reports a bridge version. A mismatch is a **FAIL**, not a warning: on a fresh install it means a blank screen.
+- **Committed files the layout names.** `.valence/baseline.json` and `.valence/stack-check.md` both exist. Contracts §1 calls them committed and Phase 3 gates on the stack report, but an `init` that never reached the docs-scout phase leaves `stack-check.md` missing — and `init` and `doctor` have both completed without a word about it. **WARN** when it is absent, and name the phase that writes it.
+- **Pub resolution.** `flutter pub get` in the host actually resolves, and `pubspec.yaml` matches the pins in §Stack baseline — except where contracts §6 names a tighter constraint for a capability the app ships, which wins. Independently valid constraints do not compose (see the §6 packages row), and this is the one row CI can run cheaply.
 - **Policy:**
   - routes compared with `.valence/baseline.json`, and whether that comparison is active at all (`web.declaredRoutes` for an app that routes in JavaScript);
   - no native files in the web output;
@@ -243,7 +245,7 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
 | cryptography | 2.9.0 (2025-11-21) | Ed25519 verify on the device |
 | workmanager | 0.10.10 (2026-09-07) | Background sync; best effort on iOS. **Applies the Kotlin Gradle Plugin, and every Android build warns that future Flutter versions will refuse to build plugins that do** (observed 2026-10-17). Still current; re-check by 2026-12. If it becomes unbuildable, drive `WorkManager` and `BGTaskScheduler` through a platform channel — §5.6 specifies the triggers, not the package |
 | home_widget | 0.10.0 (2026-09-17) | Optional native value (§6) |
-| the other §6 packages | **not pinned here** | `share_plus`, `flutter_local_notifications` and `local_auth` are named in contracts §6 with the native setup each needs, but no version in this table has been verified against a primary source. Resolve them with the docs-scout before relying on an API |
+| the other §6 packages | **not pinned here** | `share_plus`, `flutter_local_notifications` and `local_auth` are named in contracts §6 with the native setup each needs, but no version in this table has been verified against a primary source. Resolve them with the docs-scout before relying on an API. Observed 2026-10-17: `connectivity_plus 7.3.2` and `flutter_local_notifications 19.x` **cannot resolve together** (`dbus ^0.8.0` vs `^0.7.8`, both through Linux-only transitive deps); pin `connectivity_plus: ^7.3.1` in a host that has both. Resolve the §6 packages as a set, not one at a time |
 | path_provider / url_launcher / connectivity_plus / http | 2.1.6 / 6.3.3 / 7.3.2 / 1.6.0 | |
 | @sveltejs/kit / adapter-static | 3.1.0 / 4.0.0 | Kit 3 needs Node 22+ and TypeScript 6+, and always emits `modulepreload` (one reason we don't use `file://`) |
 | Apple App Store Review Guidelines | last updated 2026-06-08 | Guidelines 2.5.2, 4.2, 4.3(b), 4.7.x |
