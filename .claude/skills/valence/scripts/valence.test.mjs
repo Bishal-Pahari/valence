@@ -3,6 +3,7 @@ import {
   cpSync,
   rmSync,
   mkdirSync,
+  existsSync,
   symlinkSync,
   mkdtempSync,
   readFileSync,
@@ -601,6 +602,44 @@ test('the generated bridge binds the package: nonce, errors, events, the cap and
   delete globalThis.window;
   delete globalThis.document;
 });
+
+// The other half of AGENTS.md rule 4: the generated TS has to type-check under the settings an app's own
+// CI will use, not merely run. The import test above proves the binding works; this proves the types do.
+//
+// ponytail: mapped to the package's source rather than its built dist/, which is gitignored and would make
+// this gate depend on a build step. If a .d.ts emit ever diverges from the source, add the dist path here.
+const TSC = join(import.meta.dirname, '..', '..', '..', '..', 'packages', 'bridge', 'node_modules', '.bin', 'tsc');
+
+test(
+  'the generated TS type-checks under --strict --verbatimModuleSyntax',
+  { skip: !existsSync(TSC) && 'run "npm install" in packages/bridge first', timeout: 300_000 },
+  () => {
+    const { root, cfg } = fixture();
+    codegen({ root, cfg });
+    const lib = join(root, cfg.web.lib);
+    // An app's web project is ESM; without this the compiler reads the file as CommonJS and every import
+    // in it is an error, which says nothing about the generated code.
+    writeFileSync(join(lib, 'package.json'), JSON.stringify({ name: 'gen', private: true, type: 'module' }));
+    writeFileSync(
+      join(lib, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ES2022',
+          lib: ['ES2022', 'DOM'],
+          module: 'nodenext',
+          moduleResolution: 'nodenext',
+          strict: true,
+          verbatimModuleSyntax: true,
+          noEmit: true,
+          skipLibCheck: true,
+          paths: { '@getvalence/bridge': [BRIDGE_SRC.replaceAll('\\', '/')] },
+        },
+        include: ['bridge.g.ts'],
+      }),
+    );
+    execSync(`"${TSC}" -p tsconfig.json`, { cwd: lib, stdio: 'pipe' });
+  },
+);
 
 // ---------- generated Dart ----------
 
