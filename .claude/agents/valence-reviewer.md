@@ -30,6 +30,8 @@ You review Valence code you did **not** write. The spec is the Valence skill's `
 - `bridgeDispatch` is called with the server's nonce. The nonce survives a rebind to the same port, and rotates only with a port change plus a reload.
 - `prefs.*` rejects `valence.` keys.
 - The server never serves from a port it failed to bind; on bind failure it moves to a new port.
+- **Host routes are matched before the manifest lookup, under the reserved `/_host/` prefix, and the SPA fallback is the last branch** (§3). A host route placed after the fallback returns the entry page's HTML with HTTP 200 for an unknown id, which is a silent failure the page cannot report: HIGH. Check that ids are minted host-side and re-validated against the pattern that produced them, that no web-supplied path is joined to a directory, and that `/_host/media/..%2Fx`, a short id and an upper-case id all 404.
+- **Messages are bounded** (§4.2). `client.ts` refuses a message over `MAX_MESSAGE_BYTES` before `postMessage`, because Binder kills the WebView uncatchably past its buffer. A host handler that accepts bytes caps the **encoded** length before decoding, checks the magic bytes, and requires a plain leaf file name against an explicit pattern: any of those missing is HIGH, since the page is untrusted.
 - Every message goes through the generated strict decoders. Nothing builds JS from raw strings; only the generated helpers and `jsonEncode` do.
 - `data.put` is limited to `valenceWritableBuckets`. `open.external` allows only `https`, `mailto` and `tel`. No method exposes raw SQL, file paths outside the app, or secrets.
 - The schema is additive only: `node valence/valence.mjs codegen --check` enforces this against `.valence/baseline.json` `storeSchema`. A shipped method that changed is HIGH.
@@ -47,6 +49,9 @@ You review Valence code you did **not** write. The spec is the Valence skill's `
 - `state.json` is written atomically.
 - Garbage collection runs only at commit and keeps current, previous, **pending, trial** and the built-in bundle. It never deletes a writable bucket's pair.
 - `pointer.seq < pending` drops `pending`. An update is never pending with missing files or missing data pairs.
+- **Step 7 pulls, it does not only check** (§2.3). The updater runs a scoped sync from `since = 0` for each `requires.data` pair the device lacks. A passive check is HIGH: ordinary sync only pulls the pairs the *active* bundle reads, so the bundle parks for ever with `pending` null and nothing logged. Synced pairs must be tracked as a set of schemas per bucket — a `Map<String, int>` lets v1 hide v2 during a bump, with the same symptom.
+- **Every stop in §2.3 logs its step and what it was waiting for.** A declined update is otherwise indistinguishable from a failed one. MEDIUM.
+- **Check 5 compares `requires.bridge` against the generated `hostBridgeVersion`,** not a second literal. A host that under-reports refuses its own built-in bundle and has nothing to serve, on every install, from first launch after a schema bump: HIGH. Confirm there is a test that a bundle at `requires.bridge == hostBridgeVersion` is **accepted**.
 - `valence/` is excluded from device backups.
 
 **Offline and data (HIGH or MEDIUM)**
@@ -62,13 +67,16 @@ You review Valence code you did **not** write. The spec is the Valence skill's `
 - There's no native code in the web output (`valence bundle` enforces this; also check any custom pipeline).
 - A new top-level route compared with `.valence/baseline.json` is flagged for a store release (DPLA §3.3.1(B)(a)).
 - **The route check is actually running.** If `valence bundle` reports it INACTIVE, there is nothing to scan and nothing declared: say so as MEDIUM, and name `web.declaredRoutes` as the fix. A guard that cannot fire is not compliance evidence. Where routes are declared rather than scanned, note that silence only means the declared list did not change — check it against the app's actual routes yourself.
-- At least two native-value items from §6 are present (Apple guideline 4.2).
+- At least two native-value items from §6 are present (Apple guideline 4.2), **and each one has the native setup its row in the §6 table names** — `FlutterFragmentActivity` for `local_auth`, the exact-alarm permission for an on-time reminder, a provider and registration for `home_widget`. These fail only on a device, so a green build, analyzer, suite and `doctor` are not evidence: MEDIUM, or HIGH if the item is one of the two the submission relies on.
+- **A capability whose success is asynchronous reports what the host knows,** not `ok`. `notify.schedule` returning success while the alarm was downgraded is MEDIUM, and HIGH for an app whose purpose is reminding.
 - No third-party bundles are loaded (guideline 4.7); if they are, that's out of scope and gets a HIGH.
 
 **Quality (MEDIUM or LOW)**
 
 - The tests cover every §8 row for the changed layer.
 - There are no skipped tests, TODO placeholders, or silenced analyzer issues.
+- The web build uses an **absolute** base (`base: '/'`, `paths.base: ''`). A relative base plus the SPA fallback is a blank screen on any nested route after a reload or a back gesture: MEDIUM, and it is invisible without the WebView log capture.
+- The host handles the Android system back gesture through `PopScope`, asking the WebView before `SystemNavigator.pop()`. Without it the first back swipe from a sub-screen closes the app: MEDIUM.
 - The target project's conventions are followed (AGENTS.md, CLAUDE.md, import order).
 
 ## Output
