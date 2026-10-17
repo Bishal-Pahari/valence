@@ -4,3 +4,8 @@ node_modules/
 packages/bridge/dist/
 packages/bridge/*.tgz
 .omc/
+packages/valence/.dart_tool/
+packages/valence/build/
+packages/valence/example/.dart_tool/
+packages/valence/example/build/
+pubspec.lock
