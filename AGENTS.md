@@ -65,5 +65,5 @@ The maintainer runs the release: the merge, the version bump, `npm publish --otp
 ## Roadmap (this order)
 
 1. Prove it in one real app (a reference app) through `/valence init`.
-2. Extract the host runtime that the builder writes into a `valence` pub package, and `client.ts` into an `@valence/bridge` npm package. Then the skill installs packages instead of generating code.
+2. Extract the host runtime that the builder writes into a `valence` pub package, and `client.ts` into an `@getvalence/bridge` npm package. Then the skill installs packages instead of generating code.
 3. Add a reference sync server (static chunks plus a minimal push endpoint) and a crash/`app.ready` telemetry hook for staged rollouts.

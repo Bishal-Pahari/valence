@@ -248,6 +248,13 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
   // reviewed, and a change `codegen` had just refused then passes — with nothing left to show it was ever refused.
   // Check the new schema against the recorded one here too, with the same rules, and make losing the record explicit.
   if (store && baseline.storeSchema) {
+    // The baseline is about to say this build is what the stores reviewed, which silences the OTA warning below for
+    // every phone still on the build before it. Say that number out loud while it is still recorded.
+    if (schema.version > baseline.storeSchema.version) {
+      warnings.push(
+        `this store build takes the bridge from ${baseline.storeSchema.version} to ${schema.version}. Until it is live for users, every OTA release has to be built with --requires-bridge ${baseline.storeSchema.version}: the phones in the field still run bridge ${baseline.storeSchema.version}, and the baseline is about to record ${schema.version}, so nothing will warn you again.`,
+      );
+    }
     if (rebaseline) {
       warnings.push(
         `--rebaseline overwrote the recorded store schema (version ${baseline.storeSchema.version} -> ${schema.version}). The additive-only guard now compares against this build, not against what the stores reviewed. Only correct if nothing from the old baseline is installed anywhere.`,
@@ -303,11 +310,16 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
   // say so when the default would undo it.
   const bridge = requiresBridge ?? schema.version;
   // A built-in bundle is the one bundle its own host cannot decline: check 5 refuses it on first launch and a fresh
-  // install has no `current` to fall back to, so the app has nothing to paint (§2.4 step 1).
-  if (builtin && bridge > schema.version) {
-    throw new Error(
-      `--requires-bridge ${bridge} is above the schema version ${schema.version}, so this host would refuse its own built-in bundle at check 5 and a fresh install would have nothing to serve. Bump the schema, or drop the flag for a built-in build.`,
-    );
+  // install has no `current` to fall back to, so the app has nothing to paint (§2.4 step 1). Compare against the
+  // *generated* constant, not the schema file: a schema bumped without a codegen run is the common way to get here.
+  if (builtin) {
+    const generated = existsSync(p.dart) ? /\bconst hostBridgeVersion = (\d+);/.exec(readFileSync(p.dart, 'utf8'))?.[1] : undefined;
+    const hostBridge = generated === undefined ? schema.version : Number(generated);
+    if (bridge > hostBridge) {
+      throw new Error(
+        `requires.bridge would be ${bridge}, above the ${generated === undefined ? `schema version ${hostBridge}` : `hostBridgeVersion ${hostBridge} in ${relative(root, p.dart)}`}, so this host refuses its own built-in bundle at check 5 and a fresh install has nothing to serve. ${generated !== undefined && hostBridge < schema.version ? 'Run codegen: the generated constant is behind the schema.' : 'Bump the schema, or drop --requires-bridge for a built-in build.'}`,
+      );
+    }
   }
   const storeBridge = baseline.storeSchema?.version;
   if (!builtin && storeBridge !== undefined && bridge > storeBridge) {
@@ -842,6 +854,8 @@ export async function main(argv) {
     },
   });
   const cmd = positionals[0];
+  // Otherwise a release script that loses --store still takes --rebaseline and reports nothing.
+  if (v.rebaseline && !(cmd === 'bundle' && v.store)) throw new Error('--rebaseline only means something with "bundle --store"');
   if (cmd === 'version') return console.log(VALENCE_VERSION);
   if (!cmd || v.help) return console.log(HELP);
   const root = resolve(v.root);

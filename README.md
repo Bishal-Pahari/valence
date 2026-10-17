@@ -120,7 +120,7 @@ node valence/valence.mjs keygen | codegen [--check] | bundle [--builtin|--store]
 
 ## Status
 
-**0.3, skill-first.** The CLI, the spec, codegen and the TS client are tested. The Flutter runtime is generated per app against the spec and its test matrix. Once the first production app has proven it, the runtime will be extracted into a `valence` pub package and an `@valence/bridge` npm package.
+**0.3, skill-first.** The CLI, the spec, codegen and the TS client are tested. The Flutter runtime is generated per app against the spec and its test matrix. Once the first production app has proven it, the runtime will be extracted into a `valence` pub package and an `@getvalence/bridge` npm package.
 
 **Not in scope:**
 
