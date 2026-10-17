@@ -10,8 +10,41 @@ You review Valence code you did **not** write. The spec is the Valence skill's `
 ## How to review
 
 1. Read the contracts, then the changed files, then the code that calls them.
-2. Run the checks below. Run `codegen --check`, the analyzers and the tests; don't assume they pass.
-3. Confirm each finding before you report it. A finding needs a concrete failure scenario: the inputs or state, and the wrong outcome.
+2. **Establish which of the two things you are reviewing** (see §Package layout below). It decides which checks apply, and reporting the wrong set is the most expensive mistake available here.
+3. Run the checks below. Run `codegen --check`, the analyzers and the tests; don't assume they pass.
+4. Confirm each finding before you report it. A finding needs a concrete failure scenario: the inputs or state, and the wrong outcome.
+
+## Package layout — settle this first
+
+The host runtime is the `valence` package on pub.dev and the web client is `@getvalence/bridge` on npm.
+`valence codegen` emits only app-specific code and imports the rest. So there are two review targets:
+
+**Reviewing an app.** Its `pubspec.yaml` has `valence:`, its `package.json` has `@getvalence/bridge`, and
+`lib/valence/` holds nothing but `bridge.g.dart` and `config.g.dart`. Then:
+
+- **A host file that reimplements the runtime is CRITICAL, by itself.** A `server.dart`, `updater.dart`,
+  `store.dart`, `sync.dart` or `host.dart` in the app, a vendored copy of the package under any name, a
+  hand-written `client.ts`, or a `dependency_override`/`file:` pointing at a local copy: every one means
+  the next fix to a security path does not reach this app. Name the package API that replaces it.
+- **A patch applied to the package in place** — inside `.pub-cache`, a `git:` dependency on a fork, a
+  `// ignore` added to package source — is CRITICAL for the same reason. The fix is an upstream issue.
+- The **declared version** is a real range (`^x.y.z`), not `any` and not a path. `pubspec.lock` and the
+  lockfile are committed, so every machine and CI resolve the same runtime: MEDIUM if not.
+- The app imports `call`, `has`, `on`, `ready` and `connect` **from `bridge.g.ts`**, not from
+  `@getvalence/bridge`. Importing the package directly loses this app's method types, so
+  `call('data.get')` with wrong params compiles: MEDIUM.
+- `AppHandlers extends ValenceBuiltins`. A handler class that implements `data.*`, `prefs.*`, `sync.*`,
+  `app.*` or `bundle.*` **itself** rather than inheriting them is HIGH: those bodies are the policy of
+  §4.2 and §5.4 (writable buckets, reserved `prefs.` keys, the `open.external` scheme list, the
+  `data.list` clamp), and a hand-written one silently drops whichever of them it forgot.
+- Then review the app's own layer: its bridge methods, its platform files, its §6 native setup, its
+  assets, its web build and its wiring tests. **The §2, §3, §5 and §8 checks below are the package's
+  job** — skip them, and say in your report that you did and why. Re-deriving them against an app that
+  does not contain that code produces findings nobody can act on.
+
+**Reviewing the `valence` or `@getvalence/bridge` package itself** (you are in `packages/` in the
+framework repo): every check below applies in full, and this is the only place they can be fixed. The
+package's own suite is the §8 matrix, and `flutter pub publish --dry-run` must be warning-free.
 
 ## Checks
 
@@ -31,7 +64,7 @@ You review Valence code you did **not** write. The spec is the Valence skill's `
 - `prefs.*` rejects `valence.` keys.
 - The server never serves from a port it failed to bind; on bind failure it moves to a new port.
 - **Host routes are matched before the manifest lookup, under the reserved `/_host/` prefix, and the SPA fallback is the last branch** (§3). A host route placed after the fallback returns the entry page's HTML with HTTP 200 for an unknown id, which is a silent failure the page cannot report: HIGH. Check that ids are minted host-side and re-validated against the pattern that produced them, that no web-supplied path is joined to a directory, and that `/_host/media/..%2Fx`, a short id and an upper-case id all 404.
-- **Messages are bounded** (§4.2). `client.ts` refuses a message over `MAX_MESSAGE_BYTES` before `postMessage`, because Binder kills the WebView uncatchably past its buffer. A host handler that accepts bytes caps the **encoded** length before decoding, checks the magic bytes, and requires a plain leaf file name against an explicit pattern: any of those missing is HIGH, since the page is untrusted.
+- **Messages are bounded** (§4.2). `@getvalence/bridge` refuses a message over `MAX_MESSAGE_BYTES` before `postMessage`, because Binder kills the WebView uncatchably past its buffer. A host handler that accepts bytes caps the **encoded** length before decoding, checks the magic bytes, and requires a plain leaf file name against an explicit pattern: any of those missing is HIGH, since the page is untrusted.
 - Every message goes through the generated strict decoders. Nothing builds JS from raw strings; only the generated helpers and `jsonEncode` do.
 - `data.put` is limited to `valenceWritableBuckets`. `open.external` allows only `https`, `mailto` and `tel`. No method exposes raw SQL, file paths outside the app, or secrets.
 - The schema is additive only: `node valence/valence.mjs codegen --check` enforces this against `.valence/baseline.json` `storeSchema`. A shipped method that changed is HIGH.
@@ -74,7 +107,7 @@ You review Valence code you did **not** write. The spec is the Valence skill's `
 
 **Quality (MEDIUM or LOW)**
 
-- The tests cover every §8 row for the changed layer.
+- The tests cover every §8 row for the changed layer — in the package. For an app, they cover its wiring: its own methods reaching the dispatcher, the built-in delegations reaching the runtime for real, and the §4.2 denials through the generated path. An app that re-tests the state machine against code it does not contain is LOW, and an app with no wiring test at all is MEDIUM.
 - There are no skipped tests, TODO placeholders, or silenced analyzer issues.
 - The web build uses an **absolute** base (`base: '/'`, `paths.base: ''`). A relative base plus the SPA fallback is a blank screen on any nested route after a reload or a back gesture: MEDIUM, and it is invisible without the WebView log capture.
 - The host handles the Android system back gesture through `PopScope`, asking the WebView before `SystemNavigator.pop()`. Without it the first back swipe from a sub-screen closes the app: MEDIUM.

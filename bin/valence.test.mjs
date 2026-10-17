@@ -79,11 +79,15 @@ test('init sets up config, CLI, skill, agents, keys and generated code, and is i
     '.claude/agents/valence-reviewer.md',
     'valence/bridge.schema.json',
     'valence/keyring.json',
-    'web/src/lib/valence/client.ts',
     'web/src/lib/valence/bridge.g.ts',
     'mobile/lib/valence/bridge.g.dart',
     'mobile/lib/valence/config.g.dart',
   ]) assert.ok(existsSync(join(root, f)), f);
+  // The runtimes are packages now, so init declares the web one rather than copying a client in.
+  assert.ok(!existsSync(join(root, 'web', 'src', 'lib', 'valence', 'client.ts')), 'no client is copied');
+  const webPkg = JSON.parse(readFileSync(join(root, 'web', 'package.json'), 'utf8'));
+  assert.match(webPkg.dependencies['@getvalence/bridge'], /^\^\d+\.\d+\.\d+/);
+  assert.equal(webPkg.devDependencies['@sveltejs/kit'], '^3.1.0', 'their own dependencies are left alone');
   assert.ok(!existsSync(join(root, '.claude', 'skills', 'valence', 'scripts', 'valence.test.mjs')), 'tests are not installed');
   assert.ok(existsSync(join(keyDir, 'com.acme.trail.k1.pem')));
 
@@ -131,10 +135,20 @@ test('CLI commands pass through to valence.mjs, and versions agree', () => {
   assert.equal(JSON.parse(readFileSync(join(PKG, 'package.json'), 'utf8')).version, VALENCE_VERSION);
 });
 
+test('the runtime version the wizard declares matches the two packages in this repo', () => {
+  // The wizard writes "@getvalence/bridge": "^<RUNTIME_VERSION>" into an app's package.json, and the
+  // skill tells the builder to run "flutter pub add valence". Both have to name a version that exists.
+  const declared = readFileSync(join(PKG, 'bin', 'valence.mjs'), 'utf8').match(/RUNTIME_VERSION = '([^']+)'/)[1];
+  const bridge = JSON.parse(readFileSync(join(PKG, 'packages', 'bridge', 'package.json'), 'utf8')).version;
+  assert.equal(bridge, declared, 'packages/bridge');
+  const pubspec = readFileSync(join(PKG, 'packages', 'valence', 'pubspec.yaml'), 'utf8');
+  assert.equal(pubspec.match(/^version: (.+)$/m)[1].trim(), declared, 'packages/valence');
+});
+
 test('the npm package ships the wizard, skill and agents, and no tests', () => {
   const [{ files }] = JSON.parse(execSync('npm pack --dry-run --json', { cwd: PKG, encoding: 'utf8' }));
   const paths = files.map((f) => f.path);
-  for (const p of ['bin/valence.mjs', '.claude/skills/valence/SKILL.md', '.claude/skills/valence/scripts/valence.mjs', '.claude/skills/valence/templates/client.ts', '.claude/agents/valence-builder.md', 'package.json']) {
+  for (const p of ['bin/valence.mjs', '.claude/skills/valence/SKILL.md', '.claude/skills/valence/scripts/valence.mjs', '.claude/agents/valence-builder.md', 'package.json']) {
     assert.ok(paths.includes(p), `missing ${p}`);
   }
   assert.ok(!paths.some((p) => p.endsWith('.test.mjs')), `tests packed: ${paths.filter((p) => p.endsWith('.test.mjs'))}`);

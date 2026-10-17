@@ -22,7 +22,8 @@ Tooling that ships with this skill (it is tested, so copy it rather than rewriti
 |---|---|
 | `${CLAUDE_SKILL_DIR}/scripts/valence.mjs` | Zero-dependency CLI: `keygen`, `codegen`, `bundle`, `verify`, `pointer`, `seed`, `version` |
 | `scripts/valence.test.mjs` (framework repo only, not shipped in the npm package) | The CLI's own tests, including compiling the generated Dart. Run them when you change `valence.mjs`. |
-| `${CLAUDE_SKILL_DIR}/templates/` | `bridge.schema.json` (starter IDL), `valence.config.json`, `client.ts` (web bridge client), `AGENTS.section.md` (the hand-off rules) |
+| `${CLAUDE_SKILL_DIR}/templates/` | `bridge.schema.json` (starter IDL), `valence.config.json`, `AGENTS.section.md` (the hand-off rules) |
+| **the two published runtimes** | `valence` on pub.dev is the whole Flutter host; `@getvalence/bridge` on npm is the whole web client. **Add them, never write them.** codegen emits only the app-specific half and imports the rest, so a fix ships with an upgrade instead of being hand-applied to every app. |
 | `${CLAUDE_SKILL_DIR}/../../agents/` | `valence-docs-scout`, `valence-builder`, `valence-reviewer` |
 
 **If a named agent type isn't installed**, spawn `general-purpose` instead and paste the body of the matching agent file at the top of its prompt.
@@ -101,7 +102,7 @@ Spawn the `valence-docs-scout` agent with `run_in_background: true`. Its prompt:
 
 ### Phase 3: Contracts and keys (main loop, in order)
 
-**If the user already ran `npm create valence@latest`,** most of this phase (and Phase 2) is done: config, vendored CLI, schema, client, git attributes, key and codegen. Check each output, skip the steps whose output exists, and don't regenerate the key. Usually only the formatter ignores and the key-backup reminder remain.
+**If the user already ran `npm create valence@latest`,** most of this phase (and Phase 2) is done: config, vendored CLI, schema, the `@getvalence/bridge` dependency, git attributes, key and codegen. Check each output, skip the steps whose output exists, and don't regenerate the key. Usually only the formatter ignores and the key-backup reminder remain.
 
 1. **Copy the tooling.**
    - Copy `scripts/valence.mjs` to `valence/valence.mjs`.
@@ -112,8 +113,9 @@ Spawn the `valence-docs-scout` agent with `run_in_background: true`. Its prompt:
    - **Add `bridge.g.ts` to the project's formatter ignores** (`.prettierignore`, Biome `files.ignore`). `codegen --check` tolerates `dart format`, but not changed quote styles.
 2. **Generate the signing key** with `node valence/valence.mjs keygen`. Then **tell the user** where the private key is and that they must back it up in their password manager and add it to CI as the `VALENCE_SIGNING_KEY` secret. If it's lost, rotating the key takes a store release, because the keyring is compiled into the host (§2.2).
    - If `keyring.json` already has the `keyId`, **don't** run keygen. Ask the user for the existing key (it lives in their secret store); `valence` refuses to overwrite a keyring entry.
-3. **Generate the bridge code** with `node valence/valence.mjs codegen`. It writes `bridge.g.ts`, `bridge.g.dart` and `config.g.dart`.
-4. **Copy the web client:** `templates/client.ts` goes to `<web.lib>/client.ts`.
+3. **Generate the bridge code** with `node valence/valence.mjs codegen`. It writes `bridge.g.ts`, `bridge.g.dart` and `config.g.dart` — the typed method and event tables, the payload types, the dispatcher and the `ValenceBuiltins` delegations, and nothing else. Every line of runtime they call comes from the two packages.
+4. **Add the two runtimes.** In the web app, `@getvalence/bridge` (the wizard declares it in `package.json`; run the install). The Flutter one is `flutter pub add valence`, which the host builder does in Phase 4 because the project may not exist yet.
+   - They are versioned independently of this CLI. `flutter pub upgrade valence` and `npm update @getvalence/bridge` are how a host or bridge fix reaches an app — **nothing in `lib/valence/` or `<web lib>/` is ever hand-patched.**
 
 ### Phase 4: Build (two builder agents in parallel, with separate files)
 
@@ -128,27 +130,53 @@ Spawn two `valence-builder` agents in a single message. **Each one owns only its
 
 **Host builder.** It owns `<host.dir>/**`, except the `*.g.dart` files.
 
+**The host runtime is the `valence` package. Do not write it, and do not copy it in.** Everything §2, §3, §4.2, §5 and the WebView rules describe — the loopback server and its nonce, the canonical check order, the activation state machine and its rollback, signature and manifest verification, the SQLite store and the pragmas of §5.1, the seed import, sync and its lease, strict bridge decoding, the navigation lock, the Android back gesture, console capture — is inside it, with the §8 matrix as its own tests. A host that reimplements any of it is the bug this packaging removed.
+
 - Run `flutter create --org <reverse-domain of appId> --project-name <snake name> --platforms android,ios <host.dir>` if the project doesn't exist yet.
-- Add these dependencies: `webview_flutter`, `sqflite`, `path_provider`, `cryptography`, `crypto`, `http`, `url_launcher`, `connectivity_plus` and `workmanager`. `crypto` gives you the synchronous `sha256.convert(bytes)` that check 7 needs per file; `cryptography` only has an async `hash()`, which is awkward inside the download-and-rename loop.
-- Write the runtime in `lib/valence/`:
-  - `server.dart`: the per-install port, the nonce injected into the entry page, and the CSP header (§3)
-  - `updater.dart`: the canonical check order, the state machine with `trialFails`, and GC only at commit (§2.3, §2.4)
-  - `store.dart`: per-`(bucket, schema)` storage, WAL plus `busy_timeout` **through `rawQuery`**, one never-closed instance shared with the background isolate, and the seed import (§5.1, §5.2, §5.4)
-  - `sync.dart`: pull and push, the echo skip, and the sync lease (§5.3–§5.6)
-  - `bridge.dart`, which implements `BridgeHandlers`, passes the server's nonce to `bridgeDispatch`, and only allows `open.external` for `https`, `mailto` and `tel` (§4.2)
-  - `host.dart`: the WebView widget, the navigation lock, no off-origin subframes, the foreground-only ready timer, the queue that holds events until `onPageFinished`, and `setOnConsoleMessage` plus `onPageStarted`/`onPageFinished`/`onHttpError` logging (§2.4, §3, §4.2, §7)
-- Declare `assets/valence/builtin/`, `assets/valence/builtin/files/` and `assets/valence/seed.db` in `pubspec.yaml`.
-- Platform setup:
+- `flutter pub add valence`. That is the whole dependency list for the runtime; the package pins the rest of the verified stack itself.
+- Write `lib/main.dart`, which is about twenty lines: open the runtime with the generated config, construct the handlers, and put `ValenceApp` at the root.
+
+  ```dart
+  Future<void> main() async {
+    final valence = await Valence.open(valenceConfig, hostBuild: <versionCode>);
+    final handlers = AppHandlers(valence);
+    runApp(MaterialApp(
+      home: ValenceApp(
+        valence: valence,
+        dispatch: (raw, nonce) => bridgeDispatch(handlers, raw, nonce: nonce),
+      ),
+    ));
+  }
+  ```
+
+- Write **only this app's** bridge methods, in one class extending the generated `ValenceBuiltins`:
+
+  ```dart
+  class AppHandlers extends ValenceBuiltins implements BridgeHandlers {
+    AppHandlers(super.valence);
+
+    @override
+    Future<void> hapticsTap() async => HapticFeedback.lightImpact();
+  }
+  ```
+
+  `ValenceBuiltins` already implements `app.*`, `data.*`, `prefs.*`, `sync.*`, `open.external` and `bundle.*` by delegating to the package, so only what is genuinely native to this app is left abstract. The analyzer names anything missed. A built-in may be left out of the schema entirely; it may **not** keep its name and change its shape, and `codegen` refuses that rather than letting a wrong delegation reach a device.
+- Declare `assets/valence/builtin/`, `assets/valence/builtin/files/` and `assets/valence/seed.db` in `pubspec.yaml`. Flutter asset directories are **not** recursive, so both `builtin` lines are needed.
+- Platform setup (the package cannot write native project files):
   - Android: the network security config allowing cleartext to `127.0.0.1` only, and `dataExtractionRules`/`fullBackupContent` excluding `valence/`;
   - iOS: the App Transport Security (ATS) loopback setting, as confirmed by the docs-scout, and `isExcludedFromBackup` on the `valence/` directory.
+- Background sync: `Valence.backgroundSync(valenceConfig)` is the callable; registering it with `workmanager` or `BGTaskScheduler` is the host's job, and the package deliberately does not depend on `workmanager` (it applies the Kotlin Gradle Plugin and warns on every Android build).
 - Wire in two or more of the §6 native-value items.
-- Tests: the Dart unit tests for the updater, state machine, store, sync and bridge rows of §8, plus one `integration_test` for an offline cold start.
+- Tests: **the §8 matrix is the package's own suite — do not port it.** What this app's tests cover is its wiring: that its own methods reach the dispatcher, that the built-ins really reach the runtime (a `data.put` that lands in SQLite), that the generated config carries what the spec compiles into a host, and the §4.2 denials through the generated path. Plus one `integration_test` for an offline cold start, which is the only thing that shows the database opens on a real device.
 
 **Web builder.** It owns `<web.lib>/**` (except `bridge.g.ts`), the web framework config, the root layout's startup call, `shim.ts` and package scripts.
 
+**The web client is the `@getvalence/bridge` package. Do not write it.** `call`, `has`, `on`, `ready`, `connect`, `installShim`, `inHost`, `BridgeError` and the message cap all live there; the generated `bridge.g.ts` binds this app's method table to it and re-exports them typed. **App code imports from `bridge.g.ts`**, never from the package directly, so `call('data.get', …)` is checked against this app's schema.
+
+- `npm install @getvalence/bridge` (or the project's package manager). The wizard has usually declared it already.
 - **Static build:** configure it with relative-safe asset paths (§3).
 - **Root layout:** call `connect()` and then `ready()` after the first meaningful paint.
-- **Shim:** write `shim.ts` with browser fallbacks (`fetch` against the same sync API, `localStorage` for prefs) and install it with `installShim`.
+- **Shim:** write `shim.ts` with browser fallbacks (`fetch` against the same sync API, `localStorage` for prefs) and install it with `installShim`. Its type is the generated `AppShim`, so a fallback with the wrong signature does not compile.
 - **No CSP meta tag.** Inside the app, the host sends the CSP from the signed manifest as a header (§3). The website keeps whatever CSP its hosting sets. If the app calls APIs other than `sync.base`, list their origins in `valence.config.json` under `web.connect`.
 - **Package scripts:** add `valence:codegen`, `valence:bundle` and `valence:release`.
 - **List, don't rewrite:** report every durable use of localStorage or IndexedDB in app code (file and line) so the user can decide. Don't refactor feature code.
@@ -160,7 +188,8 @@ Run these in order. Fix and rerun on any failure, up to 3 attempts per failure; 
 1. `node valence/valence.mjs codegen --check`
 2. Build the web app, then run `node valence/valence.mjs bundle --builtin`, then `node valence/valence.mjs verify --manifest <host>/assets/valence/builtin/manifest.json --files <host>/assets/valence/builtin/files`.
 3. Run `node valence/valence.mjs seed --from <dumps>`. With no data yet, use an empty directory, which gives a valid empty seed. Report any "has no seed file" warnings: those buckets stay empty offline until the first sync.
-4. In `<host.dir>`, run `flutter pub get`, then `dart analyze --fatal-infos lib test`, then `flutter test`.
+4. In `<host.dir>`, run `flutter pub get`, then `dart analyze --fatal-infos lib test`, then `flutter test`. The generated Dart has to pass `--fatal-infos` because the app's CI will hold it to that.
+   - A failure *inside* `package:valence` is a framework bug, not this app's: report it with the version from `pubspec.lock` rather than editing the package or vendoring around it.
 5. If an Android SDK is present (`flutter doctor`), run `flutter build apk --debug`. Build iOS only on macOS.
 6. If `flutter devices` lists a device or emulator, run the offline-cold-start `integration_test`. Otherwise report "skipped: no device". Don't count it as passed, and say explicitly that **the first launch has not been shown to open the database**: `sqflite_common_ffi` accepts things Android's `SQLiteDatabase` rejects (§5.1), so the green unit suite is not evidence for that path.
 
@@ -276,7 +305,7 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
 - **`/_host/` bytes are not yours, so they must never be a document.** That branch serves whatever a camera or a download produced, on the bundle's own origin. Send `nosniff`, `default-src 'none'; sandbox`, and a `Content-Type` from an allow-list of non-scriptable types, and keep `/_host/` out of the main-frame navigation allow-list. A `JavaScriptChannel` is per-WebView, not per-document: a `text/html` or `image/svg+xml` response navigated to directly would read the nonce out of the entry page and get the whole bridge (§3, §7).
 - **Normalise the request path once before choosing a branch,** and 400 an empty, `.` or `..` segment. `//_host/<id>` does not start with `/_host/` and has no extension, so without that step it falls through to the SPA fallback and returns the entry page with HTTP 200 — the exact failure the reserved prefix exists to remove (§3).
 - **The host → JS direction is the half that bites.** A single oversized reply kills the webview; if it dies while a trial is on screen, the ready timer times out, the next launch spends the second strike, and a **healthy** bundle lands in `bad`, which is final — a release rolled back for ever with no crash log. The generated `_ok` caps the reply and returns `E_TOO_LARGE` instead, because it still has the `id`. Clamp `data.list`'s `limit` to 500 host-side and default it to 100: `data.list({bucket})` over a few thousand rows is exactly that failure (§4.2).
-- **Measure the bridge cap in UTF-8 bytes, not string length.** A 100,000-character Japanese note is ~300 KB and ~100,000 code units, so a length check waves it through. And a host that caps inbound size must read the `id` before rejecting, or the page's promise never settles — `client.ts` has no per-call timeout (§4.2).
+- **Measure the bridge cap in UTF-8 bytes, not string length.** A 100,000-character Japanese note is ~300 KB and ~100,000 code units, so a length check waves it through. Both packages do this already. A host that caps inbound size must read the `id` before rejecting, or the page's promise never settles — `@getvalence/bridge` has no per-call timeout (§4.2).
 - **Step 7's pull is a sync, so it takes the §5.6 lease.** It runs on the same triggers as the ordinary sync, so without the lease a host runs two syncs over the same pair at once. Failing to acquire is stop-and-log, not a failure. Resume from the pair's own `max_usn`, never a hard-coded `since = 0`, or a flaky link restarts the whole pull on every check for ever (§2.3 step 7).
 - **The SPA fallback swallows every host route you put after it.** It answers any extensionless path, so a photo id the host doesn't recognise comes back as HTTP 200 with the entry page's HTML — a blank `<img>` and nothing in either log. Serve the host's own routes under the reserved `/_host/` prefix, *before* the manifest lookup, and hand the page a relative URL because the port moves (§3).
 - **Build the web app with an absolute base.** With `base: './'` the entry page asks for `./assets/app.js`; served as the fallback for `/a/b` the webview resolves that to `/a/b/assets/app.js`, which has an extension and so is a real 404. Cold start always loads `/`, so this only appears on a reload or a back gesture onto a nested route — a blank screen with no error. `valence bundle` warns (§3).
