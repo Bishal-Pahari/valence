@@ -349,6 +349,8 @@ If the web app has modal state of its own it wants the gesture for, the host can
 
 **The host forwards the WebView's own output, or a broken bundle is undiagnosable.** Wire `setOnConsoleMessage`, plus `onPageStarted`, `onPageFinished` and `onHttpError`, in `host.dart`. Without them a JavaScript error during the bundle's bootstrap produces nothing at all — no log, no `onWebResourceError`, just a dark rectangle — while the host is working correctly. It is three lines, and it is the first thing to check when a bundle never reaches `ready()`.
 
+**The host also logs every bridge error it returns**, at least in debug builds. `bridgeDispatch` never throws (§4.3): it turns a handler's exception into an error reply, the page's `await call(...)` rejects inside an effect nobody awaited, and the whole failure reaches neither a log nor a screen. A handler that throws on every call is then indistinguishable from one that works — the UI says the reminder is set, and no alarm exists. One line at the dispatch site is the difference between a one-line diagnosis and an afternoon.
+
 ### Resume
 
 - iOS can reclaim listening sockets while the app is suspended. On `AppLifecycleState.resumed`, probe the server and rebind the same port.
