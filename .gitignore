@@ -1,3 +1,5 @@
 node_modules/
 .valence/dist-ota/
 *.pem
+packages/bridge/dist/
+packages/bridge/*.tgz
