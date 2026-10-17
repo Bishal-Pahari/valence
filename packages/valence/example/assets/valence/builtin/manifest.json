@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "appId": "com.getvalence.example",
+  "seq": 1792215625,
+  "version": "2026-10-17+1792215625",
+  "floor": 0,
+  "requires": {
+    "bridge": 1,
+    "data": {
+      "plants": 1
+    }
+  },
+  "entry": "index.html",
+  "csp": "default-src 'self'; script-src 'self' 'sha256-XOzigXLzPE1v1id8w4lY8rKp+c3iyCouCJXg8ivYKb8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://sync.example.invalid; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
+  "urgent": false,
+  "routes": [
+    "/",
+    "/shelf"
+  ],
+  "files": {
+    "index.html": {
+      "h": "467593f06af9aa5ee3f2c445a9c70c47bc97ddad010f0fc2e95ddc077920af54",
+      "n": 3722
+    }
+  },
+  "createdAt": "2026-10-17T05:40:25.645Z",
+  "keyId": "k1"
+}

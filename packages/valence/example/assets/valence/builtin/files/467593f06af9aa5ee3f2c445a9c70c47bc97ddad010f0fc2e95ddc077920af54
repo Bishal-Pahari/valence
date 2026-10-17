@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Valence example</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+      body { margin: 0; padding: 24px; line-height: 1.5; }
+      h1 { font-size: 1.4rem; margin: 0 0 4px; }
+      p.sub { margin: 0 0 24px; opacity: 0.7; }
+      section { border-top: 1px solid rgba(128, 128, 128, 0.3); padding: 16px 0; }
+      button { font: inherit; padding: 8px 14px; margin-right: 8px; }
+      pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font-size: 0.85rem; }
+      li { margin-bottom: 4px; }
+    </style>
+  </head>
+  <body>
+    <h1>Valence example</h1>
+    <p class="sub">The web UI, served from the host's loopback server as a signed bundle.</p>
+
+    <section>
+      <h2>Host</h2>
+      <pre id="info">reading app.info…</pre>
+    </section>
+
+    <section>
+      <h2>Your own data</h2>
+      <p>Written to native SQLite through the bridge, and queued for sync.</p>
+      <button id="add">Add a note</button>
+      <button id="haptics">Haptic tap</button>
+      <ul id="rows"></ul>
+      <pre id="error"></pre>
+    </section>
+
+    <!--
+      A real app imports @getvalence/bridge through the generated web/lib/bridge.g.ts. This example talks
+      to the wire protocol directly, so it needs no bundler and `valence bundle` can sign the folder as is
+      — and so this file doubles as the smallest honest description of §4.2.
+    -->
+    <script>
+      const nonce = document.querySelector('meta[name="valence-nonce"]')?.content ?? '';
+      const pending = new Map();
+      let nextId = 1;
+      window.__valence = {
+        r(reply) {
+          const p = pending.get(reply.id);
+          if (!p) return;
+          pending.delete(reply.id);
+          reply.ok ? p.resolve(reply.v) : p.reject(new Error(`${reply.e.code}: ${reply.e.message}`));
+        },
+        e(name, payload) {
+          if (name === 'sync.changed') void refresh();
+        },
+      };
+
+      const call = (m, p = {}) =>
+        new Promise((resolve, reject) => {
+          const id = nextId++;
+          pending.set(id, { resolve, reject });
+          window.Valence.postMessage(JSON.stringify({ id, n: nonce, m, p }));
+        });
+
+      const show = (err) => {
+        document.getElementById('error').textContent = err ? String(err) : '';
+      };
+
+      async function refresh() {
+        const rows = await call('data.list', { bucket: 'shelf', limit: 20 });
+        document.getElementById('rows').innerHTML = rows
+          .map((r) => `<li>${r.key} — ${JSON.stringify(r.value)} ${r.usn === -1 ? '(not yet synced)' : ''}</li>`)
+          .join('');
+      }
+
+      document.getElementById('add').addEventListener('click', async () => {
+        show(null);
+        try {
+          await call('data.put', { bucket: 'shelf', key: `n-${Date.now()}`, value: { at: new Date().toISOString() } });
+          await refresh();
+        } catch (e) {
+          show(e);
+        }
+      });
+
+      document.getElementById('haptics').addEventListener('click', async () => {
+        show(null);
+        try {
+          await call('haptics.tap');
+        } catch (e) {
+          show(e);
+        }
+      });
+
+      (async () => {
+        try {
+          const info = await call('app.info');
+          document.getElementById('info').textContent = JSON.stringify(info, null, 2);
+          await refresh();
+        } catch (e) {
+          show(e);
+        }
+        // This is what commits an OTA release. Without it every update rolls back after two launches.
+        await call('app.ready');
+      })();
+    </script>
+  </body>
+</html>

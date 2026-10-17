@@ -1,0 +1,24 @@
+{
+  "appId": "com.getvalence.example",
+  "keyId": "k1",
+  "web": {
+    "out": "web",
+    "lib": "web-src/lib",
+    "entry": "index.html",
+    "declaredRoutes": ["/", "/shelf"]
+  },
+  "host": {
+    "dir": "."
+  },
+  "ota": {
+    "base": "https://ota.example.invalid",
+    "channel": "production"
+  },
+  "sync": {
+    "base": "https://sync.example.invalid"
+  },
+  "data": {
+    "plants": 1
+  },
+  "writable": ["shelf"]
+}
