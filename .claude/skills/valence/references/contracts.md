@@ -182,6 +182,8 @@ The state lives in `<appSupport>/valence/state.json`. Write it atomically: write
 
 **When transitions run.** They run when the host widget is about to load a bundle (UI start), **never in `main()` or in a background isolate.** iOS background launches and workmanager runs must not consume a trial.
 
+**What that costs, and what may be deferred.** Step 1 below decodes a manifest, verifies an Ed25519 signature and hashes every file not already in CAS, which is real work in front of the first frame — so it is worth knowing that **step 1 is gated on the built-in seq being above `current`, and is therefore a no-op on every launch after the store build's first.** The budget for the ordinary launch is the state read, the promotion decision and the bind: tens of milliseconds, not hundreds. If a host is slower than that, measure the three (`installBuiltin`, `activateForUiStart`, `Store.open`) separately before blaming any of them. What may move off the first-paint path: the update check (§2.3 says never block the first paint on it), the seed import's *non-blocking* part, and sync. What may not: the promotion decision, because the page that loads has to be the one the state machine chose, and **the hashing in step 1,** because a CAS file can be corrupted on disk after it was verified on download — §8 has a row for re-downloading one, and a size check is not a substitute for the hash.
+
 At UI start:
 
 1. **A newer built-in bundle wins.** If the built-in bundle's seq is above `current` (a store update shipped it):
@@ -291,6 +293,31 @@ Handle GET and HEAD only. Then three branches, **in this order**:
   - other files: `Cache-Control: public, max-age=31536000, immutable`;
   - `Content-Type` from a small extension map;
   - `X-Content-Type-Options: nosniff`.
+
+### The system back gesture
+
+Android users expect back to go back, and a `Scaffold` holding a `WebViewWidget` pops its only route instead — so the first swipe from any sub-screen **closes the app.** It is the most common complaint about WebView apps on Android and the first thing a Play reviewer does. Wrap the scaffold:
+
+```dart
+PopScope(
+  canPop: false,
+  onPopInvokedWithResult: (didPop, _) async {
+    if (await controller.canGoBack()) {
+      await controller.goBack();
+    } else {
+      await SystemNavigator.pop();
+    }
+  },
+  child: Scaffold(body: WebViewWidget(controller: controller)),
+)
+```
+
+Two things make it work, and neither is obvious from the rest of §3:
+
+- **`onNavigationRequest` never fires for `history.pushState`,** so a host author who has only read the navigation lock has no reason to think the page has navigable history at all. The web app needs real History API routes for there to be anything to go back to.
+- **History is safe against a reverted trial.** Every entry is a same-origin loopback path, answered from the *currently served* manifest, so going back cannot reach a bundle the host has given up on. The URL is the same; the bytes behind it are whatever is live.
+
+If the web app has modal state of its own it wants the gesture for, the host can emit an event and let the page consume it, but it must still close the app when nothing handles it. Swallowing back is worse than popping too eagerly.
 
 ### Logs
 
@@ -602,7 +629,7 @@ The reviewer agent checks this.
 | `valence.mjs` (the skill's `valence.test.mjs`) | key directory inside git, including through a link; keyring entry never overwritten; signing key must match the keyring; sign/verify round trip; tampering, bad signature, unknown key, other `appId` and unsafe paths rejected; native extensions rejected; **a bundle file under the reserved `_host/` prefix is refused, and a relative asset URL in the entry page warns**; `seq` monotonic with the same clock and a slow clock; floor only rises; CSP hashes (CRLF-safe, `wasm-unsafe-eval` only with `.wasm`); additive-only against `storeSchema`, recorded only by `--store`; **`requires.bridge` rising above the shipped store build warns, and `--requires-bridge` silences it**; new names need `since` above the shipped version; reserved and colliding names; SvelteKit co-located files aren't routes; `web.declaredRoutes` is validated, feeds the manifest and the baseline, and silences the inactive-check warning a project with no scannable routes gets; atomic and validated seed, with a warning for unseeded buckets; the CLI runs through a link; **a wrong `verify --files` level says the directory is wrong rather than naming the first file as missing**; generated Dart passes `analyze --fatal-infos` and the dispatch cases; `client.ts` behaviour, including that `on()`'s unsubscribe returns void so it is a valid React effect cleanup |
 | updater (dart test) | each check 1–7 rejects; `pointer.seq` below `pending` drops `pending`; the rollout gate is deterministic; size cap; **a bundle requiring exactly `hostBridgeVersion` is accepted** (the mirror of "a newer bridge is refused": without it a host can under-report its version and brick itself on first launch after a schema bump); **check 5 compares against the generated constant, not a second literal**; an update isn't pending until its data pairs are synced; **a bundle requiring a pair the device lacks becomes pending only after step 7 pulls that pair, and never on an offline device**; **a device holding v1 and v2 of one bucket satisfies a requirement for either** |
 | state machine | trial then ready → committed and floor raised; `ready()` from a `current` page after a timeout never commits the trial; a timeout counts exactly one failure; trial fails once → retried at the next UI start → fails again → marked bad; **a UI start with no trial counts no failure and adds nothing to `bad`** (both `serving` and `trial` are null); **a ready timeout on a `current` page counts no failure**; **a late `ready()` after a trial was given up commits nothing**; **a `pending` below `current` or below `state.floor` is dropped rather than promoted**; **the UI start after two strikes serves `current`, not the bad bundle** (a `pending` in `bad` is dropped, never promoted); **an update check while a seq is on trial does not re-pend it**; **a commit clears a `pending` holding the committed seq**; a crash while `serving == trial` counts one failure; a newer built-in bundle wins and drops older pending and trial; GC keeps current, previous, pending, trial and built-in; **GC after a commit leaves writable buckets untouched**; no transition runs from a background isolate; the ready timer pauses in the background |
-| server | the same port across launches; a bind failure means a new port, a new nonce, a reload and never serving from the old port; rebinding the same port on resume keeps the nonce and the page keeps working; the nonce is in the entry page only; CSP header on the entry page; GET and HEAD only; the SPA fallback answers an extensionless path; **a `/_host/` route is matched before the manifest lookup, an unknown id under it is 404 rather than the entry page, and neither a web-supplied path nor a malformed id escapes the host's directory** |
+| server | the same port across launches; a bind failure means a new port, a new nonce, a reload and never serving from the old port; rebinding the same port on resume keeps the nonce and the page keeps working; the nonce is in the entry page only; **the back gesture goes back through webview history and closes the app only when there is none left**; CSP header on the entry page; GET and HEAD only; the SPA fallback answers an extensionless path; **a `/_host/` route is matched before the manifest lookup, an unknown id under it is 404 rather than the entry page, and neither a web-supplied path nor a malformed id escapes the host's directory** |
 | store and sync | paged pull is atomic per page; tombstones; outbox rows aren't clobbered by a pull **or by a push echo**; push ack clears only acknowledged ids; seed import per `(bucket, schema)` only moves forward; writable buckets use schema 1; the sync lease blocks concurrent syncs, is renewed per page, and treats a future timestamp as expired |
 | bridge | missing or wrong nonce → `E_DENIED`; unknown method → `E_UNKNOWN`; bad params → `E_PARAMS`; a write to a read-only bucket → `E_DENIED`; `prefs.*` on an `valence.` key → `E_DENIED`; `open.external` rejects `javascript:` and `file:`; reply escaping round-trips U+2028 and quotes; **a message over `MAX_MESSAGE_BYTES` is rejected by `client.ts` before `postMessage`, with `E_TOO_LARGE`, rather than killing the webview** |
 | integration (`integration_test`, device or emulator) | **first launch opens the database and paints** — the store and sync rows above run on `sqflite_common_ffi`, which is more permissive than Android's `SQLiteDatabase` (it accepts `execute` for pragmas), so a green unit suite is not evidence the store opens on a phone; cold start in airplane mode renders the built-in bundle with seed data; a corrupt CAS file is re-downloaded; a background sync followed by a UI bridge call (the database must still be open); background then resume after 10 minutes, the server is rebound and the page still works; **each §6 item the app ships actually works on the device** — a biometric prompt appears rather than throwing `no_fragment_activity`, and a reminder scheduled N seconds out really posts and reports `exact` or `inexact` rather than `ok` |
