@@ -344,6 +344,13 @@ export function verifyBundle({ manifestPath, filesDir, keyring, appId }) {
   if (appId && m.appId !== appId) throw new Error(`manifest is for ${m.appId}, not ${appId}`);
   if (!Number.isInteger(m.seq) || !Number.isInteger(m.floor) || m.floor > m.seq) throw new Error('bad seq/floor');
   if (!Object.hasOwn(m.files, m.entry)) throw new Error(`entry ${m.entry} is not in files`);
+  // A wrong --files level otherwise reports the first entry as "missing", which looks exactly like the corrupted
+  // bundle verify exists to detect. If nothing resolves at all, the directory is the problem, not the bundle.
+  const hashes = Object.values(m.files);
+  if (hashes.length && !hashes.some((f) => HASH_RE.test(f.h) && existsSync(join(filesDir, f.h)))) {
+    const nested = join(filesDir, 'files');
+    throw new Error(`no manifest files found under ${filesDir}${existsSync(nested) ? `; --files wants the content-addressed files/ directory, so try ${nested}` : ''}`);
+  }
   for (const [rel, f] of Object.entries(m.files)) {
     if (!SAFE_PATH(rel)) throw new Error(`unsafe path in manifest: ${rel}`);
     if (!HASH_RE.test(f.h) || !Number.isInteger(f.n) || f.n < 0) throw new Error(`bad file entry for ${rel}`);
@@ -720,7 +727,9 @@ const HELP = `Valence CLI ${VALENCE_VERSION} (spec: references/contracts.md)
                                     --store = --builtin for a build you submit to the stores (records the baseline)
   valence pointer [--channel production] [--seq N] --rollout 0..100
   valence verify --manifest file --files dir
+                                    --files is the content-addressed files/ directory inside the bundle, not the bundle directory
   valence seed --from dir                <bucket>.json files {schema, rows:[{k,v,u,d}]} -> host assets/valence/seed.db
+  valence doctor                         not in this CLI: run "npx create-valence@latest doctor" from the project root
 
 Options: --root <project root> (default .)`;
 
@@ -784,6 +793,9 @@ export async function main(argv) {
     const r = await seed({ root, cfg, from: resolve(v.from) });
     for (const w of r.warnings) console.warn(`warning: ${w}`);
     return log({ out: r.out, counts: r.counts });
+  }
+  if (cmd === 'doctor') {
+    throw new Error('doctor is not in this CLI. Run "npx create-valence@latest doctor" from the project root for the static checks, or the /valence skill\'s doctor workflow for the full audit.');
   }
   throw new Error(`unknown command "${cmd}"\n\n${HELP}`);
 }

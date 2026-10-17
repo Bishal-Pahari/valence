@@ -276,6 +276,23 @@ test('verify rejects tampering, bad signatures, unknown keys, other apps and uns
   assert.throws(() => verifyBundle(args), /unsafe path/);
 });
 
+test('a wrong --files level is reported as a wrong directory, not a corrupted bundle', () => {
+  const { root, cfg, key, keyring } = fixture();
+  const { manifestPath, filesDir } = bundle({ root, cfg, key, builtin: true, now: NOW });
+  const bundleDir = join(filesDir, '..'); // the built-in bundle directory: manifest.json plus files/
+  verifyBundle({ manifestPath, filesDir, keyring, appId: cfg.appId });
+
+  // Pointing --files one level up is the common slip, and it used to name the first entry as "missing" — which is
+  // exactly what a corrupted bundle looks like, the one thing verify is reached for to tell apart.
+  assert.throws(
+    () => verifyBundle({ manifestPath, filesDir: bundleDir, keyring, appId: cfg.appId }),
+    (e) => /no manifest files found under/.test(e.message) && /files/.test(e.message),
+  );
+  // A genuinely partial bundle still reports the file that is gone.
+  rmSync(join(filesDir, JSON.parse(readFileSync(manifestPath, 'utf8')).files['_app/a.js'].h));
+  assert.throws(() => verifyBundle({ manifestPath, filesDir, keyring, appId: cfg.appId }), /missing file _app\/a\.js/);
+});
+
 test('pointer defaults to the newest manifest', () => {
   const { root, cfg, key } = fixture();
   const r = bundle({ root, cfg, key, now: NOW });
