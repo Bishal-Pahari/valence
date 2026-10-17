@@ -214,6 +214,16 @@ function buildCsp(html, cfg, wasm) {
   ].join('; ');
 }
 
+// §3's SPA fallback answers the entry page at any depth, so a relative URL in it resolves against the request path
+// instead of the origin root. Absolute, scheme-relative, root-relative, fragment and query refs are all fine.
+const relativeAssetRefs = (html) => [
+  ...new Set(
+    [...html.matchAll(/\b(?:src|href)\s*=\s*["']([^"']+)["']/gi)]
+      .map((m) => m[1].trim())
+      .filter((u) => u !== '' && !/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/|#|\?)/i.test(u)),
+  ),
+];
+
 // store: this built-in bundle goes to the stores, so its routes and bridge schema become the baseline (implies builtin).
 export function bundle({ root, cfg, key, builtin = false, store = false, floor, requiresBridge, urgent = false, now = Date.now() }) {
   builtin ||= store;
@@ -231,6 +241,10 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
     if (rel.split('/').some((seg) => NATIVE.has(extname(seg).toLowerCase()))) {
       throw new Error(`native code is not allowed in an OTA bundle: ${rel}`);
     }
+    // §3: the loopback server answers /_host/ itself, before the manifest lookup, so a bundle file there is unreachable.
+    if (rel === '_host' || rel.startsWith('_host/')) {
+      throw new Error(`_host/ is reserved for the host's own routes (contracts §3), so the server would never serve this file: ${rel}`);
+    }
     if (rel.toLowerCase().endsWith('.wasm')) warnings.push(`${rel}: .wasm is allowed (runs in the webview) but reviewers should know it is there`);
     const buf = readFileSync(join(src, rel));
     const h = sha256(buf);
@@ -238,6 +252,14 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
     blobs.set(h, buf);
   }
   if (!files[entry]) throw new Error(`entry ${entry} is missing from ${src}`);
+  // §3: the SPA fallback serves this page at any depth, so a relative asset URL in it 404s on every nested route.
+  const relRefs = relativeAssetRefs(blobs.get(files[entry].h).toString('utf8'));
+  if (relRefs.length) {
+    const shown = relRefs.slice(0, 3).join(', ') + (relRefs.length > 3 ? ', …' : '');
+    warnings.push(
+      `${entry} references ${relRefs.length} asset${relRefs.length > 1 ? 's' : ''} by a relative URL (${shown}). The SPA fallback serves the entry page at any depth (contracts §3), so the webview resolves those against the request path and 404s them: a reload or a back gesture on a nested route gives a blank screen with nothing in the log. Build with an absolute base (Vite base: '/', SvelteKit paths.base: ''), because the host owns the whole origin.`,
+    );
+  }
 
   const { routes, source } = listRoutes(root, cfg);
   if (source === 'none') {

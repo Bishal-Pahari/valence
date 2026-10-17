@@ -189,6 +189,26 @@ test('declared routes are unioned with a scan, and a scan that finds one route s
   assert.ok(single.warnings.some((w) => w.includes('found only "/"')));
 });
 
+test('_host/ is reserved for the host, and a relative asset base in the entry page warns', () => {
+  const { root, cfg, key } = fixture();
+  const html = (head) => writeFileSync(join(root, 'web', 'build', 'index.html'), `<!doctype html><head>${head}</head>`);
+
+  // `base: './'` is what you reach for when you hear "static files, no server". §3's fallback serves the entry page at
+  // any depth, so the webview resolves these against the request path: a nested route reloads to a blank screen.
+  html('<script type="module" src="./_app/a.js"></script><link rel="icon" href="favicon.png">');
+  const w = bundle({ root, cfg, key, now: NOW }).warnings;
+  assert.ok(w.some((x) => x.includes('relative URL') && x.includes('./_app/a.js') && x.includes('favicon.png')));
+
+  // Root-relative, scheme-relative, scheme and fragment refs all resolve the same at any depth, so none of them warn.
+  html('<script type="module" src="/_app/a.js"></script><link rel="icon" href="data:,"><img src="//cdn/x.png"><a href="#x">');
+  assert.ok(!bundle({ root, cfg, key, now: NOW }).warnings.some((x) => x.includes('relative URL')));
+
+  // The server answers /_host/ before the manifest lookup, so a bundle file under it could never be reached.
+  mkdirSync(join(root, 'web', 'build', '_host'));
+  writeFileSync(join(root, 'web', 'build', '_host', 'x.js'), '');
+  assert.throws(() => bundle({ root, cfg, key, now: NOW }), /_host\/ is reserved/);
+});
+
 test('floor only goes up and never exceeds seq', () => {
   const { root, cfg, key } = fixture();
   bundle({ root, cfg, key, floor: 5, now: NOW });
