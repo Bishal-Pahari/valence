@@ -251,6 +251,7 @@ The steps below are for **OTA releases**.
 Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a PASS:
 
 - **CLI version.** `node valence/valence.mjs version` against the skill's copy, `node ${CLAUDE_SKILL_DIR}/scripts/valence.mjs version`.
+- **The two runtimes are packages, declared and not forked.** `valence` in the host's `pubspec.yaml` and `@getvalence/bridge` in the web app's `package.json`, each at a version range, with `pubspec.lock` and the web lockfile committed. **FAIL** on any of: a `server.dart`, `updater.dart`, `store.dart`, `sync.dart` or `host.dart` in `lib/valence/`; a hand-written `client.ts`; a `dependency_override`, `path:` or `git:` entry for either package; an edit inside `.pub-cache`. Each of those means the next fix to a security path does not reach this app, which is the whole reason the runtime was packaged. **WARN** on `any` as the constraint, or a missing lockfile.
 - **Generated code.** `codegen --check`.
 - **Docs drift.** Spawn the docs-scout.
 - **Bundle and seed.** The built-in bundle verifies, and `seed.db` exists. **"Verifies" only ever meant signatures and hashes, so say that in the row** — a built-in bundle whose `requires.bridge` is above the version the host reports verifies perfectly and cannot start (contracts §2.4 step 1). Compare the two numbers: `requires.bridge` in the built-in `manifest.json` against `hostBridgeVersion` in the generated `bridge.g.dart`, and against any second place the host reports a bridge version. A mismatch is a **FAIL**, not a warning: on a fresh install it means a blank screen.
@@ -259,20 +260,22 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
 - **Policy:**
   - routes compared with `.valence/baseline.json`, and whether that comparison is active at all (`web.declaredRoutes` for an app that routes in JavaScript);
   - no native files in the web output;
-  - in the host (grep for each): the navigation lock, no off-origin subframes, `bridgeDispatch(… nonce:)`, the CSP header from `manifest.csp`, and the `open.external` scheme allow-list;
+  - **the trust boundary, checked at the right layer.** The navigation lock, the no-off-origin-subframes rule, the nonce, the CSP header from `manifest.csp` and the `open.external` scheme allow-list are all inside `package:valence`, so **do not grep the app for them** — an app that uses the package has none of those strings and a grep reports a false FAIL on a correct host. What to check in the app instead: `ValenceApp` is at the root and is handed `dispatch: (raw, nonce) => bridgeDispatch(handlers, raw, nonce: nonce)`; the handlers class `extends ValenceBuiltins`; and no built-in method (`data.*`, `prefs.*`, `sync.*`, `app.*`, `bundle.*`, `open.external`) is overridden, because those bodies are where the policy lives. An overridden built-in is a **FAIL**. If the app *is* a pre-0.4 generated host, grep as before and say so in the row, with a pointer to the 0.3 migration;
   - `.gitattributes` covers the built-in bundle;
   - at least two §6 items.
-- **Tests.** Run the host and web tests and report the counts.
+- **Tests.** Run the host and web tests and report the counts. An app's suite covers its *wiring* — its own bridge methods, the built-in delegations reaching the runtime, the §4.2 denials through the generated path. The contracts §8 matrix is the `valence` package's own suite and is **not** expected here; an app that re-tests the state machine against code it does not contain gets a **WARN** for maintaining dead tests.
 
 ## Stack baseline (verified 2026-10-15 from pub.dev, npm and Flutter release JSON)
 
 | Item | Version | Note |
 |---|---|---|
+| `valence` (pub.dev) | 0.4.0-beta.0 | **The host runtime.** `flutter pub add valence`. It brings `webview_flutter`, `sqflite`, `path_provider`, `cryptography`, `crypto`, `http`, `url_launcher` and `connectivity_plus` with it, so a host declares none of those itself. Needs Flutter 3.44 or later. Versioned independently of this CLI |
+| `@getvalence/bridge` (npm) | 0.4.0-beta.0 | **The web client.** ESM, zero runtime dependencies, Node 22.18+ to run its own tests. App code imports it through the generated `bridge.g.ts`, never directly |
 | Flutter / Dart | 3.47.7 / 3.13.5 (stable, 2026-10-08) | `sqflite` 2.4.4+2 needs Flutter 3.44 or later |
 | webview_flutter | 4.14.1 (2026-07-07) | **default WebView**. `flutter_inappwebview` has had no stable release since 6.1.5 (2024-10-08) |
-| sqflite | 2.4.4+2 (2026-10-13) | Local store. Drift 2.35.2 is fine if the app already uses it |
-| cryptography | 2.9.0 (2025-11-21) | Ed25519 verify on the device |
-| workmanager | 0.10.10 (2026-09-07) | Background sync; best effort on iOS. **Applies the Kotlin Gradle Plugin, and every Android build warns that future Flutter versions will refuse to build plugins that do** (observed 2026-10-17). Still current; re-check by 2026-12. If it becomes unbuildable, drive `WorkManager` and `BGTaskScheduler` through a platform channel — §5.6 specifies the triggers, not the package |
+| sqflite | 2.4.4+2 (2026-10-13) | Local store, inside the `valence` package. Drift 2.35.2 is fine if the app already uses it for its own tables |
+| cryptography | 2.9.0 (2025-11-21) | Ed25519 verify on the device, inside the `valence` package |
+| workmanager | 0.10.10 (2026-09-07) | Background sync; best effort on iOS. **The app's dependency, not the package's** — `valence` gives you `Valence.backgroundSync(config)` and deliberately does not depend on `workmanager`. **Applies the Kotlin Gradle Plugin, and every Android build warns that future Flutter versions will refuse to build plugins that do** (observed 2026-10-17). Still current; re-check by 2026-12. If it becomes unbuildable, drive `WorkManager` and `BGTaskScheduler` through a platform channel — §5.6 specifies the triggers, not the package |
 | home_widget | 0.10.0 (2026-09-17) | Optional native value (§6) |
 | the other §6 packages | **not pinned here** | `share_plus`, `flutter_local_notifications` and `local_auth` are named in contracts §6 with the native setup each needs, but no version in this table has been verified against a primary source. Resolve them with the docs-scout before relying on an API. Observed 2026-10-17: `connectivity_plus 7.3.2` and `flutter_local_notifications 19.x` **cannot resolve together** (`dbus ^0.8.0` vs `^0.7.8`, both through Linux-only transitive deps); pin `connectivity_plus: ^7.3.1` in a host that has both. Resolve the §6 packages as a set, not one at a time |
 | path_provider / url_launcher / connectivity_plus / http | 2.1.6 / 6.3.3 / 7.3.2 / 1.6.0 | |
