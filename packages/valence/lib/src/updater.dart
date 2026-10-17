@@ -389,7 +389,10 @@ final class ValenceUpdater {
       }
       _log('update: current ${state.current} has no manifest on disk; falling back to the built-in bundle');
     }
-    final builtin = await _loadBuiltinManifest();
+    // install: true, not a bare load. Serving a built-in manifest whose files never passed check 7 means
+    // the server 404s the entry page and the user gets a blank screen with nothing in the log — so a
+    // built-in bundle that cannot be installed must not be servable either.
+    final builtin = await _loadBuiltinManifest(install: true);
     if (builtin == null) {
       throw StateError(
         'valence: no bundle to serve. The built-in bundle is missing or unverifiable — run '

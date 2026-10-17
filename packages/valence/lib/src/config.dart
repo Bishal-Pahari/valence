@@ -29,6 +29,7 @@ final class ValenceConfig {
     this.readyTimeout = const Duration(seconds: 15),
     this.updateInterval = const Duration(minutes: 30),
     this.pullPageLimit = 500,
+    this.databaseName = 'valence.db',
     this.builtinAssetDir = 'assets/valence/builtin',
     this.seedAsset = 'assets/valence/seed.db',
     this.authToken,
@@ -82,6 +83,14 @@ final class ValenceConfig {
   /// Rows per pull page. Kept small so a long background transaction does not queue the UI's reads.
   final int pullPageLimit;
 
+  /// The SQLite file name, inside the application support directory.
+  ///
+  /// Kept configurable for one reason: a 0.3 app whose generated host picked its own name — `fieldnote.db`,
+  /// say — must keep reading the user's existing data when it moves to this package. Set it to that name
+  /// and nothing has to be migrated. It lives *outside* `valence/` because it holds user data and should
+  /// be backed up (§2.4).
+  final String databaseName;
+
   /// The asset directory `valence bundle --builtin` writes into.
   final String builtinAssetDir;
 
@@ -121,6 +130,7 @@ final class ValenceConfig {
         readyTimeout: readyTimeout ?? this.readyTimeout,
         updateInterval: updateInterval ?? this.updateInterval,
         pullPageLimit: pullPageLimit ?? this.pullPageLimit,
+        databaseName: databaseName,
         builtinAssetDir: builtinAssetDir,
         seedAsset: seedAsset,
         authToken: authToken ?? this.authToken,

@@ -52,7 +52,7 @@ void main() {
       state: state ?? ValenceState(installId: 'install-1'),
       casDir: casDir,
       hostDir: hostDir,
-      log: LogSpy(),
+      log: LogSpy().call,
       keepNonce: keepNonce,
     );
     if (manifest != null) server.serveManifest(manifest);

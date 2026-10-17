@@ -43,7 +43,7 @@ void main() {
         store: store,
         config: config ?? testConfig(key, dataSchemas: {'plants': 1}),
         client: client,
-        log: log ?? LogSpy(),
+        log: (log ?? LogSpy()).call,
         clock: clock,
       );
 

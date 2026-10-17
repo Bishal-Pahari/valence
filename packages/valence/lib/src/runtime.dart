@@ -128,7 +128,9 @@ final class Valence {
     // dataExtractionRules/fullBackupContent. See the package README; a plugin would be the upgrade path.
 
     // The database lives *outside* valence/, because it holds user data and should be backed up.
-    final store = await ValenceStore.open('${support.path}${Platform.pathSeparator}valence.db');
+    final store = await ValenceStore.open(
+      '${support.path}${Platform.pathSeparator}${config.databaseName}',
+    );
     if (!store.isWal) {
       log('store: journal_mode is "${store.journalMode}", not wal; the concurrency the data layer '
           'assumes is not available on this filesystem');
@@ -390,7 +392,9 @@ final class Valence {
     Directory? supportDir,
   }) async {
     final support = supportDir ?? await getApplicationSupportDirectory();
-    final store = await ValenceStore.open('${support.path}${Platform.pathSeparator}valence.db');
+    final store = await ValenceStore.open(
+      '${support.path}${Platform.pathSeparator}${config.databaseName}',
+    );
     final sync = ValenceSync(store: store, config: config, client: client, log: log);
     // The active manifest is not loaded in a background isolate, so the configured schemas are what this
     // can follow. They are the schemas the store build reads, which is the conservative choice.
