@@ -483,15 +483,45 @@ final class ValenceStore {
   // prefs (§5.6)
   // ---------------------------------------------------------------------------
 
-  /// Reads a pref. Unrestricted: the `valence.` prefix is enforced at the bridge, because the host's own
-  /// internals (the sync lease) live under it.
+  /// Reads a pref. Refuses the reserved `valence.` prefix.
+  ///
+  /// `async`, so the refusal is a rejected future rather than a synchronous throw out of a
+  /// Future-returning method — which an unawaited call would turn into an uncatchable crash.
   Future<String?> prefGet(String key) async {
+    _refuseReservedPrefKey(key);
+    return _prefGet(key);
+  }
+
+  /// Writes a pref, or removes it when [value] is null. Refuses the reserved `valence.` prefix. See
+  /// [prefGet] on why this is `async`.
+  Future<void> prefSet(String key, String? value) async {
+    _refuseReservedPrefKey(key);
+    return _prefSet(key, value);
+  }
+
+  /// The host's own keys, which the reserved prefix exists to protect. Not for app or page code.
+  ///
+  /// §4.2 reserves `valence.` and the runtime refuses it at the bridge, but the public
+  /// [prefGet]/[prefSet] are the only way an app that defines its *own* settings method can store
+  /// anything — so the check has to be here too, or that method is a way to clear the sync lease from
+  /// page input and let two syncs interleave. Same reasoning as [dropPair] re-checking `writableBuckets`.
+  Future<String?> hostPrefGet(String key) => _prefGet(key);
+
+  /// Writes one of the host's own keys. Not for app or page code; see [hostPrefGet].
+  Future<void> hostPrefSet(String key, String? value) => _prefSet(key, value);
+
+  static void _refuseReservedPrefKey(String key) {
+    if (key == 'valence' || key.startsWith('valence.')) {
+      throw BridgeError(BridgeErrorCode.denied, 'the "valence." pref prefix is reserved for the host');
+    }
+  }
+
+  Future<String?> _prefGet(String key) async {
     final rows = await db.query('prefs', columns: ['value'], where: 'key = ?', whereArgs: [key], limit: 1);
     return rows.isEmpty ? null : rows.first['value']! as String;
   }
 
-  /// Writes a pref, or removes it when [value] is null.
-  Future<void> prefSet(String key, String? value) async {
+  Future<void> _prefSet(String key, String? value) async {
     if (value == null) {
       await db.delete('prefs', where: 'key = ?', whereArgs: [key]);
       return;

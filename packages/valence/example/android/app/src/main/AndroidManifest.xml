@@ -1,8 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- A Valence host fetches its pointer, its manifests and its bundle files over HTTPS and syncs data,
+         so INTERNET is needed in every build type, not only in debug. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="valence_example"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:fullBackupContent="@xml/valence_backup_rules"
+        android:dataExtractionRules="@xml/valence_data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"

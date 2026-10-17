@@ -14,6 +14,14 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<!-- Valence serves the web bundle from a loopback HTTP server, so App Transport Security needs the
+	     local-networking exception — and **only** that. NSAllowsArbitraryLoads would open every plain-HTTP
+	     origin on the internet, and is also a review question nobody wants to answer. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>CFBundleName</key>
 	<string>valence_example</string>
 	<key>CFBundlePackageType</key>

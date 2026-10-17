@@ -1,1 +1,6 @@
 * text=auto eol=lf
+
+# The built-in bundle is signed and content-addressed: the manifest is hashed byte-for-byte and every
+# file is named by its own sha256. `text=auto` above would normalise line endings on commit, and the
+# blob would then no longer hash to its own name — so check 7 refuses the host its own bundle (§1).
+packages/valence/example/assets/valence/** -text

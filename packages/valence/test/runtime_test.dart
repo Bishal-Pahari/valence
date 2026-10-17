@@ -172,10 +172,12 @@ void main() {
       expect(await v.prefsGet('valenceish'), 'ok');
     });
 
-    test('the host’s own lease is still writable through the store', () async {
+    test('the store refuses the prefix too, so an app’s own settings method cannot be a way round it', () async {
       final v = await open();
-      await v.store.prefSet('valence.sync.lease', '1');
-      expect(await v.store.prefGet('valence.sync.lease'), '1');
+      await expectLater(v.store.prefSet('valence.sync.lease', '1'), throwsA(isA<BridgeError>()));
+      // The runtime writes its own keys through the unchecked entry point.
+      await v.store.hostPrefSet('valence.sync.lease', '1');
+      expect(await v.store.hostPrefGet('valence.sync.lease'), '1');
     });
   });
 

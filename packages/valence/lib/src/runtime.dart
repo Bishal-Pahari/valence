@@ -213,25 +213,48 @@ final class Valence {
     _server = server;
     _manifest = manifest;
     server.serveManifest(manifest);
+    // The server can delete a rotted CAS file and answer 500, but it cannot re-fetch one: §2.3 step 1
+    // stops on `pointer.seq <= current`, so a bundle that is already current never reaches step 6. The
+    // updater has to be told where to look (§2.4, "CAS integrity is re-checked lazily").
+    updater.repairFrom = () => (manifest: manifest, corrupt: server.corruptHashes);
   }
 
+  /// §5.2: imports the bundled seed on first launch **and after a host upgrade**, not on every launch.
+  ///
+  /// `Valence.open` is awaited in `main()` before `runApp`, so the extraction is in front of the first
+  /// frame: copying a multi-megabyte asset to disk and attaching it every cold start is exactly the launch
+  /// cost §2.4 budgets against. The import itself is idempotent — it only copies rows above the local
+  /// `max_usn` for the pair — so the stamp only has to be right about *when the asset could have changed*,
+  /// which is a host upgrade.
   Future<void> _importSeed() async {
     if (config.dataSchemas.isEmpty) return;
     final seedPath = '${dir.path}${Platform.pathSeparator}seed.db';
     final seedFile = File(seedPath);
+    final ByteData asset;
     try {
-      final bytes = (await rootBundle.load(config.seedAsset)).buffer.asUint8List();
-      // Re-extracted on every launch so a store upgrade's newer seed is seen; the import itself is
-      // idempotent, because it only copies rows above the local max_usn for the pair.
-      await seedFile.writeAsBytes(bytes, flush: true);
+      asset = await rootBundle.load(config.seedAsset);
     } on Object catch (e) {
       _log('seed: no bundled seed at ${config.seedAsset} ($e); the app starts with an empty store');
       return;
+    }
+    // The host build plus the asset length: the build alone misses a seed changed by an OTA-era rebuild
+    // at the same version, and the length alone misses a same-size replacement across an upgrade.
+    final stamp = '$hostBuild.${asset.lengthInBytes}';
+    final done = await store.hostPrefGet(_seedStamp) == stamp && seedFile.existsSync();
+    if (!done) {
+      try {
+        await seedFile.writeAsBytes(asset.buffer.asUint8List(), flush: true);
+      } on Object catch (e) {
+        _log('seed: could not write $seedPath ($e); the app starts with an empty store');
+        return;
+      }
     }
     try {
       final counts = await store.importSeed(seedPath, config.dataSchemas);
       final moved = counts.values.fold<int>(0, (a, b) => a + b);
       if (moved > 0) _log('seed: imported $counts');
+      // Stamped only after a clean import, so a crash mid-import retries on the next launch.
+      await store.hostPrefSet(_seedStamp, stamp);
     } on Object catch (e) {
       _log('seed: import failed: $e');
     }
@@ -310,25 +333,18 @@ final class Valence {
         only: buckets,
       );
 
+  /// The pref recording which seed has already been imported (§5.2).
+  static const _seedStamp = 'valence.seed.imported';
+
   /// `prefs.get`. The page may not read the host's own keys.
-  Future<String?> prefsGet(String key) {
-    _refuseReservedPrefKey(key);
-    return store.prefGet(key);
-  }
+  ///
+  /// The `valence.` refusal lives in [ValenceStore.prefGet], not here, so it also covers an app that
+  /// defines its own settings method and reaches the store directly (§4.2). The runtime's own keys go
+  /// through `hostPrefGet`/`hostPrefSet`.
+  Future<String?> prefsGet(String key) => store.prefGet(key);
 
-  /// `prefs.set`. The page may not write the host's own keys.
-  Future<void> prefsSet(String key, String? value) {
-    _refuseReservedPrefKey(key);
-    return store.prefSet(key, value);
-  }
-
-  void _refuseReservedPrefKey(String key) {
-    // The `valence.` prefix is reserved for the host, so the web cannot tamper with internal state such
-    // as the sync lease (§4.2).
-    if (key == 'valence' || key.startsWith('valence.')) {
-      throw BridgeError(BridgeErrorCode.denied, 'the "valence." pref prefix is reserved for the host');
-    }
-  }
+  /// `prefs.set`. The page may not write the host's own keys. See [prefsGet].
+  Future<void> prefsSet(String key, String? value) => store.prefSet(key, value);
 
   /// `open.external`. Only `https:`, `mailto:` and `tel:` leave the app.
   Future<void> openExternal(String url) async {

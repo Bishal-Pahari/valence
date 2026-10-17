@@ -304,13 +304,17 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
 
   @override
   Future<void> reloadPage() async {
-    final manifest = await _valence.updater.activateForUiStart();
-    await _swapBundle(manifest);
+    // Step 4 only. `applyUpdate` has already promoted the trial and set `serving`, so re-running the
+    // UI-start transitions would make step 2's crash check true by construction and spend a strike on the
+    // bundle this reload is about to show (§2.4).
+    await _swapBundle(await _valence.updater.serveAfterApplyUpdate());
   }
 
   Future<void> _reloadCurrent() async {
-    final manifest = await _valence.updater.activateForUiStart();
-    await _swapBundle(manifest);
+    // `current`, explicitly: the trial stays set so the *next* UI start retries it once, which is the
+    // retry §2.4 grants after a single failure. Re-running the transitions would take step 4's trial
+    // branch and show the failing bundle again 15 s later, spending that retry here instead.
+    await _swapBundle(await _valence.updater.serveCurrent());
   }
 
   /// Serves a different bundle.

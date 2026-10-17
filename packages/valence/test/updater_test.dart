@@ -476,7 +476,7 @@ void main() {
         ),
       );
       expect(await u.checkForUpdate(), 20);
-      expect(await store.prefGet('valence.sync.lease'), isNull);
+      expect(await store.hostPrefGet('valence.sync.lease'), isNull);
     });
 
     test('a pair the device already holds needs no pull at all', () async {
@@ -997,7 +997,9 @@ void main() {
 
       expect((await u.activateForUiStart()).seq, 10, reason: 'nothing is promoted, and current is served');
       expect(state.current, 10);
-      expect(state.builtinRefused, 50);
+      // A fingerprint of the manifest bytes and the host's bridge version, not the seq: the usual cause of
+      // a refusal is fixed by a Dart change that ships the same assets, and so the same seq.
+      expect(state.builtinRefused, startsWith('50.1.'));
       expect(state.bad, isEmpty, reason: 'a built-in bundle is never a release this install can decline');
       expect(log.has('failed verification'), isTrue);
 
@@ -1030,7 +1032,7 @@ void main() {
               .having((e) => e.message, 'message', contains('no bundle to serve')),
         ),
       );
-      expect(state.builtinRefused, 50);
+      expect(state.builtinRefused, startsWith('50.1.'));
       expect(state.current, isNull);
     });
   });
@@ -1193,6 +1195,201 @@ void main() {
       await held.releaseLease();
       await u.garbageCollect();
       expect(await store.allPairs(), {'plants': {2}});
+    });
+  });
+
+
+  group('a mid-session reload does not re-run the UI-start transitions (§2.4)', () {
+    test('serveAfterApplyUpdate shows the promoted bundle without spending a strike', () async {
+      // applyUpdate sets trial and serving, so going back through activateForUiStart would make step 2's
+      // crash check true by construction and count a failure against the bundle it is about to show. Two
+      // of those and a healthy release is in `bad`, which is final.
+      final b = await signBundle(key, seq: 20);
+      b.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      final state = ValenceState(installId: 'i', current: 10, pending: 20);
+      final log = LogSpy();
+      final u = makeUpdater(state: state, log: log);
+
+      expect(await u.applyUpdate(), 20);
+      expect(state.trial, 20);
+      expect(state.serving, 20);
+
+      final served = await u.serveAfterApplyUpdate();
+      expect(served.seq, 20, reason: 'the promoted bundle is what gets served');
+      expect(state.trialFails, 0, reason: 'no strike for the bundle we just promoted');
+      expect(state.bad, isEmpty);
+      expect(log.has('did not confirm it'), isFalse, reason: 'the crash check must not run here');
+    });
+
+    test('serveCurrent after a timeout goes back to current and keeps the trial for the next launch', () async {
+      // §2.4: "on timeout, count a failure, then reload `current` right away". Re-entering
+      // activateForUiStart takes step 4's trial branch instead, shows the failing bundle again 15 s later,
+      // and spends in this session the retry the spec grants to the next UI start.
+      final current = await signBundle(key, seq: 10);
+      final trial = await signBundle(key, seq: 20);
+      current.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      trial.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      final state = ValenceState(installId: 'i', current: 10, trial: 20, serving: 20);
+      final u = makeUpdater(state: state);
+
+      u.countFailure();
+      expect(state.trialFails, 1);
+      final served = await u.serveCurrent();
+      expect(served.seq, 10, reason: 'the user goes back to the last good bundle immediately');
+      expect(state.trial, 20, reason: 'the trial survives, for one more try at the next UI start');
+      expect(state.serving, isNull, reason: 'nothing is on probation while current is on screen');
+
+      // And that next UI start is the one that tries it again.
+      expect((await u.activateForUiStart()).seq, 20);
+      expect(state.serving, 20);
+      expect(state.trialFails, 1, reason: 'still one, so there is a second chance left');
+    });
+  });
+
+  group('a collection never takes the files of a download in flight (§2.4)', () {
+    test('a GC that runs during step 7 leaves the pending bundle complete', () async {
+      // Step 6 renames files into CAS before step 8 writes the manifest, and step 7 sits between them and
+      // can take minutes. A collection in that window computes its kept set from live state, cannot see
+      // the seq being downloaded, and deletes what step 6 just fetched. §2.3 step 1 then stops for ever on
+      // `pointer.seq <= pending`, the trial 404s, and two strikes put a healthy release in `bad`.
+      final b = await signBundle(key, seq: 20, requiresData: {'plants': 1});
+      final old = await signBundle(key, seq: 5, files: {'index.html': '<html><head></head>5</html>'});
+      old.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      final state = ValenceState(installId: 'i', current: 10);
+      final u = makeUpdater(
+        state: state,
+        config: testConfig(key, dataSchemas: {'plants': 1}),
+        // The sync body for step 7 is where the collection gets its chance.
+        client: otaHost(
+          bundles: {20: b},
+          pointerSeq: 20,
+          syncBodies: {'pull': jsonEncode({'rows': [dataRow('a', 1, 1)], 'max': 1, 'more': false})},
+        ),
+      );
+      // Scheduled before the check, so the frame lands while the check is in flight.
+      u.scheduleGarbageCollect();
+      final check = u.checkForUpdate();
+      await pumpFrame();
+      expect(await check, 20);
+
+      for (final hash in b.blobs.keys) {
+        expect(File('${casDir.path}/$hash').existsSync(), isTrue, reason: 'kept $hash');
+      }
+      // The collection still did its job on what was genuinely unreferenced.
+      expect(File('${manifestsDir.path}/5.json').existsSync(), isFalse);
+    });
+
+    test('a tmp- file mid-rename is not collected', () async {
+      casDir.createSync(recursive: true);
+      final tmp = File('${casDir.path}/tmp-${'a' * 64}')..writeAsStringSync('half a download');
+      await makeUpdater(state: ValenceState(installId: 'i')).garbageCollect();
+      expect(tmp.existsSync(), isTrue);
+    });
+  });
+
+  group('a refusal is keyed on more than the built-in seq (§2.4)', () {
+    test('a host upgrade that fixes the bridge version is not skipped', () async {
+      // The spec's named usual cause is `requires.bridge` above what the host reports at check 5. That fix
+      // is a Dart change, shipped with the same assets and therefore the same seq — so a seq-only key
+      // would skip step 1 on the very host built to fix it, for ever.
+      final builtin = await signBundle(key, seq: 50, requiresBridge: 2);
+      final assets = builtin.asAssets('assets/valence/builtin');
+      final previous = await signBundle(key, seq: 10);
+      previous.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      final state = ValenceState(installId: 'i', current: 10);
+
+      final broken = makeUpdater(state: state, assets: assets, config: testConfig(key, bridgeVersion: 1));
+      expect((await broken.activateForUiStart()).seq, 10);
+      expect(state.builtinRefused, isNotNull);
+      final refusedByOldHost = state.builtinRefused;
+
+      // Same seq, same bytes, a host that now reports bridge 2.
+      final fixed = makeUpdater(state: state, assets: assets, config: testConfig(key, bridgeVersion: 2));
+      expect((await fixed.activateForUiStart()).seq, 50, reason: 'the upgraded host installs it');
+      expect(state.current, 50);
+      expect(state.builtinRefused, isNull);
+      expect(refusedByOldHost, isNot(equals('50')), reason: 'the record is not just the seq');
+    });
+
+    test('step 1 does not verify the built-in bundle on an ordinary launch', () async {
+      // The seq gate comes before the load, so an ordinary launch does not pay for an asset read, a
+      // manifest decode and a pure-Dart Ed25519 verify in front of the first frame.
+      final builtin = await signBundle(key, seq: 50);
+      final assets = {...builtin.asAssets('assets/valence/builtin')};
+      final current = await signBundle(key, seq: 50);
+      current.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      final read = <String>[];
+      final u = ValenceUpdater(
+        config: testConfig(key),
+        state: ValenceState(installId: 'i', current: 50),
+        stateFile: stateFile,
+        casDir: casDir,
+        manifestsDir: manifestsDir,
+        store: store,
+        sync: ValenceSync(store: store, config: testConfig(key), log: (_) {}),
+        readAsset: (k) async {
+          read.add(k);
+          return assets[k] ?? (throw StateError('no asset $k'));
+        },
+        log: (_) {},
+        afterFrame: frames.add,
+      );
+      await u.activateForUiStart();
+      expect(read, ['assets/valence/builtin/manifest.json'],
+          reason: 'the manifest is read for its seq, and the signature is not even fetched');
+    });
+  });
+
+  group('the active bundle repairs a corrupt file (§2.4)', () {
+    test('a file the server deleted is re-fetched, because step 1 can never reach step 6', () async {
+      // The server can delete a rotted CAS file and answer 500, but §2.3 step 1 stops on
+      // `pointer.seq <= current`, so for the bundle being served there is no step 6. If the rotted file is
+      // the entry page, the app is a blank screen until some newer release happens to ship.
+      final b = await signBundle(key, seq: 20, files: {'index.html': '<html><head></head>hi</html>'});
+      b.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      final hash = b.blobs.keys.single;
+      final file = File('${casDir.path}/$hash');
+      file.deleteSync(); // what the server does on a hash mismatch
+
+      final log = LogSpy();
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 20),
+        client: otaHost(bundles: {20: b}, pointerSeq: 20),
+        log: log,
+      );
+      final manifest = await checkManifest(
+        bytes: b.bytes,
+        signature: b.signature,
+        config: testConfig(key),
+        state: ValenceState(installId: 'i'),
+        pointerSeq: null,
+      );
+      u.repairFrom = () => (manifest: manifest, corrupt: {hash});
+
+      // The check itself stops at step 1 — that is the whole point — but the repair runs before it.
+      expect(await u.checkForUpdate(), isNull);
+      expect(file.existsSync(), isTrue, reason: 're-fetched and re-verified through check 7');
+      expect(log.has('repairing'), isTrue);
+    });
+
+    test('nothing is fetched when the active bundle is intact', () async {
+      final b = await signBundle(key, seq: 20);
+      b.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      final seen = <String>[];
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 20),
+        client: otaHost(bundles: {20: b}, pointerSeq: 20, seen: seen),
+      );
+      final manifest = await checkManifest(
+        bytes: b.bytes,
+        signature: b.signature,
+        config: testConfig(key),
+        state: ValenceState(installId: 'i'),
+        pointerSeq: null,
+      );
+      u.repairFrom = () => (manifest: manifest, corrupt: const <String>{});
+      await u.checkForUpdate();
+      expect(seen.where((u) => u.contains('/files/')), isEmpty);
     });
   });
 

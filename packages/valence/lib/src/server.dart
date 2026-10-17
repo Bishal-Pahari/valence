@@ -155,6 +155,13 @@ final class ValenceServer {
 
   ValenceManifest? _manifest;
   final Set<String> _verified = {};
+  final Set<String> _corrupt = {};
+
+  /// Hashes of the active manifest that failed their integrity check on first serve and were deleted.
+  ///
+  /// The server can only delete and 500; re-fetching is the updater's job, and it has to be asked, because
+  /// §2.3 step 1 stops before step 6 for a bundle that is already `current` (§2.4).
+  Set<String> get corruptHashes => Set.unmodifiable(_corrupt);
 
   /// The origin the WebView loads, and the only main-frame navigation the host permits.
   String get origin => 'http://127.0.0.1:$port';
@@ -168,6 +175,7 @@ final class ValenceServer {
   void serveManifest(ValenceManifest m) {
     _manifest = m;
     _verified.clear();
+    _corrupt.clear();
   }
 
   /// Stops listening.
@@ -334,7 +342,9 @@ final class ValenceServer {
         } on Object catch (e) {
           _log('server: could not delete the corrupt cas file ${entry.hash}: $e');
         }
-        // 500, so the next update check re-downloads it as a missing file (§2.3 step 6).
+        _corrupt.add(entry.hash);
+        // 500. The next update check re-fetches it: for a pending bundle through step 6, and for the
+        // bundle already being served through the repair pass, which is the only route there is (§2.4).
         await _text(req, HttpStatus.internalServerError, 'corrupt bundle file');
         return;
       }

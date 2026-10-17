@@ -77,6 +77,11 @@ final class ValenceUpdater {
   /// Mutable because the host widget attaches after the runtime is open.
   void Function(int seq)? onUpdateReady;
 
+  /// The active manifest and the hashes its server deleted as corrupt. Set by `Valence.bound`.
+  ///
+  /// A closure rather than two fields, because the server is rebound on every bundle swap and resume.
+  ({ValenceManifest manifest, Set<String> corrupt})? Function()? repairFrom;
+
   final ValenceAssetReader _readAsset;
   final http.Client _client;
   final ValenceLogger _log;
@@ -86,9 +91,18 @@ final class ValenceUpdater {
   String? _builtinFailure;
 
   /// The refusal already logged in this process, so a frozen install logs it once, not once per launch.
-  int? _refusalLogged;
+  String? _refusalLogged;
 
   bool _gcScheduled = false;
+
+  /// CAS hashes written by §2.3 step 6 whose manifest is not on disk yet.
+  ///
+  /// Step 6 renames files into CAS **before** step 8 writes the manifest and sets `pending`, and step 7
+  /// sits between them and can take minutes. A collection scheduled in that window computes its kept set
+  /// from live state, does not see the seq being downloaded, and deletes the files it has just fetched —
+  /// after which §2.3 step 1 stops on `pointer.seq <= pending` for ever and nothing re-fetches them. The
+  /// bundle then fails its trial twice and a healthy release lands in `bad` (§2.4).
+  final _inFlight = <String>{};
 
   /// Persists [state] atomically.
   void save() => state.save(stateFile);
@@ -109,6 +123,9 @@ final class ValenceUpdater {
       _log('update: no otaBase configured, nothing to check');
       return null;
     }
+
+    // Before step 1, because step 1 is where a repair would otherwise be unreachable.
+    await _repairActiveBundle();
 
     // --- Step 1: the pointer, decoded strictly. -----------------------------
     final ({int seq, int rollout})? pointer;
@@ -224,28 +241,67 @@ final class ValenceUpdater {
     }
 
     // --- Step 6: download each missing file, verify it (check 7), rename. ---
+    // Every hash of this manifest is in flight until step 8 records it, not just the ones being
+    // downloaded: a file already in CAS may be shared only with a bundle this collection is dropping.
+    _inFlight.addAll(m.files.values.map((f) => f.hash));
+    try {
+      try {
+        await casDir.create(recursive: true);
+        for (final e in missing.entries) {
+          if (!await _downloadCasFile(m, e.key, e.value)) return null;
+        }
+      } on Object catch (e) {
+        _log('update: step 6 stopped, download failed: $e');
+        return null;
+      }
+
+      // --- Step 7: the data requirements. The updater *pulls* here. ---------
+      if (!await _satisfyDataRequirements(m)) return null;
+
+      // --- Step 8: make it pending. -----------------------------------------
+      await manifestsDir.create(recursive: true);
+      await _manifestFile(m.seq).writeAsBytes(m.bytes, flush: true);
+      await _signatureFile(m.seq).writeAsString(signature.trim(), flush: true);
+      state.pending = m.seq;
+      save();
+      _log('update: seq ${m.seq} is pending (${m.files.length} files)');
+      if (m.urgent) onUpdateReady?.call(m.seq);
+      return m.seq;
+    } finally {
+      // Cleared whether or not the check completed. A run that stopped at step 6 or 7 leaves orphan files
+      // that the next collection is then free to take.
+      _inFlight.removeAll(m.files.values.map((f) => f.hash));
+    }
+  }
+
+  /// Re-fetches files of the **active** bundle that its server found corrupt and deleted.
+  ///
+  /// §2.4 promises that a rotted CAS file is re-downloaded by the next update check, but step 1 stops on
+  /// `pointer.seq <= current` — so for the bundle being served there is no step 6 to reach, and nothing
+  /// else looks at the active manifest's files. If the rotted file is the entry page, the app is a blank
+  /// screen until some *newer* release happens to ship. Each file still goes through check 7.
+  Future<void> _repairActiveBundle() async {
+    final active = repairFrom?.call();
+    if (active == null || active.corrupt.isEmpty) return;
+    final wanted = <String, ValenceFileEntry>{};
+    for (final f in active.manifest.files.values) {
+      if (active.corrupt.contains(f.hash) && !_casFile(f.hash).existsSync()) wanted[f.hash] = f;
+    }
+    if (wanted.isEmpty) return;
+    _log('update: repairing ${wanted.length} corrupt file(s) of the active bundle ${active.manifest.seq}');
+    _inFlight.addAll(wanted.keys);
     try {
       await casDir.create(recursive: true);
-      for (final e in missing.entries) {
-        if (!await _downloadCasFile(m, e.key, e.value)) return null;
+      for (final e in wanted.entries) {
+        if (!await _downloadCasFile(active.manifest, e.key, e.value)) {
+          _log('update: could not repair ${e.key}; the server will keep answering 500 for it');
+        }
       }
     } on Object catch (e) {
-      _log('update: step 6 stopped, download failed: $e');
-      return null;
+      _log('update: repair of the active bundle failed: $e');
+    } finally {
+      _inFlight.removeAll(wanted.keys);
     }
-
-    // --- Step 7: the data requirements. The updater *pulls* here. -----------
-    if (!await _satisfyDataRequirements(m)) return null;
-
-    // --- Step 8: make it pending. -------------------------------------------
-    await manifestsDir.create(recursive: true);
-    await _manifestFile(m.seq).writeAsBytes(m.bytes, flush: true);
-    await _signatureFile(m.seq).writeAsString(signature.trim(), flush: true);
-    state.pending = m.seq;
-    save();
-    _log('update: seq ${m.seq} is pending (${m.files.length} files)');
-    if (m.urgent) onUpdateReady?.call(m.seq);
-    return m.seq;
   }
 
   Future<bool> _downloadCasFile(ValenceManifest m, String hash, ValenceFileEntry entry) async {
@@ -384,8 +440,26 @@ final class ValenceUpdater {
       save();
     }
 
-    // --- Step 4: serve. ----------------------------------------------------
-    if (state.trial != null) {
+    return _serve();
+  }
+
+  /// Serves the bundle `applyUpdate` just promoted, **without** re-running the UI-start transitions.
+  ///
+  /// `applyUpdate` has already set `trial` and `serving`, so going back through
+  /// [activateForUiStart] would make step 2's `trial != null && serving == trial` true by construction
+  /// and spend a strike on the bundle it is about to show (§2.4 step 2).
+  Future<ValenceManifest> serveAfterApplyUpdate() => _serve();
+
+  /// Serves `current` after a ready timeout, leaving `trial` for the next UI start.
+  ///
+  /// §2.4: "on timeout, count a failure, then reload `current` right away". Re-entering
+  /// [activateForUiStart] would take step 4's trial branch instead and show the failing bundle a second
+  /// time, 15 s later — burning in this session the retry the spec grants to the *next* UI start.
+  Future<ValenceManifest> serveCurrent() => _serve(ignoreTrial: true);
+
+  /// §2.4 step 4.
+  Future<ValenceManifest> _serve({bool ignoreTrial = false}) async {
+    if (!ignoreTrial && state.trial != null) {
       final trial = await _loadManifest(state.trial!);
       if (trial != null) {
         state.serving = state.trial;
@@ -434,14 +508,32 @@ final class ValenceUpdater {
   /// every launch after that. That is what keeps an ordinary launch to a state read, a promotion decision
   /// and a bind.
   Future<void> _installBuiltinIfNewer() async {
+    final id = await _builtinIdentity();
+    // No readable built-in manifest at all. Step 4 is where that becomes visible, if there is nothing
+    // else left to serve.
+    if (id == null) return;
+
     // A refusal leaves `current` where it was, so the step-1 gate below is true again on the very next
-    // launch and for ever. Without this skip, a broken store build re-decodes the manifest and re-verifies
-    // the signature in front of every first frame on an install that is already beyond saving (§2.4).
+    // launch and for ever. Without this skip, a broken store build re-verifies an Ed25519 signature in
+    // front of every first frame on an install that is already beyond saving (§2.4).
     final refused = state.builtinRefused;
-    if (refused != null && await _builtinSeq() == refused) {
+    if (refused != null && refused == id.fingerprint) {
       if (_refusalLogged != refused) {
         _refusalLogged = refused;
-        _log('update: the built-in bundle $refused was refused; skipping step 1 until a store update replaces it');
+        _log('update: the built-in bundle ${id.seq} was refused; skipping step 1 until a store update '
+            'changes it or the host it runs on');
+      }
+      return;
+    }
+
+    // The seq gate comes **before** the verify, not after. §2.4 budgets an ordinary launch at the state
+    // read, the promotion decision and the bind; loading first would put an asset read, a manifest decode,
+    // a pure-Dart Ed25519 verify and an existsSync per bundle file in front of every first frame, on every
+    // launch, for a step that is a no-op after the first launch of a store build.
+    if (id.seq <= (state.current ?? 0)) {
+      if (refused != null) {
+        state.builtinRefused = null;
+        save();
       }
       return;
     }
@@ -450,18 +542,14 @@ final class ValenceUpdater {
     if (builtin == null) {
       // Nothing else in the state changes — not `current`, not `bad`. A built-in bundle is not a release
       // this install can decline, and the next store update replaces it.
-      final seq = await _builtinSeq();
-      if (seq != null && state.builtinRefused != seq) {
-        state.builtinRefused = seq;
-        save();
-      }
+      state.builtinRefused = id.fingerprint;
+      save();
       return;
     }
     if (state.builtinRefused != null) {
       state.builtinRefused = null;
       save();
     }
-    if (builtin.seq <= (state.current ?? 0)) return;
 
     state.previous = state.current;
     state.current = builtin.seq;
@@ -488,15 +576,25 @@ final class ValenceUpdater {
     scheduleGarbageCollect();
   }
 
-  /// Reads just the `seq` out of the built-in manifest, verifying nothing.
+  /// The built-in bundle's seq, plus a fingerprint of everything that decides whether it is servable.
   ///
-  /// "Has the built-in seq changed" is the only question step 1 needs answered before skipping a refusal,
-  /// and it must not cost the signature verify and the per-file hash that refusal has already paid once.
-  Future<int?> _builtinSeq() async {
+  /// Verifies nothing: step 1 needs the seq to decide whether to run at all, and the fingerprint to decide
+  /// whether a refusal it already paid for still applies. Both must be far cheaper than the verify.
+  ///
+  /// **The fingerprint covers the manifest bytes and the host's own bridge version, not just the seq.**
+  /// The usual cause of a refusal is `requires.bridge` above the version the host reports at check 5, and
+  /// the fix for that is a Dart change shipped with the *same* `assets/valence/builtin/` — same seq. A
+  /// seq-only key would then skip step 1 on the very host built to fix it, leaving the install wedged for
+  /// ever with no way out but another store release. The same goes for a re-checkout that repairs a
+  /// CRLF-mangled asset without moving the seq.
+  Future<({int seq, String fingerprint})?> _builtinIdentity() async {
     try {
-      final decoded = jsonDecode(utf8.decode(await _readAsset('${config.builtinAssetDir}/manifest.json')));
+      final bytes = await _readAsset('${config.builtinAssetDir}/manifest.json');
+      final decoded = jsonDecode(utf8.decode(bytes));
       final seq = decoded is Map<String, Object?> ? decoded['seq'] : null;
-      return seq is int && seq >= 1 ? seq : null;
+      if (seq is! int || seq < 1) return null;
+      final digest = sha256.convert(bytes).toString().substring(0, 16);
+      return (seq: seq, fingerprint: '$seq.${config.bridgeVersion}.$digest');
     } on Object {
       return null;
     }
@@ -606,12 +704,15 @@ final class ValenceUpdater {
     if (_gcScheduled) return;
     _gcScheduled = true;
     _afterFrame(() async {
-      _gcScheduled = false;
       try {
         await garbageCollect();
       } on Object catch (e) {
         // A collection that fails costs disk, not correctness: every kept path is still on disk.
         _log('gc: collection failed: $e');
+      } finally {
+        // Cleared last, so a transition during a run schedules the *next* collection rather than a second
+        // concurrent one racing this one's deletes.
+        _gcScheduled = false;
       }
     });
   }
@@ -634,6 +735,7 @@ final class ValenceUpdater {
     }
 
     final keptHashes = <String>{
+      ..._inFlight,
       for (final m in keptManifests)
         for (final f in m.files.values) f.hash,
     };
@@ -656,7 +758,9 @@ final class ValenceUpdater {
       for (final e in casDir.listSync()) {
         if (e is! File) continue;
         final name = e.uri.pathSegments.last;
-        if (keptHashes.contains(name)) continue;
+        // A `tmp-<hash>` is a download mid-rename, which is not a hash and so would never be in the kept
+        // set. Deleting it loses the file and leaves step 6 renaming something that is gone.
+        if (keptHashes.contains(name) || name.startsWith('tmp-')) continue;
         try {
           e.deleteSync();
         } on Object catch (err) {

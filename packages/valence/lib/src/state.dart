@@ -58,7 +58,11 @@ final class ValenceState {
           if (b is int && b >= 1) b,
       ],
       floor: j['floor'] is int && (j['floor']! as int) >= 0 ? j['floor']! as int : 0,
-      builtinRefused: seq('builtinRefused'),
+      // A String, and anything else (including the int an 0.4.0-beta.0 host wrote) reads as absent —
+      // which costs one re-verify and is always safe.
+      builtinRefused: j['builtinRefused'] is String && (j['builtinRefused']! as String).isNotEmpty
+          ? j['builtinRefused']! as String
+          : null,
     );
   }
 
@@ -103,11 +107,16 @@ final class ValenceState {
   /// The lowest seq this install may run. A high-water mark that never goes down.
   int floor;
 
-  /// The built-in seq whose checks failed, so step 1 stops re-paying for a refusal on every launch (§2.4).
+  /// Identifies the built-in bundle whose checks failed, so step 1 stops re-paying for it (§2.4).
   ///
-  /// Cleared as soon as a built-in bundle passes. A refused built-in bundle is never added to [bad]: it is
-  /// not a release this install can decline, and the next store update replaces it.
-  int? builtinRefused;
+  /// A fingerprint of the manifest bytes **and** the host's bridge version, not the seq: the usual cause
+  /// of a refusal is `requires.bridge` above what the host reports, and that fix ships as a Dart change
+  /// with the same assets and so the same seq. Keyed on the seq alone, step 1 would skip on the very host
+  /// built to fix it.
+  ///
+  /// Cleared as soon as a built-in bundle passes, or once `current` has overtaken it. A refused built-in
+  /// bundle is never added to [bad]: it is not a release this install can decline.
+  String? builtinRefused;
 
   /// The on-disk shape.
   Map<String, Object?> toJson() => {

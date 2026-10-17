@@ -330,10 +330,19 @@ void main() {
       expect(await store.prefGet('theme'), isNull);
     });
 
-    test('the store itself does not restrict the valence. prefix; the bridge does', () async {
-      // The host's own sync lease lives under that prefix, so the store has to be able to write it.
-      await store.prefSet('valence.sync.lease', '123');
-      expect(await store.prefGet('valence.sync.lease'), '123');
+    test('the store refuses the valence. prefix, and the host has its own way in', () async {
+      // The check lives here as well as at the bridge, because prefGet/prefSet are the only public way an
+      // app that defines its *own* settings method can store anything — and that method would otherwise
+      // be a route for page input to clear the sync lease mid-sync and let two syncs interleave (§4.2).
+      await expectLater(
+        store.prefSet('valence.sync.lease', '123'),
+        throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.denied)),
+      );
+      await expectLater(store.prefGet('valence'), throwsA(isA<BridgeError>()));
+      expect(await store.prefGet('valenceish'), isNull, reason: 'only the prefix, not the letters');
+      // The host's own lease lives under that prefix, so the runtime has an unchecked entry point.
+      await store.hostPrefSet('valence.sync.lease', '123');
+      expect(await store.hostPrefGet('valence.sync.lease'), '123');
     });
   });
 

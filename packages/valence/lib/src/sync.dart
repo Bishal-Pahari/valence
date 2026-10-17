@@ -92,19 +92,20 @@ final class ValenceSync {
   }
 
   /// Pushes the lease forward. Call after every applied page, so a long `since = 0` pull keeps it.
-  Future<void> renewLease() => store.prefSet(syncLeaseKey, '${_now().millisecondsSinceEpoch}');
+  Future<void> renewLease() => store.hostPrefSet(syncLeaseKey, '${_now().millisecondsSinceEpoch}');
 
   /// Releases the lease.
-  Future<void> releaseLease() => store.prefSet(syncLeaseKey, null);
+  Future<void> releaseLease() => store.hostPrefSet(syncLeaseKey, null);
 
   // ---------------------------------------------------------------------------
   // One run
   // ---------------------------------------------------------------------------
 
-  /// Pulls the read-only pairs the active bundle reads, then pushes every writable bucket with queued ops.
+  /// Pulls every pair the device holds, then pushes every writable bucket with queued ops.
   ///
   /// [readSchemas] is the active manifest's `requires.data`: ordinary sync follows the **active** bundle,
-  /// which is why a newly required pair has no route onto the device except §2.3 step 7.
+  /// which is why a newly required pair has no route onto the device except §2.3 step 7. Writable buckets
+  /// are pulled separately, because they can never appear in it.
   Future<ValenceSyncResult> run({
     required Map<String, int> readSchemas,
     List<String>? only,
@@ -133,6 +134,25 @@ final class ValenceSync {
         } on http.ClientException catch (err) {
           offline = true;
           _log('sync: offline pulling ${e.key} v${e.value}: $err');
+        }
+      }
+      // Writable buckets are pulled too, at schema 1 (§5.4). They can never be in `readSchemas`: that is
+      // the active manifest's `requires.data`, and both check 5 and the CLI refuse a writable bucket
+      // there. Without this a user bucket is push-only — device B never sees device A's row, a reinstall
+      // comes back empty, and §5.5's "A writes 4, A syncs, B writes 7, A syncs leaves A holding 7" cannot
+      // happen at all. Pulled before the push, so the outbox skip in applyPullPage is what protects a
+      // write that has not been acknowledged yet.
+      for (final bucket in config.writableBuckets) {
+        if (wanted != null && !wanted.contains(bucket)) continue;
+        try {
+          changed += await pullPair(bucket, 1);
+          if (!touched.contains(bucket)) touched.add(bucket);
+        } on SocketException catch (err) {
+          offline = true;
+          _log('sync: offline pulling $bucket v1: $err');
+        } on http.ClientException catch (err) {
+          offline = true;
+          _log('sync: offline pulling $bucket v1: $err');
         }
       }
       for (final bucket in await store.outboxBuckets()) {

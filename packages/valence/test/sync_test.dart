@@ -71,13 +71,13 @@ void main() {
 
     test('a lease time in the future counts as expired', () async {
       // Clock skew or tampering must not be able to park every sync for ever.
-      await store.prefSet('valence.sync.lease', '${DateTime(2030).millisecondsSinceEpoch}');
+      await store.hostPrefSet('valence.sync.lease', '${DateTime(2030).millisecondsSinceEpoch}');
       final s = syncWith(MockClient((_) async => http.Response('{}', 200)));
       expect(await s.acquireLease(), isTrue);
     });
 
     test('a non-numeric lease value does not wedge sync', () async {
-      await store.prefSet('valence.sync.lease', 'not a number');
+      await store.hostPrefSet('valence.sync.lease', 'not a number');
       expect(await syncWith(MockClient((_) async => http.Response('{}', 200))).acquireLease(), isTrue);
     });
 
@@ -99,7 +99,7 @@ void main() {
         config: testConfig(key, dataSchemas: {'plants': 1}),
       );
       await s.run(readSchemas: {'plants': 1});
-      expect(await store.prefGet('valence.sync.lease'), isNull);
+      expect(await store.hostPrefGet('valence.sync.lease'), isNull);
     });
 
     test('run skips when another sync holds the lease', () async {
@@ -454,6 +454,75 @@ void main() {
       ).run(readSchemas: {});
       expect(await store.outbox('shelf'), hasLength(1));
       expect(log.has('not writable'), isTrue);
+    });
+  });
+
+  group('a writable bucket is pulled as well as pushed (§5.5)', () {
+    ValenceConfig userCfg() => testConfig(key, dataSchemas: {'plants': 1}, writableBuckets: {'shelf'});
+
+    test('a run pulls every writable bucket, so a second device sees the row', () async {
+      // A writable bucket can never appear in `readSchemas`: that is the active manifest's
+      // `requires.data`, and both check 5 and the CLI refuse a writable bucket there. Pulled only through
+      // that map, a user bucket is push-only — device B never sees device A's row, and a reinstall comes
+      // back empty — so §5.5's "A writes 4, A syncs, B writes 7, A syncs leaves A holding 7" is impossible.
+      final asked = <String>[];
+      final s = syncWith(
+        MockClient((req) async {
+          asked.add(req.url.path);
+          if (req.url.path.endsWith('/shelf')) {
+            return http.Response(
+              jsonEncode({'rows': [row('from-b', {'n': 7}, 701)], 'max': 701, 'more': false}),
+              200,
+            );
+          }
+          return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+        }),
+        config: userCfg(),
+      );
+
+      final result = await s.run(readSchemas: {'plants': 1});
+      expect(asked.any((p) => p.endsWith('/shelf')), isTrue, reason: 'the writable bucket is pulled');
+      expect(result.buckets, contains('shelf'));
+      expect(await store.get('shelf', 1, 'from-b'), {'n': 7});
+      expect(await store.maxUsn('shelf', 1), 701, reason: 'so the next pull is incremental');
+    });
+
+    test('a pull never clobbers a write that has not been acknowledged', () async {
+      // The pull of a writable bucket is exactly where applyPullPage's outbox skip earns its keep: the row
+      // the user just wrote must survive until its own push is acked.
+      await store.put('shelf', 'mine', {'n': 4}, opId: 'op-1');
+      final s = syncWith(
+        MockClient((req) async {
+          if (req.url.path.endsWith('/shelf')) {
+            return http.Response(
+              jsonEncode({'rows': [row('mine', {'n': 99}, 901)], 'max': 901, 'more': false}),
+              200,
+            );
+          }
+          if (req.url.path.endsWith('/shelf/push')) {
+            return http.Response(jsonEncode({'acked': ['op-1'], 'rows': [row('mine', {'n': 4}, 902)]}), 200);
+          }
+          return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+        }),
+        config: userCfg(),
+      );
+      await s.run(readSchemas: {'plants': 1});
+      expect(await store.get('shelf', 1, 'mine'), {'n': 4}, reason: 'the local write won until it was acked');
+      expect(await store.outboxBuckets(), isEmpty, reason: 'and then it was pushed');
+    });
+
+    test('`only` still scopes the run', () async {
+      final asked = <String>[];
+      final s = syncWith(
+        MockClient((req) async {
+          asked.add(req.url.path);
+          return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+        }),
+        config: userCfg(),
+      );
+      await s.run(readSchemas: {'plants': 1}, only: ['shelf']);
+      expect(asked.any((p) => p.endsWith('/shelf')), isTrue);
+      expect(asked.any((p) => p.endsWith('/plants')), isFalse, reason: 'only scoped it out');
     });
   });
 }
