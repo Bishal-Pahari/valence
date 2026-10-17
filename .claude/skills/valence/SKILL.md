@@ -224,7 +224,9 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
 - **CLI version.** `node valence/valence.mjs version` against the skill's copy, `node ${CLAUDE_SKILL_DIR}/scripts/valence.mjs version`.
 - **Generated code.** `codegen --check`.
 - **Docs drift.** Spawn the docs-scout.
-- **Bundle and seed.** The built-in bundle verifies, and `seed.db` exists.
+- **Bundle and seed.** The built-in bundle verifies, and `seed.db` exists. **"Verifies" only ever meant signatures and hashes, so say that in the row** — a built-in bundle whose `requires.bridge` is above the version the host reports verifies perfectly and cannot start (contracts §2.4 step 1). Compare the two numbers: `requires.bridge` in the built-in `manifest.json` against `hostBridgeVersion` in the generated `bridge.g.dart`, and against any second place the host reports a bridge version. A mismatch is a **FAIL**, not a warning: on a fresh install it means a blank screen.
+- **Committed files the layout names.** `.valence/baseline.json` and `.valence/stack-check.md` both exist. Contracts §1 calls them committed and Phase 3 gates on the stack report, but an `init` that never reached the docs-scout phase leaves `stack-check.md` missing — and `init` and `doctor` have both completed without a word about it. **WARN** when it is absent, and name the phase that writes it.
+- **Pub resolution.** `flutter pub get` in the host actually resolves, and `pubspec.yaml` matches the pins in §Stack baseline. Independently valid constraints do not compose (see the §6 packages row), and this is the one row CI can run cheaply.
 - **Policy:**
   - routes compared with `.valence/baseline.json`, and whether that comparison is active at all (`web.declaredRoutes` for an app that routes in JavaScript);
   - no native files in the web output;

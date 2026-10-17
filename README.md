@@ -2,6 +2,8 @@
 
 **Keep the core. Swap the shell.** Your web app becomes your mobile app's interface. A small Flutter core ships through the stores once; every UI release after that is signed, tried on each phone and rolled back on its own if it fails. Data lives in native SQLite, so it works offline.
 
+> **Android today · iOS experimental.** Everything here has been built and run on Android, on real devices and emulators. The iOS paths are specified and implemented but **nobody has run them**: there is no Apple hardware on the machines Valence is developed and tested on. Treat iOS as experimental and untested until that changes.
+
 Every UI change to a native app normally waits on App Store and Play review, and teams end up maintaining the same logic twice, once for the web and once for mobile. Valence fixes both:
 
 - **One web codebase** (SvelteKit, or any SPA that builds to static files) is both the website and the app's UI.
@@ -46,7 +48,7 @@ Every UI change to a native app normally waits on App Store and Play review, and
 
 Yes, within limits.
 
-- **Apple:** the Developer Program License Agreement §3.3.1(B) allows downloaded *interpreted* code (JS in WebKit) as long as it doesn't change the app's advertised purpose, bypass OS security, or create a storefront.
+- **Apple:** the Developer Program License Agreement §3.3.1(B) allows downloaded *interpreted* code (JS in WebKit) as long as it doesn't change the app's advertised purpose, bypass OS security, or create a storefront. The policy reading is current; the **iOS implementation is untested** (see above), so no Valence app has been through App Store review yet.
 - **Google Play** exempts "JavaScript in a webview".
 - **Native code can never be downloaded**, and the bundler refuses it.
 

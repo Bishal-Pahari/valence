@@ -2,6 +2,8 @@
 
 This file is the source of truth for every layer. Code must match it. If code and spec disagree, fix the code or change the spec in the same commit. Never let them drift.
 
+**Platform status: Android is tested, iOS is experimental and untested.** Every rule here has been exercised on Android devices and emulators. The iOS rules — App Groups for the widget (§5.6), `NSURLIsExcludedFromBackupKey` (§2.4), WKWebView's App-Bound Domains, `BGTaskScheduler` (§5.6), and the App Store policy reading in §7 — are specified and must be implemented, but **no one has run them**: there is no Apple hardware on the machines Valence is developed and tested on. Keep implementing them; do not state them as verified.
+
 Layers:
 
 ```
