@@ -378,6 +378,45 @@ test('a schema shipped in a store build is additive only', () => {
   assert.throws(() => codegen({ root, cfg }), /cannot be removed/);
 });
 
+test('a second --store build cannot quietly rewrite the schema the stores reviewed', () => {
+  const { root, cfg, key } = fixture();
+  codegen({ root, cfg });
+  const first = bundle({ root, cfg, key, store: true, now: NOW });
+  assert.equal(first.recorded.bridge, 1);
+  assert.deepEqual(first.recorded.routes, ['/', '/calendar', '/settings']);
+  assert.ok(first.recorded.added.includes('+ method app.ready'), 'the first baseline records the whole schema as new');
+  // The exact hole: codegen refuses a method added at the shipped `since`, and re-running --store used to erase
+  // the baseline that refusal was made against.
+  editSchema(root, (s) => (s.methods['share.early'] = { since: 1, params: {}, returns: 'void' }));
+  assert.throws(() => codegen({ root, cfg }), /needs since > 1/);
+  assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW + 1000 }), /needs since > 1/);
+  const b = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8'));
+  assert.ok(!Object.hasOwn(b.storeSchema.methods, 'share.early'), 'the refused build left the baseline alone');
+  // --rebaseline is the deliberate way out, and it says so.
+  const forced = bundle({ root, cfg, key, store: true, rebaseline: true, now: NOW + 1000 });
+  assert.match(forced.warnings.join('\n'), /--rebaseline overwrote the recorded store schema/);
+  assert.deepEqual(forced.recorded.added, ['+ method share.early']);
+  // An additive bump still goes through untouched, and reports what it added.
+  editSchema(root, (s) => {
+    s.version = 2;
+    s.methods['share.text'] = { since: 2, params: { text: 'string' }, returns: 'void' };
+  });
+  const bumped = bundle({ root, cfg, key, store: true, now: NOW + 2000 });
+  assert.deepEqual(bumped.recorded.added, ['+ method share.text']);
+  assert.equal(bumped.warnings.length, 0);
+});
+
+test('a store build warns when a channel still points below it', () => {
+  const { root, cfg, key } = fixture();
+  // A project with no channel yet has nothing to be stale.
+  assert.equal(bundle({ root, cfg, key, store: true, now: NOW }).warnings.length, 0);
+  const ota = bundle({ root, cfg, key, now: NOW + 1000 });
+  pointer({ root, cfg, channel: 'production', rollout: 100 });
+  const store = bundle({ root, cfg, key, store: true, now: NOW + 2000 });
+  assert.ok(store.manifest.seq > ota.manifest.seq, 'a store build outranks the release staged before it');
+  assert.match(store.warnings.join('\n'), /channel "production" points at \d+, below this store build's seq/);
+});
+
 test('schema validation catches names that would break the generated code', () => {
   const base = JSON.parse(readFileSync(join(TEMPLATES, 'bridge.schema.json'), 'utf8'));
   const bad = (mutate, re) => {

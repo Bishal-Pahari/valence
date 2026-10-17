@@ -233,7 +233,7 @@ const relativeAssetRefs = (html) => {
 };
 
 // store: this built-in bundle goes to the stores, so its routes and bridge schema become the baseline (implies builtin).
-export function bundle({ root, cfg, key, builtin = false, store = false, floor, requiresBridge, urgent = false, now = Date.now() }) {
+export function bundle({ root, cfg, key, builtin = false, store = false, rebaseline = false, floor, requiresBridge, urgent = false, now = Date.now() }) {
   builtin ||= store;
   const p = paths(root, cfg);
   const src = resolve(root, cfg.web.out);
@@ -243,6 +243,19 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
   const schema = readJson(p.schema);
   const keyring = readJson(p.keyring);
   const warnings = [];
+  // `--store` is the only thing that writes `storeSchema`, and `storeSchema` is the only thing `codegen`'s
+  // additive-only guard checks against. So a second `--store` run silently rewrites the record of what the stores
+  // reviewed, and a change `codegen` had just refused then passes — with nothing left to show it was ever refused.
+  // Check the new schema against the recorded one here too, with the same rules, and make losing the record explicit.
+  if (store && baseline.storeSchema) {
+    if (rebaseline) {
+      warnings.push(
+        `--rebaseline overwrote the recorded store schema (version ${baseline.storeSchema.version} -> ${schema.version}). The additive-only guard now compares against this build, not against what the stores reviewed. Only correct if nothing from the old baseline is installed anywhere.`,
+      );
+    } else {
+      assertAdditive(baseline.storeSchema, schema);
+    }
+  }
   const files = {};
   const blobs = new Map();
   for (const rel of walk(src)) {
@@ -346,9 +359,34 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
   verifyBundle({ manifestPath, filesDir, keyring, appId: cfg.appId });
 
   const next = { ...baseline, lastSeq: seq, floor: manifest.floor };
-  if (store) Object.assign(next, { storeSeq: seq, storeRoutes: routes, storeSchema: schema });
+  let recorded;
+  if (store) {
+    Object.assign(next, { storeSeq: seq, storeRoutes: routes, storeSchema: schema });
+    // Say what the baseline now claims the stores have reviewed. It is the one file nobody can reconstruct later.
+    const added = [];
+    for (const kind of ['methods', 'events', 'types']) {
+      for (const name of Object.keys(schema[kind] ?? {})) {
+        if (!Object.hasOwn(baseline.storeSchema?.[kind] ?? {}, name)) added.push(`+ ${kind.slice(0, -1)} ${name}`);
+      }
+    }
+    recorded = { bridge: schema.version, routes, added };
+    // A store build always outranks the OTA release staged on top of the previous one (§2.4 step 1), so the channel
+    // now points at a seq no device will ever install again, and an update-path test becomes a test that there is no
+    // update. Release again after the store build; never before it.
+    const channelsDir = join(p.ota, 'channels');
+    if (existsSync(channelsDir)) {
+      for (const f of readdirSync(channelsDir).filter((f) => f.endsWith('.json'))) {
+        const stale = readJson(join(channelsDir, f)).seq;
+        if (typeof stale === 'number' && stale < seq) {
+          warnings.push(
+            `channel "${f.slice(0, -5)}" points at ${stale}, below this store build's seq ${seq}. A newer built-in bundle wins, so no device will take that release again: cut the OTA release after the store build, not before it.`,
+          );
+        }
+      }
+    }
+  }
   writeJson(p.baseline, next);
-  return { manifest, manifestPath, filesDir, warnings };
+  return { manifest, manifestPath, filesDir, warnings, recorded };
 }
 
 // §3 reserves /_host/ for the host's own routes, so a bundle file there is unreachable and would be shadowed by them.
@@ -761,9 +799,10 @@ const HELP = `Valence CLI ${VALENCE_VERSION} (spec: references/contracts.md)
   valence version                        print the CLI version (doctor compares it with the skill copy)
   valence keygen                         new Ed25519 key in ~/.valence/keys, public key into valence/keyring.json
   valence codegen [--check]              bridge.schema.json -> bridge.g.ts, bridge.g.dart, config.g.dart
-  valence bundle [--builtin | --store] [--floor N] [--requires-bridge N] [--urgent] [--key file]
+  valence bundle [--builtin | --store [--rebaseline]] [--floor N] [--requires-bridge N] [--urgent] [--key file]
                                     sign the web build: --builtin into the host assets, else into .valence/dist-ota;
-                                    --store = --builtin for a build you submit to the stores (records the baseline)
+                                    --store = --builtin for a build you submit to the stores (records the baseline);
+                                    --rebaseline lets --store overwrite a recorded store schema it would otherwise refuse
   valence pointer [--channel production] [--seq N] --rollout 0..100
   valence verify --manifest file --files dir
                                     --files is the content-addressed files/ directory inside the bundle, not the bundle directory
@@ -781,6 +820,7 @@ export async function main(argv) {
       check: { type: 'boolean', default: false },
       builtin: { type: 'boolean', default: false },
       store: { type: 'boolean', default: false },
+      rebaseline: { type: 'boolean', default: false },
       urgent: { type: 'boolean', default: false },
       floor: { type: 'string' },
       'requires-bridge': { type: 'string' },
@@ -811,12 +851,13 @@ export async function main(argv) {
       key: loadSigningKey(cfg, readJson(p.keyring), v.key),
       builtin: v.builtin,
       store: v.store,
+      rebaseline: v.rebaseline,
       urgent: v.urgent,
       floor: v.floor === undefined ? undefined : int(v.floor, '--floor'),
       requiresBridge: v['requires-bridge'] === undefined ? undefined : int(v['requires-bridge'], '--requires-bridge', 1),
     });
     for (const w of r.warnings) console.warn(`warning: ${w}`);
-    return log({ seq: r.manifest.seq, files: Object.keys(r.manifest.files).length, manifest: r.manifestPath });
+    return log({ seq: r.manifest.seq, files: Object.keys(r.manifest.files).length, manifest: r.manifestPath, ...(r.recorded ? { recorded: r.recorded } : {}) });
   }
   if (cmd === 'pointer') {
     if (v.rollout === undefined) throw new Error('--rollout is required (0..100)');
