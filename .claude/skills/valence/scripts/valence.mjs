@@ -602,7 +602,19 @@ List<T> _list<T>(Object? v, String f, T Function(Object? e, String p) each) {
   return [for (var i = 0; i < v.length; i++) each(v[i], '$f[$i]')];
 }
 
-String _ok(Object? id, Object? v) => jsonEncode({'id': id, 'ok': true, 'v': v});
+/// contracts §4.2: the per-message cap, well under Android's process-wide Binder transaction buffer.
+const maxMessageBytes = 262144;
+
+String _ok(Object? id, Object? v) {
+  final s = jsonEncode({'id': id, 'ok': true, 'v': v});
+  // An over-cap reply would overrun Binder and kill the webview, with no reply and nothing either side can catch —
+  // and a webview death while a trial is on screen spends a strike, so a healthy bundle can be marked bad. We still
+  // have the id here, so turn it into an error the page can actually see (§4.2).
+  if (utf8.encode(s).length > maxMessageBytes) {
+    return _err(id, 'E_TOO_LARGE', 'reply is over the $maxMessageBytes byte bridge cap; page the request');
+  }
+  return s;
+}
 String _err(Object? id, String code, String message) =>
     jsonEncode({'id': id, 'ok': false, 'e': {'code': code, 'message': message}});
 String _event(String name, Object? payload) => 'window.__valence&&window.__valence.e(\${jsonEncode(name)},\${jsonEncode(payload)})';

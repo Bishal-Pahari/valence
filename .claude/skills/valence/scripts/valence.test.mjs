@@ -457,6 +457,17 @@ test('client.ts round-trips calls with the nonce, errors, events and the web shi
   );
   assert.equal(sent.length, before, 'nothing was posted');
 
+  // The cap is bytes, not UTF-16 code units: this string is well under the cap by length and well over it by size,
+  // and a host rejecting it before decoding has no id to reply with, so client.ts has to be the one that refuses.
+  const multibyte = 'ゆ'.repeat(Math.floor(c.MAX_MESSAGE_BYTES / 2));
+  assert.ok(multibyte.length < c.MAX_MESSAGE_BYTES, 'under the cap measured in code units');
+  await assert.rejects(
+    c.call('prefs.set', { key: 'big', value: multibyte }),
+    (e) => e instanceof c.BridgeError && e.code === 'E_TOO_LARGE',
+  );
+  assert.equal(sent.length, before, 'still nothing posted');
+
+
   delete window.Valence;
   c.installShim({ 'prefs.get': async ({ key }) => `web:${key}` });
   assert.equal(await c.call('prefs.get', { key: 'theme' }), 'web:theme');

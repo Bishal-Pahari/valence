@@ -75,8 +75,10 @@ export function call<M extends keyof Methods>(m: M, ...[params = {} as Params<M>
     const msg = JSON.stringify({ id, n: nonce(), m, p: params });
     // Android routes this through Binder, whose ~1 MB transaction buffer is shared process-wide; overrunning it kills
     // the WebView with nothing either side can catch. Refuse here, where there is still a promise to reject (§4.2).
-    if (msg.length > MAX_MESSAGE_BYTES) {
-      reject(new BridgeError('E_TOO_LARGE', `${m}: message is ${msg.length} bytes, over the ${MAX_MESSAGE_BYTES} byte bridge cap. Bytes do not go through the bridge; serve them over /_host/ instead (contracts §3).`));
+    // Bytes, not UTF-16 code units: a multi-byte string can be a third of the cap long and three times it in size.
+    const size = new TextEncoder().encode(msg).length;
+    if (size > MAX_MESSAGE_BYTES) {
+      reject(new BridgeError('E_TOO_LARGE', `${m}: message is ${size} bytes, over the ${MAX_MESSAGE_BYTES} byte bridge cap. Bytes do not go through the bridge; serve them over /_host/ instead (contracts §3).`));
       return;
     }
     pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
