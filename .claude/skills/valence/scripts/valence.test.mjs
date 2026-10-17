@@ -223,14 +223,37 @@ test('requires.bridge rising above the shipped store build warns, because it str
   assert.equal(bumped.manifest.requires.bridge, 2);
   assert.match(bridgeWarn(bumped)[0], /--requires-bridge 1/);
 
-  // Pinning it to the oldest host in the field is the lever, and it is silent: nothing is excluded.
+  // Pinning to the oldest host in the field is the lever, and it is the right move — but it is not silent: an
+  // unguarded call to a since: 2 method would then be dead in the field with no build-time or store signal.
   const pinned = bundle({ root, cfg, key, requiresBridge: 1, now: NOW });
   assert.equal(pinned.manifest.requires.bridge, 1);
-  assert.deepEqual(bridgeWarn(pinned), []);
+  assert.ok(!bridgeWarn(pinned).some((w) => w.includes('above the bridge version')));
+  assert.match(bridgeWarn(pinned).join('\n'), /pinned to 1.*share\.image.*has\(\)/s);
 
-  // A store build is allowed to raise it — that build *is* the new floor — and so a fresh project has nothing to warn about.
+  // A store build is allowed to raise it — that build *is* the new floor — and so a fresh project has nothing to say.
   assert.deepEqual(bridgeWarn(bundle({ root, cfg, key, store: true, now: NOW })), []);
   assert.deepEqual(bridgeWarn(bundle({ root, cfg, key, now: NOW })), []);
+});
+
+test('the relative-asset warning ignores script bodies and an absolute base href, and reads srcset', () => {
+  const { root, cfg, key } = fixture();
+  const html = (head) => writeFileSync(join(root, 'web', 'build', 'index.html'), `<!doctype html><head>${head}</head>`);
+  const relWarn = (r) => r.warnings.filter((w) => w.includes('relative URL'));
+
+  // A URL inside a template literal is not a reference a browser resolves, so it must not warn.
+  html('<script type="module" src="/_app/a.js"></script><script>const r = "x.html";</script><style>/* y.css */</style>');
+  assert.deepEqual(relWarn(bundle({ root, cfg, key, now: NOW })), []);
+
+  // An absolute <base href> re-roots every relative reference in the document, so there is nothing to report.
+  html('<base href="/"><script type="module" src="./_app/a.js"></script>');
+  assert.deepEqual(relWarn(bundle({ root, cfg, key, now: NOW })), []);
+
+  // srcset candidate lists and unquoted attributes are references too.
+  html('<script type="module" src="/_app/a.js"></script><img srcset="a.png 1x, ./b.png 2x"><link rel=icon href=c.png>');
+  const w = relWarn(bundle({ root, cfg, key, now: NOW }))[0];
+  assert.match(w, /a\.png/);
+  assert.match(w, /\.\/b\.png/);
+  assert.match(w, /c\.png/);
 });
 
 test('floor only goes up and never exceeds seq', () => {

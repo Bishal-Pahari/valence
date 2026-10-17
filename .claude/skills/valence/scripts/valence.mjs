@@ -215,14 +215,22 @@ function buildCsp(html, cfg, wasm) {
 }
 
 // §3's SPA fallback answers the entry page at any depth, so a relative URL in it resolves against the request path
-// instead of the origin root. Absolute, scheme-relative, root-relative, fragment and query refs are all fine.
-const relativeAssetRefs = (html) => [
-  ...new Set(
-    [...html.matchAll(/\b(?:src|href)\s*=\s*["']([^"']+)["']/gi)]
-      .map((m) => m[1].trim())
-      .filter((u) => u !== '' && !/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/|#|\?)/i.test(u)),
-  ),
-];
+// instead of the origin root. Absolute, scheme-relative, root-relative, fragment and query refs are all fine, and an
+// absolute <base href> re-roots everything so there is nothing to report. Script and style bodies are skipped: a URL
+// inside a template literal is not a reference the browser resolves.
+const relativeAssetRefs = (html) => {
+  if (/<base\b[^>]*\bhref\s*=\s*["']?\/(?!\/)/i.test(html)) return [];
+  // Keep the opening tag (its own src/href is a real reference) and drop only the body.
+  const markup = html.replace(/(<(script|style)\b[^>]*>)[\s\S]*?<\/\2\s*>/gi, '$1');
+  return [
+    ...new Set(
+      [...markup.matchAll(/\b(?:src|srcset|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))/gi)]
+        .flatMap((m) => (m[1] ?? m[2] ?? m[3] ?? '').split(','))
+        .map((u) => u.trim().split(/\s+/)[0])
+        .filter((u) => u !== '' && !/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/|#|\?)/i.test(u)),
+    ),
+  ];
+};
 
 // store: this built-in bundle goes to the stores, so its routes and bridge schema become the baseline (implies builtin).
 export function bundle({ root, cfg, key, builtin = false, store = false, floor, requiresBridge, urgent = false, now = Date.now() }) {
@@ -257,7 +265,7 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
   if (relRefs.length) {
     const shown = relRefs.slice(0, 3).join(', ') + (relRefs.length > 3 ? ', …' : '');
     warnings.push(
-      `${entry} references ${relRefs.length} asset${relRefs.length > 1 ? 's' : ''} by a relative URL (${shown}). The SPA fallback serves the entry page at any depth (contracts §3), so the webview resolves those against the request path and 404s them: a reload or a back gesture on a nested route gives a blank screen with nothing in the log. Build with an absolute base (Vite base: '/', SvelteKit paths.base: ''), because the host owns the whole origin.`,
+      `${entry} references ${relRefs.length} asset${relRefs.length > 1 ? 's' : ''} by a relative URL (${shown}). The SPA fallback serves the entry page at any depth (contracts §3), so the webview resolves those against the request path and 404s them: a reload or a back gesture on a nested route gives a blank screen with nothing in the log. Build so the output references assets from the origin root — base: '/' in Vite; in SvelteKit it is the setting that controls relative asset paths, not the deployment subpath, so check your version's docs. The host owns the whole origin, so a root-relative URL is always right.`,
     );
   }
 
@@ -284,8 +292,20 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
   const storeBridge = baseline.storeSchema?.version;
   if (!builtin && storeBridge !== undefined && bridge > storeBridge) {
     warnings.push(
-      `requires.bridge is ${bridge}, above the bridge version of the last store build (${storeBridge}). Check 5 means every host from that build refuses this bundle — and refuses every later OTA release too, including a copy fix or a security patch, because they inherit the same default until someone passes --requires-bridge on each build. If the newer calls are guarded with has(), build with --requires-bridge ${storeBridge}.`,
+      `requires.bridge is ${bridge}, above the bridge version of the last store build (${storeBridge}). Check 5 means every host from that build refuses this bundle — and refuses every later OTA release too, including a copy fix or a security patch, because they inherit the same default until someone passes --requires-bridge on each build. If the newer calls are guarded with has(), build with --requires-bridge ${storeBridge}. The baseline records only the newest store build, so if an older one is still in the field, pin to that one instead.`,
     );
+  }
+  // Pinning down is the other half, and it is silent without this: check 5 passes on the older host, the bundle loads,
+  // and an unguarded call to a newer method throws E_UNSUPPORTED in the field with no build-time or store signal.
+  if (bridge < schema.version) {
+    const above = Object.entries(schema.methods ?? {})
+      .filter(([, d]) => (d?.since ?? 1) > bridge)
+      .map(([n]) => n);
+    if (above.length) {
+      warnings.push(
+        `requires.bridge is pinned to ${bridge}, below the schema version ${schema.version}, so ${above.length} method${above.length > 1 ? 's' : ''} need a newer host than this bundle asks for: ${above.join(', ')}. Every call to them must be behind has(), or it throws E_UNSUPPORTED on an older host and the feature is simply dead there.`,
+      );
+    }
   }
   const manifestsDir = join(p.ota, 'manifests');
   const localSeqs = existsSync(manifestsDir) ? readdirSync(manifestsDir).filter((f) => /^\d+\.json$/.test(f)).map((f) => parseInt(f, 10)) : [];
