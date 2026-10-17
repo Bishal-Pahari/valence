@@ -4,13 +4,12 @@
 /// builders, and the message cap. It lives in the package so a fix ships once; the generated
 /// `bridge.g.dart` is the only thing that should import it.
 ///
-/// App code wants `package:valence/valence.dart` instead.
+/// App code wants `package:valence/valence.dart` instead, which is also where `BridgeError` lives: a
+/// generated file imports both, and the two surfaces deliberately do not overlap.
 library;
 
 export 'src/wire.dart'
     show
-        BridgeError,
-        BridgeErrorCode,
         bridgeReplyScript,
         decodeBool,
         decodeInt,
@@ -20,6 +19,5 @@ export 'src/wire.dart'
         decodeObject,
         decodeString,
         eventScript,
-        maxMessageBytes,
         replyError,
         replyOk;

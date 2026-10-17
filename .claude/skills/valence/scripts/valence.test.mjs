@@ -1,4 +1,4 @@
-// node --test scripts/valence.test.mjs   (Node >= 22.18 for the client.ts test: it imports .ts via type stripping)
+// node --test scripts/valence.test.mjs   (Node >= 22.18: the bridge test imports .ts through type stripping)
 import {
   cpSync,
   rmSync,
@@ -358,11 +358,14 @@ test('codegen writes once, is stable, survives formatters, and --check detects r
 
 test('a schema shipped in a store build is additive only', () => {
   const { root, cfg, key } = fixture();
+  // The additive rules are exercised on a method the app owns: a built-in's shape is frozen by
+  // assertBuiltinShapes before assertAdditive ever runs, so it cannot be used to probe this.
+  editSchema(root, (s) => (s.methods['haptics.tap'] = { since: 1, params: { heavy: 'bool?' }, returns: 'void' }));
   codegen({ root, cfg });
   bundle({ root, cfg, key, builtin: true, now: NOW });
-  editSchema(root, (s) => (s.methods['data.list'].params.limit = 'int'));
+  editSchema(root, (s) => (s.methods['haptics.tap'].params.heavy = 'bool'));
   codegen({ root, cfg }); // a plain --builtin build (init, local testing) does not freeze the schema
-  editSchema(root, (s) => (s.methods['data.list'].params.limit = 'int?'));
+  editSchema(root, (s) => (s.methods['haptics.tap'].params.heavy = 'bool?'));
   bundle({ root, cfg, key, store: true, now: NOW });
   editSchema(root, (s) => (s.methods['share.early'] = { since: 1, params: {}, returns: 'void' }));
   assert.throws(() => codegen({ root, cfg }), /needs since > 1/);
@@ -372,10 +375,32 @@ test('a schema shipped in a store build is additive only', () => {
     s.methods['share.text'] = { since: 2, params: { text: 'string' }, returns: 'void' };
   });
   codegen({ root, cfg });
-  editSchema(root, (s) => (s.methods['data.get'].returns = 'string'));
+  editSchema(root, (s) => (s.methods['haptics.tap'].returns = 'string'));
   assert.throws(() => codegen({ root, cfg }), /cannot change/);
-  editSchema(root, (s) => delete s.methods['data.get']);
+  editSchema(root, (s) => delete s.methods['haptics.tap']);
   assert.throws(() => codegen({ root, cfg }), /cannot be removed/);
+});
+
+test('a built-in may be omitted but not redefined, because the package implements it', () => {
+  const { root, cfg } = fixture();
+  // The generated ValenceBuiltins delegates these to the valence package. A schema that keeps the name
+  // and changes the shape would compile and then pass the wrong arguments to the runtime, so codegen
+  // refuses it rather than leaving a wrong host to find on a device.
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  const bad = (mutate, re) => {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), re);
+  };
+  bad((s) => (s.methods['data.list'].params.limit = 'int'), /must stay/);
+  bad((s) => (s.methods['data.list'].params.after = 'string?'), /must stay/);
+  bad((s) => (s.methods['prefs.get'].returns = 'string'), /must return string\?/);
+  bad((s) => (s.types.SyncResult.changed = 'num'), /fields are not/);
+  bad((s) => (s.methods['data.list'].returns = 'Row'), /a type with \{key, value, usn\}\[\]/);
+  // Omitting one is fine: an app that never syncs simply has no sync.now, and ValenceBuiltins drops it.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => delete s.methods['sync.now']);
+  assert.ok(codegen({ root, cfg }).written.length);
 });
 
 test('schema validation catches names that would break the generated code', () => {
@@ -442,21 +467,38 @@ test('the CLI runs through a linked path (npm bin links, junctions)', () => {
 
 // ---------- web client ----------
 
-test('client.ts round-trips calls with the nonce, errors, events and the web shim', async () => {
+// The runtime is @getvalence/bridge now, and it has its own tests. What is under test here is the
+// generated binding: that bridge.g.ts wires METHOD_SINCE into createBridge and re-exports the pieces an
+// app imports. The temp project has no node_modules, so the bare import is pointed at the package's
+// source — which Node runs directly through type stripping, same as the generated .ts itself.
+const BRIDGE_SRC = join(import.meta.dirname, '..', '..', '..', '..', 'packages', 'bridge', 'src', 'index.ts');
+
+test('the generated bridge binds the package: nonce, errors, events, the cap and the web shim', async () => {
   const { root, cfg } = fixture();
+  editSchema(root, (s) => {
+    s.version = 2;
+    s.methods['later.method'] = { since: 2, params: {}, returns: 'void' };
+  });
   codegen({ root, cfg });
   const lib = join(root, cfg.web.lib);
-  const src = readFileSync(join(TEMPLATES, 'client.ts'), 'utf8').replace("from './bridge.g'", "from './bridge.g.ts'");
-  writeFileSync(join(lib, 'client.ts'), src);
+  const gen = join(lib, 'bridge.g.ts');
+  writeFileSync(gen, readFileSync(gen, 'utf8').replaceAll("'@getvalence/bridge'", JSON.stringify(pathToFileURL(BRIDGE_SRC).href)));
   const sent = [];
   globalThis.document = { querySelector: () => ({ content: 'nonce-1' }) };
   globalThis.window = { Valence: { postMessage: (s) => sent.push(JSON.parse(s)) } };
-  const c = await import(pathToFileURL(join(lib, 'client.ts')).href);
+  const c = await import(pathToFileURL(gen).href);
 
-  const info = c.call('app.info');
-  window.__valence.r({ id: sent[0].id, ok: true, v: { bridge: 1 } });
-  assert.equal((await info).bridge, 1);
+  // connect() is what makes has() answerable: it asks the host which bridge version it implements.
+  const connected = c.connect();
+  assert.equal(sent[0].m, 'app.info');
   assert.equal(sent[0].n, 'nonce-1');
+  window.__valence.r({ id: sent[0].id, ok: true, v: { bridge: 1 } });
+  await connected;
+  assert.equal(c.has('data.get'), true);
+  // METHOD_SINCE is generated, and this is what it is for: a method added in a later release is refused
+  // against an older host without a round trip, instead of coming back as E_UNKNOWN.
+  assert.equal(c.has('later.method'), false);
+  await assert.rejects(c.call('later.method'), (e) => e.code === 'E_UNSUPPORTED');
 
   const get = c.call('data.get', { bucket: 'b', key: 'k' });
   assert.deepEqual(sent[1], { id: sent[1].id, n: 'nonce-1', m: 'data.get', p: { bucket: 'b', key: 'k' } });
@@ -502,35 +544,69 @@ test('client.ts round-trips calls with the nonce, errors, events and the web shi
 
 // ---------- generated Dart ----------
 
-const hasDart = (() => {
+const hasFlutter = (() => {
   try {
-    execSync('dart --version', { stdio: 'ignore' });
+    execSync('flutter --version', { stdio: 'ignore' });
     return true;
   } catch {
     return false;
   }
 })();
 
-test('generated Dart analyzes cleanly and dispatch behaves per contracts §4.2', { skip: !hasDart && 'dart is not on PATH' }, () => {
-  const { root, cfg } = fixture();
-  editSchema(root, (s) => {
-    s.types.Empty = {};
-    s.methods['x.edge'] = { since: 1, params: { blobs: 'json[]?', rows: 'Row[]?', type: 'string', empty: 'Empty?' }, returns: 'Row[]?' };
-    s.events['x.rowAdded'] = { since: 1, payload: { row: 'Row', more: 'Row[]?' } };
-  });
-  codegen({ root, cfg });
-  const dir = join(root, cfg.host.dir, 'lib', 'valence');
-  writeFileSync(join(dir, 'main.dart'), DART_MAIN);
-  execSync(`dart analyze --fatal-infos "${dir}"`, { stdio: 'pipe' });
-  const out = execSync(`dart run "${join(dir, 'main.dart')}"`, { encoding: 'utf8' });
-  assert.match(out, /ALL OK/);
-});
+const PKG = join(import.meta.dirname, '..', '..', '..', '..', 'packages', 'valence').replaceAll('\\', '/');
 
-const DART_MAIN = `
+// The generated Dart imports package:valence, and ValenceConfig and Valence are Flutter types, so the
+// compile gate is a throwaway Flutter project with a path dependency on the package in this repo, not
+// `dart run` on a loose file. `--offline` keeps it off the network; the package's own pub get fills the
+// cache. The behaviour below is the same §4.2 matrix the generated dispatcher has always had to satisfy.
+test(
+  'generated Dart analyzes cleanly against the package, and dispatch behaves per contracts §4.2',
+  { skip: !hasFlutter && 'flutter is not on PATH', timeout: 600_000 },
+  () => {
+    const { root, cfg } = fixture();
+    editSchema(root, (s) => {
+      s.types.Empty = {};
+      s.methods['x.edge'] = { since: 1, params: { blobs: 'json[]?', rows: 'Row[]?', type: 'string', empty: 'Empty?' }, returns: 'Row[]?' };
+      s.events['x.rowAdded'] = { since: 1, payload: { row: 'Row', more: 'Row[]?' } };
+    });
+    codegen({ root, cfg });
+    const app = join(root, cfg.host.dir);
+    writeFileSync(join(app, 'pubspec.yaml'), PROBE_PUBSPEC);
+    writeFileSync(join(app, 'analysis_options.yaml'), 'include: package:flutter_lints/flutter.yaml\n');
+    mkdirSync(join(app, 'test'), { recursive: true });
+    writeFileSync(join(app, 'test', 'dispatch_test.dart'), DART_TEST);
+    execSync('flutter pub get --offline', { cwd: app, stdio: 'pipe' });
+    // The generated code is held to the analyzer's strictest setting, because an app's CI will be.
+    execSync(`dart analyze --fatal-infos "${join(app, 'lib')}"`, { stdio: 'pipe' });
+    assert.match(execSync('flutter test', { cwd: app, encoding: 'utf8' }), /All tests passed/);
+  },
+);
+
+const PROBE_PUBSPEC = `name: valence_probe
+publish_to: none
+environment:
+  sdk: ^3.6.0
+dependencies:
+  flutter:
+    sdk: flutter
+  valence:
+    path: ${PKG}
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+`;
+
+// Implements BridgeHandlers directly rather than extending the generated ValenceBuiltins: what is under
+// test here is the generated marshalling, and ValenceBuiltins would need a live runtime behind it. The
+// example app covers the other direction — the built-ins reaching the package for real.
+const DART_TEST = `
 import 'dart:convert';
 
-import 'bridge.g.dart';
-import 'config.g.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:valence/valence.dart';
+import 'package:valence_probe/valence/bridge.g.dart';
+import 'package:valence_probe/valence/config.g.dart';
 
 final class H implements BridgeHandlers {
   @override
@@ -543,7 +619,9 @@ final class H implements BridgeHandlers {
   Future<List<Row>> dataList(DataListParams p) async => [Row(key: p.prefix ?? '-', value: p.limit, usn: 1)];
   @override
   Future<void> dataPut(DataPutParams p) async {
-    if (!valenceWritableBuckets.contains(p.bucket)) throw const BridgeError('E_DENIED', 'read-only bucket');
+    if (!valenceConfig.writableBuckets.contains(p.bucket)) {
+      throw const BridgeError(BridgeErrorCode.denied, 'read-only bucket');
+    }
   }
   @override
   Future<SyncResult> syncNow(SyncNowParams p) async => SyncResult(buckets: p.buckets ?? const [], changed: 0, offline: true);
@@ -559,44 +637,63 @@ final class H implements BridgeHandlers {
   Future<List<Row>?> xEdge(XEdgeParams p) async => p.blobs == null ? null : [Row(key: p.type, value: p.blobs, usn: p.rows?.length ?? 0)];
 }
 
-const n = 'n1';
-Future<Map<String, Object?>> call(String raw) async => jsonDecode(await bridgeDispatch(H(), raw, nonce: n)) as Map<String, Object?>;
-String code(Map<String, Object?> r) => (r['e'] as Map)['code'] as String;
+Future<Map<String, Object?>> call(String raw) async =>
+    jsonDecode(await bridgeDispatch(H(), raw, nonce: 'n1')) as Map<String, Object?>;
+String code(Map<String, Object?> r) => (r['e']! as Map)['code'] as String;
 
-void check(bool ok, String what) {
-  if (!ok) throw StateError('FAILED: \$what');
-}
+void main() {
+  test('the generated config is wired to the generated bridge version', () {
+    expect(valenceConfig.bridgeVersion, hostBridgeVersion);
+  });
 
-Future<void> main() async {
-  var r = await call('{"id":1,"n":"n1","m":"data.get","p":{"bucket":"calendar","key":"2026-01"}}');
-  check(r['ok'] == true && (r['v'] as Map)['line'] == '\\u2028"', 'data.get round trip incl. U+2028 and quote');
-  r = await call('{"id":1,"m":"data.get","p":{"bucket":"calendar","key":"x"}}');
-  check(code(r) == 'E_DENIED', 'missing nonce');
-  r = await call('{"id":1,"n":"guess","m":"app.info"}');
-  check(code(r) == 'E_DENIED', 'wrong nonce');
-  r = await call('{"id":2,"n":"n1","m":"nope.nope","p":{}}');
-  check(code(r) == 'E_UNKNOWN', 'unknown method');
-  r = await call('{"id":3,"n":"n1","m":"data.get","p":{"bucket":1,"key":"x"}}');
-  check(code(r) == 'E_PARAMS', 'wrong param type');
-  r = await call('{"id":4,"n":"n1","m":"data.get","p":{"bucket":"a","key":"b","evil":1}}');
-  check(code(r) == 'E_PARAMS', 'unknown field');
-  r = await call('{"id":5,"n":"n1","m":"data.put","p":{"bucket":"calendar","key":"k","value":1}}');
-  check(code(r) == 'E_DENIED', 'read-only bucket');
-  r = await call('{"id":6,"n":"n1","m":"data.list","p":{"bucket":"b","limit":2}}');
-  check(((r['v'] as List).first as Map)['value'] == 2, 'list of typed rows');
-  r = await call('{"id":7,"n":"n1","m":"sync.now"}');
-  check(r['ok'] == true && (r['v'] as Map)['offline'] == true, 'missing p means empty params');
-  r = await call('not json');
-  check(code(r) == 'E_PARAMS' && r['id'] == null, 'garbage input');
-  r = await call('{"id":8,"n":"n1","m":"app.ready","p":{"x":1}}');
-  check(code(r) == 'E_PARAMS', 'no-param method rejects fields');
-  r = await call('{"id":9,"n":"n1","m":"x.edge","p":{"type":"t","blobs":null}}');
-  check(r['ok'] == true && r['v'] == null, 'json[]? accepts null');
-  r = await call('{"id":10,"n":"n1","m":"x.edge","p":{"type":"t","blobs":[1,{"a":null}],"rows":[{"key":"k","value":1,"usn":1}],"empty":{}}}');
-  check(((r['v'] as List).first as Map)['usn'] == 1, 'Row[]? and Empty? decode');
-  check(BridgeEvents.syncChanged(buckets: ['a']) == 'window.__valence&&window.__valence.e("sync.changed",{"buckets":["a"]})', 'event script');
-  check(BridgeEvents.xRowAdded(row: const Row(key: 'k', value: null, usn: 1), more: null).contains('"more":null'), 'custom-type event payload');
-  check(bridgeReplyScript('{}') == 'window.__valence&&window.__valence.r({})', 'reply script');
-  print('ALL OK');
+  test('a reply round-trips, escaping U+2028 and quotes', () async {
+    final r = await call('{"id":1,"n":"n1","m":"data.get","p":{"bucket":"calendar","key":"2026-01"}}');
+    expect(r['ok'], isTrue, reason: '\${r['e']}');
+    expect((r['v']! as Map)['line'], '\\u2028"');
+  });
+
+  test('a missing or wrong nonce is denied', () async {
+    expect(code(await call('{"id":1,"m":"data.get","p":{"bucket":"calendar","key":"x"}}')), BridgeErrorCode.denied);
+    expect(code(await call('{"id":1,"n":"guess","m":"app.info"}')), BridgeErrorCode.denied);
+  });
+
+  test('an unknown method is E_UNKNOWN', () async {
+    expect(code(await call('{"id":2,"n":"n1","m":"nope.nope","p":{}}')), BridgeErrorCode.unknown);
+  });
+
+  test('bad params are E_PARAMS, and so is an unknown field', () async {
+    expect(code(await call('{"id":3,"n":"n1","m":"data.get","p":{"bucket":1,"key":"x"}}')), BridgeErrorCode.params);
+    expect(code(await call('{"id":4,"n":"n1","m":"data.get","p":{"bucket":"a","key":"b","evil":1}}')), BridgeErrorCode.params);
+    expect(code(await call('{"id":8,"n":"n1","m":"app.ready","p":{"x":1}}')), BridgeErrorCode.params);
+    expect(code(await call('not json')), BridgeErrorCode.params);
+    expect((await call('not json'))['id'], isNull);
+  });
+
+  test('a handler may deny, and a typed list comes back typed', () async {
+    expect(code(await call('{"id":5,"n":"n1","m":"data.put","p":{"bucket":"calendar","key":"k","value":1}}')), BridgeErrorCode.denied);
+    final r = await call('{"id":6,"n":"n1","m":"data.list","p":{"bucket":"b","limit":2}}');
+    expect(((r['v']! as List).first as Map)['value'], 2);
+  });
+
+  test('a missing p means empty params', () async {
+    final r = await call('{"id":7,"n":"n1","m":"sync.now"}');
+    expect((r['v']! as Map)['offline'], isTrue);
+  });
+
+  test('nullable lists, nullable list returns and an empty type decode', () async {
+    final none = await call('{"id":9,"n":"n1","m":"x.edge","p":{"type":"t","blobs":null}}');
+    expect(none['ok'], isTrue, reason: '\${none['e']}');
+    expect(none['v'], isNull);
+    final some = await call('{"id":10,"n":"n1","m":"x.edge","p":{"type":"t","blobs":[1,{"a":null}],"rows":[{"key":"k","value":1,"usn":1}],"empty":{}}}');
+    expect(((some['v']! as List).first as Map)['usn'], 1);
+  });
+
+  test('event scripts are built by the package', () {
+    expect(
+      BridgeEvents.syncChanged(buckets: ['a']),
+      'window.__valence&&window.__valence.e("sync.changed",{"buckets":["a"]})',
+    );
+    expect(BridgeEvents.xRowAdded(row: const Row(key: 'k', value: null, usn: 1), more: null), contains('"more":null'));
+  });
 }
 `;
