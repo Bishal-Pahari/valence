@@ -574,7 +574,7 @@ test('the generated bridge binds the package: nonce, errors, events, the cap and
   window.__valence.e('sync.changed', { buckets: ['b'] });
   assert.deepEqual(seen, [['a']]);
 
-  // Over the cap, client.ts rejects before postMessage: Binder would otherwise kill the webview with no reply and
+  // Over the cap, the client rejects before postMessage: Binder would otherwise kill the webview with no reply and
   // no error either side can catch, so there has to be a promise left to reject (§4.2).
   const before = sent.length;
   await assert.rejects(
@@ -584,7 +584,7 @@ test('the generated bridge binds the package: nonce, errors, events, the cap and
   assert.equal(sent.length, before, 'nothing was posted');
 
   // The cap is bytes, not UTF-16 code units: this string is well under the cap by length and well over it by size,
-  // and a host rejecting it before decoding has no id to reply with, so client.ts has to be the one that refuses.
+  // and a host rejecting it before decoding has no id to reply with, so the client has to be the one that refuses.
   const multibyte = 'ゆ'.repeat(Math.floor(c.MAX_MESSAGE_BYTES / 2));
   assert.ok(multibyte.length < c.MAX_MESSAGE_BYTES, 'under the cap measured in code units');
   await assert.rejects(

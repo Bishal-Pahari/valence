@@ -30,24 +30,25 @@ The caller gives you:
 ## Procedure
 
 1. **Read the baseline table** in SKILL.md and §3, §4.2, §5 and §7 of contracts.md.
-2. **For each Dart package**, query `https://pub.dev/api/packages/<name>` with `curl -s`.
+2. **Check the two Valence runtimes first**, because everything else is their transitive dependency now: `https://pub.dev/api/packages/valence` and `npm view @getvalence/bridge version`. Report whether the baseline's version is still the latest, and read the package CHANGELOG for anything an adopting app has to change. A drift report that lists `sqflite` or `webview_flutter` without saying which `valence` version carries it is not actionable: an app pins `valence`, not those.
+3. **For each Dart package**, query `https://pub.dev/api/packages/<name>` with `curl -s`.
    - Record `latest.version`, `latest.published`, `latest.pubspec.environment` and `isDiscontinued`/`replacedBy`.
    - If the major or minor version changed since the baseline, read `https://pub.dev/packages/<name>/changelog` and pull out **breaking** entries.
-3. **For each npm package**, run `npm view <name> version time.modified engines`. For a major change, read the package CHANGELOG on GitHub (raw).
-4. **For Flutter**, fetch `https://storage.googleapis.com/flutter_infra_release/releases/releases_<os>.json` and read the `current_release.stable` version, its Dart version and its date. Compare that with the caller's local Flutter version.
-5. **For policy**, fetch:
+4. **For each npm package**, run `npm view <name> version time.modified engines`. For a major change, read the package CHANGELOG on GitHub (raw).
+5. **For Flutter**, fetch `https://storage.googleapis.com/flutter_infra_release/releases/releases_<os>.json` and read the `current_release.stable` version, its Dart version and its date. Compare that with the caller's local Flutter version.
+6. **For policy**, fetch:
    - the Apple App Store Review Guidelines (the "Last Updated" date, plus 2.5.2, 4.2, 4.3, 4.7);
    - the Apple Developer Program License Agreement (§3.3.1(B) text);
    - the Google Play Device and Network Abuse policy (the interpreter exemption and the JavaScript-interface rule).
 
    Flag **any** change in the wording quoted in contracts.md §7.
-6. **Check the platform facts the contracts depend on**, and cite the doc for each:
+7. **Check the platform facts the contracts depend on**, and cite the doc for each:
    - iOS ATS behaviour for `http://127.0.0.1` (is `NSAllowsLocalNetworking` needed?);
    - the Android cleartext rules for loopback;
    - webview_flutter `JavaScriptChannel` and `NavigationDelegate` APIs (still present? signature changes?);
    - `cryptography` Ed25519 verify API;
    - the SvelteKit SPA / adapter-static `fallback` syntax for the current major.
-7. **Classify every finding** with one of these labels:
+8. **Classify every finding** with one of these labels:
    - `none`: no drift;
    - `minor`: a newer version that is compatible;
    - `breaking`: an API or behaviour change needs a code change;
