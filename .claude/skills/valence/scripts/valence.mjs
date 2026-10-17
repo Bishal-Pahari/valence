@@ -277,6 +277,16 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
   }
 
   if (floor !== undefined && floor < (baseline.floor ?? 0)) throw new Error(`--floor ${floor} is below the current floor ${baseline.floor}; the floor only goes up`);
+  // requires.bridge is a one-way door like floor: check 5 makes every host below it refuse this bundle *and* every
+  // later release, because they inherit the same default. has() exists so one bundle can serve old and new hosts, so
+  // say so when the default would undo it.
+  const bridge = requiresBridge ?? schema.version;
+  const storeBridge = baseline.storeSchema?.version;
+  if (!builtin && storeBridge !== undefined && bridge > storeBridge) {
+    warnings.push(
+      `requires.bridge is ${bridge}, above the bridge version of the last store build (${storeBridge}). Check 5 means every host from that build refuses this bundle — and refuses every later OTA release too, including a copy fix or a security patch, because they inherit the same default until someone passes --requires-bridge on each build. If the newer calls are guarded with has(), build with --requires-bridge ${storeBridge}.`,
+    );
+  }
   const manifestsDir = join(p.ota, 'manifests');
   const localSeqs = existsSync(manifestsDir) ? readdirSync(manifestsDir).filter((f) => /^\d+\.json$/.test(f)).map((f) => parseInt(f, 10)) : [];
   // Monotonic even with a slow clock or two builds in one second (commit .valence/baseline.json after each release).
@@ -287,7 +297,7 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
     seq,
     version: `${new Date(now).toISOString().slice(0, 10)}+${seq}`,
     floor: floor ?? baseline.floor ?? 0,
-    requires: { bridge: requiresBridge ?? schema.version, data: cfg.data ?? {} },
+    requires: { bridge, data: cfg.data ?? {} },
     entry,
     csp: buildCsp(blobs.get(files[entry].h).toString('utf8'), cfg, Object.keys(files).some((f) => f.toLowerCase().endsWith('.wasm'))),
     urgent,

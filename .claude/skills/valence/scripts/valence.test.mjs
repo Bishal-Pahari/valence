@@ -209,6 +209,30 @@ test('_host/ is reserved for the host, and a relative asset base in the entry pa
   assert.throws(() => bundle({ root, cfg, key, now: NOW }), /_host\/ is reserved/);
 });
 
+test('requires.bridge rising above the shipped store build warns, because it strands those hosts for ever', () => {
+  const { root, cfg, key } = fixture();
+  bundle({ root, cfg, key, store: true, now: NOW }); // ships bridge 1 to the stores
+  const bridgeWarn = (r) => r.warnings.filter((w) => w.includes('requires.bridge'));
+
+  // A guarded method added at since: 2 bumps the schema version, and the default silently inherits it.
+  editSchema(root, (s) => {
+    s.version = 2;
+    s.methods['share.image'] = { since: 2, params: { png: 'string' }, returns: 'bool' };
+  });
+  const bumped = bundle({ root, cfg, key, now: NOW });
+  assert.equal(bumped.manifest.requires.bridge, 2);
+  assert.match(bridgeWarn(bumped)[0], /--requires-bridge 1/);
+
+  // Pinning it to the oldest host in the field is the lever, and it is silent: nothing is excluded.
+  const pinned = bundle({ root, cfg, key, requiresBridge: 1, now: NOW });
+  assert.equal(pinned.manifest.requires.bridge, 1);
+  assert.deepEqual(bridgeWarn(pinned), []);
+
+  // A store build is allowed to raise it — that build *is* the new floor — and so a fresh project has nothing to warn about.
+  assert.deepEqual(bridgeWarn(bundle({ root, cfg, key, store: true, now: NOW })), []);
+  assert.deepEqual(bridgeWarn(bundle({ root, cfg, key, now: NOW })), []);
+});
+
 test('floor only goes up and never exceeds seq', () => {
   const { root, cfg, key } = fixture();
   bundle({ root, cfg, key, floor: 5, now: NOW });
