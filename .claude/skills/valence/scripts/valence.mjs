@@ -302,6 +302,13 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
   // later release, because they inherit the same default. has() exists so one bundle can serve old and new hosts, so
   // say so when the default would undo it.
   const bridge = requiresBridge ?? schema.version;
+  // A built-in bundle is the one bundle its own host cannot decline: check 5 refuses it on first launch and a fresh
+  // install has no `current` to fall back to, so the app has nothing to paint (§2.4 step 1).
+  if (builtin && bridge > schema.version) {
+    throw new Error(
+      `--requires-bridge ${bridge} is above the schema version ${schema.version}, so this host would refuse its own built-in bundle at check 5 and a fresh install would have nothing to serve. Bump the schema, or drop the flag for a built-in build.`,
+    );
+  }
   const storeBridge = baseline.storeSchema?.version;
   if (!builtin && storeBridge !== undefined && bridge > storeBridge) {
     warnings.push(

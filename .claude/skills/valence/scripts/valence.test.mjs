@@ -406,6 +406,16 @@ test('a second --store build cannot quietly rewrite the schema the stores review
   assert.equal(bumped.warnings.length, 0);
 });
 
+test('a built-in build cannot require a bridge its own host does not have', () => {
+  const { root, cfg, key } = fixture();
+  assert.throws(
+    () => bundle({ root, cfg, key, store: true, requiresBridge: 2, now: NOW }),
+    /would refuse its own built-in bundle at check 5/,
+  );
+  // Pinning an OTA release down is the legitimate use of the flag and stays allowed.
+  assert.equal(bundle({ root, cfg, key, requiresBridge: 1, now: NOW }).manifest.requires.bridge, 1);
+});
+
 test('a store build warns when a channel still points below it', () => {
   const { root, cfg, key } = fixture();
   // A project with no channel yet has nothing to be stale.
