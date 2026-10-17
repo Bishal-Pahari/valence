@@ -64,6 +64,33 @@ store release, because `lib/` changed.
   be invisible to everybody: the page's `await call(...)` rejected inside an
   effect nobody awaited, and nothing reached a log or a screen.
 
+### Found by an independent review of the new packages
+
+Each of these has a regression test, and the spec carries the rule.
+
+- **A writable bucket is pulled as well as pushed**, at schema 1. It can never
+  appear in a bundle's `requires.data`, so pulling only those pairs left user
+  data push-only: a second device never saw a row, and a reinstall came back
+  empty.
+- **A mid-session reload runs §2.4 step 4 only.** Re-running the UI-start
+  transitions made `bundle.applyUpdate` spend a strike on the bundle it was
+  promoting, and made a ready timeout re-serve the failing trial rather than
+  `current` — so the user saw the broken bundle twice, 15 s apart.
+- **Garbage collection keeps the files of a download in flight.** Step 6 writes
+  into the content-addressed store before step 8 writes the manifest that keeps
+  them, so a collection in that window could delete what had just been fetched,
+  and nothing re-fetched it.
+- **A corrupt file of the bundle being *served* is re-fetched** by a repair pass
+  before step 1. There is no step 6 to reach for a bundle that is already
+  `current`, so a rotted entry page was a permanent blank screen.
+- **A refused built-in bundle is remembered by its manifest bytes and the host's
+  bridge version**, not by its seq, so the host upgrade that fixes a check-5
+  mismatch is not skipped by the record meant to save work.
+- **The seed is extracted once per host build**, not on every launch in front of
+  the first frame.
+- **The reserved `valence.` pref prefix is enforced in the store**, so an app
+  that defines its own settings method cannot become a route to the sync lease.
+
 ### You may need to change your host
 
 - **`bad` is final, in every path.** A bundle marked bad could come straight

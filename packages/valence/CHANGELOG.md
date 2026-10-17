@@ -30,4 +30,25 @@ Also here, and not in the generated hosts it replaces:
 - `Valence.publishHostFile`, the only path from native bytes to the page.
 - `Valence.pendingWrites()`, which counts queued deletes a `usn == -1` scan cannot see.
 
-268 tests. `dart analyze --fatal-infos` clean.
+Corrections an independent review found before this first release, each with a regression test:
+
+- **A writable bucket is pulled as well as pushed**, at schema 1. It can never appear in a manifest’s
+  `requires.data`, so a host that pulls only those pairs leaves user data push-only: a second device
+  never sees a row, and a reinstall comes back empty.
+- **A mid-session reload runs §2.4 step 4 only.** Re-running the UI-start transitions made
+  `bundle.applyUpdate` spend a strike on the bundle it was promoting, and made a ready timeout re-serve
+  the failing trial instead of `current`.
+- **Garbage collection keeps the files of a download in flight.** Step 6 writes CAS before step 8 writes
+  the manifest, so a collection in that window could delete what had just been fetched — after which
+  nothing re-fetched it and a healthy release failed its trial twice.
+- **A refused built-in bundle is remembered by its manifest bytes and the host’s bridge version**, not by
+  its seq, so the host upgrade that fixes a check-5 mismatch is not skipped by the record meant to save
+  work. The seq gate also runs before the verify, so an ordinary launch does not check a signature.
+- **A corrupt file of the *active* bundle is re-fetched** by a repair pass before step 1. Step 1 stops
+  before step 6 for a bundle that is already `current`, so a rotted entry page was a permanent blank
+  screen.
+- **The seed is extracted once per host build**, not on every launch in front of the first frame.
+- **`ValenceStore` enforces the reserved `valence.` pref prefix itself**, so an app that defines its own
+  settings method cannot become a route to the sync lease.
+
+284 tests. `dart analyze --fatal-infos` clean. `flutter pub publish --dry-run` has 0 warnings.
