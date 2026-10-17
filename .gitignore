@@ -3,7 +3,7 @@ node_modules/
 *.pem
 packages/bridge/dist/
 packages/bridge/*.tgz
-.omc/
+**/.omc/
 packages/valence/.dart_tool/
 packages/valence/build/
 packages/valence/example/.dart_tool/
