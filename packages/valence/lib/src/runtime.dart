@@ -18,8 +18,17 @@ import 'wire.dart';
 
 export 'config.dart' show ValenceConfig, ValenceSyncMode;
 export 'log.dart' show ValenceLogger, defaultValenceLogger;
-export 'manifest.dart' show ValenceCheckFailure, ValenceManifest;
-export 'server.dart' show hostFileContentTypes;
+export 'manifest.dart'
+    show
+        ValenceCheckFailure,
+        ValenceFileEntry,
+        ValenceManifest,
+        checkManifest,
+        decodePointer,
+        fnv1a32,
+        isReservedBundlePath,
+        isSafeBundlePath;
+export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
 export 'store.dart' show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, maxListLimit;
 export 'sync.dart' show ValenceSync, ValenceSyncResult;

@@ -7,7 +7,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'runtime.dart';
-import 'server.dart';
 import 'wire.dart';
 
 /// Turns one message from the JS channel into a reply. The generated `bridgeDispatch`, partially applied.

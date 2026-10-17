@@ -77,7 +77,11 @@ const _extTypes = <String, String>{
 /// One leading slash and at most one trailing slash are the ordinary shape of a route, so they are
 /// stripped rather than rejected. Anything else empty, `.` or `..` is a 400.
 List<String>? normaliseRequestPath(String path) {
-  var rest = path.startsWith('/') ? path.substring(1) : path;
+  if (!path.startsWith('/')) return null;
+  // Checked on the raw path, before any slash is stripped: otherwise "//" collapses to the root and an
+  // empty segment has slipped through the one guard that exists to catch it.
+  if (path.contains('//')) return null;
+  var rest = path.substring(1);
   if (rest.endsWith('/')) rest = rest.substring(0, rest.length - 1);
   if (rest.isEmpty) return const [];
   final segments = rest.split('/');
