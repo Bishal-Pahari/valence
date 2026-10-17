@@ -19,6 +19,7 @@ final class ValenceState {
     this.serving,
     List<int> bad = const [],
     this.floor = 0,
+    this.builtinRefused,
   }) : bad = [...bad];
 
   /// Reads the state, or makes a fresh one with a new [installId] if the file is absent or unreadable.
@@ -57,6 +58,7 @@ final class ValenceState {
           if (b is int && b >= 1) b,
       ],
       floor: j['floor'] is int && (j['floor']! as int) >= 0 ? j['floor']! as int : 0,
+      builtinRefused: seq('builtinRefused'),
     );
   }
 
@@ -101,6 +103,12 @@ final class ValenceState {
   /// The lowest seq this install may run. A high-water mark that never goes down.
   int floor;
 
+  /// The built-in seq whose checks failed, so step 1 stops re-paying for a refusal on every launch (§2.4).
+  ///
+  /// Cleared as soon as a built-in bundle passes. A refused built-in bundle is never added to [bad]: it is
+  /// not a release this install can decline, and the next store update replaces it.
+  int? builtinRefused;
+
   /// The on-disk shape.
   Map<String, Object?> toJson() => {
         'installId': installId,
@@ -113,6 +121,7 @@ final class ValenceState {
         'serving': serving,
         'bad': bad,
         'floor': floor,
+        'builtinRefused': builtinRefused,
       };
 
   /// Writes atomically: a temp file, flushed, then renamed, so a kill mid-write cannot truncate the state.

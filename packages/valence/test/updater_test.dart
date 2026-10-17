@@ -21,9 +21,19 @@ void main() {
   late File stateFile;
   late ValenceStore store;
 
+  /// Garbage collection is scheduled for the first post-frame callback (§2.4), so a test drives the frame
+  /// itself. Nothing here runs until [pumpFrame] is called, which is also what proves the scheduling.
+  final frames = <Future<void> Function()>[];
+  Future<void> pumpFrame() async {
+    while (frames.isNotEmpty) {
+      await frames.removeAt(0)();
+    }
+  }
+
   setUpAll(() async => key = await TestKey.create());
 
   setUp(() async {
+    frames.clear();
     root = await Directory.systemTemp.createTemp('valence-updater');
     casDir = Directory('${root.path}/cas');
     manifestsDir = Directory('${root.path}/manifests');
@@ -97,6 +107,7 @@ void main() {
       readAsset: (k) async => assets[k] ?? (throw StateError('no asset $k')),
       client: client,
       log: (log ?? LogSpy()).call,
+      afterFrame: frames.add,
       onUpdateReady: onUpdateReady,
     );
   }
@@ -974,6 +985,54 @@ void main() {
       expect(state.bad, contains(20));
       expect((await u.activateForUiStart()).seq, 10);
     });
+
+    test('a built-in bundle that fails its checks is refused, recorded, and not retried', () async {
+      // The expensive mistake: a store build whose requires.bridge is above the version the host reports.
+      final broken = await signBundle(key, seq: 50, requiresBridge: 9);
+      final log = LogSpy();
+      final state = ValenceState(installId: 'i', current: 10);
+      final previous = await signBundle(key, seq: 10);
+      previous.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      final u = makeUpdater(state: state, log: log, assets: broken.asAssets('assets/valence/builtin'));
+
+      expect((await u.activateForUiStart()).seq, 10, reason: 'nothing is promoted, and current is served');
+      expect(state.current, 10);
+      expect(state.builtinRefused, 50);
+      expect(state.bad, isEmpty, reason: 'a built-in bundle is never a release this install can decline');
+      expect(log.has('failed verification'), isTrue);
+
+      // The refusal is recorded, so the next launch does not pay for the verify again — and says so once.
+      final second = LogSpy();
+      final again = makeUpdater(state: state, log: second, assets: broken.asAssets('assets/valence/builtin'));
+      expect((await again.activateForUiStart()).seq, 10);
+      expect(second.has('skipping step 1'), isTrue);
+      expect(second.has('failed verification'), isFalse, reason: 'the signature is not re-verified');
+
+      // A store update with a different seq clears the record and gets a fresh chance.
+      final fixed = await signBundle(key, seq: 51);
+      final third = makeUpdater(state: state, assets: fixed.asAssets('assets/valence/builtin'));
+      expect((await third.activateForUiStart()).seq, 51);
+      expect(state.builtinRefused, isNull);
+      expect(state.current, 51);
+    });
+
+    test('a refused built-in bundle with no current says so natively, naming the check', () async {
+      // A fresh install of a broken store build. There is no bundle left to render an error in, so a blank
+      // WebView is both undebuggable and the worst possible shape for a guideline 4.2.3(ii) review.
+      final broken = await signBundle(key, seq: 50, requiresBridge: 9);
+      final state = ValenceState(installId: 'i');
+      final u = makeUpdater(state: state, assets: broken.asAssets('assets/valence/builtin'));
+      await expectLater(
+        u.activateForUiStart(),
+        throwsA(
+          isA<StateError>()
+              .having((e) => e.message, 'message', contains('check 5'))
+              .having((e) => e.message, 'message', contains('no bundle to serve')),
+        ),
+      );
+      expect(state.builtinRefused, 50);
+      expect(state.current, isNull);
+    });
   });
 
   group('garbage collection (§2.4)', () {
@@ -1057,8 +1116,83 @@ void main() {
           pointerSeq: null,
         ),
       );
+      // The collection is scheduled now, so the frame has to be driven before it has done anything.
+      await pumpFrame();
       expect(await store.get('shelf', 1, 'mine'), {'precious': true});
       expect((await store.allPairs())['shelf'], {1});
+    });
+
+    test('it is scheduled, not run inside the transition that changed the kept set', () async {
+      // Step 1 already pays for a manifest decode, a signature verify and a hash of every file it installs
+      // in front of the first frame. A directory walk and a SQLite transaction on top of that is exactly
+      // the launch that must not get slower, so the collection waits for the first post-frame callback.
+      final builtin = await signBundle(key, seq: 50, files: {'index.html': '<html><head></head>b</html>'});
+      // Two behind current, because a supersede sets previous = current and so only collects one back.
+      final stale = await signBundle(key, seq: 3, files: {'index.html': '<html><head></head>3</html>'});
+      stale.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      (await signBundle(key, seq: 5)).writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      final state = ValenceState(installId: 'i', current: 5, previous: 3);
+      final u = makeUpdater(state: state, assets: builtin.asAssets('assets/valence/builtin'));
+
+      await u.activateForUiStart();
+      expect(state.current, 50, reason: 'the supersede happened');
+      expect(frames, hasLength(1), reason: 'and scheduled a collection');
+      final staleManifest = File('${manifestsDir.path}/3.json');
+      expect(staleManifest.existsSync(), isTrue, reason: 'nothing has been collected yet');
+      await pumpFrame();
+      expect(staleManifest.existsSync(), isFalse);
+    });
+
+    test('a two-strike marking and a commit both schedule a collection', () async {
+      final b = await signBundle(key, seq: 20);
+      b.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      final marking = ValenceState(installId: 'i', current: 10, trial: 20, serving: 20, trialFails: 1);
+      // The WebView is still showing the trial page, whose chunks and fonts are CAS files this marking has
+      // just made collectable. Deleting them under a live page produces a filesystem error where §2.4's
+      // delete-and-500 path should be, and that path cannot recover a seq which is now in bad.
+      makeUpdater(state: marking).countFailure();
+      expect(marking.bad, [20]);
+      expect(frames, hasLength(1));
+
+      frames.clear();
+      final committing = ValenceState(installId: 'i', current: 10, trial: 20, serving: 20);
+      await makeUpdater(state: committing).commitTrial(
+        await checkManifest(
+          bytes: b.bytes,
+          signature: b.signature,
+          config: testConfig(key),
+          state: ValenceState(installId: 'i'),
+          pointerSeq: null,
+        ),
+      );
+      expect(committing.current, 20);
+      expect(frames, hasLength(1));
+    });
+
+    test('the pair step is skipped while another sync holds the lease', () async {
+      // §2.3 step 7 pulls a required pair while holding the lease, and that bundle's manifest is not on
+      // disk until step 8 — so a collection that runs mid-pull would delete a pair the pending bundle
+      // needs, and nothing re-pulls it. Manifests and CAS files have no such hazard.
+      final b = await signBundle(key, seq: 20, requiresData: {'plants': 2});
+      b.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      final stale = await signBundle(key, seq: 5);
+      stale.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      await store.applyPullPage(bucket: 'plants', schema: 1, rows: [dataRow('a', 1, 1)], maxUsnAfter: 1);
+      await store.applyPullPage(bucket: 'plants', schema: 2, rows: [dataRow('a', 2, 1)], maxUsnAfter: 1);
+      final cfg = testConfig(key, dataSchemas: {'plants': 2});
+      final held = ValenceSync(store: store, config: cfg);
+      expect(await held.acquireLease(), isTrue);
+
+      final log = LogSpy();
+      final u = makeUpdater(state: ValenceState(installId: 'i', current: 20), config: cfg, log: log);
+      await u.garbageCollect();
+      expect(log.has('another sync holds the lease'), isTrue);
+      expect(await store.allPairs(), {'plants': {1, 2}}, reason: 'no pair was dropped');
+      expect(File('${manifestsDir.path}/5.json').existsSync(), isFalse, reason: 'manifests still collected');
+
+      await held.releaseLease();
+      await u.garbageCollect();
+      expect(await store.allPairs(), {'plants': {2}});
     });
   });
 

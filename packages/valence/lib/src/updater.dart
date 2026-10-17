@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:http/http.dart' as http;
 
 import 'config.dart';
@@ -15,6 +16,10 @@ import 'sync.dart';
 
 /// Reads one of the app's bundled assets. Injected so the updater is testable without a Flutter binding.
 typedef ValenceAssetReader = Future<Uint8List> Function(String key);
+
+/// Runs [work] on the first post-frame callback. Injected so the updater is testable without a frame.
+void _postFrame(Future<void> Function() work) =>
+    SchedulerBinding.instance.addPostFrameCallback((_) => work());
 
 /// The manifest fetch is capped, because it is read before anything about it is trusted.
 const _manifestSizeCap = 1024 * 1024;
@@ -39,8 +44,10 @@ final class ValenceUpdater {
     required ValenceAssetReader readAsset,
     http.Client? client,
     ValenceLogger log = defaultValenceLogger,
+    void Function(Future<void> Function()) afterFrame = _postFrame,
     this.onUpdateReady,
   })  : _readAsset = readAsset,
+        _afterFrame = afterFrame,
         _client = client ?? http.Client(),
         _log = log;
 
@@ -73,6 +80,15 @@ final class ValenceUpdater {
   final ValenceAssetReader _readAsset;
   final http.Client _client;
   final ValenceLogger _log;
+  final void Function(Future<void> Function()) _afterFrame;
+
+  /// Why the built-in bundle was refused, for the native error screen on an install with no `current`.
+  String? _builtinFailure;
+
+  /// The refusal already logged in this process, so a frozen install logs it once, not once per launch.
+  int? _refusalLogged;
+
+  bool _gcScheduled = false;
 
   /// Persists [state] atomically.
   void save() => state.save(stateFile);
@@ -357,6 +373,8 @@ final class ValenceUpdater {
       } else if (state.bad.contains(pending)) {
         _log('update: dropping pending $pending, which is in bad for this install');
         state.pending = null;
+        // A dropped pending is a change to the kept set, so what it referenced becomes collectable.
+        scheduleGarbageCollect();
       } else {
         state.trial = pending;
         state.pending = null;
@@ -394,9 +412,15 @@ final class ValenceUpdater {
     // built-in bundle that cannot be installed must not be servable either.
     final builtin = await _loadBuiltinManifest(install: true);
     if (builtin == null) {
+      // A fresh install of a broken store build. There is no bundle left to render an error in, so the
+      // host's only honest move is a native screen naming the check that failed: a blank WebView is both
+      // undebuggable and the worst possible shape for a guideline 4.2.3(ii) review (§2.4).
       throw StateError(
-        'valence: no bundle to serve. The built-in bundle is missing or unverifiable — run '
-        '"valence bundle --builtin" and check that ${config.builtinAssetDir} is declared in pubspec.yaml.',
+        'valence: no bundle to serve. The built-in bundle was refused: '
+        '${_builtinFailure ?? 'it is missing from ${config.builtinAssetDir}'}. '
+        'The usual cause is requires.bridge above the version this host reports at check 5. Run '
+        '"valence doctor", then "valence bundle --builtin", and check that ${config.builtinAssetDir} is '
+        'declared in pubspec.yaml.',
       );
     }
     state.serving = null;
@@ -410,8 +434,33 @@ final class ValenceUpdater {
   /// every launch after that. That is what keeps an ordinary launch to a state read, a promotion decision
   /// and a bind.
   Future<void> _installBuiltinIfNewer() async {
+    // A refusal leaves `current` where it was, so the step-1 gate below is true again on the very next
+    // launch and for ever. Without this skip, a broken store build re-decodes the manifest and re-verifies
+    // the signature in front of every first frame on an install that is already beyond saving (§2.4).
+    final refused = state.builtinRefused;
+    if (refused != null && await _builtinSeq() == refused) {
+      if (_refusalLogged != refused) {
+        _refusalLogged = refused;
+        _log('update: the built-in bundle $refused was refused; skipping step 1 until a store update replaces it');
+      }
+      return;
+    }
+
     final builtin = await _loadBuiltinManifest(install: true);
-    if (builtin == null) return;
+    if (builtin == null) {
+      // Nothing else in the state changes — not `current`, not `bad`. A built-in bundle is not a release
+      // this install can decline, and the next store update replaces it.
+      final seq = await _builtinSeq();
+      if (seq != null && state.builtinRefused != seq) {
+        state.builtinRefused = seq;
+        save();
+      }
+      return;
+    }
+    if (state.builtinRefused != null) {
+      state.builtinRefused = null;
+      save();
+    }
     if (builtin.seq <= (state.current ?? 0)) return;
 
     state.previous = state.current;
@@ -433,6 +482,24 @@ final class ValenceUpdater {
     }
     save();
     _log('update: installed the built-in bundle ${builtin.seq} as current');
+    // A store release is the only thing that ever changes the built-in bundle's `requires.data`, which is
+    // what pins the oldest read-only pairs — so this is the event most likely to free disk, and a GC that
+    // runs only after a commit never sees it (§2.4).
+    scheduleGarbageCollect();
+  }
+
+  /// Reads just the `seq` out of the built-in manifest, verifying nothing.
+  ///
+  /// "Has the built-in seq changed" is the only question step 1 needs answered before skipping a refusal,
+  /// and it must not cost the signature verify and the per-file hash that refusal has already paid once.
+  Future<int?> _builtinSeq() async {
+    try {
+      final decoded = jsonDecode(utf8.decode(await _readAsset('${config.builtinAssetDir}/manifest.json')));
+      final seq = decoded is Map<String, Object?> ? decoded['seq'] : null;
+      return seq is int && seq >= 1 ? seq : null;
+    } on Object {
+      return null;
+    }
   }
 
   /// Counts one failed start of the trial, in the one place that may do so.
@@ -457,6 +524,9 @@ final class ValenceUpdater {
         state.pending = null;
       }
       _log('update: trial $trial failed twice; marking it bad');
+      // Scheduled, not run here: the WebView is still showing the trial page, whose lazily loaded chunks
+      // and fonts are CAS files this marking has just made collectable. The caller reloads `current` first.
+      scheduleGarbageCollect();
     } else {
       // One failure can be a user who opened and closed the app at once, so the next UI start tries again.
       _log('update: trial $trial failed once; it gets one more UI start');
@@ -485,7 +555,7 @@ final class ValenceUpdater {
     state.bad.removeWhere((b) => b < state.floor);
     save();
     _log('update: committed ${trialManifest.seq}, floor is now ${state.floor}');
-    await garbageCollect();
+    scheduleGarbageCollect();
   }
 
   /// `bundle.applyUpdate`: the only transition that runs mid-session, and a **full** trial promotion.
@@ -503,6 +573,7 @@ final class ValenceUpdater {
       _log('update: applyUpdate dropping pending $pending, which is in bad');
       state.pending = null;
       save();
+      scheduleGarbageCollect();
       return null;
     }
     final current = state.current ?? 0;
@@ -525,9 +596,30 @@ final class ValenceUpdater {
   // Garbage collection (§2.4)
   // ===========================================================================
 
+  /// Queues [garbageCollect] for the first post-frame callback, at most once per frame (§2.4).
+  ///
+  /// Never inside the transition that scheduled it. Step 1 already pays for a manifest decode, a signature
+  /// verify and a hash of every file it installs in front of the first frame, and a directory walk, a stat
+  /// per file and a SQLite transaction on top of that is exactly the launch that must not get slower. It
+  /// also keeps a two-strike marking from deleting CAS files under the page still on screen.
+  void scheduleGarbageCollect() {
+    if (_gcScheduled) return;
+    _gcScheduled = true;
+    _afterFrame(() async {
+      _gcScheduled = false;
+      try {
+        await garbageCollect();
+      } on Object catch (e) {
+        // A collection that fails costs disk, not correctness: every kept path is still on disk.
+        _log('gc: collection failed: $e');
+      }
+    });
+  }
+
   /// Deletes every manifest, CAS file and read-only data pair that no kept bundle needs.
   ///
-  /// Runs only after a commit. Keeps `current`, `previous`, `pending`, `trial` and the built-in bundle.
+  /// Keeps `current`, `previous`, `pending`, `trial` and the built-in bundle. Prefer
+  /// [scheduleGarbageCollect]; this is the body, and a test's entry point.
   Future<void> garbageCollect() async {
     final keptSeqs = <int>{
       ...[state.current, state.previous, state.pending, state.trial].whereType<int>(),
@@ -583,17 +675,31 @@ final class ValenceUpdater {
         required.putIfAbsent(e.key, () => <int>{}).add(e.value);
       }
     }
-    for (final e in (await store.allPairs()).entries) {
-      if (config.writableBuckets.contains(e.key)) continue;
-      for (final schema in e.value) {
-        if (required[e.key]?.contains(schema) ?? false) continue;
-        _log('gc: dropping unrequired read-only pair ${e.key} v$schema');
-        try {
-          await store.dropPair(e.key, schema, writableBuckets: config.writableBuckets);
-        } on Object catch (err) {
-          _log('gc: could not drop ${e.key} v$schema: $err');
+    //
+    // The lease covers the pair step only. §2.3 step 7 pulls a required pair while holding it, and that
+    // bundle's manifest is not on disk until step 8 — so a collection that walks the kept set in the middle
+    // of step 7 sees a freshly pulled pair that no *kept* manifest requires yet, deletes it, and leaves a
+    // `pending` whose data is gone. Nothing re-pulls it either: step 1 of §2.3 stops once
+    // `pointer.seq <= pending`. Manifests and CAS files have no such hazard (§2.4).
+    if (!await sync.acquireLease()) {
+      _log('gc: another sync holds the lease; leaving read-only pairs to the next collection');
+      return;
+    }
+    try {
+      for (final e in (await store.allPairs()).entries) {
+        if (config.writableBuckets.contains(e.key)) continue;
+        for (final schema in e.value) {
+          if (required[e.key]?.contains(schema) ?? false) continue;
+          _log('gc: dropping unrequired read-only pair ${e.key} v$schema');
+          try {
+            await store.dropPair(e.key, schema, writableBuckets: config.writableBuckets);
+          } on Object catch (err) {
+            _log('gc: could not drop ${e.key} v$schema: $err');
+          }
         }
       }
+    } finally {
+      await sync.releaseLease();
     }
   }
 
@@ -642,6 +748,7 @@ final class ValenceUpdater {
       bytes = await _readAsset('${config.builtinAssetDir}/manifest.json');
       signature = utf8.decode(await _readAsset('${config.builtinAssetDir}/manifest.json.sig'));
     } on Object catch (e) {
+      _builtinFailure = 'it is missing from ${config.builtinAssetDir} ($e)';
       _log('update: no built-in bundle in assets (${config.builtinAssetDir}): $e');
       return null;
     }
@@ -655,6 +762,7 @@ final class ValenceUpdater {
         pointerSeq: null,
       );
     } on ValenceCheckFailure catch (f) {
+      _builtinFailure = '$f';
       _log('update: the built-in bundle failed verification: $f');
       return null;
     }
@@ -667,6 +775,7 @@ final class ValenceUpdater {
         final data = await _readAsset('${config.builtinAssetDir}/files/${f.hash}');
         // Check 7, on the built-in bundle too: an asset can be repacked by a build step.
         if (data.length != f.size || sha256.convert(data).toString() != f.hash) {
+          _builtinFailure = 'check 7: file ${f.hash} failed its hash or size';
           _log('update: built-in file ${f.hash} failed its hash or size; refusing the built-in bundle');
           return null;
         }

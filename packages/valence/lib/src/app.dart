@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -159,8 +160,25 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       // bridgeDispatch never throws: it checks the nonce, decodes strictly and turns everything into a
       // reply. An empty nonce means no server, and every message is then denied.
       final reply = await widget.dispatch(message.message, nonce);
+      _logBridgeError(reply);
       await _controller?.runJavaScript(bridgeReplyScript(reply));
     }());
+  }
+
+  /// Logs every error reply the host sends back (§4.3).
+  ///
+  /// A bridge method that throws is otherwise invisible to everybody: `bridgeDispatch` turns it into an
+  /// error reply, the page's `await call(...)` rejects inside an effect nobody awaited, and nothing reaches
+  /// a log or a screen. This is the one place that sees all of them.
+  void _logBridgeError(String reply) {
+    if (!reply.contains('"ok":false')) return;
+    try {
+      final decoded = jsonDecode(reply);
+      final e = decoded is Map<String, Object?> ? decoded['e'] : null;
+      if (e is Map<String, Object?>) _log('bridge error ${e['code']}: ${e['message']}');
+    } on FormatException {
+      // bridgeDispatch builds the reply with jsonEncode, so this cannot happen; not worth a crash if it does.
+    }
   }
 
   NavigationDecision _onNavigationRequest(NavigationRequest request) {
