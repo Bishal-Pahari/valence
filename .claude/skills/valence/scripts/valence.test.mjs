@@ -274,6 +274,22 @@ test('verify rejects tampering, bad signatures, unknown keys, other apps and uns
   writeFileSync(r.manifestPath, evilBytes);
   writeFileSync(r.manifestPath + '.sig', sign(null, evilBytes, key).toString('base64'));
   assert.throws(() => verifyBundle(args), /unsafe path/);
+
+  // A validly signed manifest claiming the host's own prefix is refused too: §3 serves /_host/ before the manifest,
+  // so such a file would be shadowed by host content on an origin the page trusts.
+  const reserved = { ...parsed, files: { ...parsed.files, '_host/app.js': { h, n: original.length } } };
+  const reservedBytes = Buffer.from(JSON.stringify(reserved));
+  writeFileSync(r.manifestPath, reservedBytes);
+  writeFileSync(r.manifestPath + '.sig', sign(null, reservedBytes, key).toString('base64'));
+  assert.throws(() => verifyBundle(args), /unsafe path in manifest: _host\/app\.js/);
+
+  // A malformed entry is still named as malformed, even when --files is wrong: the entry checks run first.
+  const malformed = { ...parsed, files: { ...parsed.files, 'bad.js': { h: 'nothex', n: 1 } } };
+  const malformedBytes = Buffer.from(JSON.stringify(malformed));
+  writeFileSync(r.manifestPath, malformedBytes);
+  writeFileSync(r.manifestPath + '.sig', sign(null, malformedBytes, key).toString('base64'));
+  assert.throws(() => verifyBundle({ ...args, filesDir: root }), /bad file entry for bad\.js/);
+
 });
 
 test('a wrong --files level is reported as a wrong directory, not a corrupted bundle', () => {

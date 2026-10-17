@@ -242,7 +242,7 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
       throw new Error(`native code is not allowed in an OTA bundle: ${rel}`);
     }
     // §3: the loopback server answers /_host/ itself, before the manifest lookup, so a bundle file there is unreachable.
-    if (rel === '_host' || rel.startsWith('_host/')) {
+    if (RESERVED_PREFIX(rel)) {
       throw new Error(`_host/ is reserved for the host's own routes (contracts §3), so the server would never serve this file: ${rel}`);
     }
     if (rel.toLowerCase().endsWith('.wasm')) warnings.push(`${rel}: .wasm is allowed (runs in the webview) but reviewers should know it is there`);
@@ -331,6 +331,10 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
   return { manifest, manifestPath, filesDir, warnings };
 }
 
+// §3 reserves /_host/ for the host's own routes, so a bundle file there is unreachable and would be shadowed by them.
+// Enforced in bundle (at build) and in verifyBundle (so an older tool holding the key cannot smuggle one past check 6).
+const RESERVED_PREFIX = (rel) => rel === '_host' || rel.startsWith('_host/');
+
 const SAFE_PATH = (rel) => typeof rel === 'string' && rel !== '' && !rel.startsWith('/') && !/[\\\0]/.test(rel) && !rel.split('/').some((s) => s === '' || s === '.' || s === '..');
 
 export function verifyBundle({ manifestPath, filesDir, keyring, appId }) {
@@ -344,16 +348,19 @@ export function verifyBundle({ manifestPath, filesDir, keyring, appId }) {
   if (appId && m.appId !== appId) throw new Error(`manifest is for ${m.appId}, not ${appId}`);
   if (!Number.isInteger(m.seq) || !Number.isInteger(m.floor) || m.floor > m.seq) throw new Error('bad seq/floor');
   if (!Object.hasOwn(m.files, m.entry)) throw new Error(`entry ${m.entry} is not in files`);
+  // Validate every entry before looking at the directory, so a malformed manifest is still named as malformed.
+  for (const [rel, f] of Object.entries(m.files)) {
+    if (!SAFE_PATH(rel) || RESERVED_PREFIX(rel)) throw new Error(`unsafe path in manifest: ${rel}`);
+    if (!HASH_RE.test(f.h) || !Number.isInteger(f.n) || f.n < 0) throw new Error(`bad file entry for ${rel}`);
+  }
   // A wrong --files level otherwise reports the first entry as "missing", which looks exactly like the corrupted
   // bundle verify exists to detect. If nothing resolves at all, the directory is the problem, not the bundle.
   const hashes = Object.values(m.files);
-  if (hashes.length && !hashes.some((f) => HASH_RE.test(f.h) && existsSync(join(filesDir, f.h)))) {
+  if (hashes.length && !hashes.some((f) => existsSync(join(filesDir, f.h)))) {
     const nested = join(filesDir, 'files');
     throw new Error(`no manifest files found under ${filesDir}${existsSync(nested) ? `; --files wants the content-addressed files/ directory, so try ${nested}` : ''}`);
   }
   for (const [rel, f] of Object.entries(m.files)) {
-    if (!SAFE_PATH(rel)) throw new Error(`unsafe path in manifest: ${rel}`);
-    if (!HASH_RE.test(f.h) || !Number.isInteger(f.n) || f.n < 0) throw new Error(`bad file entry for ${rel}`);
     const file = join(filesDir, f.h);
     if (!existsSync(file)) throw new Error(`missing file ${rel} (${f.h})`);
     const buf = readFileSync(file);
