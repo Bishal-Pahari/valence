@@ -535,11 +535,17 @@ POST {SYNC_BASE}/{bucket}/push   {"ops":[{"id":"<uuid>","k":"…","v":{…},"d":
 
 Ship at least **two** of these in the host before the first store submission:
 
-- offline-first cold start;
-- local notifications driven by synced data;
-- a home-screen widget (`home_widget`) fed by a JSON snapshot (§5.6);
-- native share and haptics;
-- biometric lock.
+| Item | Package | Native setup Valence does not generate |
+|---|---|---|
+| offline-first cold start | — | none; the built-in bundle and the seed are it |
+| local notifications driven by synced data | `flutter_local_notifications` | the `POST_NOTIFICATIONS` runtime permission, **and `SCHEDULE_EXACT_ALARM` or `USE_EXACT_ALARM`** for a reminder that has to land on time (see below) |
+| a home-screen widget fed by a JSON snapshot (§5.6) | `home_widget` | an `AppWidgetProvider`, a layout and its registration on Android; a widget extension and an App Group on iOS |
+| native share and haptics | `share_plus`, plus Flutter's own `HapticFeedback` | none for text; an image has to cross the bridge, which §4.2 bounds |
+| biometric lock | `local_auth` | `MainActivity` must extend **`FlutterFragmentActivity`**, not `FlutterActivity`, or every `authenticate()` throws `PlatformException(no_fragment_activity)` |
+
+**This is a list of capabilities that need native work, not a list of things that work out of the box.** Every row but the first fails on a real device while the project builds clean, `dart analyze --fatal-infos` passes, the host tests pass and `doctor` is green — so the §8 matrix is the only place that can catch them, and only if the app adds a row. `flutter create` rewrites `MainActivity`, so the `FlutterFragmentActivity` edit needs a comment saying why it is there.
+
+**A capability whose success is asynchronous must report what the host actually knows, not `ok`.** `notify.schedule` is the worst case: on Android 13+ without `SCHEDULE_EXACT_ALARM` or `USE_EXACT_ALARM` the alarm is silently downgraded or refused, so the bridge call succeeds in a few hundred milliseconds, `notify.pending` lists the reminder, the receiver even registers — and it arrives late or not at all. For an app whose purpose is reminding someone, that is the worst failure shape there is. Return `exact` / `inexact` / `blocked` from `AlarmManager.canScheduleExactAlarms()` and surface it on the permission type, so the web app can say so. Google Play restricts `USE_EXACT_ALARM` to apps whose core function is alarms or calendars, so a reminder app either justifies it in review or accepts inexact delivery: that is a §7 question as much as a §5.6 one.
 
 The reviewer agent checks this.
 
@@ -591,4 +597,4 @@ The reviewer agent checks this.
 | server | the same port across launches; a bind failure means a new port, a new nonce, a reload and never serving from the old port; rebinding the same port on resume keeps the nonce and the page keeps working; the nonce is in the entry page only; CSP header on the entry page; GET and HEAD only; the SPA fallback answers an extensionless path; **a `/_host/` route is matched before the manifest lookup, an unknown id under it is 404 rather than the entry page, and neither a web-supplied path nor a malformed id escapes the host's directory** |
 | store and sync | paged pull is atomic per page; tombstones; outbox rows aren't clobbered by a pull **or by a push echo**; push ack clears only acknowledged ids; seed import per `(bucket, schema)` only moves forward; writable buckets use schema 1; the sync lease blocks concurrent syncs, is renewed per page, and treats a future timestamp as expired |
 | bridge | missing or wrong nonce → `E_DENIED`; unknown method → `E_UNKNOWN`; bad params → `E_PARAMS`; a write to a read-only bucket → `E_DENIED`; `prefs.*` on an `valence.` key → `E_DENIED`; `open.external` rejects `javascript:` and `file:`; reply escaping round-trips U+2028 and quotes |
-| integration (`integration_test`, device or emulator) | **first launch opens the database and paints** — the store and sync rows above run on `sqflite_common_ffi`, which is more permissive than Android's `SQLiteDatabase` (it accepts `execute` for pragmas), so a green unit suite is not evidence the store opens on a phone; cold start in airplane mode renders the built-in bundle with seed data; a corrupt CAS file is re-downloaded; a background sync followed by a UI bridge call (the database must still be open); background then resume after 10 minutes, the server is rebound and the page still works |
+| integration (`integration_test`, device or emulator) | **first launch opens the database and paints** — the store and sync rows above run on `sqflite_common_ffi`, which is more permissive than Android's `SQLiteDatabase` (it accepts `execute` for pragmas), so a green unit suite is not evidence the store opens on a phone; cold start in airplane mode renders the built-in bundle with seed data; a corrupt CAS file is re-downloaded; a background sync followed by a UI bridge call (the database must still be open); background then resume after 10 minutes, the server is rebound and the page still works; **each §6 item the app ships actually works on the device** — a biometric prompt appears rather than throwing `no_fragment_activity`, and a reminder scheduled N seconds out really posts and reports `exact` or `inexact` rather than `ok` |

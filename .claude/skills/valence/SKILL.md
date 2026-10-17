@@ -241,8 +241,9 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
 | webview_flutter | 4.14.1 (2026-07-07) | **default WebView**. `flutter_inappwebview` has had no stable release since 6.1.5 (2024-10-08) |
 | sqflite | 2.4.4+2 (2026-10-13) | Local store. Drift 2.35.2 is fine if the app already uses it |
 | cryptography | 2.9.0 (2025-11-21) | Ed25519 verify on the device |
-| workmanager | 0.10.10 (2026-09-07) | Background sync; best effort on iOS |
+| workmanager | 0.10.10 (2026-09-07) | Background sync; best effort on iOS. **Applies the Kotlin Gradle Plugin, and every Android build warns that future Flutter versions will refuse to build plugins that do** (observed 2026-10-17). Still current; re-check by 2026-12. If it becomes unbuildable, drive `WorkManager` and `BGTaskScheduler` through a platform channel — §5.6 specifies the triggers, not the package |
 | home_widget | 0.10.0 (2026-09-17) | Optional native value (§6) |
+| the other §6 packages | **not pinned here** | `share_plus`, `flutter_local_notifications` and `local_auth` are named in contracts §6 with the native setup each needs, but no version in this table has been verified against a primary source. Resolve them with the docs-scout before relying on an API |
 | path_provider / url_launcher / connectivity_plus / http | 2.1.6 / 6.3.3 / 7.3.2 / 1.6.0 | |
 | @sveltejs/kit / adapter-static | 3.1.0 / 4.0.0 | Kit 3 needs Node 22+ and TypeScript 6+, and always emits `modulepreload` (one reason we don't use `file://`) |
 | Apple App Store Review Guidelines | last updated 2026-06-08 | Guidelines 2.5.2, 4.2, 4.3(b), 4.7.x |
