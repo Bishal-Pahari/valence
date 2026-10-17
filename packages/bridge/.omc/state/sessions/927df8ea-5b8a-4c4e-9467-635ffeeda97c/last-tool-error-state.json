@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd packages/bridge && node --test test/*.test.ts 2>&1 | tail -25\",\"timeout\":180000,\"description\":\"Run bridge package tests\"}",
-  "error": "Exit code 1\n/usr/bin/bash: line 1: cd: packages/bridge: No such file or directory",
-  "timestamp": "2026-10-17T04:50:27.870Z",
-  "retry_count": 2
-}
