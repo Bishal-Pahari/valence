@@ -476,8 +476,8 @@ async function init(o) {
     // come back unknown there. Say so, and name the alternative for anyone not using Claude Code at all.
     const freshSession = [
       dim('  That starts a new session, which matters: the skill was installed during this run, so'),
-      dim('  /valence is not registered in a session that is already open. Without Claude Code, the'),
-      dim('  host is yours to write against the spec: https://getvalence.pages.dev/docs/reference/spec/'),
+      dim('  /valence is not registered in a session that is already open. Without Claude Code, add'),
+      dim('  the two runtimes above and follow https://getvalence.pages.dev/docs/getting-started/quick-start/'),
       '',
     ].join('\n');
     const claude = tool('claude --version', root);
