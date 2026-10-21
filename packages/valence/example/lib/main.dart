@@ -11,6 +11,7 @@ import 'valence/bridge.g.dart';
 import 'valence/config.g.dart';
 
 Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   final valence = await Valence.open(valenceConfig, hostBuild: 1);
   final handlers = AppHandlers(valence);
   runApp(

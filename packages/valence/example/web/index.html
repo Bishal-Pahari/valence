@@ -22,12 +22,15 @@
     <section>
       <h2>Host</h2>
       <pre id="info">reading app.info…</pre>
+      <pre id="batch">reading data.getMany…</pre>
+      <pre id="status">reading sync.status…</pre>
     </section>
 
     <section>
       <h2>Your own data</h2>
       <p>Written to native SQLite through the bridge, and queued for sync.</p>
       <button id="add">Add a note</button>
+      <button id="delete">Delete latest note</button>
       <button id="haptics">Haptic tap</button>
       <ul id="rows"></ul>
       <pre id="error"></pre>
@@ -82,6 +85,8 @@
       };
 
       async function refresh() {
+        document.getElementById('status').textContent = 'sync.status: ' + JSON.stringify(await call('sync.status'));
+        document.getElementById('batch').textContent = 'data.getMany: ' + JSON.stringify(await call('data.getMany', { bucket: 'plants', keys: ['fern', 'missing', 'fern'] }));
         const rows = await call('data.list', { bucket: 'shelf', limit: 20 });
         document.getElementById('rows').innerHTML = rows
           .map((r) => `<li>${r.key} — ${JSON.stringify(r.value)} ${r.usn === -1 ? '(not yet synced)' : ''}</li>`)
@@ -107,6 +112,17 @@
         }
       });
 
+      document.getElementById('delete').addEventListener('click', async () => {
+        show(null);
+        try {
+          const rows = await call('data.list', { bucket: 'shelf', limit: 500 });
+          if (rows.length) await call('data.put', { bucket: 'shelf', key: rows.at(-1).key, value: null });
+          await refresh();
+        } catch (e) {
+          show(e);
+        }
+      });
+
       async function showAuth(extra = '') {
         const has = await call('auth.hasToken');
         document.getElementById('auth').textContent = `auth.hasToken: ${has}${extra ? '\n' + extra : ''}`;
@@ -117,6 +133,7 @@
         try {
           await call('auth.setToken', { token: document.getElementById('token').value || 'demo-token' });
           await showAuth('stored in the Keystore; every shelf sync now sends Authorization: Bearer');
+
         } catch (e) {
           show(e);
         }

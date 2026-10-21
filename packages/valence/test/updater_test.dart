@@ -114,6 +114,17 @@ void main() {
 
   // ===========================================================================
   group('§2.3 step 1, the pointer', () {
+    test('the compiled channel selects the beta pointer URL', () async {
+      final seen = <String>[];
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        config: testConfig(key).copyWith(channel: 'beta'),
+        client: otaHost(bundles: {}, seen: seen),
+      );
+      await u.checkForUpdate();
+      expect(seen.single, 'https://ota.test/com.example.app/channels/beta.json');
+    });
+
     test('a healthy pointer makes the bundle pending', () async {
       final b = await signBundle(key, seq: 20);
       final state = ValenceState(installId: 'i', current: 10);

@@ -2,7 +2,9 @@
 // generated marshalling. Contracts §4.2, §5.4, §5.5.
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -41,7 +43,8 @@ void main() {
         config ?? testConfig(key, writableBuckets: writableBuckets, dataSchemas: dataSchemas),
         hostBuild: 42,
         log: (log ?? LogSpy()).call,
-        client: client ?? MockClient((_) async => http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200)),
+        client:
+            client ?? MockClient((_) async => http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200)),
         supportDir: support,
         secure: secure ?? testSecure({}),
       );
@@ -63,6 +66,87 @@ void main() {
       expect(info.bundle, 0, reason: 'nothing is being served yet');
       expect(info.locale, isNotEmpty);
     });
+  });
+
+  test('sync status counts deletes, persists observations and leaves busy/scoped timestamps alone', () async {
+    var requests = 0;
+    var unreachable = false;
+    final client = MockClient((_) async {
+      requests++;
+      if (unreachable) throw const SocketException('offline');
+      return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+    });
+    final v = await open(dataSchemas: {'plants': 1}, writableBuckets: {'shelf'}, client: client);
+    final fresh = await v.syncStatus();
+    expect(fresh.lastSyncedAt, isNull);
+    expect(fresh.offline, isFalse);
+    expect(requests, 0, reason: 'status never starts sync');
+    await v.store.put('shelf', 'a', 1, opId: 'a');
+    await v.store.put('shelf', 'a', null, opId: 'b');
+    expect((await v.syncStatus()).pending, 2);
+    expect(await v.sync.acquireLease(), isTrue);
+    final busy = await v.syncNow();
+    expect(busy.pending, 2);
+    expect(busy.reason, ValenceSyncReason.busy);
+    expect((await v.syncStatus()).lastSyncedAt, isNull);
+    await v.sync.releaseLease();
+    unreachable = true;
+    final failed = await v.syncNow();
+    expect(failed.pending, 2);
+    expect((await v.syncStatus()).offline, isTrue);
+    expect((await v.syncStatus()).lastSyncedAt, isNull);
+    // Clear only the synthetic queued ops so this mock does not need a push protocol.
+    await v.store.db.delete('outbox');
+    unreachable = false;
+    await v.syncNow(buckets: ['plants']);
+    expect((await v.syncStatus()).lastSyncedAt, isNull);
+    await v.syncNow();
+    final successful = await v.syncStatus();
+    expect(successful.lastSyncedAt, isNotNull);
+    expect(successful.offline, isFalse);
+    final reopened = await open(dataSchemas: {'plants': 1}, writableBuckets: {'shelf'}, client: client);
+    expect((await reopened.syncStatus()).lastSyncedAt, successful.lastSyncedAt);
+    expect((await reopened.syncStatus()).pending, 0);
+  });
+
+  test('HTTP and protocol failures cannot advance last successful sync', () async {
+    var response = http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+    final v = await open(dataSchemas: {'plants': 1}, client: MockClient((_) async => response));
+    await v.syncNow();
+    const previous = '123';
+    await v.store.hostPrefSet('valence.sync.lastSyncedAt', previous);
+    for (final bad in [http.Response('', 500), http.Response('not JSON', 200),
+      http.Response('{"rows":[]}', 200), http.Response('{"rows":[3],"max":1,"more":false}', 200)]) {
+      response = bad;
+      await v.syncNow();
+      expect((await v.syncStatus()).lastSyncedAt, 123);
+    }
+    final push = await open(writableBuckets: {'shelf'}, client: MockClient((req) async =>
+      http.Response(req.method == 'POST' ? '{}' : '{"rows":[],"max":0,"more":false}', 200)));
+    await push.store.put('shelf', 'a', 1, opId: 'malformed-push');
+    await push.store.hostPrefSet('valence.sync.lastSyncedAt', previous);
+    await push.syncNow();
+    expect((await push.syncStatus()).lastSyncedAt, 123);
+    expect((await push.syncStatus()).pending, 1);
+  });
+
+  test('fresh runtime imports current and additional declared seed schemas', () async {
+    final seed = await openTestStore();
+    await seed.applyPullPage(bucket: 'plants', schema: 1,
+      rows: [{'k': 'fern', 'v': 'old', 'u': 1, 'd': 0}], maxUsnAfter: 1);
+    await seed.applyPullPage(bucket: 'plants', schema: 2,
+      rows: [{'k': 'fern', 'v': 'new', 'u': 1, 'd': 0}], maxUsnAfter: 1);
+    await seed.db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+    final bytes = File(seed.path).readAsBytesSync();
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMessageHandler('flutter/assets', (_) async => ByteData.sublistView(Uint8List.fromList(bytes)));
+    addTearDown(() => messenger.setMockMessageHandler('flutter/assets', null));
+    final base = testConfig(key, dataSchemas: {'plants': 2});
+    final v = await open(config: ValenceConfig(appId: base.appId, keyring: base.keyring,
+      bridgeVersion: base.bridgeVersion, dataSchemas: {'plants': 2}, seedSchemas: {'plants': [1]}));
+    expect(await v.store.get('plants', 1, 'fern'), 'old');
+    expect(await v.store.get('plants', 2, 'fern'), 'new');
+    expect(await v.dataGet('plants', 'fern'), 'new');
   });
 
   group('data.put is only for writable buckets (§5.5)', () {

@@ -1,10 +1,12 @@
 {
-  "version": 2,
+  "version": 3,
   "methods": {
     "app.ready":          { "since": 1, "params": {}, "returns": "void" },
     "app.info":           { "since": 1, "params": {}, "returns": "AppInfo" },
     "data.get":           { "since": 1, "params": { "bucket": "string", "key": "string" }, "returns": "json?" },
     "data.list":          { "since": 1, "params": { "bucket": "string", "prefix": "string?", "limit": "int?" }, "returns": "Row[]" },
+    "data.getMany":       { "since": 3, "params": { "bucket": "string", "keys": "string[]" }, "returns": "Row[]" },
+    "sync.status":        { "since": 3, "params": {}, "returns": "SyncStatus" },
     "data.put":           { "since": 1, "params": { "bucket": "string", "key": "string", "value": "json?" }, "returns": "void" },
     "sync.now":           { "since": 1, "params": { "buckets": "string[]?" }, "returns": "SyncResult" },
     "prefs.get":          { "since": 1, "params": { "key": "string" }, "returns": "string?" },
@@ -26,6 +28,7 @@
   "types": {
     "AppInfo":    { "platform": "string", "host": "int", "bridge": "int", "bundle": "int", "locale": "string" },
     "Row":        { "key": "string", "value": "json", "usn": "int" },
-    "SyncResult": { "buckets": "string[]", "changed": "int", "offline": "bool", "reason": "string?" }
+    "SyncStatus": { "pending": "int", "lastSyncedAt": "int?", "offline": "bool" },
+    "SyncResult": { "buckets": "string[]", "changed": "int", "offline": "bool", "reason": "string?", "pending": "int?" }
   }
 }
