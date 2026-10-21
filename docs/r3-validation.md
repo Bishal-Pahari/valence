@@ -37,6 +37,7 @@ resume the page hears only about configured permissions whose status changed.
 | Example `flutter test` | 15 passed |
 | Example signed bundle verification | Passed; seq 1792620197, bridge requirement 9 |
 | Example `codegen --check` | No files stale |
+| `flutter pub publish --dry-run` | Passed with zero warnings; nothing published |
 | Example `flutter build apk --debug --target-platform android-x64` | Passed |
 | Website `npm run build` | 26 pages and SEO/link checks passed |
 
