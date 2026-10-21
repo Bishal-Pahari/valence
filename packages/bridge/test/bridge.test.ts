@@ -18,6 +18,7 @@ interface Methods {
 }
 
 interface Events {
+  'app.appearance': { darkMode: boolean; highContrast: boolean; reducedMotion: boolean };
   'sync.changed': { buckets: string[] };
   'app.resumed': Record<string, never>;
 }
@@ -51,6 +52,19 @@ function browser(): void {
 const reply = (r: unknown) => (globalThis as any).window.__valence.r(r);
 const emit = (name: string, payload: unknown) => (globalThis as any).window.__valence.e(name, payload);
 const bridge = () => createBridge<Methods, Events>(SINCE);
+
+test('appearance snapshots reach typed listeners and can be unsubscribed', () => {
+  host();
+  const seen: Events['app.appearance'][] = [];
+  const off = bridge().on('app.appearance', (value) => seen.push(value));
+  const initial = { darkMode: false, highContrast: false, reducedMotion: false };
+  const changed = { darkMode: true, highContrast: true, reducedMotion: true };
+  emit('app.appearance', initial);
+  emit('app.appearance', changed);
+  off();
+  emit('app.appearance', initial);
+  assert.deepEqual(seen, [initial, changed]);
+});
 
 beforeEach(() => {
   __resetForTests();

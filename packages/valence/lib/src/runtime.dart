@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show FlutterView;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -8,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'config.dart';
+import 'appearance.dart';
 import 'log.dart';
 import 'manifest.dart';
 import 'native_http.dart';
@@ -49,6 +51,7 @@ final class ValenceAppInfo {
     required this.bridge,
     required this.bundle,
     required this.locale,
+    this.fontScale = 1,
   });
 
   /// `android`, `ios`, or whatever `Platform.operatingSystem` says.
@@ -65,6 +68,9 @@ final class ValenceAppInfo {
 
   /// The device locale, for example `en_US`.
   final String locale;
+
+  /// System text scale; optional in old generated bridge schemas (§4.6).
+  final double fontScale;
 }
 
 /// What the runtime needs from the widget that owns the WebView.
@@ -237,7 +243,17 @@ final class Valence {
   ValenceManifest? get manifest => _manifest;
 
   /// Attaches the widget that owns the WebView. Called by [ValenceApp].
-  void attach(ValenceHostView view) => _view = view;
+  void attach(ValenceHostView view, {FlutterView? flutterView}) {
+    _view = view;
+    _flutterView = flutterView;
+  }
+
+  FlutterView? _flutterView;
+
+  double get _fontScale {
+    final view = _flutterView ?? WidgetsBinding.instance.platformDispatcher.implicitView;
+    return view == null ? 1 : ValenceAppearance.fromMediaQuery(MediaQueryData.fromView(view)).fontScale;
+  }
 
   /// Records the server and manifest the host widget is serving. Called by [ValenceApp].
   void bound(ValenceServer server, ValenceManifest manifest) {
@@ -316,6 +332,7 @@ final class Valence {
         bridge: config.bridgeVersion,
         bundle: _manifest?.seq ?? 0,
         locale: Platform.localeName,
+        fontScale: _fontScale,
       );
 
   /// The schema `data.*` resolves [bucket] against.

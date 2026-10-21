@@ -43,6 +43,8 @@ function fixture({ data = { calendar: 1 }, latest = false } = {}) {
     const p = join(root, 'valence', 'bridge.schema.json');
     const s = JSON.parse(readFileSync(p, 'utf8'));
     s.version = 4;
+    delete s.events['app.appearance'];
+    delete s.types.AppInfo.fontScale;
     delete s.methods['data.getMany'];
     delete s.methods['sync.status'];
     delete s.types.SyncStatus;
@@ -437,7 +439,7 @@ test('doctor reports absent evidence as warnings, compatibility errors as failur
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'native value'));
   bundle({ root, cfg, key, builtin: true, now: NOW });
   const dart = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
-  writeFileSync(dart, readFileSync(dart, 'utf8').replace('const hostBridgeVersion = 4;', 'const hostBridgeVersion = 1;'));
+  writeFileSync(dart, readFileSync(dart, 'utf8').replace(/const hostBridgeVersion = \d+;/, 'const hostBridgeVersion = 1;'));
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'built-in compatibility'));
 });
 
@@ -570,6 +572,19 @@ test('an app that already shipped a store build can take a built-in\'s new field
   // field a built-in happens to have grown.
   bad((s) => (s.types.Mine.reason = 'string?'), /"Mine" shipped in a store build and cannot change/);
   bad((s) => (s.types.Mine.a = 'int'), /"Mine" shipped in a store build and cannot change/);
+});
+
+test('fontScale is optional, additive against store AppInfo, and frozen by type', () => {
+  const { root, cfg, key } = fixture();
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const output = join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart');
+  assert.doesNotMatch(readFileSync(output, 'utf8'), /fontScale: i\.fontScale/);
+  editSchema(root, (s) => { s.types.AppInfo.fontScale = 'num?'; });
+  codegen({ root, cfg });
+  assert.match(readFileSync(output, 'utf8'), /fontScale: i\.fontScale/);
+  editSchema(root, (s) => { s.types.AppInfo.fontScale = 'num'; });
+  assert.throws(() => codegen({ root, cfg }), /fields are not/);
 });
 
 test('a second --store build cannot quietly rewrite the schema the stores reviewed', () => {

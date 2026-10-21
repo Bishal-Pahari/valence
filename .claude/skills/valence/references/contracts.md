@@ -657,6 +657,43 @@ The example is one loopback-only user's database; multi-user deployments must is
 by authenticated identity, enforce authorization and put TLS in front of it.
 
 
+### 4.6 Adaptive layout and accessibility (R8)
+
+`ValenceApp` uses edge-to-edge layout. It publishes `--valence-inset-top`,
+`--valence-inset-right`, `--valence-inset-bottom` and `--valence-inset-left` on the
+document root in logical CSS pixels, from the owning Flutter view's `viewPadding`
+divided by its device pixel ratio. These describe system bars and cutouts, not the
+keyboard. The WebView resizes for the keyboard. Values refresh after document load,
+rotation, multi-window resize and resume; do not add a native SafeArea around it.
+Pages must use a `width=device-width, initial-scale=1` viewport and apply the
+variables to their content and fixed controls, with `0px` fallbacks for browsers.
+The page may paint backgrounds underneath system bars. The host supplies values,
+not automatic content padding. Layout publication must neither navigate nor reload.
+
+`AppInfo` may add `fontScale: "num?"` without changing `app.info`'s original
+signature or fields. Old generated schemas remain supported. New hosts return
+the system text scale (Flutter's text scaler evaluated at 16 logical pixels,
+divided by 16); old hosts omit it, so pages use `info.fontScale ?? 1`.
+Android applies the rounded percentage through WebView `setTextZoom`, including
+on resume and accessibility/settings changes. Do not multiply CSS text by this
+scale again on Android. The experimental iOS path scales the document's original
+computed root font size, disables WebKit's additional text autosizing and requires
+relative (`rem`/`em`) typography. It does not scale hard-coded pixel fonts. Pinch
+zoom remains available. Android's single text-zoom percentage approximates
+nonlinear system scaling; it is not a per-size nonlinear mapping.
+
+At schema **5**, `app.appearance` has payload `{darkMode: bool, highContrast: bool,
+reducedMotion: bool}`. The host emits an initial snapshot after each page load and
+emits again when these values change, including on resume. Subscribe during page
+bootstrap, before `ready()`. Values come from the owning view's system brightness
+and accessibility features, not the app's chosen Flutter theme. The page can also
+read root attributes `data-valence-dark-mode`, `data-valence-high-contrast` and
+`data-valence-reduced-motion` (literal `true`/`false`) for CSS styling. Publication
+uses JSON-encoded host values, preserves the navigation lock, nonce and CSP, and
+does not expose a page-callable system-settings setter. These signals describe OS
+preferences; they do not certify the page as accessible. Semantic HTML, TalkBack
+testing, contrast, focus order and usable tap targets remain the app's job.
+
 ## 5. Data layer
 
 ### 5.1 SQLite schema (host, sqflite)
@@ -893,3 +930,5 @@ R12 regression rows: batch reads preserve requested order, deduplicate, isolate 
 | store and sync | **push echoes never advance pull cursors; a 600-row pull with a later server-head max receives all pages; partial HTTP/static pulls cannot satisfy activation; outbox insertion order survives equal/backwards timestamps, VACUUM and v1 migration**; **a writable bucket is pulled as well as pushed, at schema 1, and a pull never clobbers a local write that has not been acknowledged yet**; paged pull is atomic per page; tombstones; outbox rows aren't clobbered by a pull **or by a push echo**; push ack clears only acknowledged ids; seed import per `(bucket, schema)` only moves forward; writable buckets use schema 1; the sync lease blocks concurrent syncs, is renewed per page, and treats a future timestamp as expired; **a lease recorded by another pid, or by an older host with no pid, is taken over rather than waited out, while our own live lease is still respected**; **a blocked run reports `reason: busy` rather than an empty success, a completed run reports `ok`, and an unreachable server reports `offline` with the old `offline` flag unchanged**; **step 7's pull takes the same lease, stops and logs rather than failing when it cannot, and resumes from the pair's own `max_usn` rather than from 0**; **a stored token is attached as `Authorization: Bearer` to a writable bucket's pull and push and to neither for a public read-only bucket, `ValenceConfig.authToken` wins over the stored one, a secure-storage platform that is absent reads as no token rather than throwing, and a 401 emits `auth.expired` once per run and reports `reason: unauthorized` while keeping the token** |
 | bridge | missing or wrong nonce → `E_DENIED`; unknown method → `E_UNKNOWN`; bad params → `E_PARAMS`; a write to a read-only bucket → `E_DENIED`; `prefs.*` and `secure.*` on a `valence.` key → `E_DENIED`, so the stored token is unreadable by the page; `open.external` rejects `javascript:` and `file:`; reply escaping round-trips U+2028 and quotes; **an inbound message over `MAX_MESSAGE_BYTES` of UTF-8 is rejected by `@getvalence/bridge` before `postMessage`, with `E_TOO_LARGE`, rather than killing the webview** (a multi-byte string that is under the cap in UTF-16 code units and over it in bytes is refused); **an over-cap *reply* is replaced by `E_TOO_LARGE` rather than sent**; **`data.list` clamps `limit` to 500 and defaults it to 100** |
 | integration (`integration_test`, device or emulator) | **first launch opens the database and paints** — the store and sync rows above run on `sqflite_common_ffi`, which is more permissive than Android's `SQLiteDatabase` (it accepts `execute` for pragmas), so a green unit suite is not evidence the store opens on a phone; cold start in airplane mode renders the built-in bundle with seed data; a corrupt CAS file is detected the first time the server serves it, deleted, and re-downloaded by the next update check; a background sync followed by a UI bridge call (the database must still be open); background then resume after 10 minutes, the server is rebound and the page still works; **each §6 item the app ships actually works on the device** — a biometric prompt appears rather than throwing `no_fragment_activity`, and a reminder scheduled N seconds out really posts and reports `exact` or `inexact` rather than `ok`; **a scheduled window survives a clock change** (`cmd alarm set-time`, then the alarms are still there) **and a reboot**; **a re-arm does not cancel a notification already on screen**; **a widget snapshot reaches a placed widget**, and the provider resolves under the fully-qualified class name |
+
+R8 regression rows (§4.6): owning-view logical insets exclude keyboard and change after rotation; system font size and accessibility preferences are read independently of app theme; native Android zoom follows settings changes; repeated iOS root scaling does not compound; publication preserves navigation and nonce; initial/reload appearance delivery and typed unsubscribe; AppInfo.fontScale is optional and additive only at num?, and generated delegates compile with and without it.

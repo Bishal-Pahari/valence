@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -149,6 +149,14 @@
     "auth.expired": {
       "since": 2,
       "payload": {}
+    },
+    "app.appearance": {
+      "since": 5,
+      "payload": {
+        "darkMode": "bool",
+        "highContrast": "bool",
+        "reducedMotion": "bool"
+      }
     }
   },
   "types": {
@@ -157,7 +165,8 @@
       "host": "int",
       "bridge": "int",
       "bundle": "int",
-      "locale": "string"
+      "locale": "string",
+      "fontScale": "num?"
     },
     "Row": {
       "key": "string",
