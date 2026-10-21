@@ -4,6 +4,16 @@ Newest first. One version for `create-valence`, `@getvalence/bridge` and the `va
 
 ## Unreleased
 
+### Reusable native plugins
+
+`ValencePlugin` packages can contribute namespaced schema fragments, native
+handlers and setup notes, with matching npm types. Config `plugins` lists the
+fragments; codegen and bundle merge them before compatibility checks. Conflicts,
+reserved namespaces and changes to shipped definitions fail. Generated dispatch
+still checks the nonce and strictly decodes parameters/results. Native additions
+need a store build. The built-in open group uses the plugin API, and the example
+haptic handler is a separate local package. Existing wire shapes stay unchanged.
+
 Everything below is unpublished. Two headlines: an app can finally log a user
 in, and the runtime is two published packages instead of generated code. Under
 them are the test-week fixes, logged by four independent teams who built Android

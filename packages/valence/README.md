@@ -13,6 +13,15 @@ Your app supplies two things: its generated config, and its own native bridge me
 
 ## Setup
 
+Native features can also come from a `ValencePlugin` package. List its schema
+fragment in config `plugins`, regenerate, and pass its instance to the generated
+`ValenceBuiltins(valence, plugins: [...])`. Generated strict decoding still owns
+the bridge boundary; the registry is not a WebView dispatcher. The plugin owns
+native setup, initialization and cleanup, and needs a store release. See
+[Writing a Valence plugin](https://getvalence.pages.dev/docs/guides/plugins/) and
+the example's `plugins/haptics` package. The built-in `open.external` uses this
+API too, with its existing scheme restrictions and reserved owner.
+
 ```bash
 flutter pub add valence
 npx valence codegen

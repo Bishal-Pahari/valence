@@ -26,6 +26,12 @@ later release is available on *this* install. That is what lets one OTA bundle s
 
 ## Running as a website
 
+Plugin fragments listed in config `plugins` are merged by codegen into the same
+`Methods`, `Events` and `METHOD_SINCE` tables. Use the generated client for plugin
+calls, `has()` on older store hosts, and `installShim` for web fallbacks. A matching
+npm types package can export the plugin method shapes for shim authors; it does
+not need a separate client. See [Writing a plugin](https://getvalence.pages.dev/docs/guides/plugins/).
+
 Outside the host there is no native side, so `call` routes to a shim you install. Anything unshimmed
 rejects with `E_UNSUPPORTED`.
 

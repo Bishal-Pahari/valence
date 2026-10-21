@@ -2,6 +2,11 @@
 
 ## 0.4.0-beta.0
 
+- Native extensions can implement `ValencePlugin`, with namespaced schema fragments
+  and matching npm types. Generated adapters keep strict decoding; the built-in
+  open group uses the same registry without allowing its owner to be replaced.
+  The example haptic handler is now a separate local plugin package.
+
 First release. The Flutter host runtime that `/valence init` used to generate into every app now ships as
 a package, so a fix reaches every adopter with `flutter pub upgrade` instead of being hand-applied.
 

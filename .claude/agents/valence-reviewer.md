@@ -59,6 +59,12 @@ package's own suite is the §8 matrix, and `flutter pub publish --dry-run` must 
 
 **Bridge trust boundary (CRITICAL or HIGH)**
 
+- **Native plugins (§4.5):** generated nonce/strict decoding precedes plugin invocation;
+  unlisted methods have no dispatch case, typed plugin results are decoded before reply,
+  core namespace owners cannot be replaced, and merged fragments enter the store baseline.
+  Fragment removal/editing must not evade the additive guard in codegen or bundle. A plugin
+  is trusted store-compiled native code, never an OTA library or a raw bridge channel.
+
 - Only the loopback origin can navigate the main frame, and **no** off-origin subframe is allowed. The entry page gets the `manifest.csp` header.
 - `bridgeDispatch` is called with the server's nonce. The nonce survives a rebind to the same port, and rotates only with a port change plus a reload.
 - `prefs.*` rejects `valence.` keys.

@@ -40,6 +40,10 @@ Your job is the part that is genuinely this app's:
 - **`lib/main.dart`, about twenty lines.** Open the runtime with the generated `valenceConfig`, pass
   `hostBuild` (the Android `versionCode` or iOS `CFBundleVersion`), construct the handlers, and put
   `ValenceApp` at the root with `dispatch: (raw, nonce) => bridgeDispatch(handlers, raw, nonce: nonce)`.
+- **Plugins (§4.5):** install their Dart/npm packages, list fragment paths in config
+  `plugins`, follow native setup notes, regenerate and register instances through
+  `ValenceBuiltins(..., plugins: [...])`. Keep their runtime code in their packages.
+  New native capabilities need a store release and `since` above the store baseline.
 - **`lib/valence/handlers.dart`: only this app's bridge methods**, in one class
   `extends ValenceBuiltins implements BridgeHandlers`. `ValenceBuiltins` is generated and already
   delegates `app.*`, `data.*`, `prefs.*`, `sync.*`, `open.external` and `bundle.*` to the runtime, so the
