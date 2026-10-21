@@ -13,6 +13,24 @@ void main() {
   Map<String, Object?> row(String k, Object? v, int u, {bool d = false}) =>
       {'k': k, 'v': v, 'u': u, 'd': d ? 1 : 0};
 
+  test('batch reads bind keys, isolate schema and bucket, deduplicate and omit tombstones', () async {
+    const hostile = "'); DROP TABLE kv; --";
+    await store.applyPullPage(
+        bucket: 'plants',
+        schema: 2,
+        rows: [row('a', 1, 1), row('b', 2, 2), row('gone', null, 3, d: true), row(hostile, 4, 4)],
+        maxUsnAfter: 4);
+    await store.applyPullPage(bucket: 'plants', schema: 1, rows: [row('a', 'old', 1)], maxUsnAfter: 1);
+    await store.applyPullPage(bucket: 'other', schema: 2, rows: [row('a', 'other', 1)], maxUsnAfter: 1);
+    final batch = await store.getMany('plants', 2, ['b', 'missing', 'a', 'b', 'gone', hostile]);
+    expect(batch.map((r) => r.key), ['b', 'a', hostile]);
+    expect(batch.map((r) => r.value), [2, 1, 4]);
+    expect(await store.getMany('plants', 2, []), isEmpty);
+    expect(await store.getMany('plants', 2, List.filled(500, 'a')), hasLength(1));
+    await expectLater(store.getMany('plants', 2, List.filled(501, 'a')),
+        throwsA(isA<BridgeError>().having((e) => e.code, 'code', 'E_PARAMS')));
+  });
+
   group('schema (§5.1)', () {
     test('the tables and the index from the spec exist, at user_version 1', () async {
       final tables = {

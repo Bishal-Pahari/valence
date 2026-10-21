@@ -246,7 +246,7 @@ void main() {
       final origin = 'http://127.0.0.1:${server.port}';
       final h = await handlers(
         config: valenceConfig.copyWith(
-          connectOrigins: {origin},
+          httpOrigins: {origin},
           authToken: () async => 'callback-token',
         ),
       );
@@ -296,6 +296,22 @@ void main() {
       expect(calls, 1, reason: 'refused calls never reach the network');
     }, _LocalHttpOverrides()),
   );
+  test('schema-3 reads and status delegate to the runtime and enforce strict input', () async {
+    final h = await handlers();
+    final batch = await dispatch(h, 'data.getMany', params: {'bucket': 'plants', 'keys': ['fern', 'missing', 'fern']});
+    expect(batch['ok'], isTrue);
+    expect((batch['v']! as List).map((r) => (r as Map)['key']), ['fern']);
+    await h.valence.store.put('shelf', 'a', 1, opId: 'one');
+    await h.valence.store.put('shelf', 'a', null, opId: 'two');
+    final status = await dispatch(h, 'sync.status');
+    expect((status['v']! as Map)['pending'], 2);
+    expect((status['v']! as Map)['lastSyncedAt'], isNull);
+    final invalid = await dispatch(h, 'data.getMany', params: {'bucket': 'plants', 'keys': [3]});
+    expect((invalid['e']! as Map)['code'], 'E_PARAMS');
+    final oversized = await dispatch(h, 'data.getMany', params: {'bucket': 'plants', 'keys': List.filled(501, 'fern')});
+    expect((oversized['e']! as Map)['code'], 'E_PARAMS');
+  });
+
 
   test('the generated event builders go through jsonEncode', () {
     expect(

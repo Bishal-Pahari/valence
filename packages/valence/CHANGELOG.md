@@ -2,7 +2,15 @@
 
 ## Unreleased - native HTTP and REST adapter
 
-Call your API with `http.request` (schema 4): the host enforces compiled `web.connect` origins, attaches the stored token, and never follows redirects. Existing hosts need codegen and a store build to add the capability or origins. A reference Node REST-to-sync adapter demonstrates durable pagination, tombstones and idempotent pushes. iOS remains experimental and untested.
+Call your API with `http.request` (schema 4): the host enforces compiled `http.origins` origins, attaches the stored token, and never follows redirects. Existing hosts need codegen and a store build to add the capability or origins. A reference Node REST-to-sync adapter demonstrates durable pagination, tombstones and idempotent pushes. iOS remains experimental and untested.
+## Unreleased: offline tooling
+
+- Add schema-3 data.getMany and sync.status, and optional SyncResult.pending. Regenerate an additive schema and guard the new methods on older hosts.
+- Seed multiple declared read-only schemas using seedSchemas and versioned files; the runtime imports each declared pair.
+- OTA bundle bridge requirements now default to the recorded store baseline. Guard newer methods; explicitly pin lower if older store builds remain supported. Built-in/store defaults still use the current schema.
+- Compile ota.channel and generate opt-in BridgeHandlersDefaults for test doubles.
+- Run mechanical doctor diagnostics and mapped unit tests without an interactive session. Unexecuted evidence stays WARN.
+- Constrain path_provider_android to the pre-JNI range >=2.2.17 <2.3.0 while compatibility is validated (U-7, 2026-10-21).
 
 ## 0.4.0-beta.0
 

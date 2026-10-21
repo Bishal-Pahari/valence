@@ -48,20 +48,21 @@ final class Row {
 }
 
 final class SyncResult {
-  const SyncResult({required this.buckets, required this.changed, required this.offline, required this.reason});
+  const SyncResult({required this.buckets, required this.changed, required this.offline, this.reason, this.pending});
 
   factory SyncResult.fromJson(Object? j, [String f = 'SyncResult']) {
     final m = decodeObject(j, f);
-    decodeKeys(m, const {'buckets', 'changed', 'offline', 'reason'}, f);
-    return SyncResult(buckets: decodeListOf(m['buckets'], '$f.buckets', (e, p) => decodeString(e, p)), changed: decodeInt(m['changed'], '$f.changed'), offline: decodeBool(m['offline'], '$f.offline'), reason: m['reason'] == null ? null : decodeString(m['reason'], '$f.reason'));
+    decodeKeys(m, const {'buckets', 'changed', 'offline', 'reason', 'pending'}, f);
+    return SyncResult(buckets: decodeListOf(m['buckets'], '$f.buckets', (e, p) => decodeString(e, p)), changed: decodeInt(m['changed'], '$f.changed'), offline: decodeBool(m['offline'], '$f.offline'), reason: m['reason'] == null ? null : decodeString(m['reason'], '$f.reason'), pending: m['pending'] == null ? null : decodeInt(m['pending'], '$f.pending'));
   }
 
   final List<String> buckets;
   final int changed;
   final bool offline;
   final String? reason;
+  final int? pending;
 
-  Map<String, Object?> toJson() => {'buckets': buckets, 'changed': changed, 'offline': offline, 'reason': reason};
+  Map<String, Object?> toJson() => {'buckets': buckets, 'changed': changed, 'offline': offline, 'reason': reason, 'pending': pending};
 }
 
 final class HttpResponse {
@@ -80,6 +81,22 @@ final class HttpResponse {
   Map<String, Object?> toJson() => {'status': status, 'headers': headers, 'body': body};
 }
 
+final class SyncStatus {
+  const SyncStatus({required this.pending, this.lastSyncedAt, required this.offline});
+
+  factory SyncStatus.fromJson(Object? j, [String f = 'SyncStatus']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'pending', 'lastSyncedAt', 'offline'}, f);
+    return SyncStatus(pending: decodeInt(m['pending'], '$f.pending'), lastSyncedAt: m['lastSyncedAt'] == null ? null : decodeInt(m['lastSyncedAt'], '$f.lastSyncedAt'), offline: decodeBool(m['offline'], '$f.offline'));
+  }
+
+  final int pending;
+  final int? lastSyncedAt;
+  final bool offline;
+
+  Map<String, Object?> toJson() => {'pending': pending, 'lastSyncedAt': lastSyncedAt, 'offline': offline};
+}
+
 final class DataGetParams {
   const DataGetParams({required this.bucket, required this.key});
 
@@ -96,7 +113,7 @@ final class DataGetParams {
 }
 
 final class DataListParams {
-  const DataListParams({required this.bucket, required this.prefix, required this.limit});
+  const DataListParams({required this.bucket, this.prefix, this.limit});
 
   factory DataListParams.fromJson(Object? j, [String f = 'DataListParams']) {
     final m = decodeObject(j, f);
@@ -112,7 +129,7 @@ final class DataListParams {
 }
 
 final class DataPutParams {
-  const DataPutParams({required this.bucket, required this.key, required this.value});
+  const DataPutParams({required this.bucket, required this.key, this.value});
 
   factory DataPutParams.fromJson(Object? j, [String f = 'DataPutParams']) {
     final m = decodeObject(j, f);
@@ -128,7 +145,7 @@ final class DataPutParams {
 }
 
 final class SyncNowParams {
-  const SyncNowParams({required this.buckets});
+  const SyncNowParams({this.buckets});
 
   factory SyncNowParams.fromJson(Object? j, [String f = 'SyncNowParams']) {
     final m = decodeObject(j, f);
@@ -156,7 +173,7 @@ final class PrefsGetParams {
 }
 
 final class PrefsSetParams {
-  const PrefsSetParams({required this.key, required this.value});
+  const PrefsSetParams({required this.key, this.value});
 
   factory PrefsSetParams.fromJson(Object? j, [String f = 'PrefsSetParams']) {
     final m = decodeObject(j, f);
@@ -228,7 +245,7 @@ final class SecureDeleteParams {
 }
 
 final class AuthSetTokenParams {
-  const AuthSetTokenParams({required this.token});
+  const AuthSetTokenParams({this.token});
 
   factory AuthSetTokenParams.fromJson(Object? j, [String f = 'AuthSetTokenParams']) {
     final m = decodeObject(j, f);
@@ -242,7 +259,7 @@ final class AuthSetTokenParams {
 }
 
 final class HttpRequestParams {
-  const HttpRequestParams({required this.url, required this.method, required this.headers, required this.body});
+  const HttpRequestParams({required this.url, this.method, this.headers, this.body});
 
   factory HttpRequestParams.fromJson(Object? j, [String f = 'HttpRequestParams']) {
     final m = decodeObject(j, f);
@@ -256,6 +273,21 @@ final class HttpRequestParams {
   final String? body;
 
   Map<String, Object?> toJson() => {'url': url, 'method': method, 'headers': headers, 'body': body};
+}
+
+final class DataGetManyParams {
+  const DataGetManyParams({required this.bucket, required this.keys});
+
+  factory DataGetManyParams.fromJson(Object? j, [String f = 'DataGetManyParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'bucket', 'keys'}, f);
+    return DataGetManyParams(bucket: decodeString(m['bucket'], '$f.bucket'), keys: decodeListOf(m['keys'], '$f.keys', (e, p) => decodeString(e, p)));
+  }
+
+  final String bucket;
+  final List<String> keys;
+
+  Map<String, Object?> toJson() => {'bucket': bucket, 'keys': keys};
 }
 
 abstract interface class BridgeHandlers {
@@ -276,6 +308,50 @@ abstract interface class BridgeHandlers {
   Future<void> authSetToken(AuthSetTokenParams p);
   Future<bool> authHasToken();
   Future<HttpResponse> httpRequest(HttpRequestParams p);
+  Future<List<Row>> dataGetMany(DataGetManyParams p);
+  Future<SyncStatus> syncStatus();
+}
+
+/// Opt-in defaults for test doubles or partial hosts. Production hosts extend ValenceBuiltins.
+mixin BridgeHandlersDefaults implements BridgeHandlers {
+  @override
+  Future<void> appReady() async => throw const BridgeError('E_UNSUPPORTED', 'app.ready is not implemented');
+  @override
+  Future<AppInfo> appInfo() async => throw const BridgeError('E_UNSUPPORTED', 'app.info is not implemented');
+  @override
+  Future<Object?> dataGet(DataGetParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.get is not implemented');
+  @override
+  Future<List<Row>> dataList(DataListParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.list is not implemented');
+  @override
+  Future<void> dataPut(DataPutParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.put is not implemented');
+  @override
+  Future<SyncResult> syncNow(SyncNowParams p) async => throw const BridgeError('E_UNSUPPORTED', 'sync.now is not implemented');
+  @override
+  Future<String?> prefsGet(PrefsGetParams p) async => throw const BridgeError('E_UNSUPPORTED', 'prefs.get is not implemented');
+  @override
+  Future<void> prefsSet(PrefsSetParams p) async => throw const BridgeError('E_UNSUPPORTED', 'prefs.set is not implemented');
+  @override
+  Future<void> openExternal(OpenExternalParams p) async => throw const BridgeError('E_UNSUPPORTED', 'open.external is not implemented');
+  @override
+  Future<void> bundleApplyUpdate() async => throw const BridgeError('E_UNSUPPORTED', 'bundle.applyUpdate is not implemented');
+  @override
+  Future<void> hapticsTap() async => throw const BridgeError('E_UNSUPPORTED', 'haptics.tap is not implemented');
+  @override
+  Future<String?> secureGet(SecureGetParams p) async => throw const BridgeError('E_UNSUPPORTED', 'secure.get is not implemented');
+  @override
+  Future<void> secureSet(SecureSetParams p) async => throw const BridgeError('E_UNSUPPORTED', 'secure.set is not implemented');
+  @override
+  Future<void> secureDelete(SecureDeleteParams p) async => throw const BridgeError('E_UNSUPPORTED', 'secure.delete is not implemented');
+  @override
+  Future<void> authSetToken(AuthSetTokenParams p) async => throw const BridgeError('E_UNSUPPORTED', 'auth.setToken is not implemented');
+  @override
+  Future<bool> authHasToken() async => throw const BridgeError('E_UNSUPPORTED', 'auth.hasToken is not implemented');
+  @override
+  Future<HttpResponse> httpRequest(HttpRequestParams p) async => throw const BridgeError('E_UNSUPPORTED', 'http.request is not implemented');
+  @override
+  Future<List<Row>> dataGetMany(DataGetManyParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.getMany is not implemented');
+  @override
+  Future<SyncStatus> syncStatus() async => throw const BridgeError('E_UNSUPPORTED', 'sync.status is not implemented');
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
@@ -350,6 +426,13 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
       case 'http.request':
         final r = await h.httpRequest(HttpRequestParams.fromJson(p, 'p'));
         return replyOk(id, r.toJson());
+      case 'data.getMany':
+        final r = await h.dataGetMany(DataGetManyParams.fromJson(p, 'p'));
+        return replyOk(id, r.map((e) => e.toJson()).toList());
+      case 'sync.status':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.syncStatus();
+        return replyOk(id, r.toJson());
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
     }
@@ -418,7 +501,7 @@ abstract class ValenceBuiltins {
   /// `sync.now`, from the package.
   Future<SyncResult> syncNow(SyncNowParams p) async {
     final r = await valence.syncNow(buckets: p.buckets);
-    return SyncResult(buckets: r.buckets, changed: r.changed, offline: r.offline, reason: r.reason.name);
+    return SyncResult(buckets: r.buckets, changed: r.changed, offline: r.offline, reason: r.reason.name, pending: r.pending);
   }
 
   /// `prefs.get`, from the package.
@@ -470,5 +553,17 @@ abstract class ValenceBuiltins {
   Future<HttpResponse> httpRequest(HttpRequestParams p) async {
     final r = await valence.httpRequest(url: p.url, method: p.method, headers: p.headers, body: p.body);
     return HttpResponse(status: r.status, headers: r.headers, body: r.body);
+  }
+
+  /// `data.getMany`, from the package.
+  Future<List<Row>> dataGetMany(DataGetManyParams p) async {
+    final rows = await valence.dataGetMany(p.bucket, p.keys);
+    return [for (final r in rows) Row(key: r.key, value: r.value, usn: r.usn)];
+  }
+
+  /// `sync.status`, from the package.
+  Future<SyncStatus> syncStatus() async {
+    final r = await valence.syncStatus();
+    return SyncStatus(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline);
   }
 }

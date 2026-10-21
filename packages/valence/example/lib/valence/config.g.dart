@@ -5,15 +5,18 @@ import 'package:valence/valence.dart';
 
 import 'bridge.g.dart';
 
+const valenceOtaChannel = 'production';
+
 /// Everything the runtime needs about this app. Pass it to `Valence.open`.
 const valenceConfig = ValenceConfig(
   appId: 'com.getvalence.example',
   keyring: {'k1': 'cmDzyiObOIA2VI5Ke2uMSRilCC5rAlw/8bMElWtzxRk='},
   bridgeVersion: hostBridgeVersion,
+  channel: valenceOtaChannel,
   otaBase: 'https://ota.example.invalid',
   syncBase: 'https://sync.example.invalid',
   writableBuckets: {'shelf'},
   dataSchemas: {'plants': 1},
-  connectOrigins: {'http://10.0.2.2:8787'},
-  channel: 'production',
+  httpOrigins: {'http://10.0.2.2:8787'},
+  seedSchemas: {},
 );

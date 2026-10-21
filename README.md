@@ -138,8 +138,14 @@ node valence/valence.mjs keygen | codegen [--check] | bundle [--builtin|--store]
 
 ## Your own backend in 0.4
 
-`http.request` calls your own API natively, restricted to exact `web.connect` origins compiled into the host. It attaches the stored user token, returns redirects without following them, and supports bounded UTF-8 text bodies. New at schema 4; guard with `has()` on older hosts. An origin change needs codegen and a store build. Online HTTP does not replace offline sync: the [reference REST adapter](examples/rest-sync-adapter/) shows durable cursors, tombstones and idempotent pushes. [Guide](https://getvalence.pages.dev/docs/guides/your-backend/). Android is tested; iOS is experimental and untested.
+`http.request` calls your own API natively, restricted to exact `http.origins` origins compiled into the host. It attaches the stored user token, returns redirects without following them, and supports bounded UTF-8 text bodies. New at schema 4; guard with `has()` on older hosts. An origin change needs codegen and a store build. Online HTTP does not replace offline sync: the [reference REST adapter](examples/rest-sync-adapter/) shows durable cursors, tombstones and idempotent pushes. [Guide](https://getvalence.pages.dev/docs/guides/your-backend/). Android is tested; iOS is experimental and untested.
 
 ## License
 
 [MIT](LICENSE) © 2026 Bishal Pahari
+
+## Offline tooling in 0.4
+
+`data.getMany` reads up to 500 keys in one bridge call; `sync.status` reports pending operations (including deletes) without a network call. Both are schema-3 additions: guard them with `has()`. `ota.channel` selects the host channel, and OTA builds now default to the recorded store bridge version; guard newer calls or explicitly raise `--requires-bridge`. `seedSchemas` plus `<bucket>.v<N>.json` seeds multiple declared schemas together. Test doubles can opt into generated `BridgeHandlersDefaults`.
+
+Run `node valence/valence.mjs doctor --tests` for mechanical checks and mapped unit tests. WARN means missing or unexecuted evidence; device behavior still needs a device run. [Full guide](https://getvalence.pages.dev/docs/guides/offline-tooling/).

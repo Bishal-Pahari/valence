@@ -231,4 +231,38 @@ void main() {
     token.complete('secret');
     await Future<void>.delayed(Duration.zero);
   }, timeout: const Timeout(Duration(seconds: 30)));
+  test('bodyless responses do not use representation Content-Length as body size', () async {
+    for (final item in [('HEAD', 200), ('GET', 204), ('GET', 304)]) {
+      final response = await api(factory: () => MockClient.streaming((_, __) async =>
+        http.StreamedResponse(const Stream.empty(), item.$2,
+          contentLength: ValenceHttp.bodyLimit + 1)))
+        .request(url: 'https://api.test/large', method: item.$1);
+      expect(response.status, item.$2);
+      expect(response.body, isEmpty);
+    }
+  });
+
+  test('ambiguous and unrelated authorities cannot read the token', () async {
+    for (final url in [
+      'https://%61pi.test/',
+      r'https://api.test\@evil.test/',
+      r'https://evil.test\@api.test/',
+      'https://api.test@evil.test/',
+      'https://api.test./',
+      'https://[::1]/',
+      'https://b?cher.test/',
+      'https://xn--bcher-kva.test/',
+    ]) {
+      await expectLater(api(token: () async => fail('credential read for $url'))
+        .request(url: url), throwsA(isA<BridgeError>()));
+    }
+  });
+
+  test('explicit IPv6 and punycode origins match only themselves', () async {
+    for (final origin in ['https://[::1]:444', 'https://xn--bcher-kva.test']) {
+      final r = await api(origins: {origin}).request(url: '$origin/path');
+      expect(r.status, 200);
+    }
+  });
+
 }

@@ -95,7 +95,7 @@ final class ValenceHttp {
     });
     if (!allowed) {
       throw const BridgeError(BridgeErrorCode.denied,
-          'origin is not in the host web.connect allowlist');
+          'origin is not in the host http.origins allowlist');
     }
     final verb = method ?? 'GET';
     if (!{'GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'}
@@ -159,7 +159,10 @@ final class ValenceHttp {
       }
       _checkHeaders(response.headers);
       final result = <int>[];
-      if ((response.contentLength ?? 0) > bodyLimit) {
+      if (verb != 'HEAD' &&
+          response.statusCode != 204 &&
+          response.statusCode != 304 &&
+          (response.contentLength ?? 0) > bodyLimit) {
         throw const BridgeError(
             BridgeErrorCode.tooLarge, 'response body exceeds 64 KiB');
       }

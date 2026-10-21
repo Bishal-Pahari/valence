@@ -29,7 +29,7 @@ limited to 1 MiB; pushes accept every operation within that byte cap, including 
 
 Point a test app at `sync.base: "http://10.0.2.2:8787"`, `writable: ["items"]` and call
 `auth.setToken` with `ADAPTER_TOKEN`. There is no `items` entry in `data`: writable buckets always
-use schema 1. For native online RPC also add `"web": {"connect": ["http://10.0.2.2:8787"], …}`
+use schema 1. For native online RPC also add `"http": {"origins": ["http://10.0.2.2:8787"], …}`
 and regenerate the host. `GET /rpc` returns only `{native: true, authenticated: true}` to exercise
 `http.request` with no CORS headers or token reflection. Android's emulator uses `10.0.2.2` to
 reach the machine; physical devices need a separately secured endpoint. iOS is untested.
@@ -39,7 +39,7 @@ and retains a deletion as `{k, v: null, u, d: 1}`. A pull is ordered by USN; whe
 page, `max` is the last row returned, **never the later server head**. Unknown schemas are 404.
 Push calls the REST write first, then atomically records both the row and the operation receipt.
 A retry of an acknowledged id returns the current winning row without another REST write; reuse
-of an id for different content is 409. The upstream write response is assumed to accept the
+of an id for different content returns 409 for the whole batch, with no acknowledgements in that response. Earlier operations in the batch may already have succeeded; retry their unchanged ids safely. The upstream write response is assumed to accept the
 submitted object unchanged; APIs that normalize values must read/map the canonical value before
 recording their receipt. Upstream errors never acknowledge that operation; a retry resumes safely.
 

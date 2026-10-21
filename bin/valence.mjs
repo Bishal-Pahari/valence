@@ -23,6 +23,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
   keygen,
   codegen,
+  diagnose,
   loadConfig,
   main as cli,
   verifyBundle,
@@ -519,7 +520,7 @@ function update(o) {
   console.log(`\n  Review the diff, run your tests, and commit. ${dim('Then: claude "/valence doctor"')}\n`);
 }
 
-export function doctor(o) {
+export async function doctor(o) {
   const root = resolve(o.root);
   const rows = [];
   const check = (name, fn) => {
@@ -564,7 +565,8 @@ export function doctor(o) {
       if (missing.length) throw new Error(`missing: ${missing.join(' | ')} (${NPX} update adds them)`);
     });
   }
-  console.log(`\n${bold('Valence doctor')} ${dim('(quick checks; full audit: claude "/valence doctor")')}`);
+  if (cfg) rows.push(...await diagnose({ root, cfg, tests: o.tests }));
+  console.log(`\n${bold('Valence doctor')} ${dim('(mechanical checks; device evidence still needs review)')}`);
   for (const [s, name, msg] of rows) say(s === 'PASS' ? green('✓') : s === 'WARN' ? yellow('!') : red('✗'), name, msg);
   console.log();
   if (rows.some(([s]) => s === 'FAIL')) process.exitCode = 1;
@@ -610,6 +612,7 @@ export async function run(argv) {
       sync: { type: 'string' },
       global: { type: 'boolean', default: false },
       force: { type: 'boolean', default: false },
+      tests: { type: 'boolean', default: false },
       launch: { type: 'boolean', default: true },
       'key-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },

@@ -23,6 +23,7 @@ final class ValenceConfig {
     this.syncMode = ValenceSyncMode.api,
     this.writableBuckets = const {},
     this.dataSchemas = const {},
+    this.seedSchemas = const {},
     this.channel = 'production',
     this.bundleSizeCap = 50 * 1024 * 1024,
     this.dataSizeCap = 50 * 1024 * 1024,
@@ -33,7 +34,7 @@ final class ValenceConfig {
     this.builtinAssetDir = 'assets/valence/builtin',
     this.seedAsset = 'assets/valence/seed.db',
     this.authToken,
-    this.connectOrigins = const {},
+    this.httpOrigins = const {},
   });
 
   /// The reverse-domain id a manifest must carry (canonical check 2).
@@ -65,6 +66,9 @@ final class ValenceConfig {
 
   /// Read-only buckets and the schema this build reads, from `data` in `valence.config.json`.
   final Map<String, int> dataSchemas;
+
+  /// Additional declared read-only schemas to import from the bundled seed (§5.2).
+  final Map<String, List<int>> seedSchemas;
 
   /// The OTA channel this build follows, for example `production` or `beta`.
   final String channel;
@@ -105,7 +109,7 @@ final class ValenceConfig {
 
   /// Exact HTTP(S) origins trusted with the bearer token by `http.request` (§4.5).
   /// Compiled from `web.connect`; empty denies every request. Never supplied by an OTA manifest.
-  final Set<String> connectOrigins;
+  final Set<String> httpOrigins;
 
   /// Copy with overrides. Handy in tests and for pointing a debug build at a local OTA host.
   ValenceConfig copyWith({
@@ -119,7 +123,7 @@ final class ValenceConfig {
     Duration? updateInterval,
     int? pullPageLimit,
     Future<String?> Function()? authToken,
-    Set<String>? connectOrigins,
+    Set<String>? httpOrigins,
   }) =>
       ValenceConfig(
         appId: appId,
@@ -130,6 +134,7 @@ final class ValenceConfig {
         syncMode: syncMode ?? this.syncMode,
         writableBuckets: writableBuckets,
         dataSchemas: dataSchemas,
+        seedSchemas: seedSchemas,
         channel: channel ?? this.channel,
         bundleSizeCap: bundleSizeCap ?? this.bundleSizeCap,
         dataSizeCap: dataSizeCap ?? this.dataSizeCap,
@@ -140,6 +145,6 @@ final class ValenceConfig {
         builtinAssetDir: builtinAssetDir,
         seedAsset: seedAsset,
         authToken: authToken ?? this.authToken,
-        connectOrigins: connectOrigins ?? this.connectOrigins,
+        httpOrigins: httpOrigins ?? this.httpOrigins,
       );
 }

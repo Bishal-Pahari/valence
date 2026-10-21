@@ -31,19 +31,12 @@ export 'manifest.dart'
         fnv1a32,
         isReservedBundlePath,
         isSafeBundlePath;
-export 'secure.dart' show ValenceSecure, secureAuthTokenKey;
 export 'native_http.dart' show ValenceHttp, ValenceHttpResponse;
-export 'server.dart'
-    show ValenceServer, hostFileContentTypes, normaliseRequestPath;
+export 'secure.dart' show ValenceSecure, secureAuthTokenKey;
+export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
-export 'store.dart'
-    show
-        ValenceOutboxOp,
-        ValenceRow,
-        ValenceStore,
-        defaultListLimit,
-        maxListLimit;
-export 'sync.dart' show ValenceSync, ValenceSyncReason, ValenceSyncResult;
+export 'store.dart' show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, maxListLimit;
+export 'sync.dart' show ValenceSync, ValenceSyncReason, ValenceSyncResult, ValenceSyncStatus;
 export 'updater.dart' show ValenceUpdater;
 export 'wire.dart' show BridgeError, BridgeErrorCode, maxMessageBytes;
 
@@ -166,9 +159,7 @@ final class Valence {
     // that already had one.
     final sync = ValenceSync(
       store: store,
-      config: config.authToken == null
-          ? config.copyWith(authToken: keystore.authToken)
-          : config,
+      config: config.authToken == null ? config.copyWith(authToken: keystore.authToken) : config,
       client: client,
       log: log,
     );
@@ -200,8 +191,7 @@ final class Valence {
     updater.onUpdateReady = (seq) => valence.onUpdateReady?.call(seq);
     // §4.4: a rejected token is the page's problem to fix, so it has to reach the page. Buffered like
     // every other event, which matters here because a cold start's first sync beats the entry page.
-    sync.onUnauthorized = () =>
-        valence.emit(eventScript('auth.expired', const <String, Object?>{}));
+    sync.onUnauthorized = () => valence.emit(eventScript('auth.expired', const <String, Object?>{}));
     await valence._importSeed();
     return valence;
   }
@@ -257,8 +247,7 @@ final class Valence {
     // The server can delete a rotted CAS file and answer 500, but it cannot re-fetch one: §2.3 step 1
     // stops on `pointer.seq <= current`, so a bundle that is already current never reaches step 6. The
     // updater has to be told where to look (§2.4, "CAS integrity is re-checked lazily").
-    updater.repairFrom =
-        () => (manifest: manifest, corrupt: server.corruptHashes);
+    updater.repairFrom = () => (manifest: manifest, corrupt: server.corruptHashes);
   }
 
   /// §5.2: imports the bundled seed on first launch **and after a host upgrade**, not on every launch.
@@ -276,26 +265,26 @@ final class Valence {
     try {
       asset = await rootBundle.load(config.seedAsset);
     } on Object catch (e) {
-      _log(
-          'seed: no bundled seed at ${config.seedAsset} ($e); the app starts with an empty store');
+      _log('seed: no bundled seed at ${config.seedAsset} ($e); the app starts with an empty store');
       return;
     }
     // The host build plus the asset length: the build alone misses a seed changed by an OTA-era rebuild
     // at the same version, and the length alone misses a same-size replacement across an upgrade.
     final stamp = '$hostBuild.${asset.lengthInBytes}';
-    final done =
-        await store.hostPrefGet(_seedStamp) == stamp && seedFile.existsSync();
+    final done = await store.hostPrefGet(_seedStamp) == stamp && seedFile.existsSync();
     if (!done) {
       try {
         await seedFile.writeAsBytes(asset.buffer.asUint8List(), flush: true);
       } on Object catch (e) {
-        _log(
-            'seed: could not write $seedPath ($e); the app starts with an empty store');
+        _log('seed: could not write $seedPath ($e); the app starts with an empty store');
         return;
       }
     }
     try {
-      final counts = await store.importSeed(seedPath, config.dataSchemas);
+      final counts = await store.importSeed(seedPath, config.dataSchemas, additionalSchemas: {
+        for (final e in config.seedSchemas.entries)
+          if (config.dataSchemas.containsKey(e.key) && !config.writableBuckets.contains(e.key)) e.key: e.value,
+      });
       final moved = counts.values.fold<int>(0, (a, b) => a + b);
       if (moved > 0) _log('seed: imported $counts');
       // Stamped only after a clean import, so a crash mid-import retries on the next launch.
@@ -347,12 +336,17 @@ final class Valence {
   }
 
   /// `data.get`.
-  Future<Object?> dataGet(String bucket, String key) =>
-      store.get(bucket, schemaFor(bucket), key);
+  Future<Object?> dataGet(String bucket, String key) => store.get(bucket, schemaFor(bucket), key);
+
+  /// `data.getMany`, using the active bundle's schema just like [dataGet].
+  Future<List<ValenceRow>> dataGetMany(String bucket, List<String> keys) =>
+      store.getMany(bucket, schemaFor(bucket), keys);
+
+  /// `sync.status`. A local snapshot; never starts a network request.
+  Future<ValenceSyncStatus> syncStatus() => sync.status();
 
   /// `data.list`. The host clamps `limit`, rather than trusting the page (§4.2).
-  Future<List<ValenceRow>> dataList(String bucket,
-          {String? prefix, int? limit}) =>
+  Future<List<ValenceRow>> dataList(String bucket, {String? prefix, int? limit}) =>
       store.list(bucket, schemaFor(bucket), prefix: prefix, limit: limit);
 
   /// `data.put`. A null [value] is the delete. Refuses a bucket that is not writable.
@@ -416,7 +410,7 @@ final class Valence {
     String? body,
   }) =>
       ValenceHttp(
-        origins: config.connectOrigins,
+        origins: config.httpOrigins,
         token: config.authToken ?? secure.authToken,
         onUnauthorized: () =>
             emit(eventScript('auth.expired', const <String, Object?>{})),
@@ -425,16 +419,14 @@ final class Valence {
   /// `open.external`. Only `https:`, `mailto:` and `tel:` leave the app.
   Future<void> openExternal(String url) async {
     final uri = Uri.tryParse(url);
-    if (uri == null ||
-        !const {'https', 'mailto', 'tel'}.contains(uri.scheme.toLowerCase())) {
+    if (uri == null || !const {'https', 'mailto', 'tel'}.contains(uri.scheme.toLowerCase())) {
       throw BridgeError(
         BridgeErrorCode.denied,
         'open.external accepts https, mailto and tel only, not "$url"',
       );
     }
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      throw BridgeError(
-          BridgeErrorCode.internal, 'nothing on this device could open $url');
+      throw BridgeError(BridgeErrorCode.internal, 'nothing on this device could open $url');
     }
   }
 
@@ -463,12 +455,10 @@ final class Valence {
   ///
   /// This is the only path from native bytes to the page: the bridge carries JSON only, capped at
   /// [maxMessageBytes] in each direction (§4.2).
-  Future<String> publishHostFile(List<int> bytes,
-      {required String contentType}) {
+  Future<String> publishHostFile(List<int> bytes, {required String contentType}) {
     final server = _server;
     if (server == null) {
-      throw BridgeError(
-          BridgeErrorCode.internal, 'the loopback server is not bound yet');
+      throw BridgeError(BridgeErrorCode.internal, 'the loopback server is not bound yet');
     }
     return server.publishHostFile(bytes, contentType: contentType);
   }
@@ -497,9 +487,7 @@ final class Valence {
     final keystore = secure ?? ValenceSecure(log: log);
     final sync = ValenceSync(
       store: store,
-      config: config.authToken == null
-          ? config.copyWith(authToken: keystore.authToken)
-          : config,
+      config: config.authToken == null ? config.copyWith(authToken: keystore.authToken) : config,
       client: client,
       log: log,
     );
@@ -509,6 +497,5 @@ final class Valence {
   }
 
   /// Reads one asset as bytes. Used for the built-in bundle and the seed.
-  static Future<Uint8List> readAsset(String key) async =>
-      (await rootBundle.load(key)).buffer.asUint8List();
+  static Future<Uint8List> readAsset(String key) async => (await rootBundle.load(key)).buffer.asUint8List();
 }

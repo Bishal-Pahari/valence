@@ -144,6 +144,28 @@ final class ValenceStore {
     return jsonDecode(rows.first['value']! as String);
   }
 
+  /// Reads at most 500 requested keys in one query, omitting missing and deleted rows.
+  /// Results follow first-requested-key order; duplicate keys appear once (§7.1).
+  Future<List<ValenceRow>> getMany(String bucket, int schema, List<String> keys) async {
+    if (keys.length > 500) {
+      throw const BridgeError(BridgeErrorCode.params, 'data.getMany accepts at most 500 keys');
+    }
+    if (keys.isEmpty) return [];
+    final unique = keys.toSet();
+    final marks = List.filled(unique.length, '?').join(',');
+    final rows = await db.query(
+      'kv',
+      columns: ['key', 'value', 'usn'],
+      where: 'bucket = ? AND schema = ? AND deleted = 0 AND key IN ($marks)',
+      whereArgs: [bucket, schema, ...unique],
+    );
+    final byKey = {for (final r in rows) r['key']! as String: r};
+    return [
+      for (final key in unique)
+        if (byKey[key] case final r?) ValenceRow(key, jsonDecode(r['value']! as String), r['usn']! as int),
+    ];
+  }
+
   /// Lists live rows in key order, clamping [limit] to [maxListLimit] and defaulting it to
   /// [defaultListLimit].
   ///
@@ -172,8 +194,7 @@ final class ValenceStore {
       limit: n,
     );
     return [
-      for (final r in rows)
-        ValenceRow(r['key']! as String, jsonDecode(r['value']! as String), r['usn']! as int),
+      for (final r in rows) ValenceRow(r['key']! as String, jsonDecode(r['value']! as String), r['usn']! as int),
     ];
   }
 
@@ -420,13 +441,17 @@ final class ValenceStore {
   ///
   /// Returns the rows copied per bucket. A seeded pair deliberately does **not** get `synced_at`, because
   /// §2.3 step 7 is about the server having rows at that schema and a seed proves nothing about that.
-  Future<Map<String, int>> importSeed(String seedPath, Map<String, int> schemas) async {
+  Future<Map<String, int>> importSeed(String seedPath, Map<String, int> schemas,
+      {Map<String, List<int>> additionalSchemas = const {}}) async {
     if (schemas.isEmpty) return const {};
     final counts = <String, int>{};
     // ATTACH outside a transaction: SQLite refuses it inside one.
     await db.execute('ATTACH DATABASE ? AS valence_seed', [seedPath]);
     try {
-      for (final e in schemas.entries) {
+      final pairs = {
+        for (final e in schemas.entries) e.key: {e.value, ...?additionalSchemas[e.key]},
+      };
+      for (final e in [for (final b in pairs.entries) for (final n in b.value) MapEntry(b.key, n)]) {
         final from = await maxUsn(e.key, e.value);
         await db.transaction((txn) async {
           await txn.rawInsert(
@@ -438,7 +463,7 @@ final class ValenceStore {
           // rawInsert returns a last-insert-rowid, which is meaningless on a WITHOUT ROWID table: it reads
           // as 1 for a seed of thousands and looks like a failed import. changes() is the row count.
           final changed = await txn.rawQuery('SELECT changes() AS n');
-          counts[e.key] = changed.first['n']! as int;
+          counts[e.key] = (counts[e.key] ?? 0) + (changed.first['n']! as int);
           final seedMax = await txn.rawQuery(
             'SELECT MAX(usn) AS m FROM valence_seed.kv WHERE bucket = ? AND schema = ?',
             [e.key, e.value],

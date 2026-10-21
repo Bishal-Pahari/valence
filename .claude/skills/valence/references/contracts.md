@@ -151,7 +151,7 @@ Don't rely on the floor to stop a freeze; it doesn't.
   - Raise it when a release fixes a security bug.
 - `requires.bridge` is the minimum host bridge version. `requires.data` lists the bucket schema versions this UI reads (§5.4).
   - **Check 5 compares it against the generated `hostBridgeVersion` (§4.3), never a second literal.** A host whose updater compares against its own constant can under-report its bridge version, pass the whole §8 suite, build, sign and ship — and then refuse its *own* built-in bundle on first launch, with nothing left to serve, on every install, after a routine schema bump. A generated constant exists to stop exactly that drift, so the comparison has to use it.
-  - **It is a one-way door, like `floor`.** `valence bundle` defaults it to the schema's `version`, which is right for a store build and wrong for most OTA releases: once a release sits above the bridge version of the store build in the field, those hosts refuse it *and* every later release, including a copy fix or a security patch. `has()` exists so one bundle can serve old and new hosts; this default undoes that. Build with `--requires-bridge <the oldest store build still supported>` and guard the newer calls. The CLI warns whenever the value lands above the bridge version recorded by the last `--store` build — and separately when you pin it *below* the schema version, listing the methods that then need a `has()` guard, because an unguarded call on an older host throws `E_UNSUPPORTED` with no build-time and no store signal. Note the baseline records only the **last** store build: if an older one is still in the field, that is the number to pin to, and only you know it.
+  - **Default to the last store baseline for OTA builds.** OTA `requires.bridge` defaults to `baseline.storeSchema.version`, or the local schema version before any store baseline. Built-in/store builds default to the local schema version. `--requires-bridge` overrides either. Guard newer calls with `has()`; the below-schema warning names them. The baseline records only the newest store build, so explicitly pin lower if an older one is still supported.
 - `csp` is computed by `valence bundle`: the hashes of the entry page's inline scripts, plus `connect-src` from `sync.base` and `web.connect`. The host sends it as the entry page's `Content-Security-Policy` header (§3).
 - `routes` lists the top-level routes. They are compared with the store-reviewed baseline (§7).
 - Each `files` path is a relative POSIX path with no empty, `.` or `..` segments, no leading `/`, no `\`, and no NUL. `h` must match `^[0-9a-f]{64}$`. **A first segment of `_host` is refused:** that prefix belongs to the host's own routes (§3), and a bundle file there would be shadowed by them. `valence bundle` and `verify` refuse it, and so does check 6, so a manifest signed by an older tool cannot smuggle one in.
@@ -609,7 +609,7 @@ whether the device is shared. An app that must forget a user deletes those rows 
 
 ### 4.5 Native HTTP and existing backends
 
-`http.request` is additive at `since: 4` (version 3 is reserved by R12). Its params are
+`http.request` is additive at `since: 4` (version 3 includes data.getMany and sync.status). Its params are
 `{url: string, method: string?, headers: json?, body: string?}` and its result is
 `HttpResponse {status: int, headers: json, body: string}`. The default method is GET;
 GET, HEAD, POST, PUT, PATCH, DELETE and OPTIONS are supported. GET/HEAD cannot carry a body.
@@ -617,8 +617,8 @@ Bodies are UTF-8 text, including JSON explicitly encoded by the caller. Binary d
 multipart uploads are outside this method's scope. HTTP errors return their status and body;
 network, timeout and invalid UTF-8 failures return `E_INTERNAL`, without remote or credential text.
 
-The host enforces the **compiled** `web.connect` origin list, emitted as
-`ValenceConfig.connectOrigins`. An OTA CSP or page cannot broaden it. Entries are exact HTTP(S)
+The host enforces the **compiled** `http.origins` origin list, emitted as
+`ValenceConfig.httpOrigins`. An OTA CSP or page cannot broaden it. Entries are exact HTTP(S)
 origins (scheme, hostname, effective port), without credentials, paths, query, fragments or
 wildcards. The default is empty: deny all. `sync.base` does not implicitly authorize HTTP calls.
 Request URLs must be absolute HTTP(S), without credentials or fragments. All redirects are
@@ -643,6 +643,10 @@ headers at 16 KiB each, measured as UTF-8 bytes. Responses are read with a runni
 not buffered without limit. Over-limit input or response returns `E_TOO_LARGE`; forbidden
 origins and headers return `E_DENIED`; malformed arguments return `E_PARAMS`. The ordinary
 262144-byte bridge envelope cap still applies after JSON encoding (§4.2).
+
+The CSP-only `web.connect` list never grants native access or token trust; it may contain third-party URLs and paths. Native access requires the separate `http.origins` list compiled into the store host.
+
+A POST can succeed on the server while the page receives `E_TOO_LARGE` (response or JSON envelope size) or `E_INTERNAL` (timeout, transport or UTF-8 failure). Use server-enforced idempotency keys when retrying writes. JSON escaping can expand a 64 KiB text body beyond the 256 KiB bridge cap, so the body limit alone does not guarantee a deliverable reply. HEAD, 204 and 304 skip the Content-Length pre-check because that header can describe a representation rather than an actual response body; streamed bytes remain capped.
 
 **Existing REST APIs need an adapter for offline sync.** `http.request` is an online RPC:
 it does not populate SQLite, retry, queue a write, or work offline. The reference Node adapter
@@ -691,7 +695,7 @@ PRAGMA user_version = 1;
 `assets/valence/seed.db` has the same schema and is built by `valence seed`:
 
 - The build is atomic, so a failure keeps the previous seed.
-- Every bucket must be in `valence.config.json` `data` with a matching schema.
+- Every pair must match the current `data` schema or an explicit additional `seedSchemas` declaration (?7.1). Multiple schemas can coexist via `<bucket>.v<N>.json`.
 - Every row is `{k: string, v, u: integer ≥ 1, d}`.
 
 On first launch, and after a host upgrade, the host attaches the seed and, for each `(bucket, schema)` pair, copies the seed rows whose `usn` is above the local `max_usn` for that pair. It then updates the `bucket` row. Count the copied rows with `SELECT changes()`: sqflite's `rawInsert` returns a last-insert-rowid, which is meaningless on a `WITHOUT ROWID` table, so a log line built from it reports 1 for a seed of thousands and reads as a failure.
@@ -860,7 +864,19 @@ Everything here is silent when it is wrong: the call succeeds, the UI says "Set"
 
 ---
 
+### 7.1 Mechanical diagnostics and the remaining 0.4 ledger decisions
+
+- `data.getMany({bucket, keys: string[]}) -> Row[]` is a built-in at `since: 3`. It reads the active bundle's schema, returns live rows in first-requested-key order, omits missing keys and tombstones, and deduplicates keys. Empty input returns an empty list. More than 500 input keys fails with `E_PARAMS`; keys are bound SQL parameters, never SQL text. One batch crosses the bridge once, rather than paying a separate WebView round trip per key (about 15 ms in the test-app emulator measurement; not a performance guarantee).
+- `sync.status() -> {pending: int, lastSyncedAt: int?, offline: bool}` is a built-in at `since: 3`, with no network side effect. `pending` counts outbox operations, including deletes and repeated edits. `lastSyncedAt` is the epoch-millisecond time of the last successful **unscoped** sync, persisted in reserved host prefs, or null before one. `offline` describes the last attempted run's transport failure, not current connectivity; it is false before an attempt. Busy runs do not overwrite these observations. A scoped run cannot advance the global timestamp. `SyncResult.pending` is an optional nullable `int?` (§4.3), reporting remaining operations at return time, including busy/offline/no-server results.
+- `ota.channel` defaults to `production` and must match `[A-Za-z0-9_-]+`. Codegen emits `valenceOtaChannel` and wires it into `valenceConfig.channel`; the updater follows that channel. Bundles remain channel-neutral. Changing a compiled host's channel needs a host build.
+- OTA `requires.bridge` defaults to `baseline.storeSchema.version`, falling back to the local schema version before any store baseline. Built-in and store builds default to the local schema version. An explicit `--requires-bridge` still wins. Building below the local version names the methods needing `has()` guards; it does not make unguarded calls safe.
+- `seedSchemas: {bucket: int[]}` optionally declares additional read-only schemas the project may seed. Current `data` schemas are implicitly declared. `seed --from` accepts legacy `<bucket>.json` and `<bucket>.v<N>.json` files with `{schema, rows}`. A versioned filename must match its payload; every pair must be declared, duplicates fail atomically, and multiple schemas coexist. Missing **current pairs** warn even if an older pair was seeded. Writable buckets remain schema 1 and cannot be declared in `seedSchemas`.
+- Codegen emits an opt-in `BridgeHandlersDefaults` mixin implementing every handler with `E_UNSUPPORTED`. Use it for test doubles or partial hosts; production hosts should extend `ValenceBuiltins` and explicitly implement their own methods. A defaults mixin must not mask the built-in implementations.
+- `node valence/valence.mjs doctor [--tests]` runs mechanical diagnostics without an AI session. It checks config, codegen freshness, built-in signature/files/host bridge/data compatibility, current seed coverage, baseline and stack report presence, declared `nativeValue` (at least two distinct §6 capabilities), resolved Flutter dependencies, and app test-matrix evidence. Rows are `PASS`, `WARN` (missing or unexecuted evidence), or `FAIL` (a check ran and failed); any failure exits nonzero. Missing evidence never passes. `nativeValue` is a declaration, not proof of device behavior. `.valence/test-matrix.json` maps stable layer IDs `bridge`, `loopback`, `updater`, `store-sync`, `integration` to app-relative Flutter `test/` or `integration_test/` files; doctor lists every ID. `--tests` executes mapped unit tests; integration rows stay WARN and need a separate device run. File mappings are evidence pointers, not proof that assertions cover the contract. Doctor does not certify store approval or emulator behavior.
+
 ## 8. Test matrix (minimum; all must pass before "done")
+
+R12 regression rows: batch reads preserve requested order, deduplicate, isolate bucket/schema, omit tombstones, bind hostile keys, and reject over-limit input; sync status counts deletes and survives reopen, preserves observations on busy and errors, timestamps only successful unscoped runs; generated defaults dispatch as `E_UNSUPPORTED`; old schemas still generate without grown fields; channel validation and beta pointer URL; store-baseline OTA default with explicit and built-in overrides; multi-schema seed declaration/duplicate/atomicity/current-coverage checks; doctor reports missing evidence as WARN and real failures as FAIL.
 
 | Layer | Tests |
 |---|---|

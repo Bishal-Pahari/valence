@@ -80,4 +80,7 @@ MIT. Spec: `contracts.md` §4.
 
 ## Call your own API
 
-After codegen, import `call`, `connect` and `has` from your app's `bridge.g.ts`. The schema-4 `http.request` method returns typed `{status, headers, body}`; the generic bridge needs no HTTP-specific transport. Guard it with `has('http.request')` after `connect()`. The native host enforces compiled `web.connect` origins and attaches the user token. A browser shim uses ordinary `fetch` with ordinary CORS rules. [Native HTTP and REST adapters](https://getvalence.pages.dev/docs/guides/your-backend/).
+After codegen, import `call`, `connect` and `has` from your app's `bridge.g.ts`. The schema-4 `http.request` method returns typed `{status, headers, body}`; the generic bridge needs no HTTP-specific transport. Guard it with `has('http.request')` after `connect()`. The native host enforces compiled `http.origins` origins and attaches the user token. A browser shim uses ordinary `fetch` with ordinary CORS rules. [Native HTTP and REST adapters](https://getvalence.pages.dev/docs/guides/your-backend/).
+## Offline status (schema 3)
+
+Import through your generated `bridge.g.ts`. After `connect()`, guard `has("data.getMany")` and `has("sync.status")` for older hosts. `call("data.getMany", {bucket, keys})` returns distinct live rows in first-requested order, omitting missing/deleted keys (max 500 inputs). `call("sync.status")` returns outbox operation count (including deletes), nullable last-success timestamp, and the last attempt's offline flag. It makes no network request. `SyncResult.pending` is nullable for older hosts.

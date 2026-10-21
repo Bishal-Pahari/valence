@@ -29,12 +29,19 @@ export interface SyncResult {
   changed: number;
   offline: boolean;
   reason?: string | null;
+  pending?: number | null;
 }
 
 export interface HttpResponse {
   status: number;
   headers: Json;
   body: string;
+}
+
+export interface SyncStatus {
+  pending: number;
+  lastSyncedAt?: number | null;
+  offline: boolean;
 }
 
 export interface Methods {
@@ -89,6 +96,11 @@ export interface Methods {
     headers?: Json | null;
     body?: string | null;
   }; returns: HttpResponse };
+  'data.getMany': { params: {
+    bucket: string;
+    keys: string[];
+  }; returns: Row[] };
+  'sync.status': { params: Record<string, never>; returns: SyncStatus };
 }
 
 export interface Events {
@@ -120,6 +132,8 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'auth.setToken': 2,
   'auth.hasToken': 2,
   'http.request': 4,
+  'data.getMany': 3,
+  'sync.status': 3,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {

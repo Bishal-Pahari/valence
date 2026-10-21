@@ -33,6 +33,7 @@ export 'src/runtime.dart'
         ValenceServer,
         ValenceSyncReason,
         ValenceSyncResult,
+        ValenceSyncStatus,
         ValenceUpdater,
         checkManifest,
         decodePointer,

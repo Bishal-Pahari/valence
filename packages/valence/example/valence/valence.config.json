@@ -9,9 +9,7 @@
       "/",
       "/shelf"
     ],
-    "connect": [
-      "http://10.0.2.2:8787"
-    ]
+    "connect": []
   },
   "host": {
     "dir": "."
@@ -28,5 +26,10 @@
   },
   "writable": [
     "shelf"
-  ]
+  ],
+  "http": {
+    "origins": [
+      "http://10.0.2.2:8787"
+    ]
+  }
 }
