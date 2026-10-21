@@ -203,9 +203,23 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   bool _noteConnectivity(List<ConnectivityResult> results) {
     final online = valenceOnline(results);
     if (_valence.noteOnline(online)) {
-      runScript(eventScript('app.online', {'online': online}));
+      _emitState(eventScript('app.online', {'online': online}));
     }
     return online;
+  }
+
+  /// Emits a **state** event, or drops it if no page can receive it.
+  ///
+  /// `app.lifecycle` and `app.online` are state, and §4.2's rule for state is to prefer re-deriving to
+  /// replaying: a page that was not loaded calls `app.state()` on mount and gets the current pair, which
+  /// is the answer it actually wants. Buffering them instead would be an unbounded queue — a host whose
+  /// entry page never loads, on a device flipping between networks, has no bound on how many it
+  /// collects — holding transitions that are stale by the time anything reads them. The one-shot events
+  /// (`sync.changed`, `sync.done`, `bundle.updateReady`, `auth.expired`) still buffer, because each of
+  /// them reports something that happened once and has no "ask again" method behind it.
+  void _emitState(String script) {
+    if (!_pageLoaded) return;
+    unawaited(_controller?.runJavaScript(script) ?? Future<void>.value());
   }
 
   // ---------------------------------------------------------------------------
@@ -430,7 +444,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     // Logged as well as emitted. The page can only report the events it *received*, so without a host-side
     // line there is no way to tell "the platform never sent it" from "the script never ran".
     _log('lifecycle: ${state.name} -> ${mapped.name}');
-    runScript(eventScript('app.lifecycle', {'state': mapped.name}));
+    _emitState(eventScript('app.lifecycle', {'state': mapped.name}));
   }
 
   Future<void> _onResume() async {
