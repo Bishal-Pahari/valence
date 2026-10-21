@@ -23,3 +23,5 @@ Every reported finding was confirmed. Security checks, nonce/decoding, signed fo
 - Independent security review: no confirmed findings; migration/static/coalescing coverage gaps were added and independently checked (23 tests passed).
 
 No additional emulator run was performed in this wrap-up; no new device execution is claimed. iOS remains experimental and untested. Existing records already skipped by an older host cannot be inferred from its advanced cursor; republish affected records with higher USNs or provide a new read-only schema. Do not delete queued user data to recover.
+
+Final clean-state pub dry run: zero warnings. The final site branch merge also rebuilt successfully (25 pages, SEO/link/anchor checks). All three requested branches are ready for the maintainer review/merge phase.
