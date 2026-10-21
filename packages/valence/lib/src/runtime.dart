@@ -38,7 +38,7 @@ export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestP
 export 'state.dart' show ValenceState;
 export 'store.dart' show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, isDatabaseLocked, maxListLimit;
 export 'sync.dart' show ValenceSync, ValenceSyncReason, ValenceSyncResult, ValenceSyncStatus;
-export 'updater.dart' show ValenceUpdater;
+export 'updater.dart' show ValenceBundleReason, ValenceBundleStatus, ValenceUpdater;
 export 'wire.dart' show BridgeError, BridgeErrorCode, maxMessageBytes;
 
 /// What `app.info` reports.
@@ -66,6 +66,42 @@ final class ValenceAppInfo {
 
   /// The device locale, for example `en_US`.
   final String locale;
+}
+
+/// The host's four lifecycle states (§4.6).
+///
+/// Four, not Flutter's five: `hidden` and `paused` are one transition to [background] as far as a page is
+/// concerned, and emitting both would make a page that counts transitions count two for one backgrounding.
+/// The names are the wire values, through `.name`.
+enum ValenceLifecycle {
+  /// On screen and interactive. Flutter's `resumed`.
+  foreground,
+
+  /// Not visible. Flutter's `hidden` and `paused`. The last state with a live page: persist here.
+  background,
+
+  /// Visible but not interactive — a notification shade, a permission dialog, an incoming call.
+  ///
+  /// **Not** backgrounded. A page that pauses a video on this flickers.
+  inactive,
+
+  /// The engine is detached from any view. Flutter's `detached`.
+  ///
+  /// Reported for completeness and usually never delivered: there may be no WebView left to run the
+  /// script. Never persist from here.
+  detached,
+}
+
+/// The current lifecycle and connectivity, for `app.state` (§4.6).
+final class ValenceAppState {
+  /// Creates a state snapshot.
+  const ValenceAppState({required this.lifecycle, required this.online});
+
+  /// Where the app is in its lifecycle.
+  final ValenceLifecycle lifecycle;
+
+  /// What the OS says about network *interfaces* — not reachability. See §4.6.
+  final bool online;
 }
 
 /// What the runtime needs from the widget that owns the WebView.
@@ -309,6 +345,43 @@ final class Valence {
     }
     await view.handleReady();
   }
+
+  /// The current lifecycle and connectivity. [ValenceApp] keeps them up to date; see [noteLifecycle].
+  ///
+  /// The optimistic defaults are deliberate. A page only ever runs while the app is on screen, and a host
+  /// whose connectivity plugin has not answered yet must not tell the page it is offline — the cost of
+  /// being wrong the other way is a UI that refuses to try on a working network.
+  ValenceLifecycle _lifecycle = ValenceLifecycle.foreground;
+  bool _online = true;
+
+  /// `app.state`. The current values of the `app.lifecycle` and `app.online` events (§4.6).
+  ValenceAppState appState() => ValenceAppState(lifecycle: _lifecycle, online: _online);
+
+  /// Records a lifecycle transition and returns true when it is a change. Called by [ValenceApp].
+  bool noteLifecycle(ValenceLifecycle lifecycle) {
+    if (_lifecycle == lifecycle) return false;
+    _lifecycle = lifecycle;
+    return true;
+  }
+
+  /// Records connectivity and returns true when it is a change. Called by [ValenceApp].
+  bool noteOnline(bool online) {
+    if (_online == online) return false;
+    _online = online;
+    return true;
+  }
+
+  /// `bundle.status`. Why the last update check ended as it did, and what is waiting (§4.6).
+  ///
+  /// Reads state the host already keeps, so a page may poll it: it never starts a network request.
+  ValenceBundleStatus bundleStatus() => ValenceBundleStatus(
+        serving: _manifest?.seq ?? 0,
+        pending: state.pending,
+        trial: state.trial,
+        reason: updater.lastReason,
+        offered: updater.lastOffered,
+        checkedAt: updater.lastCheckedAt,
+      );
 
   /// `app.info`.
   ValenceAppInfo appInfo() => ValenceAppInfo(

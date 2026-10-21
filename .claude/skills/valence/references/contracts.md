@@ -378,6 +378,7 @@ If the web app has modal state of its own it wants the gesture for, the host can
 ### Resume
 
 - **The resume callback can arrive before start-up has finished. Ignore it until the first activation has completed.** On Android the lifecycle observer fires during the first launch, *while* §1's start-up sequence is still running — so a resume handler that touches the server, the store or the active bundle can run before any of them exists (`LateInitializationError`, or whatever your language calls it). §2.3's "the update check runs on UI start, on resume" and the rebind below both describe steady state; neither says when steady state begins. Guard the resume path on "has the host finished starting", or register the observer only after the first `activateForUiStart`. This is the same class of rule as "no transition runs from a background isolate" (§8).
+- **The same observer feeds `app.lifecycle` and `app.online` (§4.6).** The host maps Flutter's five lifecycle states onto four of its own, emits only changes, and keeps the current pair for `app.state()`. The start-up guard above applies to the resume *work*, not to the event: a page that exists can be told the app went to the background during start-up, and must be, or its first transition is the one it never hears about.
 - iOS can reclaim listening sockets while the app is suspended. On `AppLifecycleState.resumed`, probe the server and rebind the same port.
 - If rebinding succeeds, keep the nonce, so the page keeps working.
 - If rebinding fails, rotate the port and the nonce and reload the page. The old page must not keep running against a port we no longer own.
@@ -401,35 +402,47 @@ If the web app has modal state of its own it wants the gesture for, the host can
 
 ```json
 {
-  "version": 2,
+  "version": 6,
   "methods": {
     "app.ready":          { "since": 1, "params": {}, "returns": "void" },
     "app.info":           { "since": 1, "params": {}, "returns": "AppInfo" },
+    "app.state":          { "since": 6, "params": {}, "returns": "AppState" },
     "data.get":           { "since": 1, "params": { "bucket": "string", "key": "string" }, "returns": "json?" },
     "data.list":          { "since": 1, "params": { "bucket": "string", "prefix": "string?", "limit": "int?", "after": "string?" }, "returns": "Row[]" },
     "data.count":         { "since": 5, "params": { "bucket": "string", "prefix": "string?" }, "returns": "int" },
+    "data.getMany":       { "since": 3, "params": { "bucket": "string", "keys": "string[]" }, "returns": "Row[]" },
     "data.put":           { "since": 1, "params": { "bucket": "string", "key": "string", "value": "json?" }, "returns": "void" },
     "sync.now":           { "since": 1, "params": { "buckets": "string[]?" }, "returns": "SyncResult" },
+    "sync.status":        { "since": 3, "params": {}, "returns": "SyncStatus" },
     "prefs.get":          { "since": 1, "params": { "key": "string" }, "returns": "string?" },
     "prefs.set":          { "since": 1, "params": { "key": "string", "value": "string?" }, "returns": "void" },
     "open.external":      { "since": 1, "params": { "url": "string" }, "returns": "void" },
     "bundle.applyUpdate": { "since": 1, "params": {}, "returns": "void" },
+    "bundle.status":      { "since": 6, "params": {}, "returns": "BundleStatus" },
     "secure.get":         { "since": 2, "params": { "key": "string" }, "returns": "string?" },
     "secure.set":         { "since": 2, "params": { "key": "string", "value": "string" }, "returns": "void" },
     "secure.delete":      { "since": 2, "params": { "key": "string" }, "returns": "void" },
     "auth.setToken":      { "since": 2, "params": { "token": "string?" }, "returns": "void" },
-    "auth.hasToken":      { "since": 2, "params": {}, "returns": "bool" }
+    "auth.hasToken":      { "since": 2, "params": {}, "returns": "bool" },
+    "http.request":       { "since": 4, "params": { "url": "string", "method": "string?", "headers": "json?", "body": "string?" }, "returns": "HttpResponse" }
   },
   "events": {
     "sync.changed":       { "since": 1, "payload": { "buckets": "string[]" } },
+    "sync.done":          { "since": 6, "payload": { "result": "SyncResult" } },
     "bundle.updateReady": { "since": 1, "payload": { "seq": "int" } },
     "app.resumed":        { "since": 1, "payload": {} },
+    "app.lifecycle":      { "since": 6, "payload": { "state": "string" } },
+    "app.online":         { "since": 6, "payload": { "online": "bool" } },
     "auth.expired":       { "since": 2, "payload": {} }
   },
   "types": {
-    "AppInfo":    { "platform": "string", "host": "int", "bridge": "int", "bundle": "int", "locale": "string" },
-    "Row":        { "key": "string", "value": "json", "usn": "int" },
-    "SyncResult": { "buckets": "string[]", "changed": "int", "offline": "bool", "reason": "string?" }
+    "AppInfo":      { "platform": "string", "host": "int", "bridge": "int", "bundle": "int", "locale": "string" },
+    "AppState":     { "lifecycle": "string", "online": "bool" },
+    "Row":          { "key": "string", "value": "json", "usn": "int" },
+    "SyncResult":   { "buckets": "string[]", "changed": "int", "offline": "bool", "reason": "string?", "pending": "int?" },
+    "SyncStatus":   { "pending": "int", "lastSyncedAt": "int?", "offline": "bool" },
+    "BundleStatus": { "serving": "int", "pending": "int?", "trial": "int?", "reason": "string", "offered": "int?", "checkedAt": "int?" },
+    "HttpResponse": { "status": "int", "headers": "json", "body": "string" }
   }
 }
 ```
@@ -665,6 +678,95 @@ USNs, retains tombstones, and acknowledges push ids idempotently. Its pull `max`
 row included when `more` is true, never a later server head that would skip unseen rows.
 The example is one loopback-only user's database; multi-user deployments must isolate state
 by authenticated identity, enforce authorization and put TLS in front of it.
+
+### 4.6 Lifecycle, connectivity and update status
+
+A page in a browser tab can answer "am I visible?" and "am I online?" from the platform, and it is
+never asked "is a new version of me waiting?". Inside the host all three are the host's to answer, and
+all three were previously answered only by inference: `app.resumed` fired on the way back in with no
+corresponding event on the way out, `SyncResult.offline` described one past attempt rather than the
+link, and an update that declined was visible only in the native log.
+
+**`app.lifecycle`** carries `{"state": "foreground" | "background" | "inactive" | "detached"}`. The four
+values are the host's, not the platform's, and the mapping is fixed so a page reads the same four on
+either OS:
+
+| Flutter `AppLifecycleState` | event `state` |
+|---|---|
+| `resumed` | `foreground` |
+| `inactive` | `inactive` |
+| `hidden`, `paused` | `background` |
+| `detached` | `detached` |
+
+- **Only a change is emitted.** Android delivers `hidden` and then `paused` for one backgrounding, which
+  is one transition to `background`; a page that counted events would count two.
+- `inactive` is the transient state behind a notification shade, a permission dialog or an incoming
+  call. It is **not** backgrounded, and a page that pauses a video on it flickers. Treat it as
+  foreground unless you specifically mean "not interactive".
+- `detached` is emitted for completeness and will usually not arrive: the engine is tearing down, so
+  there may be no WebView left to run the script. **Never persist from `detached`.** Persist on
+  `background`, which is the last state with a live page.
+- `app.resumed` still fires, unchanged, on the way back in. It is `app.lifecycle` with
+  `state: "foreground"` plus the host's resume work (port reclaim, update check, sync) having been
+  started. New code should listen to one or the other, not both.
+
+**`app.online`** carries `{"online": bool}` and reports what the OS says about network *interfaces* —
+`connectivity_plus`, the same source the "connectivity came back" sync trigger uses. **It is not
+reachability.** A device on captive-portal Wi-Fi, or behind a firewall, or with a server that is down,
+is `online: true` and every request still fails. The honest pair is: `app.online` to decide whether to
+*try*, and `SyncResult.reason`/`sync.status().offline` to say whether the last attempt *worked*. A
+freshness indicator built on `app.online` alone lies. Only a change is emitted, and the first value
+arrives as soon as the host has one, so a page can also just call `app.state()`.
+
+**`app.state()`** returns `{lifecycle, online}`, the current values of the two events. It exists because
+both are state, not notifications: a page that loads after the transition — a cold start from a
+notification tap, or the reload an OTA does — would otherwise have to wait for the next change to learn
+anything. Prefer re-deriving from `app.state()` on mount to replaying buffered events (§4.2).
+
+**`sync.done`** carries `{"result": SyncResult}` — the same record `sync.now` returns, after every run
+the host makes on its own: UI start, resume, connectivity returning, a push, and the periodic
+background run that happens while the page is not on screen. `sync.changed` says which buckets moved
+and nothing else; a run that moved nothing, or was blocked, or hit a 401 emitted no event at all, so a
+"last synced" line could only ever be updated by a sync the page itself asked for. **It fires on every
+completed run, including `changed: 0`**, and the two are ordered: `sync.changed` first (so the page's
+data is refetched) then `sync.done`. A schema that declares `sync.done` must also declare the
+`SyncResult` type.
+
+**`bundle.status()`** answers "is there an update, and if not, why not?" It returns:
+
+| Field | Meaning |
+|---|---|
+| `serving` | the seq of the bundle on screen; `0` before one is served |
+| `pending` | a verified bundle waiting for `bundle.applyUpdate`, or null |
+| `trial` | the seq on probation, or null — equal to `serving` while a trial is on screen |
+| `reason` | why the last completed check ended as it did, from the closed set below |
+| `offered` | the seq the pointer offered on that check, when it got that far |
+| `checkedAt` | when that check finished, epoch milliseconds, or null before the first one |
+
+`reason` is a closed set, and every value maps to a sentence a page can show:
+
+- `idle` — no check has finished yet.
+- `unconfigured` — the app has no `ota.base`, so it never checks. Not a fault.
+- `uptodate` — the pointer offers nothing above `current`, `pending` or `trial`.
+- `rollout` — a newer release exists and this install is outside its rollout percentage (§2.3 step 2).
+- `bad` — the offered seq is on this install's `bad` list, so it will never be offered again (§2.4).
+- `offline` — the pointer, the manifest, the signature or a file could not be fetched.
+- `rejected` — the manifest or a file failed its checks (§2.3 checks 1–7). **This is the one that
+  deserves an alert in your own telemetry:** it means a published release is unservable, or the bytes
+  were tampered with, and no device will take it.
+- `toobig` — over `bundleSizeCap`, or the data pull hit `dataSizeCap`.
+- `waitingForData` — step 7 has not finished pulling the `requires.data` pairs, so the bundle exists but
+  is not usable yet. On a device that is offline or whose server has not published the pair, this is
+  where an update sits indefinitely, and it is the state four hosts mistook for "no update" (§2.3).
+- `busy` — step 7 could not take the sync lease within its bounded wait. The next check retries.
+- `ready` — the check produced a `pending`. Call `bundle.applyUpdate` when a reload will not lose work.
+
+The set is closed in the same way §4.2's error codes are: add a value here rather than inventing one.
+A page must treat a value it does not recognise as "no update right now", never as an error, because a
+newer host can return one the bundle was generated before.
+
+All five are `since: 6`, and `bundle.status` reads state the host already keeps — it never starts a
+network request, so a page may poll it.
 
 
 ## 5. Data layer
@@ -916,4 +1018,5 @@ R12 regression rows: batch reads preserve requested order, deduplicate, isolate 
 | the database's own location (§5.1, §5.6) | **a 0.3 database in the documents directory is adopted with its `-wal` and `-shm` sidecars, under the configured file name, with rows, outbox and cursors intact and the move logged; an existing appSupport database wins and the legacy file is left untouched; the second launch is a no-op; a fresh install with nothing to adopt starts empty; one directory serving as both moves nothing**; **a move that cannot finish throws rather than opening an empty database, leaves the 0.3 copy readable, and is resumed by the next launch**; **a locked open is retried rather than thrown, `backgroundSync` reports `reason: busy` instead of failing the WorkManager job once the budget is spent, a UI open rethrows, and a failed open is not cached**; **`isDatabaseLocked`'s message fallback is anchored, so the lock wording appearing in a page-supplied SQL argument is not read as a lock** |
 | store and sync | **push echoes never advance pull cursors; a 600-row pull with a later server-head max receives all pages; partial HTTP/static pulls cannot satisfy activation; outbox insertion order survives equal/backwards timestamps, VACUUM and v1 migration**; **a writable bucket is pulled as well as pushed, at schema 1, and a pull never clobbers a local write that has not been acknowledged yet**; paged pull is atomic per page; tombstones; outbox rows aren't clobbered by a pull **or by a push echo**; push ack clears only acknowledged ids; seed import per `(bucket, schema)` only moves forward; writable buckets use schema 1; the sync lease blocks concurrent syncs, is renewed per page, and treats a future timestamp as expired; **a lease recorded by another pid, or by an older host with no pid, is taken over rather than waited out, while our own live lease is still respected**; **a blocked run reports `reason: busy` rather than an empty success, a completed run reports `ok`, and an unreachable server reports `offline` with the old `offline` flag unchanged**; **step 7's pull takes the same lease, stops and logs rather than failing when it cannot, and resumes from the pair's own `max_usn` rather than from 0**; **a stored token is attached as `Authorization: Bearer` to a writable bucket's pull and push and to neither for a public read-only bucket, `ValenceConfig.authToken` wins over the stored one, a secure-storage platform that is absent reads as no token rather than throwing, and a 401 emits `auth.expired` once per run and reports `reason: unauthorized` while keeping the token** |
 | bridge | missing or wrong nonce → `E_DENIED`; unknown method → `E_UNKNOWN`; bad params → `E_PARAMS`; a write to a read-only bucket → `E_DENIED`; **a `data.put` key of `.` or `..` → `E_PARAMS` and nothing queued, while `...`, `a.b` and `.hidden` are accepted**; `prefs.*` and `secure.*` on a `valence.` key → `E_DENIED`, so the stored token is unreadable by the page; `open.external` rejects `javascript:` and `file:`; reply escaping round-trips U+2028 and quotes; **an inbound message over `MAX_MESSAGE_BYTES` of UTF-8 is rejected by `@getvalence/bridge` before `postMessage`, with `E_TOO_LARGE`, rather than killing the webview** (a multi-byte string that is under the cap in UTF-16 code units and over it in bytes is refused); **an over-cap *reply* is replaced by `E_TOO_LARGE` rather than sent**; **`data.list` clamps `limit` to 500 and defaults it to 100**; **`after` reads a bucket past the clamp completely, in key order, with no row repeated or skipped, composes with `prefix`, and resumes correctly from a cursor key that has since been deleted; `data.count` reports a size past the clamp, honours `prefix`, is scoped to the pair and omits tombstones**; **a built-in's optional *param* is passed through when the app's schema declares it, omitted from the delegation when it does not, refused at the wrong type or under another name, refused on a different built-in, **refused without a `version` above the shipped one** (a param has no `since`, so the version is the only thing `has()` and `app.info().bridge` can gate on), and additive against a method a `--store` build already recorded — while an app's own shipped method may not grow a param at all, and neither `since` nor any other method-level key may change** |
+| lifecycle, connectivity and update status (§4.6) | `hidden` then `paused` emits one `app.lifecycle` with `background`, and a repeat of the same state emits nothing; `inactive` and `detached` map to themselves; `app.state()` reports the pair before any event has been emitted, and a lifecycle change during start-up still reaches the page while the resume *work* stays suppressed; `app.online` emits only on change, with the first value derived from the current connectivity rather than waiting for one; **a connectivity report with several interfaces is online when any of them is not `none`**; `sync.done` carries the whole `SyncResult` after every completed run including `changed: 0`, `busy` and `unauthorized`, and is emitted after `sync.changed` for the same run; `bundle.status` is `idle` before any check, `unconfigured` with no `otaBase`, and reports `uptodate`, `rollout`, `bad`, `offline`, `rejected`, `toobig`, `waitingForData`, `busy` and `ready` for the step that stopped the check, with `offered` set once the pointer decoded and `checkedAt` moving only on a completed check; `serving`/`pending`/`trial` match the live state |
 | integration (`integration_test`, device or emulator) | **first launch opens the database and paints** — the store and sync rows above run on `sqflite_common_ffi`, which is more permissive than Android's `SQLiteDatabase` (it accepts `execute` for pragmas), so a green unit suite is not evidence the store opens on a phone; cold start in airplane mode renders the built-in bundle with seed data; a corrupt CAS file is detected the first time the server serves it, deleted, and re-downloaded by the next update check; a background sync followed by a UI bridge call (the database must still be open); background then resume after 10 minutes, the server is rebound and the page still works; **each §6 item the app ships actually works on the device** — a biometric prompt appears rather than throwing `no_fragment_activity`, and a reminder scheduled N seconds out really posts and reports `exact` or `inexact` rather than `ok`; **a scheduled window survives a clock change** (`cmd alarm set-time`, then the alarms are still there) **and a reboot**; **a re-arm does not cancel a notification already on screen**; **a widget snapshot reaches a placed widget**, and the provider resolves under the fully-qualified class name |

@@ -156,12 +156,40 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     unawaited(_checkForUpdate());
     unawaited(_syncNow());
     _updateTicker = Timer.periodic(_valence.config.updateInterval, (_) => unawaited(_checkForUpdate()));
-    _connectivity = Connectivity().onConnectivityChanged.listen((results) {
-      if (results.any((r) => r != ConnectivityResult.none)) {
-        _log('sync: connectivity came back');
-        unawaited(_syncNow());
-      }
-    });
+    _connectivity = Connectivity().onConnectivityChanged.listen(_onConnectivity);
+    // The stream only reports *changes*, so without this a page that asks `app.state()` on a cold start
+    // reads the optimistic default rather than an answer (§4.6).
+    unawaited(_readConnectivity());
+  }
+
+  Future<void> _readConnectivity() async {
+    try {
+      _noteConnectivity(await Connectivity().checkConnectivity());
+    } on Object catch (e) {
+      _log('connectivity: could not read the current state: $e');
+    }
+  }
+
+  void _onConnectivity(List<ConnectivityResult> results) {
+    final online = _noteConnectivity(results);
+    // The sync trigger is "connectivity came back", so it fires on any report with a live interface, not
+    // only on the edge: a Wi-Fi-to-cellular handover is two live reports and the run in between failed.
+    if (online) {
+      _log('sync: connectivity came back');
+      unawaited(_syncNow());
+    }
+  }
+
+  /// Records connectivity, emits `app.online` on a change, and returns whether we are online.
+  ///
+  /// Online means *any* interface that is not `none`: connectivity_plus reports a list, and a device on
+  /// Wi-Fi and VPN at once has two entries. It is interface state, never reachability (§4.6).
+  bool _noteConnectivity(List<ConnectivityResult> results) {
+    final online = results.any((r) => r != ConnectivityResult.none);
+    if (_valence.noteOnline(online)) {
+      runScript(eventScript('app.online', {'online': online}));
+    }
+    return online;
   }
 
   // ---------------------------------------------------------------------------
@@ -362,6 +390,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _noteLifecycle(state);
     switch (state) {
       case AppLifecycleState.resumed:
         if (_readyTicker != null) _readyClock.start();
@@ -373,6 +402,22 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
         // The ready timer counts foreground time, so it pauses with the app.
         _readyClock.stop();
     }
+  }
+
+  /// §4.6: the five platform states as the four the page sees, emitted only when they change.
+  ///
+  /// Not gated on `_started`, unlike the resume *work* below: a page that exists must be told the app went
+  /// to the background during start-up, or the first transition it hears about is the second one.
+  void _noteLifecycle(AppLifecycleState state) {
+    final mapped = switch (state) {
+      AppLifecycleState.resumed => ValenceLifecycle.foreground,
+      AppLifecycleState.inactive => ValenceLifecycle.inactive,
+      // Android delivers hidden and then paused for one backgrounding. One transition, so one event.
+      AppLifecycleState.hidden || AppLifecycleState.paused => ValenceLifecycle.background,
+      AppLifecycleState.detached => ValenceLifecycle.detached,
+    };
+    if (!_valence.noteLifecycle(mapped)) return;
+    runScript(eventScript('app.lifecycle', {'state': mapped.name}));
   }
 
   Future<void> _onResume() async {
@@ -464,6 +509,18 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       // builds them with the same jsonEncode-based helper the generated BridgeEvents uses. An app's own
       // events go through valence.emit(BridgeEvents.myEvent(...)).
       if (moved.isNotEmpty) runScript(eventScript('sync.changed', {'buckets': moved}));
+      // §4.6: after sync.changed for the same run, so the page's data is refetched before it is told the
+      // run finished. Emitted for every completed run, changed: 0 and busy included — that is the whole
+      // point: "nothing moved" is the answer a freshness line needs and the one sync.changed never sends.
+      runScript(eventScript('sync.done', {
+        'result': {
+          'buckets': result.buckets,
+          'changed': result.changed,
+          'offline': result.offline,
+          'reason': result.reason.name,
+          'pending': result.pending,
+        },
+      }));
     } on Object catch (e) {
       _log('sync: run failed: $e');
     }

@@ -59,6 +59,22 @@ const BUILTINS = {
     call: (t) =>
       `final i = valence.appInfo();\n        return ${t}(platform: i.platform, host: i.host, bridge: i.bridge, bundle: i.bundle, locale: i.locale);`,
   },
+  // §4.6. Both read state the host already keeps, so neither starts a request and a page may poll them.
+  'app.state': {
+    params: {},
+    returns: { fields: { lifecycle: 'string', online: 'bool' } },
+    call: (t) => `final s = valence.appState();
+        return ${t}(lifecycle: s.lifecycle.name, online: s.online);`,
+  },
+  'bundle.status': {
+    params: {},
+    returns: {
+      fields: { serving: 'int', pending: 'int?', trial: 'int?', reason: 'string', offered: 'int?', checkedAt: 'int?' },
+    },
+    call: (t) =>
+      `final s = valence.bundleStatus();
+        return ${t}(serving: s.serving, pending: s.pending, trial: s.trial, reason: s.reason.name, offered: s.offered, checkedAt: s.checkedAt);`,
+  },
   'data.get': {
     params: { bucket: 'string', key: 'string' },
     returns: 'json?',

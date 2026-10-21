@@ -32,23 +32,31 @@ import {
 } from './valence.mjs';
 
 const TEMPLATES = join(import.meta.dirname, '..', 'templates');
+
+// Everything the template declares above version 4, so a fixture can be the app that has not regenerated.
+// Listed here rather than per test, because every new runtime capability has to land in exactly one place
+// for the "an older app still codegens" cases to keep meaning what they say.
+const SINCE_ABOVE_4 = {
+  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status'],
+  events: ['sync.done', 'app.lifecycle', 'app.online'],
+  types: ['SyncStatus', 'AppState', 'BundleStatus'],
+};
 const NOW = Date.UTC(2026, 9, 15);
 
 function fixture({ data = { calendar: 1 }, latest = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'mr-'));
   mkdirSync(join(root, 'valence'));
   cpSync(join(TEMPLATES, 'bridge.schema.json'), join(root, 'valence', 'bridge.schema.json'));
-  // Field evolution cases omit the optional batch/status/paging additions: this is the shape of an app
-  // that has not regenerated against the newer runtime, which must still codegen and compile.
+  // Field evolution cases omit the optional batch/status/paging/lifecycle additions: this is the shape of
+  // an app that has not regenerated against the newer runtime, which must still codegen and compile.
   if (!latest) {
     const p = join(root, 'valence', 'bridge.schema.json');
     const s = JSON.parse(readFileSync(p, 'utf8'));
     s.version = 4;
-    delete s.methods['data.getMany'];
-    delete s.methods['sync.status'];
-    delete s.methods['data.count'];
+    for (const m of SINCE_ABOVE_4.methods) delete s.methods[m];
+    for (const e of SINCE_ABOVE_4.events) delete s.events[e];
+    for (const t of SINCE_ABOVE_4.types) delete s.types[t];
     delete s.methods['data.list'].params.after;
-    delete s.types.SyncStatus;
     delete s.types.SyncResult.pending;
     writeFileSync(p, JSON.stringify(s));
   }
@@ -489,7 +497,7 @@ test('doctor reports absent evidence as warnings, compatibility errors as failur
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'native value'));
   bundle({ root, cfg, key, builtin: true, now: NOW });
   const dart = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
-  writeFileSync(dart, readFileSync(dart, 'utf8').replace('const hostBridgeVersion = 5;', 'const hostBridgeVersion = 1;'));
+  writeFileSync(dart, readFileSync(dart, 'utf8').replace(/const hostBridgeVersion = \d+;/, 'const hostBridgeVersion = 1;'));
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'built-in compatibility'));
 });
 
@@ -615,11 +623,8 @@ test('an app that already shipped a store build can take a built-in\'s new param
   // §4.1 refuses any later change to a method in it. Without the params allowance, every adopter who has
   // ever cut a store build could not take `after` except through --rebaseline, which overwrites that
   // reviewed record.
-  const { root, cfg, key } = fixture({ latest: true });
+  const { root, cfg, key } = fixture();
   editSchema(root, (s) => {
-    delete s.methods['data.list'].params.after;
-    delete s.methods['data.count'];
-    s.version = 4;
     // An app-owned method in the same store build, to prove the relaxation does not leak to one.
     s.methods['mine.list'] = { since: 1, params: { bucket: 'string' }, returns: 'Row[]' };
   });

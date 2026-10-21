@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -136,6 +136,16 @@
         "prefix": "string?"
       },
       "returns": "int"
+    },
+    "app.state": {
+      "since": 6,
+      "params": {},
+      "returns": "AppState"
+    },
+    "bundle.status": {
+      "since": 6,
+      "params": {},
+      "returns": "BundleStatus"
     }
   },
   "events": {
@@ -158,6 +168,24 @@
     "auth.expired": {
       "since": 2,
       "payload": {}
+    },
+    "sync.done": {
+      "since": 6,
+      "payload": {
+        "result": "SyncResult"
+      }
+    },
+    "app.lifecycle": {
+      "since": 6,
+      "payload": {
+        "state": "string"
+      }
+    },
+    "app.online": {
+      "since": 6,
+      "payload": {
+        "online": "bool"
+      }
     }
   },
   "types": {
@@ -189,6 +217,18 @@
       "pending": "int",
       "lastSyncedAt": "int?",
       "offline": "bool"
+    },
+    "AppState": {
+      "lifecycle": "string",
+      "online": "bool"
+    },
+    "BundleStatus": {
+      "serving": "int",
+      "pending": "int?",
+      "trial": "int?",
+      "reason": "string",
+      "offered": "int?",
+      "checkedAt": "int?"
     }
   }
 }
