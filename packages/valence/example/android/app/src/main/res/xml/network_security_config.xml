@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Valence serves the web bundle from a loopback HTTP server, so cleartext has to be permitted for
+     127.0.0.1 and for nothing else. `cleartextTrafficPermitted="true"` without a domain, or a
+     `<base-config>` that allows it, opens every plain-HTTP origin on the internet. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

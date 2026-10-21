@@ -1,8 +1,9 @@
-// node --test scripts/valence.test.mjs   (Node >= 22.18 for the client.ts test: it imports .ts via type stripping)
+// node --test scripts/valence.test.mjs   (Node >= 22.18: the bridge test imports .ts through type stripping)
 import {
   cpSync,
   rmSync,
   mkdirSync,
+  existsSync,
   symlinkSync,
   mkdtempSync,
   readFileSync,
@@ -93,12 +94,14 @@ test('store build signs, verifies and records the store baseline', () => {
   const m = verifyBundle({ manifestPath: r.manifestPath, filesDir: r.filesDir, keyring, appId: cfg.appId });
   assert.equal(m.seq, NOW / 1000);
   assert.deepEqual(m.routes, ['/', '/calendar', '/settings']);
-  assert.deepEqual(m.requires, { bridge: 1, data: { calendar: 1 } });
+  // The template schema is at version 2 since §4.4 added secure.* and auth.*, and requires.bridge
+  // defaults to it.
+  assert.deepEqual(m.requires, { bridge: 2, data: { calendar: 1 } });
   assert.equal(Object.keys(m.files).length, 2);
   assert.ok(!readFileSync(r.manifestPath + '.sig', 'utf8').includes('\n'), 'sig has no trailing newline');
   const b = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8'));
   assert.deepEqual(b.storeRoutes, m.routes);
-  assert.equal(b.storeSchema.version, 1);
+  assert.equal(b.storeSchema.version, 2);
   assert.equal(b.lastSeq, m.seq);
 });
 
@@ -137,6 +140,136 @@ test('seq is monotonic (same clock, slow clock) and new routes warn', () => {
   assert.equal(c.manifest.seq, b.manifest.seq + 1);
   assert.ok(b.warnings.some((w) => w.includes('/shop')));
   assert.ok(!b.warnings.some((w) => w.includes('/Counter') || w.includes('/helpers')), 'SvelteKit co-located files are not routes');
+});
+
+test('a project with no detectable routes is told the store route check is off', () => {
+  const { root, cfg, key } = fixture();
+  // A client-side-routed SPA: nothing to scan, so every bundle would report just ["/"].
+  rmSync(join(root, 'web', 'src'), { recursive: true });
+  const spa = loadConfig(root);
+  const a = bundle({ root, cfg: spa, key, store: true, now: NOW });
+  assert.deepEqual(a.manifest.routes, ['/']);
+  assert.ok(a.warnings.some((w) => w.includes('INACTIVE')), 'a store build with no routes warns that the check is off');
+  assert.ok(bundle({ root, cfg: spa, key, now: NOW }).warnings.some((w) => w.includes('INACTIVE')), 'and so does an OTA build');
+
+  // declaredRoutes turns it back on: it feeds the manifest and the baseline, and the diff warns again.
+  const decl = { ...spa, web: { ...spa.web, declaredRoutes: ['/shelf', '/'] } };
+  const b = bundle({ root, cfg: decl, key, store: true, now: NOW });
+  assert.deepEqual(b.manifest.routes, ['/', '/shelf']);
+  assert.ok(!b.warnings.some((w) => w.includes('INACTIVE')));
+  const c = bundle({ root, cfg: { ...decl, web: { ...decl.web, declaredRoutes: ['/shelf', '/about'] } }, key, now: NOW });
+  assert.ok(c.warnings.some((w) => w.includes('/about')), 'a declared route the store build never had still warns');
+
+  // ["/"] is a deliberate single-route claim and does not warn. [] claims nothing, so it is rejected rather than
+  // silently silencing the warning it was added to raise.
+  const one = bundle({ root, cfg: { ...spa, web: { ...spa.web, declaredRoutes: ['/'] } }, key, now: NOW });
+  assert.deepEqual(one.manifest.routes, ['/']);
+  assert.ok(!one.warnings.some((w) => w.includes('INACTIVE')));
+  for (const bad of ['/shelf', [], ['shelf'], [1], ['/a/b']]) {
+    assert.throws(() => bundle({ root, cfg: { ...spa, web: { ...spa.web, declaredRoutes: bad } }, key, now: NOW }), /declaredRoutes/);
+  }
+  // A trailing slash is the same route, so editing one in must not look like a new feature area.
+  assert.deepEqual(bundle({ root, cfg: { ...decl, web: { ...decl.web, declaredRoutes: ['/shelf/'] } }, key, now: NOW }).manifest.routes, ['/', '/shelf']);
+});
+
+test('declared routes are unioned with a scan, and a scan that finds one route says so differently', () => {
+  const { root, cfg, key } = fixture();
+  // Scanning works here (the fixture has web/src/routes with calendar and (app)/settings), so declaring a route adds
+  // to it rather than switching it off: a project that declares routes still gets warned about a new directory.
+  const both = bundle({ root, cfg: { ...cfg, web: { ...cfg.web, declaredRoutes: ['/shelf'] } }, key, store: true, now: NOW });
+  assert.deepEqual(both.manifest.routes, ['/', '/calendar', '/settings', '/shelf']);
+  mkdirSync(join(root, 'web', 'src', 'routes', 'admin'));
+  const after = bundle({ root, cfg: { ...cfg, web: { ...cfg.web, declaredRoutes: ['/shelf'] } }, key, now: NOW });
+  assert.ok(after.warnings.some((w) => w.includes('/admin')), 'declaring routes must not turn the scan off');
+
+  // A scannable app with exactly one route is not "INACTIVE": the check runs, it just has one route to report.
+  rmSync(join(root, 'web', 'src', 'routes'), { recursive: true });
+  mkdirSync(join(root, 'web', 'src', 'routes'));
+  writeFileSync(join(root, 'web', 'src', 'routes', '+page.svelte'), '');
+  const single = bundle({ root, cfg: loadConfig(root), key, now: NOW });
+  assert.deepEqual(single.manifest.routes, ['/']);
+  assert.ok(!single.warnings.some((w) => w.includes('INACTIVE')), 'a working scan is never reported as inactive');
+  assert.ok(single.warnings.some((w) => w.includes('found only "/"')));
+});
+
+test('_host/ is reserved for the host, and a relative asset base in the entry page warns', () => {
+  const { root, cfg, key } = fixture();
+  const html = (head) => writeFileSync(join(root, 'web', 'build', 'index.html'), `<!doctype html><head>${head}</head>`);
+
+  // `base: './'` is what you reach for when you hear "static files, no server". §3's fallback serves the entry page at
+  // any depth, so the webview resolves these against the request path: a nested route reloads to a blank screen.
+  html('<script type="module" src="./_app/a.js"></script><link rel="icon" href="favicon.png">');
+  const w = bundle({ root, cfg, key, now: NOW }).warnings;
+  assert.ok(w.some((x) => x.includes('relative URL') && x.includes('./_app/a.js') && x.includes('favicon.png')));
+
+  // Root-relative, scheme-relative, scheme and fragment refs all resolve the same at any depth, so none of them warn.
+  html('<script type="module" src="/_app/a.js"></script><link rel="icon" href="data:,"><img src="//cdn/x.png"><a href="#x">');
+  assert.ok(!bundle({ root, cfg, key, now: NOW }).warnings.some((x) => x.includes('relative URL')));
+
+  // The server answers /_host/ before the manifest lookup, so a bundle file under it could never be reached.
+  mkdirSync(join(root, 'web', 'build', '_host'));
+  writeFileSync(join(root, 'web', 'build', '_host', 'x.js'), '');
+  assert.throws(() => bundle({ root, cfg, key, now: NOW }), /_host\/ is reserved/);
+});
+
+test('requires.bridge rising above the shipped store build warns, because it strands those hosts for ever', () => {
+  const { root, cfg, key } = fixture();
+  bundle({ root, cfg, key, store: true, now: NOW }); // ships bridge 2 to the stores
+  const bridgeWarn = (r) => r.warnings.filter((w) => w.includes('requires.bridge'));
+
+  // A guarded method added at since: 3 bumps the schema version, and the default silently inherits it.
+  editSchema(root, (s) => {
+    s.version = 3;
+    s.methods['share.image'] = { since: 3, params: { png: 'string' }, returns: 'bool' };
+  });
+  const bumped = bundle({ root, cfg, key, now: NOW });
+  assert.equal(bumped.manifest.requires.bridge, 3);
+  assert.match(bridgeWarn(bumped)[0], /--requires-bridge 2/);
+
+  // Pinning to the oldest host in the field is the lever, and it is the right move — but it is not silent: an
+  // unguarded call to a since: 3 method would then be dead in the field with no build-time or store signal.
+  const pinned = bundle({ root, cfg, key, requiresBridge: 2, now: NOW });
+  assert.equal(pinned.manifest.requires.bridge, 2);
+  assert.ok(!bridgeWarn(pinned).some((w) => w.includes('above the bridge version')));
+  assert.match(bridgeWarn(pinned).join('\n'), /pinned to 2.*share\.image.*has\(\)/s);
+
+  // A store build is allowed to raise it — that build *is* the new floor — and so a fresh project has nothing to say.
+  assert.deepEqual(bridgeWarn(bundle({ root, cfg, key, store: true, now: NOW })), []);
+  assert.deepEqual(bridgeWarn(bundle({ root, cfg, key, now: NOW })), []);
+});
+
+test('a service worker in the output warns, because it answers before the host server does', () => {
+  // The host makes bundle files revalidate against their hash (§3). A service worker serving from Cache
+  // Storage is never asked, so a precaching build reopens the whole stale-bundle hole: the new release
+  // activates, the old page renders, and the trial commits on that old page's ready().
+  const { root, cfg, key } = fixture();
+  const clean = bundle({ root, cfg, key, now: NOW }).warnings;
+  assert.ok(!clean.some((x) => x.includes('service worker')));
+
+  writeFileSync(join(root, 'web', 'build', 'registerSW.js'), "navigator.serviceWorker.register('/sw.js', { scope: '/' });\n");
+  const w = bundle({ root, cfg, key, now: NOW + 1000 }).warnings;
+  assert.ok(w.some((x) => x.includes('service worker') && x.includes('inHost()')), w.join('\n'));
+});
+
+test('the relative-asset warning ignores script bodies and an absolute base href, and reads srcset', () => {
+  const { root, cfg, key } = fixture();
+  const html = (head) => writeFileSync(join(root, 'web', 'build', 'index.html'), `<!doctype html><head>${head}</head>`);
+  const relWarn = (r) => r.warnings.filter((w) => w.includes('relative URL'));
+
+  // A URL inside a template literal is not a reference a browser resolves, so it must not warn.
+  html('<script type="module" src="/_app/a.js"></script><script>const r = "x.html";</script><style>/* y.css */</style>');
+  assert.deepEqual(relWarn(bundle({ root, cfg, key, now: NOW })), []);
+
+  // An absolute <base href> re-roots every relative reference in the document, so there is nothing to report.
+  html('<base href="/"><script type="module" src="./_app/a.js"></script>');
+  assert.deepEqual(relWarn(bundle({ root, cfg, key, now: NOW })), []);
+
+  // srcset candidate lists and unquoted attributes are references too.
+  html('<script type="module" src="/_app/a.js"></script><img srcset="a.png 1x, ./b.png 2x"><link rel=icon href=c.png>');
+  const w = relWarn(bundle({ root, cfg, key, now: NOW }))[0];
+  assert.match(w, /a\.png/);
+  assert.match(w, /\.\/b\.png/);
+  assert.match(w, /c\.png/);
 });
 
 test('floor only goes up and never exceeds seq', () => {
@@ -180,6 +313,39 @@ test('verify rejects tampering, bad signatures, unknown keys, other apps and uns
   writeFileSync(r.manifestPath, evilBytes);
   writeFileSync(r.manifestPath + '.sig', sign(null, evilBytes, key).toString('base64'));
   assert.throws(() => verifyBundle(args), /unsafe path/);
+
+  // A validly signed manifest claiming the host's own prefix is refused too: §3 serves /_host/ before the manifest,
+  // so such a file would be shadowed by host content on an origin the page trusts.
+  const reserved = { ...parsed, files: { ...parsed.files, '_host/app.js': { h, n: original.length } } };
+  const reservedBytes = Buffer.from(JSON.stringify(reserved));
+  writeFileSync(r.manifestPath, reservedBytes);
+  writeFileSync(r.manifestPath + '.sig', sign(null, reservedBytes, key).toString('base64'));
+  assert.throws(() => verifyBundle(args), /unsafe path in manifest: _host\/app\.js/);
+
+  // A malformed entry is still named as malformed, even when --files is wrong: the entry checks run first.
+  const malformed = { ...parsed, files: { ...parsed.files, 'bad.js': { h: 'nothex', n: 1 } } };
+  const malformedBytes = Buffer.from(JSON.stringify(malformed));
+  writeFileSync(r.manifestPath, malformedBytes);
+  writeFileSync(r.manifestPath + '.sig', sign(null, malformedBytes, key).toString('base64'));
+  assert.throws(() => verifyBundle({ ...args, filesDir: root }), /bad file entry for bad\.js/);
+
+});
+
+test('a wrong --files level is reported as a wrong directory, not a corrupted bundle', () => {
+  const { root, cfg, key, keyring } = fixture();
+  const { manifestPath, filesDir } = bundle({ root, cfg, key, builtin: true, now: NOW });
+  const bundleDir = join(filesDir, '..'); // the built-in bundle directory: manifest.json plus files/
+  verifyBundle({ manifestPath, filesDir, keyring, appId: cfg.appId });
+
+  // Pointing --files one level up is the common slip, and it used to name the first entry as "missing" — which is
+  // exactly what a corrupted bundle looks like, the one thing verify is reached for to tell apart.
+  assert.throws(
+    () => verifyBundle({ manifestPath, filesDir: bundleDir, keyring, appId: cfg.appId }),
+    (e) => /no manifest files found under/.test(e.message) && /files/.test(e.message),
+  );
+  // A genuinely partial bundle still reports the file that is gone.
+  rmSync(join(filesDir, JSON.parse(readFileSync(manifestPath, 'utf8')).files['_app/a.js'].h));
+  assert.throws(() => verifyBundle({ manifestPath, filesDir, keyring, appId: cfg.appId }), /missing file _app\/a\.js/);
 });
 
 test('pointer defaults to the newest manifest', () => {
@@ -208,24 +374,179 @@ test('codegen writes once, is stable, survives formatters, and --check detects r
 
 test('a schema shipped in a store build is additive only', () => {
   const { root, cfg, key } = fixture();
+  // The additive rules are exercised on a method the app owns: a built-in's shape is frozen by
+  // assertBuiltinShapes before assertAdditive ever runs, so it cannot be used to probe this.
+  editSchema(root, (s) => (s.methods['haptics.tap'] = { since: 1, params: { heavy: 'bool?' }, returns: 'void' }));
   codegen({ root, cfg });
   bundle({ root, cfg, key, builtin: true, now: NOW });
-  editSchema(root, (s) => (s.methods['data.list'].params.limit = 'int'));
+  editSchema(root, (s) => (s.methods['haptics.tap'].params.heavy = 'bool'));
   codegen({ root, cfg }); // a plain --builtin build (init, local testing) does not freeze the schema
-  editSchema(root, (s) => (s.methods['data.list'].params.limit = 'int?'));
+  editSchema(root, (s) => (s.methods['haptics.tap'].params.heavy = 'bool?'));
   bundle({ root, cfg, key, store: true, now: NOW });
-  editSchema(root, (s) => (s.methods['share.early'] = { since: 1, params: {}, returns: 'void' }));
-  assert.throws(() => codegen({ root, cfg }), /needs since > 1/);
+  editSchema(root, (s) => (s.methods['share.early'] = { since: 2, params: {}, returns: 'void' }));
+  assert.throws(() => codegen({ root, cfg }), /needs since > 2/);
   editSchema(root, (s) => {
     delete s.methods['share.early'];
-    s.version = 2;
-    s.methods['share.text'] = { since: 2, params: { text: 'string' }, returns: 'void' };
+    s.version = 3;
+    s.methods['share.text'] = { since: 3, params: { text: 'string' }, returns: 'void' };
   });
   codegen({ root, cfg });
-  editSchema(root, (s) => (s.methods['data.get'].returns = 'string'));
+  editSchema(root, (s) => (s.methods['haptics.tap'].returns = 'string'));
   assert.throws(() => codegen({ root, cfg }), /cannot change/);
-  editSchema(root, (s) => delete s.methods['data.get']);
+  editSchema(root, (s) => delete s.methods['haptics.tap']);
   assert.throws(() => codegen({ root, cfg }), /cannot be removed/);
+});
+
+test('a built-in may be omitted but not redefined, because the package implements it', () => {
+  const { root, cfg } = fixture();
+  // The generated ValenceBuiltins delegates these to the valence package. A schema that keeps the name
+  // and changes the shape would compile and then pass the wrong arguments to the runtime, so codegen
+  // refuses it rather than leaving a wrong host to find on a device.
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  const bad = (mutate, re) => {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), re);
+  };
+  bad((s) => (s.methods['data.list'].params.limit = 'int'), /must stay/);
+  bad((s) => (s.methods['data.list'].params.after = 'string?'), /must stay/);
+  bad((s) => (s.methods['prefs.get'].returns = 'string'), /must return string\?/);
+  bad((s) => (s.types.SyncResult.changed = 'num'), /fields are not/);
+  bad((s) => (s.methods['data.list'].returns = 'Row'), /a type with \{key, value, usn\}\[\]/);
+  // A field the runtime added is still refused at the wrong type.
+  bad((s) => (s.types.SyncResult.reason = 'int'), /fields are not/);
+  // §4.4's methods are built-ins like the rest. A nullable `value` would make secure.set a second delete,
+  // silently, on a method whose whole point is that clearing a credential is explicit.
+  bad((s) => (s.methods['secure.set'].params.value = 'string?'), /must stay/);
+  bad((s) => (s.methods['auth.hasToken'].returns = 'string?'), /must return bool/);
+  bad((s) => (s.methods['auth.setToken'].params.token = 'string'), /must stay/);
+  // Omitting one is fine: an app that never syncs simply has no sync.now, and ValenceBuiltins drops it.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => delete s.methods['sync.now']);
+  assert.ok(codegen({ root, cfg }).written.length);
+  // And an app with no login drops the whole of §4.4 the same way.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => {
+    for (const m of ['secure.get', 'secure.set', 'secure.delete', 'auth.setToken', 'auth.hasToken']) {
+      delete s.methods[m];
+    }
+    delete s.events['auth.expired'];
+  });
+  assert.ok(codegen({ root, cfg }).written.length);
+});
+
+test('a built-in grows a field without breaking an app that has not taken it', () => {
+  // Rule 5: the IDL is additive only. Before this, every built-in's shape was compared literally, so a
+  // runtime could never add a field to one — the next codegen in every existing app would fail. The two
+  // directions that matter: an app that declares the new field gets it passed through, and an app still
+  // on the old shape keeps generating code that compiles.
+  const { root, cfg } = fixture();
+  codegen({ root, cfg });
+  const withReason = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(withReason, /reason: r\.reason\.name/, 'the template schema takes reason, so the delegation passes it');
+
+  editSchema(root, (s) => delete s.types.SyncResult.reason);
+  assert.ok(codegen({ root, cfg }).written.length, 'an app on the old three-field shape still generates');
+  const without = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.doesNotMatch(without, /reason:/, 'and the delegation does not pass a field its type does not have');
+  assert.match(without, /offline: r\.offline/);
+});
+
+test('an app that already shipped a store build can take a built-in\'s new field', () => {
+  // The case that matters and the one a fresh fixture misses: `bundle --store` records the schema the
+  // stores reviewed, and §4.1 refuses any later change to a type in it. Relaxing only assertBuiltinShapes
+  // would leave every real adopter — anyone who has ever cut a store build — unable to take the field the
+  // docs tell them to take, with --rebaseline (which overwrites that reviewed record) as the only way out.
+  const { root, cfg, key } = fixture();
+  editSchema(root, (s) => {
+    delete s.types.SyncResult.reason;
+    // An app-owned type in the same store build, to prove the relaxation does not leak to one.
+    s.types.Mine = { a: 'string' };
+    s.methods['mine.get'] = { since: 1, params: {}, returns: 'Mine' };
+  });
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const shipped = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8')).storeSchema;
+  assert.deepEqual(Object.keys(shipped.types.SyncResult), ['buckets', 'changed', 'offline']);
+
+  editSchema(root, (s) => (s.types.SyncResult.reason = 'string?'));
+  assert.ok(codegen({ root, cfg }).written.length, 'the runtime field is additive against the recorded schema');
+  assert.match(readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8'), /reason: r\.reason\.name/);
+
+  // The relaxation is exactly that field at exactly that type, and nothing else.
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  const bad = (mutate, re) => {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), re);
+  };
+  bad((s) => (s.types.SyncResult.reason = 'string'), /fields are not/); // the runtime declares it nullable
+  bad((s) => (s.types.SyncResult.other = 'string?'), /fields are not/); // not a field the runtime added
+  bad((s) => delete s.types.SyncResult.offline, /fields are not/);
+  // An app's own type gets no such latitude: §4.1 still refuses any change to a shipped one, even to a
+  // field a built-in happens to have grown.
+  bad((s) => (s.types.Mine.reason = 'string?'), /"Mine" shipped in a store build and cannot change/);
+  bad((s) => (s.types.Mine.a = 'int'), /"Mine" shipped in a store build and cannot change/);
+});
+
+test('a second --store build cannot quietly rewrite the schema the stores reviewed', () => {
+  const { root, cfg, key } = fixture();
+  codegen({ root, cfg });
+  const first = bundle({ root, cfg, key, store: true, now: NOW });
+  assert.equal(first.recorded.bridge, 2);
+  assert.deepEqual(first.recorded.routes, ['/', '/calendar', '/settings']);
+  assert.ok(first.recorded.added.includes('+ method app.ready'), 'the first baseline records the whole schema as new');
+  // The exact hole: codegen refuses a method added at the shipped `since`, and re-running --store used to erase
+  // the baseline that refusal was made against.
+  editSchema(root, (s) => (s.methods['share.early'] = { since: 2, params: {}, returns: 'void' }));
+  assert.throws(() => codegen({ root, cfg }), /needs since > 2/);
+  assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW + 1000 }), /needs since > 2/);
+  const b = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8'));
+  assert.ok(!Object.hasOwn(b.storeSchema.methods, 'share.early'), 'the refused build left the baseline alone');
+  // --rebaseline is the deliberate way out, and it says so.
+  const forced = bundle({ root, cfg, key, store: true, rebaseline: true, now: NOW + 1000 });
+  assert.match(forced.warnings.join('\n'), /--rebaseline overwrote the recorded store schema/);
+  assert.deepEqual(forced.recorded.added, ['+ method share.early']);
+  // An additive bump still goes through untouched, and reports what it added.
+  editSchema(root, (s) => {
+    s.version = 3;
+    s.methods['share.text'] = { since: 3, params: { text: 'string' }, returns: 'void' };
+  });
+  codegen({ root, cfg });
+  const bumped = bundle({ root, cfg, key, store: true, now: NOW + 2000 });
+  assert.deepEqual(bumped.recorded.added, ['+ method share.text']);
+  // A bump is also the moment the OTA pin stops being warned about, so the build names the number while it still can.
+  assert.match(bumped.warnings.join('\n'), /takes the bridge from 2 to 3[\s\S]*--requires-bridge 2/);
+});
+
+test('a built-in build cannot require a bridge its own host does not have', () => {
+  const { root, cfg, key } = fixture();
+  assert.throws(
+    () => bundle({ root, cfg, key, store: true, requiresBridge: 3, now: NOW }),
+    /refuses its own built-in bundle at check 5/,
+  );
+  // The common way to get here is a schema bumped without a codegen run, so compare against the generated constant.
+  codegen({ root, cfg });
+  editSchema(root, (s) => {
+    s.version = 3;
+    s.methods['share.text'] = { since: 3, params: { text: 'string' }, returns: 'void' };
+  });
+  assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW }), /the generated constant is behind the schema/);
+  codegen({ root, cfg });
+  assert.equal(bundle({ root, cfg, key, store: true, now: NOW }).manifest.requires.bridge, 3);
+  // Pinning an OTA release down is the legitimate use of the flag and stays allowed.
+  assert.equal(bundle({ root, cfg, key, requiresBridge: 1, now: NOW }).manifest.requires.bridge, 1);
+});
+
+test('a store build warns when a channel still points below it', () => {
+  const { root, cfg, key } = fixture();
+  // A project with no channel yet has nothing to be stale.
+  assert.equal(bundle({ root, cfg, key, store: true, now: NOW }).warnings.length, 0);
+  const ota = bundle({ root, cfg, key, now: NOW + 1000 });
+  pointer({ root, cfg, channel: 'production', rollout: 100 });
+  const store = bundle({ root, cfg, key, store: true, now: NOW + 2000 });
+  assert.ok(store.manifest.seq > ota.manifest.seq, 'a store build outranks the release staged before it');
+  assert.match(store.warnings.join('\n'), /channel "production" points at \d+, below this store build's seq/);
 });
 
 test('schema validation catches names that would break the generated code', () => {
@@ -292,21 +613,38 @@ test('the CLI runs through a linked path (npm bin links, junctions)', () => {
 
 // ---------- web client ----------
 
-test('client.ts round-trips calls with the nonce, errors, events and the web shim', async () => {
+// The runtime is @getvalence/bridge now, and it has its own tests. What is under test here is the
+// generated binding: that bridge.g.ts wires METHOD_SINCE into createBridge and re-exports the pieces an
+// app imports. The temp project has no node_modules, so the bare import is pointed at the package's
+// source — which Node runs directly through type stripping, same as the generated .ts itself.
+const BRIDGE_SRC = join(import.meta.dirname, '..', '..', '..', '..', 'packages', 'bridge', 'src', 'index.ts');
+
+test('the generated bridge binds the package: nonce, errors, events, the cap and the web shim', async () => {
   const { root, cfg } = fixture();
+  editSchema(root, (s) => {
+    s.version = 2;
+    s.methods['later.method'] = { since: 2, params: {}, returns: 'void' };
+  });
   codegen({ root, cfg });
   const lib = join(root, cfg.web.lib);
-  const src = readFileSync(join(TEMPLATES, 'client.ts'), 'utf8').replace("from './bridge.g'", "from './bridge.g.ts'");
-  writeFileSync(join(lib, 'client.ts'), src);
+  const gen = join(lib, 'bridge.g.ts');
+  writeFileSync(gen, readFileSync(gen, 'utf8').replaceAll("'@getvalence/bridge'", JSON.stringify(pathToFileURL(BRIDGE_SRC).href)));
   const sent = [];
   globalThis.document = { querySelector: () => ({ content: 'nonce-1' }) };
   globalThis.window = { Valence: { postMessage: (s) => sent.push(JSON.parse(s)) } };
-  const c = await import(pathToFileURL(join(lib, 'client.ts')).href);
+  const c = await import(pathToFileURL(gen).href);
 
-  const info = c.call('app.info');
-  window.__valence.r({ id: sent[0].id, ok: true, v: { bridge: 1 } });
-  assert.equal((await info).bridge, 1);
+  // connect() is what makes has() answerable: it asks the host which bridge version it implements.
+  const connected = c.connect();
+  assert.equal(sent[0].m, 'app.info');
   assert.equal(sent[0].n, 'nonce-1');
+  window.__valence.r({ id: sent[0].id, ok: true, v: { bridge: 1 } });
+  await connected;
+  assert.equal(c.has('data.get'), true);
+  // METHOD_SINCE is generated, and this is what it is for: a method added in a later release is refused
+  // against an older host without a round trip, instead of coming back as E_UNKNOWN.
+  assert.equal(c.has('later.method'), false);
+  await assert.rejects(c.call('later.method'), (e) => e.code === 'E_UNSUPPORTED');
 
   const get = c.call('data.get', { bucket: 'b', key: 'k' });
   assert.deepEqual(sent[1], { id: sent[1].id, n: 'nonce-1', m: 'data.get', p: { bucket: 'b', key: 'k' } });
@@ -316,9 +654,30 @@ test('client.ts round-trips calls with the nonce, errors, events and the web shi
   const seen = [];
   const off = c.on('sync.changed', (p) => seen.push(p.buckets));
   window.__valence.e('sync.changed', { buckets: ['a'] });
-  off();
+  // void, not Set.delete's boolean: a React useEffect cleanup must return void or a destructor.
+  assert.equal(off(), undefined, "on()'s unsubscribe must return void");
   window.__valence.e('sync.changed', { buckets: ['b'] });
   assert.deepEqual(seen, [['a']]);
+
+  // Over the cap, the client rejects before postMessage: Binder would otherwise kill the webview with no reply and
+  // no error either side can catch, so there has to be a promise left to reject (§4.2).
+  const before = sent.length;
+  await assert.rejects(
+    c.call('prefs.set', { key: 'big', value: 'x'.repeat(c.MAX_MESSAGE_BYTES) }),
+    (e) => e instanceof c.BridgeError && e.code === 'E_TOO_LARGE',
+  );
+  assert.equal(sent.length, before, 'nothing was posted');
+
+  // The cap is bytes, not UTF-16 code units: this string is well under the cap by length and well over it by size,
+  // and a host rejecting it before decoding has no id to reply with, so the client has to be the one that refuses.
+  const multibyte = 'ゆ'.repeat(Math.floor(c.MAX_MESSAGE_BYTES / 2));
+  assert.ok(multibyte.length < c.MAX_MESSAGE_BYTES, 'under the cap measured in code units');
+  await assert.rejects(
+    c.call('prefs.set', { key: 'big', value: multibyte }),
+    (e) => e instanceof c.BridgeError && e.code === 'E_TOO_LARGE',
+  );
+  assert.equal(sent.length, before, 'still nothing posted');
+
 
   delete window.Valence;
   c.installShim({ 'prefs.get': async ({ key }) => `web:${key}` });
@@ -329,37 +688,109 @@ test('client.ts round-trips calls with the nonce, errors, events and the web shi
   delete globalThis.document;
 });
 
+// The other half of AGENTS.md rule 4: the generated TS has to type-check under the settings an app's own
+// CI will use, not merely run. The import test above proves the binding works; this proves the types do.
+//
+// ponytail: mapped to the package's source rather than its built dist/, which is gitignored and would make
+// this gate depend on a build step. If a .d.ts emit ever diverges from the source, add the dist path here.
+const TSC = join(import.meta.dirname, '..', '..', '..', '..', 'packages', 'bridge', 'node_modules', '.bin', 'tsc');
+
+test(
+  'the generated TS type-checks under --strict --verbatimModuleSyntax',
+  { skip: !existsSync(TSC) && 'run "npm install" in packages/bridge first', timeout: 300_000 },
+  () => {
+    const { root, cfg } = fixture();
+    codegen({ root, cfg });
+    const lib = join(root, cfg.web.lib);
+    // An app's web project is ESM; without this the compiler reads the file as CommonJS and every import
+    // in it is an error, which says nothing about the generated code.
+    writeFileSync(join(lib, 'package.json'), JSON.stringify({ name: 'gen', private: true, type: 'module' }));
+    writeFileSync(
+      join(lib, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ES2022',
+          lib: ['ES2022', 'DOM'],
+          module: 'nodenext',
+          moduleResolution: 'nodenext',
+          strict: true,
+          verbatimModuleSyntax: true,
+          noEmit: true,
+          skipLibCheck: true,
+          paths: { '@getvalence/bridge': [BRIDGE_SRC.replaceAll('\\', '/')] },
+        },
+        include: ['bridge.g.ts'],
+      }),
+    );
+    execSync(`"${TSC}" -p tsconfig.json`, { cwd: lib, stdio: 'pipe' });
+  },
+);
+
 // ---------- generated Dart ----------
 
-const hasDart = (() => {
+const hasFlutter = (() => {
   try {
-    execSync('dart --version', { stdio: 'ignore' });
+    execSync('flutter --version', { stdio: 'ignore' });
     return true;
   } catch {
     return false;
   }
 })();
 
-test('generated Dart analyzes cleanly and dispatch behaves per contracts §4.2', { skip: !hasDart && 'dart is not on PATH' }, () => {
-  const { root, cfg } = fixture();
-  editSchema(root, (s) => {
-    s.types.Empty = {};
-    s.methods['x.edge'] = { since: 1, params: { blobs: 'json[]?', rows: 'Row[]?', type: 'string', empty: 'Empty?' }, returns: 'Row[]?' };
-    s.events['x.rowAdded'] = { since: 1, payload: { row: 'Row', more: 'Row[]?' } };
-  });
-  codegen({ root, cfg });
-  const dir = join(root, cfg.host.dir, 'lib', 'valence');
-  writeFileSync(join(dir, 'main.dart'), DART_MAIN);
-  execSync(`dart analyze --fatal-infos "${dir}"`, { stdio: 'pipe' });
-  const out = execSync(`dart run "${join(dir, 'main.dart')}"`, { encoding: 'utf8' });
-  assert.match(out, /ALL OK/);
-});
+const PKG = join(import.meta.dirname, '..', '..', '..', '..', 'packages', 'valence').replaceAll('\\', '/');
 
-const DART_MAIN = `
+// The generated Dart imports package:valence, and ValenceConfig and Valence are Flutter types, so the
+// compile gate is a throwaway Flutter project with a path dependency on the package in this repo, not
+// `dart run` on a loose file. `--offline` keeps it off the network; the package's own pub get fills the
+// cache. The behaviour below is the same §4.2 matrix the generated dispatcher has always had to satisfy.
+test(
+  'generated Dart analyzes cleanly against the package, and dispatch behaves per contracts §4.2',
+  { skip: !hasFlutter && 'flutter is not on PATH', timeout: 600_000 },
+  () => {
+    const { root, cfg } = fixture();
+    editSchema(root, (s) => {
+      s.types.Empty = {};
+      s.methods['x.edge'] = { since: 1, params: { blobs: 'json[]?', rows: 'Row[]?', type: 'string', empty: 'Empty?' }, returns: 'Row[]?' };
+      s.events['x.rowAdded'] = { since: 1, payload: { row: 'Row', more: 'Row[]?' } };
+    });
+    codegen({ root, cfg });
+    const app = join(root, cfg.host.dir);
+    writeFileSync(join(app, 'pubspec.yaml'), PROBE_PUBSPEC);
+    writeFileSync(join(app, 'analysis_options.yaml'), 'include: package:flutter_lints/flutter.yaml\n');
+    mkdirSync(join(app, 'test'), { recursive: true });
+    writeFileSync(join(app, 'test', 'dispatch_test.dart'), DART_TEST);
+    execSync('flutter pub get --offline', { cwd: app, stdio: 'pipe' });
+    // The generated code is held to the analyzer's strictest setting, because an app's CI will be.
+    execSync(`dart analyze --fatal-infos "${join(app, 'lib')}"`, { stdio: 'pipe' });
+    assert.match(execSync('flutter test', { cwd: app, encoding: 'utf8' }), /All tests passed/);
+  },
+);
+
+const PROBE_PUBSPEC = `name: valence_probe
+publish_to: none
+environment:
+  sdk: ^3.6.0
+dependencies:
+  flutter:
+    sdk: flutter
+  valence:
+    path: ${PKG}
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+`;
+
+// Implements BridgeHandlers directly rather than extending the generated ValenceBuiltins: what is under
+// test here is the generated marshalling, and ValenceBuiltins would need a live runtime behind it. The
+// example app covers the other direction — the built-ins reaching the package for real.
+const DART_TEST = `
 import 'dart:convert';
 
-import 'bridge.g.dart';
-import 'config.g.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:valence/valence.dart';
+import 'package:valence_probe/valence/bridge.g.dart';
+import 'package:valence_probe/valence/config.g.dart';
 
 final class H implements BridgeHandlers {
   @override
@@ -372,10 +803,12 @@ final class H implements BridgeHandlers {
   Future<List<Row>> dataList(DataListParams p) async => [Row(key: p.prefix ?? '-', value: p.limit, usn: 1)];
   @override
   Future<void> dataPut(DataPutParams p) async {
-    if (!valenceWritableBuckets.contains(p.bucket)) throw const BridgeError('E_DENIED', 'read-only bucket');
+    if (!valenceConfig.writableBuckets.contains(p.bucket)) {
+      throw const BridgeError(BridgeErrorCode.denied, 'read-only bucket');
+    }
   }
   @override
-  Future<SyncResult> syncNow(SyncNowParams p) async => SyncResult(buckets: p.buckets ?? const [], changed: 0, offline: true);
+  Future<SyncResult> syncNow(SyncNowParams p) async => SyncResult(buckets: p.buckets ?? const [], changed: 0, offline: true, reason: 'offline');
   @override
   Future<String?> prefsGet(PrefsGetParams p) async => null;
   @override
@@ -385,47 +818,86 @@ final class H implements BridgeHandlers {
   @override
   Future<void> bundleApplyUpdate() async {}
   @override
+  Future<String?> secureGet(SecureGetParams p) async => null;
+  @override
+  Future<void> secureSet(SecureSetParams p) async {}
+  @override
+  Future<void> secureDelete(SecureDeleteParams p) async {}
+  @override
+  Future<void> authSetToken(AuthSetTokenParams p) async {}
+  @override
+  Future<bool> authHasToken() async => true;
+  @override
   Future<List<Row>?> xEdge(XEdgeParams p) async => p.blobs == null ? null : [Row(key: p.type, value: p.blobs, usn: p.rows?.length ?? 0)];
 }
 
-const n = 'n1';
-Future<Map<String, Object?>> call(String raw) async => jsonDecode(await bridgeDispatch(H(), raw, nonce: n)) as Map<String, Object?>;
-String code(Map<String, Object?> r) => (r['e'] as Map)['code'] as String;
+Future<Map<String, Object?>> call(String raw) async =>
+    jsonDecode(await bridgeDispatch(H(), raw, nonce: 'n1')) as Map<String, Object?>;
+String code(Map<String, Object?> r) => (r['e']! as Map)['code'] as String;
 
-void check(bool ok, String what) {
-  if (!ok) throw StateError('FAILED: \$what');
-}
+void main() {
+  test('the generated config is wired to the generated bridge version', () {
+    expect(valenceConfig.bridgeVersion, hostBridgeVersion);
+  });
 
-Future<void> main() async {
-  var r = await call('{"id":1,"n":"n1","m":"data.get","p":{"bucket":"calendar","key":"2026-01"}}');
-  check(r['ok'] == true && (r['v'] as Map)['line'] == '\\u2028"', 'data.get round trip incl. U+2028 and quote');
-  r = await call('{"id":1,"m":"data.get","p":{"bucket":"calendar","key":"x"}}');
-  check(code(r) == 'E_DENIED', 'missing nonce');
-  r = await call('{"id":1,"n":"guess","m":"app.info"}');
-  check(code(r) == 'E_DENIED', 'wrong nonce');
-  r = await call('{"id":2,"n":"n1","m":"nope.nope","p":{}}');
-  check(code(r) == 'E_UNKNOWN', 'unknown method');
-  r = await call('{"id":3,"n":"n1","m":"data.get","p":{"bucket":1,"key":"x"}}');
-  check(code(r) == 'E_PARAMS', 'wrong param type');
-  r = await call('{"id":4,"n":"n1","m":"data.get","p":{"bucket":"a","key":"b","evil":1}}');
-  check(code(r) == 'E_PARAMS', 'unknown field');
-  r = await call('{"id":5,"n":"n1","m":"data.put","p":{"bucket":"calendar","key":"k","value":1}}');
-  check(code(r) == 'E_DENIED', 'read-only bucket');
-  r = await call('{"id":6,"n":"n1","m":"data.list","p":{"bucket":"b","limit":2}}');
-  check(((r['v'] as List).first as Map)['value'] == 2, 'list of typed rows');
-  r = await call('{"id":7,"n":"n1","m":"sync.now"}');
-  check(r['ok'] == true && (r['v'] as Map)['offline'] == true, 'missing p means empty params');
-  r = await call('not json');
-  check(code(r) == 'E_PARAMS' && r['id'] == null, 'garbage input');
-  r = await call('{"id":8,"n":"n1","m":"app.ready","p":{"x":1}}');
-  check(code(r) == 'E_PARAMS', 'no-param method rejects fields');
-  r = await call('{"id":9,"n":"n1","m":"x.edge","p":{"type":"t","blobs":null}}');
-  check(r['ok'] == true && r['v'] == null, 'json[]? accepts null');
-  r = await call('{"id":10,"n":"n1","m":"x.edge","p":{"type":"t","blobs":[1,{"a":null}],"rows":[{"key":"k","value":1,"usn":1}],"empty":{}}}');
-  check(((r['v'] as List).first as Map)['usn'] == 1, 'Row[]? and Empty? decode');
-  check(BridgeEvents.syncChanged(buckets: ['a']) == 'window.__valence&&window.__valence.e("sync.changed",{"buckets":["a"]})', 'event script');
-  check(BridgeEvents.xRowAdded(row: const Row(key: 'k', value: null, usn: 1), more: null).contains('"more":null'), 'custom-type event payload');
-  check(bridgeReplyScript('{}') == 'window.__valence&&window.__valence.r({})', 'reply script');
-  print('ALL OK');
+  test('a reply round-trips, escaping U+2028 and quotes', () async {
+    final r = await call('{"id":1,"n":"n1","m":"data.get","p":{"bucket":"calendar","key":"2026-01"}}');
+    expect(r['ok'], isTrue, reason: '\${r['e']}');
+    expect((r['v']! as Map)['line'], '\\u2028"');
+  });
+
+  test('a missing or wrong nonce is denied', () async {
+    expect(code(await call('{"id":1,"m":"data.get","p":{"bucket":"calendar","key":"x"}}')), BridgeErrorCode.denied);
+    expect(code(await call('{"id":1,"n":"guess","m":"app.info"}')), BridgeErrorCode.denied);
+  });
+
+  test('an unknown method is E_UNKNOWN', () async {
+    expect(code(await call('{"id":2,"n":"n1","m":"nope.nope","p":{}}')), BridgeErrorCode.unknown);
+  });
+
+  test('bad params are E_PARAMS, and so is an unknown field', () async {
+    expect(code(await call('{"id":3,"n":"n1","m":"data.get","p":{"bucket":1,"key":"x"}}')), BridgeErrorCode.params);
+    expect(code(await call('{"id":4,"n":"n1","m":"data.get","p":{"bucket":"a","key":"b","evil":1}}')), BridgeErrorCode.params);
+    expect(code(await call('{"id":8,"n":"n1","m":"app.ready","p":{"x":1}}')), BridgeErrorCode.params);
+    expect(code(await call('not json')), BridgeErrorCode.params);
+    expect((await call('not json'))['id'], isNull);
+  });
+
+  test('a handler may deny, and a typed list comes back typed', () async {
+    expect(code(await call('{"id":5,"n":"n1","m":"data.put","p":{"bucket":"calendar","key":"k","value":1}}')), BridgeErrorCode.denied);
+    final r = await call('{"id":6,"n":"n1","m":"data.list","p":{"bucket":"b","limit":2}}');
+    expect(((r['v']! as List).first as Map)['value'], 2);
+  });
+
+  test('a missing p means empty params', () async {
+    final r = await call('{"id":7,"n":"n1","m":"sync.now"}');
+    expect((r['v']! as Map)['offline'], isTrue);
+  });
+
+  test('the §4.4 built-ins are marshalled like any other', () async {
+    // The delegation itself is the example app's test; here it is the generated params and reply.
+    final has = await call('{"id":11,"n":"n1","m":"auth.hasToken"}');
+    expect(has['v'], isTrue);
+    final cleared = await call('{"id":12,"n":"n1","m":"auth.setToken","p":{"token":null}}');
+    expect(cleared['ok'], isTrue, reason: '\${cleared['e']}');
+    // secure.set takes a non-null value: secure.delete is the only delete (§4.4).
+    expect(code(await call('{"id":13,"n":"n1","m":"secure.set","p":{"key":"k","value":null}}')), BridgeErrorCode.params);
+  });
+
+  test('nullable lists, nullable list returns and an empty type decode', () async {
+    final none = await call('{"id":9,"n":"n1","m":"x.edge","p":{"type":"t","blobs":null}}');
+    expect(none['ok'], isTrue, reason: '\${none['e']}');
+    expect(none['v'], isNull);
+    final some = await call('{"id":10,"n":"n1","m":"x.edge","p":{"type":"t","blobs":[1,{"a":null}],"rows":[{"key":"k","value":1,"usn":1}],"empty":{}}}');
+    expect(((some['v']! as List).first as Map)['usn'], 1);
+  });
+
+  test('event scripts are built by the package', () {
+    expect(
+      BridgeEvents.syncChanged(buckets: ['a']),
+      'window.__valence&&window.__valence.e("sync.changed",{"buckets":["a"]})',
+    );
+    expect(BridgeEvents.xRowAdded(row: const Row(key: 'k', value: null, usn: 1), more: null), contains('"more":null'));
+  });
 }
 `;

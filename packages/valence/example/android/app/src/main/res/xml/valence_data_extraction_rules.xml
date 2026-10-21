@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12 and later (`dataExtractionRules`). Same reasoning as valence_backup_rules.xml, for both
+     cloud backup and device-to-device transfer. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="valence/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="valence/" />
+    </device-transfer>
+</data-extraction-rules>

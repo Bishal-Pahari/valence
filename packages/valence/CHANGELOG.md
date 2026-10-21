@@ -1,0 +1,60 @@
+# Changelog
+
+## 0.4.0-beta.0
+
+First release. The Flutter host runtime that `/valence init` used to generate into every app now ships as
+a package, so a fix reaches every adopter with `flutter pub upgrade` instead of being hand-applied.
+
+Implements contracts.md:
+
+- **§2.3, §2.4** — the canonical manifest check order, the activation state machine with its two-strike
+  rollback, roll-forward, and garbage collection that keeps `current`, `previous`, `pending`, `trial` and
+  the built-in bundle. Step 7 **pulls** the `requires.data` pairs a bundle needs, under the §5.6 lease.
+- **§3** — the loopback server: a per-install port in 10000..29999, a per-launch nonce in the entry page,
+  the three serving branches in their contractual order with the reserved `/_host/` prefix matched first,
+  path normalisation, and lazy content-addressed integrity re-checking.
+- **§4.4** — secure storage and the bearer token: `secure.get/set/delete` over the Android Keystore and
+  the iOS Keychain, `auth.setToken` / `auth.hasToken` keeping the token at the reserved
+  `valence.auth.token` where the page cannot read it back, `Authorization: Bearer` on every writable
+  bucket's pull and push, and `auth.expired` plus `ValenceSyncReason.unauthorized` on a 401. Needs
+  `minSdk 23` on Android.
+- **§4.2** — the strict decoders, the closed error-code set, the 256 KB UTF-8 message cap in both
+  directions, and event scripts built only through `jsonEncode`.
+- **§5** — the SQLite store with the pragmas through `rawQuery`, a never-closed connection shared across
+  isolates, the seed import counted with `changes()`, per-`(bucket, schema)` storage, the outbox, pull
+  paging, push with its echo skip, and the sync lease.
+- **§3 back gesture, console capture and resume** — `PopScope` asking the WebView first,
+  `setOnConsoleMessage` plus the page callbacks, and port reclaiming on resume that keeps the nonce when
+  the same port comes back.
+
+Also here, and not in the generated hosts it replaces:
+
+- `ValenceConfig.authToken`, so an app with its own refresh loop in Dart can own the token instead;
+  when it is unset, the host uses whatever the page stored through `auth.setToken`.
+- `ValenceConfig.syncMode: staticChunks`, the CDN-only pull from §5.3's static variant.
+- `ValenceConfig.databaseName`, so a 0.3 app whose generated host chose its own file name keeps its data.
+- `Valence.publishHostFile`, the only path from native bytes to the page.
+- `Valence.pendingWrites()`, which counts queued deletes a `usn == -1` scan cannot see.
+
+Corrections an independent review found before this first release, each with a regression test:
+
+- **A writable bucket is pulled as well as pushed**, at schema 1. It can never appear in a manifest’s
+  `requires.data`, so a host that pulls only those pairs leaves user data push-only: a second device
+  never sees a row, and a reinstall comes back empty.
+- **A mid-session reload runs §2.4 step 4 only.** Re-running the UI-start transitions made
+  `bundle.applyUpdate` spend a strike on the bundle it was promoting, and made a ready timeout re-serve
+  the failing trial instead of `current`.
+- **Garbage collection keeps the files of a download in flight.** Step 6 writes CAS before step 8 writes
+  the manifest, so a collection in that window could delete what had just been fetched — after which
+  nothing re-fetched it and a healthy release failed its trial twice.
+- **A refused built-in bundle is remembered by its manifest bytes and the host’s bridge version**, not by
+  its seq, so the host upgrade that fixes a check-5 mismatch is not skipped by the record meant to save
+  work. The seq gate also runs before the verify, so an ordinary launch does not check a signature.
+- **A corrupt file of the *active* bundle is re-fetched** by a repair pass before step 1. Step 1 stops
+  before step 6 for a bundle that is already `current`, so a rotted entry page was a permanent blank
+  screen.
+- **The seed is extracted once per host build**, not on every launch in front of the first frame.
+- **`ValenceStore` enforces the reserved `valence.` pref prefix itself**, so an app that defines its own
+  settings method cannot become a route to the sync lease.
+
+284 tests. `dart analyze --fatal-infos` clean. `flutter pub publish --dry-run` has 0 warnings.
