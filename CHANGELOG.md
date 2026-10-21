@@ -50,6 +50,70 @@ package's test suite covers that. If your 0.3 host named its database something
 other than `valence.db`, one config line keeps it. Swapping the runtime is a
 store release, because `lib/` changed.
 
+### An OTA release could silently not happen, and the rollback could not tell
+
+Found by an independent team's deliberate-break test, and the most important fix
+in this batch. **Read the first bullet even if you read nothing else here.**
+
+- **Bundle files are no longer served `Cache-Control: immutable`.** They go out
+  `no-cache` with the file's sha256 as an `ETag`, and a revalidation that matches
+  is a `304` with no body.
+
+  The bug: a bundle file's URL does not change between releases. The path comes
+  from your web build and the host keeps its port across launches, so
+  `/assets/index-Ba1jK_XS.js` means *different bytes in every release that emits
+  that name*. Told it could keep its copy for a year, the WebView did: the new
+  bundle downloaded, verified and activated, and the page on screen was still the
+  old one. Worse, the update log said `committed` — a trial only asks that *some*
+  page call `ready()`, and the old page obliged. The rollback that protects you
+  from a bad release was being satisfied by the release it was testing.
+
+  **What you must do:** nothing, if you use the `valence` package — upgrade it.
+  If you wrote your own host, change that header. Content-hashed file names are
+  not a defence: anything copied verbatim out of `public/` keeps its name.
+- **`valence bundle` warns when your output registers a service worker.** A
+  service worker answers from Cache Storage without asking the host's server, so
+  a precaching build reopens exactly the hole above. Inside the app you do not
+  need one — the bundle is already on the device. Register it only when
+  `inHost()` is false.
+- **`ready()` is owed by every path that paints, not by your data load.** The
+  rule was always "after the first meaningful paint", and everybody implements
+  that at the end of the data load, because that is usually where the first paint
+  is. A first-run gate, an empty state, a permission prompt and an error screen
+  all paint without that load finishing — and on a fresh install one of them can
+  be the whole first launch. The bundle then never reports ready, and two
+  launches later healthy code is rolled back and it looks like the OTA is broken.
+
+  **What you must do:** check which of your screens reach the call. Putting it in
+  a `finally`, or in a mount effect every rendered path reaches, is enough. The
+  docs and the startup example now show that shape.
+
+### A sync that was blocked said it had succeeded
+
+- **`SyncResult` has a new `reason`:** `"ok"`, `"busy"` or `"offline"`. A run the
+  one-at-a-time lease refused to start used to come back `{changed: 0, offline:
+  false}` — bit for bit "you are already up to date" — so an app showing
+  freshness showed a confident "just synced" over data nothing had looked at.
+- **A lease left by a launch that is gone is taken over, not waited out.** The
+  lease now records the owning process. It only ever separates the UI and
+  background isolates, which share a process, so a foreign owner can only be a
+  crash or a force-stop; before this the next launch was blocked for the full two
+  minutes, across several launches and resumes, each one reporting that same
+  false freshness. Worst right after a crash, which is when a user is least
+  forgiving.
+
+  **What you must do, to take `reason`:** add `"reason": "string?"` to your
+  `SyncResult` type in `bridge.schema.json` and run `codegen`. It is optional —
+  leave it out and nothing changes. It counts as additive even against a schema a
+  `--store` build already recorded, so you do not need `--rebaseline`.
+
+  **It is nullable on purpose.** A method carries `since` and is gated by
+  `requires.bridge`; a field on a type carries neither, and your host ships in the
+  APK while your page ships in a bundle. So a bundle that reads `reason` will land
+  on hosts built before the field existed, and those hosts do not send it. Drop
+  the null check only once the store build that has it is the oldest you support.
+  This is the first time a built-in has grown a field, and the rule is general.
+
 ### Also in the host
 
 - **Garbage collection is scheduled for the first post-frame callback**, not run
