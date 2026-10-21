@@ -330,6 +330,20 @@ test('a floor above the store build retires the one bundle every device is guara
   const carried = bundle({ root, cfg, key, now: NOW + 5000 });
   assert.match(carried.warnings.join('\n'), /carried forward .* above the store build's seq/);
   assert.equal(carried.manifest.floor, b.storeSeq + 1, 'and it still carries forward');
+
+  // And restating that floor explicitly — what a pipeline passing --floor $FLOOR every run does — must
+  // take the same warn path. Refusing it deadlocked: every value at or below the carried floor is refused
+  // by "the floor only goes up", and every value above it by the check here, leaving no buildable number.
+  writeFileSync(baselinePath, JSON.stringify({ ...b, floor: b.storeSeq + 1 }));
+  const restated = bundle({ root, cfg, key, floor: b.storeSeq + 1, now: NOW + 6000 });
+  assert.match(restated.warnings.join('\n'), /carried forward .* above the store build's seq/);
+  assert.equal(restated.manifest.floor, b.storeSeq + 1);
+
+  // A --builtin build is the fallback being produced, so it is exempt like --store. floor <= seq already
+  // keeps it runnable, and the OTA message ("devices would refuse their own built-in bundle") is false of it.
+  writeFileSync(baselinePath, JSON.stringify({ ...b, floor: b.floor ?? 0 }));
+  const own = bundle({ root, cfg, key, builtin: true, floor: b.storeSeq + 1, now: NOW + 7000 });
+  assert.equal(own.manifest.floor, b.storeSeq + 1);
 });
 
 test('bundle rejects native code anywhere in the path', () => {
@@ -632,6 +646,18 @@ test('an app that already shipped a store build can take a built-in\'s new param
   bad((s) => (s.methods['data.list'].params.cursor = 'string?'), /must stay/); // not a param the runtime added
   bad((s) => (s.methods['mine.list'].params.after = 'string?'), /cannot change/); // an app's own method may not grow
   bad((s) => (s.methods['data.list'].since = 2), /cannot change/); // since is not negotiable
+  // A grown param needs the version bump with it. A param has no `since`, so the schema version is the
+  // only thing has() and app.info().bridge can gate on — without this an app could add `after` at the
+  // shipped version and leave the page no way to tell it from a host that answers E_PARAMS.
+  bad((s) => {
+    s.methods['data.list'].params.after = 'string?';
+    s.version = 4; // the shipped version, so nothing can gate on the new param
+  }, /needs "version" above the shipped 4/);
+  // And a method-level key the IDL has not defined is not exempt from the baseline guard either.
+  bad((s) => {
+    s.methods['data.list'].deprecated = true;
+    s.version = 5;
+  }, /cannot change/);
 });
 
 test('an app that already shipped a store build can take a built-in\'s new field', () => {

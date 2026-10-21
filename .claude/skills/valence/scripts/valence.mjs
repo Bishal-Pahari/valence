@@ -448,9 +448,15 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
   // A `--store` build is its own fallback, so its own seq is the ceiling, which §2.3's check below enforces.
   const storeSeq = baseline.storeSeq ?? 0;
   const effectiveFloor = floor ?? baseline.floor ?? 0;
-  if (!store && storeSeq > 0 && effectiveFloor > storeSeq) {
+  // `--builtin` is exempt with `--store`: that bundle *is* the fallback being produced, and the
+  // `floor > seq` check below already keeps it runnable. Only an OTA can retire a fallback it is not.
+  if (!store && !builtin && storeSeq > 0 && effectiveFloor > storeSeq) {
     const how = `Raise it to at most ${storeSeq} to keep the store build runnable, or ship a store build above ${effectiveFloor} first and raise the floor after it is live.`;
-    if (floor !== undefined) {
+    // Refuse only an actual *raise*. Restating a floor that is already above `storeSeq` — which a pipeline
+    // passing `--floor $FLOOR` every time does — changes nothing, and refusing it deadlocked against the
+    // "the floor only goes up" check above: every value at or below the carried floor was refused there,
+    // and every value above it refused here, with no buildable number in between.
+    if (floor !== undefined && floor > (baseline.floor ?? 0)) {
       throw new Error(
         `--floor ${floor} is above the store build's seq ${storeSeq}, so every device would refuse its own built-in bundle at check 4 and have no fallback below this release. ${how}`,
       );
@@ -749,11 +755,12 @@ function isBuiltinGrowth(was, now, allowed) {
 }
 
 // True when a built-in method's definition is its shipped one plus nothing but optional params from
-// `allowed`. `since` and `returns` must be identical: a page's call sites and every generated decoder
-// depend on them, and only the params have a declared growth path.
+// `allowed`. Everything other than `params` must be identical — compared wholesale rather than by naming
+// `since` and `returns`, so a method-level key the IDL gains later is not silently exempt from the guard.
 function isBuiltinParamGrowth(was, now, allowed) {
   if (!allowed || !now || typeof now !== 'object') return false;
-  if (now.since !== was.since || canonical(now.returns) !== canonical(was.returns)) return false;
+  const withoutParams = (d) => Object.fromEntries(Object.entries(d).filter(([k]) => k !== 'params'));
+  if (canonical(withoutParams(was)) !== canonical(withoutParams(now))) return false;
   return isBuiltinGrowth(was.params ?? {}, now.params ?? {}, allowed);
 }
 
@@ -774,7 +781,16 @@ export function assertAdditive(shipped, current) {
       // optional params the runtime declared may appear. Without it the additive guard refuses the upgrade
       // §4.3 tells an adopter to make, and --rebaseline — which overwrites the schema the stores reviewed —
       // would be the only way through.
-      if (kind === 'methods' && isBuiltinParamGrowth(def, current.methods[name], BUILTINS[name]?.optionalParams)) continue;
+      // A grown param must come with a version bump, because a param has no `since` of its own: the schema
+      // version is the only thing that tells a page whether this host understands it. Without this, an app
+      // could add `data.list.after` at the shipped version, leaving `app.info().bridge` and `has()` — the
+      // two gates §4.2 names — unable to distinguish it from the store build that answers `E_PARAMS`.
+      if (kind === 'methods' && isBuiltinParamGrowth(def, current.methods[name], BUILTINS[name]?.optionalParams)) {
+        if (current.version > shipped.version) continue;
+        throw new Error(
+          `"${name}" gained the param ${Object.keys(current.methods[name].params ?? {}).filter((p) => !Object.hasOwn(def.params ?? {}, p)).map((p) => `"${p}"`).join(', ')}, which needs "version" above the shipped ${shipped.version}. A param has no "since", so the schema version is the only thing has() and app.info().bridge can gate on.`,
+        );
+      }
       throw new Error(`${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
     }
   }

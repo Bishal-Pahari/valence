@@ -140,6 +140,11 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       _armTriggers();
     } on Object catch (e, st) {
       _log('host: could not start: $e\n$st');
+      // Deliberate: a failed start-up still counts as "no longer starting", so a later resume runs the
+      // update check and the sync. That is the only in-process route out of a transient failure — a bind
+      // collision, or an `activateForUiStart` that a fixing release would resolve — and `_reclaimPort`
+      // is a no-op with no server, so there is nothing for it to touch.
+      _started = true;
       if (mounted) setState(() => _error = e);
     }
   }

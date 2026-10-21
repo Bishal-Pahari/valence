@@ -227,12 +227,19 @@ void main() {
 
   group('data.list clamps host-side (§4.2)', () {
     test('the default and the maximum are applied by the host, not trusted from the page', () async {
-      final v = await open(writableBuckets: {'shelf'});
-      for (var i = 0; i < 600; i++) {
-        await v.store.put('shelf', 'k${i.toString().padLeft(4, '0')}', i, opId: 'op-$i');
-      }
-      expect((await v.dataList('shelf')).length, defaultListLimit);
-      expect((await v.dataList('shelf', limit: 1000000)).length, maxListLimit);
+      // Seeded through one pull page, not 600 `put`s: a put fires an unawaited sync each time, and 600 of
+      // those against the shared lease timed this test out under full-suite load.
+      final v = await open(dataSchemas: {'places': 1});
+      await v.store.applyPullPage(
+        bucket: 'places',
+        schema: 1,
+        rows: [
+          for (var i = 0; i < 600; i++) {'k': 'k${i.toString().padLeft(4, '0')}', 'v': i, 'u': i + 1, 'd': 0},
+        ],
+        maxUsnAfter: 600,
+      );
+      expect((await v.dataList('places')).length, defaultListLimit);
+      expect((await v.dataList('places', limit: 1000000)).length, maxListLimit);
     });
 
     test('after pages past the clamp, and data.count answers the size question for free', () async {
@@ -262,6 +269,31 @@ void main() {
       final v = await open(dataSchemas: {'plants': 1});
       expect(await v.dataCount('plants'), 0);
       expect(() => v.dataCount('nope'), throwsA(isA<BridgeError>()), reason: 'an undeclared bucket, as data.get');
+    });
+  });
+
+  group('data.put refuses a key no server can address (§4.2, §5.5)', () {
+    test('"." and ".." never reach the outbox, so push cannot be wedged by one bad write', () async {
+      // These are the two keys `encodeURIComponent` leaves alone, so a server mapping a key into a URL
+      // path sees them resolve away as dot segments. A server that then rejects the batch — as the
+      // reference adapter does — rejects the *same* queued write on every later run, because push replays
+      // the outbox: one bad key and nothing in that bucket ever syncs again, with no way for the page to
+      // clear it. So it is refused where it enters.
+      final v = await open(writableBuckets: {'shelf'});
+      for (final key in ['.', '..']) {
+        await expectLater(
+          v.dataPut('shelf', key, {'x': 1}),
+          throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.params)),
+          reason: key,
+        );
+      }
+      expect(await v.pendingWrites(), 0, reason: 'nothing was queued');
+      // Keys that merely contain dots are fine: only the two that address a parent are refused.
+      await v.dataPut('shelf', '...', {'x': 1});
+      await v.dataPut('shelf', 'a.b', {'x': 1});
+      await v.dataPut('shelf', '.hidden', {'x': 1});
+      expect(await v.dataGet('shelf', '...'), {'x': 1});
+      expect(await v.dataGet('shelf', '.hidden'), {'x': 1});
     });
   });
 
@@ -535,6 +567,11 @@ void main() {
       expect(isDatabaseLocked(LockedDatabaseException()), isTrue);
       expect(isDatabaseLocked(const SocketException('offline')), isFalse);
       expect(isDatabaseLocked(StateError('no such table')), isFalse);
+      // The message match is anchored, because `toString()` appends the failing SQL and its arguments —
+      // and those can come from the page. A loose `contains` would read an unrelated failure of
+      // `data.put(bucket, 'database is locked', v)` as a lock, and retry instead of surfacing it.
+      expect(isDatabaseLocked(NotLockedDatabaseException("UNIQUE constraint failed", "database is locked")), isFalse,
+          reason: 'the phrase appears only in a page-supplied argument');
     });
   });
 }

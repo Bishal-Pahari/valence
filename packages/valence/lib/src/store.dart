@@ -59,10 +59,16 @@ const maxListLimit = 500;
 bool isDatabaseLocked(Object e) {
   if (e is! DatabaseException) return false;
   // Extended result codes are `code | (n << 8)`, so mask to the primary code. `getResultCode` is null on
-  // some platforms, which is why the message — the one Android actually prints — is the fallback.
+  // some platforms, which is why the rendered exception — the one Android actually prints — is the
+  // fallback. It is **anchored**, not a `contains`: `toString()` appends the failing SQL and its
+  // arguments, and those can be page-supplied, so a loose match would let `data.put(b, 'database is
+  // locked', v)` failing for any unrelated reason read as a lock and be retried instead of surfaced.
   final code = (e.getResultCode() ?? 0) & 0xff;
-  return code == 5 || code == 6 || e.toString().toLowerCase().contains('database is locked');
+  return code == 5 || code == 6 || _lockedMessage.hasMatch(e.toString());
 }
+
+/// `DatabaseException(…)` wraps the message first, so anchoring here cannot reach the SQL or its args.
+final _lockedMessage = RegExp(r'^DatabaseException\((?:database is locked|database table is locked)', caseSensitive: false);
 
 /// The schema from contracts §5.1. `user_version` is carried by sqflite's own `version` argument.
 const _schemaSql = [
@@ -101,9 +107,10 @@ final class ValenceStore {
     if (existing != null) return existing;
     final opening = _openAt(path, factory ?? databaseFactory);
     _open[path] = opening;
-    return opening.catchError((Object e) {
+    return opening.catchError((Object e, StackTrace st) {
       if (_open[path] == opening) _open.remove(path);
-      throw e;
+      // Rethrown with the original trace, so the retry's final failure still points at the open.
+      Error.throwWithStackTrace(e, st);
     });
   }
 

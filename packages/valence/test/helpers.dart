@@ -214,6 +214,25 @@ final class LockedDatabaseException extends DatabaseException {
   Object? get result => null;
 }
 
+/// A `DatabaseException` that is **not** a lock, but whose rendered form carries the lock wording in the
+/// failing statement's arguments — which on a write are the page's own values.
+final class NotLockedDatabaseException extends DatabaseException {
+  NotLockedDatabaseException(super.message, this.argument);
+
+  final String argument;
+
+  @override
+  int? getResultCode() => 19; // SQLITE_CONSTRAINT
+
+  @override
+  Object? get result => null;
+
+  @override
+  String toString() => "DatabaseException($_rendered) sql 'INSERT INTO kv …' args [$argument]";
+
+  String get _rendered => 'UNIQUE constraint failed';
+}
+
 /// A factory that refuses the first [locks] opens as locked, then behaves like the real one.
 ///
 /// Standing in for the other isolate holding the file: nothing in `flutter_test` can take a real exclusive

@@ -363,6 +363,15 @@ final class Valence {
         '"$bucket" is not a writable bucket; add it to "writable" in valence.config.json',
       );
     }
+    // Refused here, at the trust boundary, and not only by a server. A key that a server maps into a URL
+    // path cannot be pushed: `.` and `..` are the two values `encodeURIComponent` leaves alone, so they
+    // resolve away as dot segments and the write lands on the collection or the root. A server that
+    // rejects the batch for it — as the reference adapter does — then rejects the *same* queued write on
+    // every later run, because push is replayed from the outbox: one bad key and no write in that bucket
+    // ever reaches the server again, with no method the page could use to clear it (§5.5).
+    if (key == '.' || key == '..') {
+      throw BridgeError(BridgeErrorCode.params, '"$key" is not a usable key; a server cannot address it');
+    }
     await store.put(bucket, key, value, opId: ValenceState.newInstallId());
     // Fire and forget: a local write is durable the moment the transaction commits, and the page must not
     // wait on the network for it.
@@ -585,12 +594,26 @@ final class Valence {
         moved.add('$name$suffix');
       }
     } on FileSystemException catch (e) {
-      // The UI isolate and a background sync can reach this at the same moment on the launch that migrates.
-      // Whoever renames first wins; the loser finds the source gone with the destination already correct.
-      log(File(path).existsSync()
-          ? 'store: another isolate moved the 0.3 database first'
-          : 'store: moving the 0.3 database from ${documents.path} failed, so this launch starts empty: ${e.message}');
-      return;
+      // The UI isolate and a background sync can reach this at the same moment on the launch that migrates
+      // (§5.6), and whoever renames first wins. The loser's *source* is what has gone, so that is what to
+      // test: the winner moves the `.db` last, so the destination may legitimately not be there yet.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (File(path).existsSync() || !File(legacy).existsSync()) {
+        log('store: another isolate moved the 0.3 database first');
+        return;
+      }
+      // We failed with the 0.3 database still in place, so this is a real failure and **falling through
+      // would be the data loss this whole method exists to prevent**: opening would create an empty
+      // database at the destination, and the next launch would find it there and never adopt again. The
+      // rows would be invisible for ever, silently. So fail the launch instead. Nothing has been lost —
+      // the 0.3 copy is intact, any sidecar already moved is waiting at the destination, and the next
+      // launch resumes the move from wherever it stopped.
+      throw FileSystemException(
+        'could not move the 0.3 database out of ${documents.path}, and starting without it would hide '
+        'rows that are still on disk; the next launch will retry',
+        legacy,
+        e.osError,
+      );
     }
     if (moved.isNotEmpty) log('store: moved the 0.3 database to ${File(path).parent.path} (${moved.join(', ')})');
   }
