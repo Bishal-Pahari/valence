@@ -231,14 +231,38 @@ void main() {
     test('both schemas still count as synced, so a schema bump is not re-gated', () async {
       await writeLegacyDatabase('valence.db');
       final v = await openPackage();
-      expect(await v.store.syncedPairs(), {'plants': {1, 2}, 'shelf': {1}});
+      expect(await v.store.syncedPairs(), {
+        'plants': {1, 2},
+        'shelf': {1}
+      });
     });
 
-    test('user_version stays 1, so the package runs no migration over a 0.3 file', () async {
+    test('v1 outbox migration preserves insertion order, ids, values and deletes', () async {
+      await writeLegacyDatabase('valence.db');
+      final db = await databaseFactoryFfi.openDatabase('${support.path}/valence.db');
+      await db.update('outbox', {'id': 'z-first', 'created_at': 100}, where: 'id = ?', whereArgs: ['legacy-op-1']);
+      await db.update('outbox', {'id': 'a-second', 'created_at': 0}, where: 'id = ?', whereArgs: ['legacy-op-2']);
+      await db.close();
+      final v = await openPackage();
+      var ops = await v.store.outbox('shelf');
+      expect(ops.map((o) => o.id), ['z-first', 'a-second']);
+      expect(jsonDecode(ops.first.value!), {'note': 'mine, not yet pushed'});
+      expect(ops.last.deleted, isTrue);
+      expect(ops.last.value, isNull);
+      await v.store.put('shelf', 'p-4', 'new', opId: '0-new');
+      await v.store.db.execute('VACUUM');
+      ValenceStore.resetCacheForTests();
+      final reopened = await openPackage();
+      ops = await reopened.store.outbox('shelf');
+      expect(ops.map((o) => o.id), ['z-first', 'a-second', '0-new']);
+      expect(await reopened.store.maxUsn('plants', 2), 1500);
+    });
+
+    test('user_version upgrades to 2 without losing old outbox data', () async {
       await writeLegacyDatabase('valence.db');
       final v = await openPackage();
       final version = await v.store.db.rawQuery('PRAGMA user_version');
-      expect(version.first.values.first, 1);
+      expect(version.first.values.first, 2);
     });
   });
 

@@ -103,6 +103,9 @@ final class ValenceUpdater {
   /// after which §2.3 step 1 stops on `pointer.seq <= pending` for ever and nothing re-fetches them. The
   /// bundle then fails its trial twice and a healthy release lands in `bad` (§2.4).
   final _inFlight = <String>{};
+  final _publishing = <int, ValenceManifest>{};
+  int _publicationRevision = 0;
+  Future<int?>? _checking;
 
   /// Persists [state] atomically.
   void save() => state.save(stateFile);
@@ -118,7 +121,9 @@ final class ValenceUpdater {
   /// null. Steps 2, 5 and 7 stop on a perfectly healthy system, and step 7 can stay stopped for days.
   ///
   /// Returns the seq that became pending, or null.
-  Future<int?> checkForUpdate() async {
+  Future<int?> checkForUpdate() => _checking ??= _checkOnce().whenComplete(() => _checking = null);
+
+  Future<int?> _checkOnce() async {
     if (config.otaBase.isEmpty) {
       _log('update: no otaBase configured, nothing to check');
       return null;
@@ -244,6 +249,9 @@ final class ValenceUpdater {
     // Every hash of this manifest is in flight until step 8 records it, not just the ones being
     // downloaded: a file already in CAS may be shared only with a bundle this collection is dropping.
     _inFlight.addAll(m.files.values.map((f) => f.hash));
+    _publishing[m.seq] = m;
+    _publicationRevision++;
+    var dataLeaseHeld = false;
     try {
       try {
         await casDir.create(recursive: true);
@@ -256,7 +264,7 @@ final class ValenceUpdater {
       }
 
       // --- Step 7: the data requirements. The updater *pulls* here. ---------
-      if (!await _satisfyDataRequirements(m)) return null;
+      if (!await _satisfyDataRequirements(m, onLeaseAcquired: () => dataLeaseHeld = true)) return null;
 
       // --- Step 8: make it pending. -----------------------------------------
       await manifestsDir.create(recursive: true);
@@ -270,7 +278,10 @@ final class ValenceUpdater {
     } finally {
       // Cleared whether or not the check completed. A run that stopped at step 6 or 7 leaves orphan files
       // that the next collection is then free to take.
+      if (dataLeaseHeld) await sync.releaseLease();
       _inFlight.removeAll(m.files.values.map((f) => f.hash));
+      _publishing.remove(m.seq);
+      _publicationRevision++;
     }
   }
 
@@ -333,8 +344,22 @@ final class ValenceUpdater {
   /// during a bump are the old schemas, so a newly required pair has no other route onto the device.
   /// A step 7 written as "make sure the pairs are synced" can never pass: `pending` stays null for ever
   /// and the app silently stops updating, with no user-visible symptom.
-  Future<bool> _satisfyDataRequirements(ValenceManifest m) async {
+  Future<bool> _satisfyDataRequirements(ValenceManifest m, {required void Function() onLeaseAcquired}) async {
     if (m.requiresData.isEmpty) return true;
+    // Take the §5.6 lease first. This is a second sync path on the same triggers as the ordinary one, so
+    // without the lease a host runs two concurrent syncs over the same pair. Failing to acquire is not a
+    // failure: the sync holding it was very likely fired by the same trigger.
+    final wait = Stopwatch()..start();
+    var acquired = await sync.acquireLease();
+    while (!acquired && wait.elapsed < const Duration(seconds: 5)) {
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+      acquired = await sync.acquireLease();
+    }
+    if (!acquired) {
+      _log('update: step 7 stopped, another sync holds the lease after a 5-second wait; the next check retries');
+      return false;
+    }
+    onLeaseAcquired();
     // Held is a set of schemas per bucket, not a bucket-to-schema map: during a bump a device legitimately
     // holds plants v1 *and* v2 at once, and a map lets the v1 entry hide the v2 entry.
     final held = await store.syncedPairs();
@@ -348,46 +373,35 @@ final class ValenceUpdater {
       return false;
     }
 
-    // Take the §5.6 lease first. This is a second sync path on the same triggers as the ordinary one, so
-    // without the lease a host runs two concurrent syncs over the same pair. Failing to acquire is not a
-    // failure: the sync holding it was very likely fired by the same trigger.
-    if (!await sync.acquireLease()) {
-      _log('update: step 7 stopped, another sync holds the lease; the next check retries');
-      return false;
-    }
     final before = sync.bytesApplied;
-    try {
-      for (final e in wanted.entries) {
-        final budget = config.dataSizeCap - (sync.bytesApplied - before);
-        if (budget <= 0) {
-          _log('update: step 7 stopped, seq ${m.seq} hit the ${config.dataSizeCap} byte data cap '
-              'before ${e.key} v${e.value}; backing off');
-          return false;
-        }
-        try {
-          // From this pair's own max_usn, which is 0 the first time. Never a hard-coded since = 0.
-          final rows = await sync.pullPair(e.key, e.value, byteBudget: budget);
-          _log('update: step 7 pulled $rows rows for ${e.key} v${e.value}');
-        } on Object catch (err) {
-          _log('update: step 7 stopped, seq ${m.seq} is waiting for ${e.key} v${e.value}: $err');
-          return false;
-        }
-      }
-      // Re-read rather than assume: a pull that applied no rows has still set synced_at, but a server that
-      // serves nothing at that schema has not, and that pair is genuinely not satisfied.
-      final after = await store.syncedPairs();
-      final short = <String, int>{
-        for (final e in m.requiresData.entries)
-          if (!(after[e.key]?.contains(e.value) ?? false)) e.key: e.value,
-      };
-      if (short.isNotEmpty) {
-        _log('update: step 7 stopped, seq ${m.seq} is still waiting for ${_pairs(short)}');
+    for (final e in wanted.entries) {
+      final budget = config.dataSizeCap - (sync.bytesApplied - before);
+      if (budget <= 0) {
+        _log('update: step 7 stopped, seq ${m.seq} hit the ${config.dataSizeCap} byte data cap '
+            'before ${e.key} v${e.value}; backing off');
         return false;
       }
-      return true;
-    } finally {
-      await sync.releaseLease();
+      try {
+        // From this pair's own max_usn, which is 0 the first time. Never a hard-coded since = 0.
+        final rows = await sync.pullPair(e.key, e.value, byteBudget: budget);
+        _log('update: step 7 pulled $rows rows for ${e.key} v${e.value}');
+      } on Object catch (err) {
+        _log('update: step 7 stopped, seq ${m.seq} is waiting for ${e.key} v${e.value}: $err');
+        return false;
+      }
     }
+    // Re-read rather than assume: only a valid final page or complete static index sets synced_at.
+    // Partial pages retain their cursor without satisfying activation.
+    final after = await store.syncedPairs();
+    final short = <String, int>{
+      for (final e in m.requiresData.entries)
+        if (!(after[e.key]?.contains(e.value) ?? false)) e.key: e.value,
+    };
+    if (short.isNotEmpty) {
+      _log('update: step 7 stopped, seq ${m.seq} is still waiting for ${_pairs(short)}');
+      return false;
+    }
+    return true;
   }
 
   static String _pairs(Map<String, int> pairs) =>
@@ -722,17 +736,24 @@ final class ValenceUpdater {
   /// Keeps `current`, `previous`, `pending`, `trial` and the built-in bundle. Prefer
   /// [scheduleGarbageCollect]; this is the body, and a test's entry point.
   Future<void> garbageCollect() async {
+    final revision = _publicationRevision;
+    final publishing = Map<int, ValenceManifest>.of(_publishing);
     final keptSeqs = <int>{
       ...[state.current, state.previous, state.pending, state.trial].whereType<int>(),
+      ...publishing.keys,
     };
     final builtin = await _loadBuiltinManifest();
     if (builtin != null) keptSeqs.add(builtin.seq);
 
     final keptManifests = <ValenceManifest>[];
     for (final seq in keptSeqs) {
-      final m = (builtin != null && seq == builtin.seq) ? builtin : await _loadManifest(seq);
+      final m = publishing[seq] ?? ((builtin != null && seq == builtin.seq) ? builtin : await _loadManifest(seq));
       if (m != null) keptManifests.add(m);
     }
+
+    // Publication may have completed while signature or asset verification yielded.
+    // Retry before deleting anything using a stale kept set.
+    if (revision != _publicationRevision) return garbageCollect();
 
     final keptHashes = <String>{
       ..._inFlight,
@@ -784,16 +805,19 @@ final class ValenceUpdater {
     // bundle's manifest is not on disk until step 8 — so a collection that walks the kept set in the middle
     // of step 7 sees a freshly pulled pair that no *kept* manifest requires yet, deletes it, and leaves a
     // `pending` whose data is gone. Nothing re-pulls it either: step 1 of §2.3 stops once
-    // `pointer.seq <= pending`. Manifests and CAS files have no such hazard (§2.4).
+    // `pointer.seq <= pending`. Publication retains the same lease through durable pending state.
     if (!await sync.acquireLease()) {
       _log('gc: another sync holds the lease; leaving read-only pairs to the next collection');
       return;
     }
     try {
-      for (final e in (await store.allPairs()).entries) {
+      final pairs = await store.allPairs();
+      if (revision != _publicationRevision) return;
+      for (final e in pairs.entries) {
         if (config.writableBuckets.contains(e.key)) continue;
         for (final schema in e.value) {
           if (required[e.key]?.contains(schema) ?? false) continue;
+          if (revision != _publicationRevision) return;
           _log('gc: dropping unrequired read-only pair ${e.key} v$schema');
           try {
             await store.dropPair(e.key, schema, writableBuckets: config.writableBuckets);

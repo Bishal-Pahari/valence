@@ -330,21 +330,31 @@ final class ValenceSync {
         _log('sync: pull $bucket v$schema returned a body this host cannot decode');
         return applied;
       }
-      applied += await store.applyPullPage(
-        bucket: bucket,
-        schema: schema,
-        rows: page.rows,
-        maxUsnAfter: page.max > since ? page.max : since,
-      );
-      // §5.6: renew after every applied page, so a long pull cannot let a second sync start.
-      await renewLease();
-      if (!page.more) return applied;
-      if (page.rows.isEmpty) {
-        // `more: true` with no rows would spin for ever against a server that is wrong about itself.
+      var cursor = since;
+      for (final row in page.rows) {
+        final usn = row['u']! as int;
+        if (usn <= cursor) {
+          _incomplete = true;
+          _log('sync: pull $bucket v$schema did not advance in strict USN order');
+          return applied;
+        }
+        cursor = usn;
+      }
+      if (page.more && page.rows.isEmpty) {
         _incomplete = true;
         _log('sync: pull $bucket v$schema claimed more rows but sent none; stopping');
         return applied;
       }
+      applied += await store.applyPullPage(
+        bucket: bucket,
+        schema: schema,
+        rows: page.rows,
+        maxUsnAfter: cursor,
+        complete: !page.more,
+      );
+      // §5.6: renew after every applied page, so a long pull cannot let a second sync start.
+      await renewLease();
+      if (!page.more) return applied;
       if (byteBudget != null && spent >= byteBudget) {
         _incomplete = true;
         _log('sync: pull $bucket v$schema hit the $byteBudget byte budget after $applied rows; backing off');
@@ -379,7 +389,7 @@ final class ValenceSync {
     for (final c in rawIndex) {
       if (c is! Map) {
         _incomplete = true;
-        continue;
+        return 0;
       }
       final to = c['to'];
       final file = c['file'];
@@ -387,6 +397,7 @@ final class ValenceSync {
         chunks.add((to: to, file: file));
       } else {
         _incomplete = true;
+        return 0;
       }
     }
     chunks.sort((a, b) => a.to.compareTo(b.to));
@@ -418,15 +429,17 @@ final class ValenceSync {
         bucket: bucket,
         schema: schema,
         rows: page.rows,
-        maxUsnAfter: page.max > chunk.to ? page.max : chunk.to,
+        maxUsnAfter: chunk.to,
+        complete: false,
       );
       await renewLease();
-      if (byteBudget != null && spent >= byteBudget) {
+      if (byteBudget != null && spent >= byteBudget && chunks.any((c) => c.to > chunk.to)) {
         _incomplete = true;
         _log('sync: static pull $bucket v$schema hit the $byteBudget byte budget; backing off');
         return applied;
       }
     }
+    await store.completePull(bucket, schema);
     return applied;
   }
 
@@ -532,6 +545,7 @@ final class ValenceSync {
     if (rows is! List) return null;
     if (raw['max'] is! int || (requireMore && raw['more'] is! bool) || rows.any((r) => !_validRow(r))) {
       _incomplete = true;
+      return null;
     }
     return (
       rows: [

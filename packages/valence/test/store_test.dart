@@ -32,7 +32,7 @@ void main() {
   });
 
   group('schema (§5.1)', () {
-    test('the tables and the index from the spec exist, at user_version 1', () async {
+    test('the tables and the index from the spec exist, at user_version 2', () async {
       final tables = {
         for (final r in await store.db.rawQuery("SELECT name FROM sqlite_master WHERE type = 'table'"))
           r['name']! as String,
@@ -44,7 +44,7 @@ void main() {
       };
       expect(indexes, contains('kv_bucket_usn'));
       final version = await store.db.rawQuery('PRAGMA user_version');
-      expect(version.first.values.first, 1);
+      expect(version.first.values.first, 2);
     });
 
     test('kv is keyed by (bucket, schema, key), so two schemas of one bucket coexist', () async {
@@ -230,7 +230,7 @@ void main() {
       await store.put('shelf', 'a', {'v': 1}, opId: 'op-a');
       await store.applyPushAck(bucket: 'shelf', acked: ['op-a'], rows: [row('a', {'v': 1}, 50)]);
       expect((await store.list('shelf', 1)).single.usn, 50);
-      expect(await store.maxUsn('shelf', 1), 50);
+      expect(await store.maxUsn('shelf', 1), 0, reason: 'an echo does not prove pull coverage');
     });
 
     test('a push echo does not clobber a newer local edit still in the outbox', () async {
