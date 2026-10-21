@@ -180,20 +180,28 @@ final class ValenceUpdater {
   int _publicationRevision = 0;
   Future<int?>? _checking;
 
+  /// The last completed check, published as one value (§4.6).
+  ///
+  /// One field rather than three, because a page may poll `bundle.status` and the three only make sense
+  /// together: a reader that caught `reason` from the finished check and `offered` from the one now
+  /// running would render "release null is held back by the rollout". The fields below are the
+  /// *in-progress* check and are never read by [bundleStatus].
+  ({ValenceBundleReason reason, int? offered, int? checkedAt}) _lastCheck =
+      (reason: ValenceBundleReason.idle, offered: null, checkedAt: null);
+
   ValenceBundleReason _reason = ValenceBundleReason.idle;
   int? _offered;
-  int? _checkedAt;
 
   /// Why the last completed check ended as it did, for `bundle.status` (§4.6).
-  ValenceBundleReason get lastReason => _reason;
+  ValenceBundleReason get lastReason => _lastCheck.reason;
 
   /// The seq that check's pointer offered, when it got that far.
-  int? get lastOffered => _offered;
+  int? get lastOffered => _lastCheck.offered;
 
   /// When that check finished, epoch milliseconds, or null before the first one.
-  int? get lastCheckedAt => _checkedAt;
+  int? get lastCheckedAt => _lastCheck.checkedAt;
 
-  /// Records why a check stopped and returns the null every stop site returns anyway.
+  /// Records why the in-progress check stopped and returns the null every stop site returns anyway.
   int? _stop(ValenceBundleReason reason) {
     _reason = reason;
     return null;
@@ -215,13 +223,15 @@ final class ValenceUpdater {
   /// Returns the seq that became pending, or null.
   Future<int?> checkForUpdate() => _checking ??= _checkOnce().then(_recordCheck).whenComplete(() => _checking = null);
 
-  /// Stamps the outcome for `bundle.status` (§4.6).
+  /// Publishes the outcome for `bundle.status` (§4.6).
   ///
-  /// On the success path, because every stop site already recorded its own reason. Nothing is stamped when
-  /// `_checkOnce` *throws*: that check did not complete, so `checkedAt` must not claim it did.
+  /// On the success path only, because every stop site already recorded its own reason into the
+  /// in-progress fields. Nothing is published when `_checkOnce` *throws* — that check did not complete,
+  /// so neither `checkedAt` nor a half-written reason may claim it did, and the previous complete answer
+  /// stays the answer.
   int? _recordCheck(int? seq) {
     if (seq != null) _reason = ValenceBundleReason.ready;
-    _checkedAt = DateTime.now().millisecondsSinceEpoch;
+    _lastCheck = (reason: _reason, offered: _offered, checkedAt: DateTime.now().millisecondsSinceEpoch);
     return seq;
   }
 

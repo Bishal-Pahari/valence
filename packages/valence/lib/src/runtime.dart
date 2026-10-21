@@ -111,6 +111,12 @@ abstract interface class ValenceHostView {
   /// Runs one script in the WebView, or buffers it until the entry page has loaded.
   void runScript(String script);
 
+  /// Whether a page is loaded and can receive a script *now*.
+  ///
+  /// The §4.6 state events are dropped rather than buffered when this is false, so the runtime has to be
+  /// able to ask. Everything else goes through [runScript] and is flushed when the page finishes.
+  bool get pageLoaded;
+
   /// Reloads the WebView from the server's origin.
   Future<void> reloadPage();
 
@@ -357,18 +363,31 @@ final class Valence {
   /// `app.state`. The current values of the `app.lifecycle` and `app.online` events (§4.6).
   ValenceAppState appState() => ValenceAppState(lifecycle: _lifecycle, online: _online);
 
-  /// Records a lifecycle transition and returns true when it is a change. Called by [ValenceApp].
-  bool noteLifecycle(ValenceLifecycle lifecycle) {
-    if (_lifecycle == lifecycle) return false;
+  /// Records a lifecycle transition and emits `app.lifecycle` if it is a change. Called by [ValenceApp].
+  void noteLifecycle(ValenceLifecycle lifecycle) {
+    if (_lifecycle == lifecycle) return;
     _lifecycle = lifecycle;
-    return true;
+    _emitState(eventScript('app.lifecycle', {'state': lifecycle.name}));
   }
 
-  /// Records connectivity and returns true when it is a change. Called by [ValenceApp].
-  bool noteOnline(bool online) {
-    if (_online == online) return false;
+  /// Records connectivity and emits `app.online` if it is a change. Called by [ValenceApp].
+  void noteOnline(bool online) {
+    if (_online == online) return;
     _online = online;
-    return true;
+    _emitState(eventScript('app.online', {'online': online}));
+  }
+
+  /// Emits a **state** event, or drops it when no page can receive it (§4.6).
+  ///
+  /// `app.lifecycle` and `app.online` are state, and §4.2's rule for state is to re-derive rather than
+  /// replay: a page that was not loaded calls [appState] on mount and gets the current pair, which is the
+  /// answer it wanted. Buffering them would be an unbounded queue — a host whose entry page never loads,
+  /// on a device moving between networks, has no bound on how many it collects — holding transitions that
+  /// are stale by the time anything reads them. The state is recorded either way, so nothing is lost.
+  void _emitState(String script) {
+    final view = _view;
+    if (view == null || !view.pageLoaded) return;
+    view.runScript(script);
   }
 
   /// `bundle.status`. Why the last update check ended as it did, and what is waiting (§4.6).
@@ -456,11 +475,51 @@ final class Valence {
     );
   }
 
-  /// `sync.now`.
-  Future<ValenceSyncResult> syncNow({List<String>? buckets}) => sync.run(
-        readSchemas: _manifest?.requiresData ?? config.dataSchemas,
-        only: buckets,
-      );
+  /// The last `max_usn` each pair was reported to the page with, so a run can re-derive `sync.changed`.
+  final Map<String, int> _lastSeenUsn = {};
+
+  /// `sync.now`, and every run the host makes on its own.
+  ///
+  /// The reporting lives here rather than in the host widget because `data.put`'s push goes straight
+  /// through this method: a run reported only by the widget's own triggers would leave the page's
+  /// freshness line untouched by the writes the page itself made, which is most of what moves an outbox.
+  /// The background isolate is the one run that cannot be reported — [backgroundSync] is static and has
+  /// no page to reach (§4.6).
+  Future<ValenceSyncResult> syncNow({List<String>? buckets}) async {
+    final result = await sync.run(
+      readSchemas: _manifest?.requiresData ?? config.dataSchemas,
+      only: buckets,
+    );
+    await _reportSync(result);
+    return result;
+  }
+
+  /// Emits `sync.changed` and then `sync.done` for one completed run (§4.6).
+  ///
+  /// The order is the contract: the page refetches what moved before it is told the run finished.
+  /// `sync.changed` is re-derived rather than replayed — each pair's `max_usn` against the last value the
+  /// page was told — because a background run cannot reach the WebView at all (§4.2, §5.6).
+  Future<void> _reportSync(ValenceSyncResult result) async {
+    try {
+      final moved = <String>[];
+      final schemas = _manifest?.requiresData ?? config.dataSchemas;
+      for (final bucket in {...result.buckets, ...schemas.keys, ...config.writableBuckets}) {
+        final schema = config.writableBuckets.contains(bucket) ? 1 : schemas[bucket] ?? 1;
+        final usn = await store.maxUsn(bucket, schema);
+        if (_lastSeenUsn[bucket] != usn) {
+          _lastSeenUsn[bucket] = usn;
+          moved.add(bucket);
+        }
+      }
+      if (moved.isNotEmpty) emit(eventScript('sync.changed', {'buckets': moved}));
+      // Every completed run, `changed: 0`, `busy` and `unauthorized` included — that is the whole point:
+      // "nothing moved" is the answer a freshness line needs and the one `sync.changed` never sends.
+      emit(eventScript('sync.done', {'result': result.toJson()}));
+    } on Object catch (e) {
+      // Reporting a run must never fail the run: the data is already committed.
+      _log('sync: could not report the run: $e');
+    }
+  }
 
   /// The pref recording which seed has already been imported (§5.2).
   static const _seedStamp = 'valence.seed.imported';
