@@ -37,3 +37,5 @@ The spec is `valence` [contracts.md](https://github.com/Bishal-Pahari/valence/bl
 12. **First launch must work in airplane mode.** That requires the built-in bundle plus `seed.db`.
 13. **The host and bridge runtimes are packages** (`valence` on pub.dev, `@getvalence/bridge` on npm). Never vendor or hand-patch them: `flutter pub upgrade valence` and `npm update @getvalence/bridge` are how a fix arrives. Report a bug in either upstream rather than working around it here.
 14. **Keep sync cursors and activation evidence separate.** Use package sync; push echoes do not advance pull cursors, and partial pulls do not satisfy a new required pair. The package migrates outbox insertion order without deleting queued writes. See contracts section 5 before changing adapters.
+
+OS links use contracts ?6.3: store-compiled `links.origins`, matching native registrations and one generated `onLink()` subscription after `connect()`. Links are untrusted route input; authenticate actions separately.

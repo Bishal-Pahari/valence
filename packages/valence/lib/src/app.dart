@@ -81,6 +81,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
 
   @override
   void dispose() {
+    unawaited(_valence.links.close());
     _readyTicker?.cancel();
     _updateTicker?.cancel();
     unawaited(_connectivity?.cancel());

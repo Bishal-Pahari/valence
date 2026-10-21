@@ -27,6 +27,8 @@ dependencies:
   # download-and-rename loop; cryptography only has an async hash().
   crypto: ^3.0.7
   connectivity_plus: ^7.3.2
+  # OS deep-link delivery; store-compiled trust policy stays in the runtime (§6.3).
+  app_links: ^7.2.2
   # Android Keystore / iOS Keychain for the bearer token and secure.* (contracts §4.4).
   flutter_secure_storage: ^11.2.0
   http: ^1.6.0

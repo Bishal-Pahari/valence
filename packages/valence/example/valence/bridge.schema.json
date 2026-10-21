@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -132,6 +132,11 @@
       "since": 3,
       "params": {},
       "returns": "SyncStatus"
+    },
+    "link.initial": {
+      "since": 5,
+      "params": {},
+      "returns": "Link?"
     }
   },
   "events": {
@@ -154,6 +159,13 @@
     "auth.expired": {
       "since": 2,
       "payload": {}
+    },
+    "link.opened": {
+      "since": 5,
+      "payload": {
+        "url": "string",
+        "path": "string"
+      }
     }
   },
   "types": {
@@ -185,6 +197,10 @@
       "pending": "int",
       "lastSyncedAt": "int?",
       "offline": "bool"
+    },
+    "Link": {
+      "url": "string",
+      "path": "string"
     }
   }
 }

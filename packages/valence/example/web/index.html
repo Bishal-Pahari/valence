@@ -24,6 +24,7 @@
       <pre id="info">reading app.info…</pre>
       <pre id="batch">reading data.getMany…</pre>
       <pre id="status">reading sync.status…</pre>
+      <pre id="link">No link received</pre>
     </section>
 
     <section>
@@ -74,6 +75,7 @@
           reply.ok ? p.resolve(reply.v) : p.reject(new Error(`${reply.e.code}: ${reply.e.message}`));
         },
         e(name, payload) {
+          if (name === 'link.opened') routeLink(payload);
           if (name === 'sync.changed') void refresh();
           // The host fires this when a sync request carrying the token came back 401 (§4.4). A real app
           // refreshes the token here, or shows a login screen.
@@ -91,6 +93,16 @@
       const show = (err) => {
         document.getElementById('error').textContent = err ? String(err) : '';
       };
+
+      function routeLink(link) {
+        if (!link) return;
+        const target = new URL(link.path, location.origin);
+        if (target.origin !== location.origin || !link.path.startsWith('/') || link.path.startsWith('//')) return;
+        history.pushState(null, '', link.path);
+        document.getElementById('link').textContent = 'Link route: ' + location.pathname + location.search + location.hash;
+        console.info('link routed: ' + location.pathname);
+        dispatchEvent(new PopStateEvent('popstate'));
+      }
 
       async function refresh() {
         document.getElementById('status').textContent = 'sync.status: ' + JSON.stringify(await call('sync.status'));
@@ -194,6 +206,7 @@
         try {
           const info = await call('app.info');
           document.getElementById('info').textContent = JSON.stringify(info, null, 2);
+          routeLink(await call('link.initial'));
           await refresh();
           await showAuth();
         } catch (e) {

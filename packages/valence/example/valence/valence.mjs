@@ -131,6 +131,11 @@ const BUILTINS = {
   // There is deliberately no auth.getToken: the token lives under the reserved `valence.` prefix, so the
   // page can set and clear it and ask whether one is there, and can never read it back (§4.4).
   'auth.hasToken': { params: {}, returns: 'bool', call: () => 'return valence.authHasToken();' },
+  'link.initial': {
+    params: {},
+    returns: { fields: { url: 'string', path: 'string' }, nullable: true },
+    call: (t) => `final r = valence.linkInitial();\n        return r == null ? null : ${t}(url: r.url, path: r.path);`,
+  },
   'http.request': {
     params: { url: 'string', method: 'string?', headers: 'json?', body: 'string?' },
     returns: { fields: { status: 'int', headers: 'json', body: 'string' } },
@@ -788,7 +793,7 @@ export function genTs(s) {
   o.push(' * `connect()` once at startup, then `has()` tells you whether a method added in a later release');
   o.push(' * exists on *this* host. `ready()` after the first meaningful paint is what commits an OTA bundle.');
   o.push(' */');
-  o.push('export const { call, has, on, ready, connect, installShim } = createBridge<Methods, Events>(');
+  o.push('export const { call, has, on, onLink, ready, connect, installShim } = createBridge<Methods, Events>(');
   o.push('  METHOD_SINCE,');
   o.push(');', '');
   return o.join('\n');
@@ -993,7 +998,7 @@ export function assertBuiltinShapes(s) {
     const required = Object.fromEntries(Object.entries(fields).filter(([f]) => !(f in optional)));
     const extras = Object.entries(fields).filter(([f]) => f in optional);
     const bad =
-      m.returns.nullable ||
+      !!m.returns.nullable !== !!want.returns.nullable ||
       !!m.returns.list !== !!want.returns.list ||
       !type ||
       canonical(required) !== canonical(want.returns.fields) ||
@@ -1017,6 +1022,7 @@ const dartStr = (s) =>
     .replace(/[\x00-\x1f\x7f]/g, (c) => `\\u{${c.charCodeAt(0).toString(16)}}`)}'`;
 
 export function genDartConfig(cfg, keyring) {
+  const linkOrigins = validateLinkOrigins(cfg.links?.origins ?? []);
   const connect = cfg.http?.origins ?? [];
   if (!Array.isArray(connect)) throw new Error('http.origins must be an array of exact HTTP(S) origins');
   for (const origin of connect) {
@@ -1043,6 +1049,7 @@ export function genDartConfig(cfg, keyring) {
     `  writableBuckets: {${writable}},`,
     `  dataSchemas: {${data}},`,
     `  httpOrigins: {${connect.map((o) => dartStr(new URL(o).origin)).join(', ')}},`,
+    `  linkOrigins: {${linkOrigins.map(dartStr).join(', ')}},`,
     `  seedSchemas: {${Object.entries(cfg.seedSchemas ?? {}).map(([b, ns]) => `${dartStr(b)}: [${ns.join(', ')}]`).join(', ')}},`,
   ];
   if (cfg.sync?.mode === 'static') lines.push('  syncMode: ValenceSyncMode.staticChunks,');
@@ -1199,6 +1206,43 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter }) {
   return rows;
 }
 
+export function validateLinkOrigins(origins) {
+  if (!Array.isArray(origins)) throw new Error('links.origins must be an array');
+  for (const origin of origins) {
+    // Canonical ASCII origins only: no URL-parser repair, wildcard, credentials or path.
+    const match = typeof origin === 'string' && /^([a-z][a-z0-9+.-]*):\/\/([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)(?::([0-9]+))?$/.exec(origin);
+    if (!match || ['http', 'javascript', 'data', 'file', 'content', 'intent', 'about', 'blob'].includes(match[1]) ||
+        (match[3] && (match[1] !== 'https' || Number(match[3]) < 1 || Number(match[3]) > 65535 || String(Number(match[3])) !== match[3])) ||
+        match[2].split('.').some((s) => !s || s.startsWith('-') || s.endsWith('-'))) {
+      throw new Error('links.origins must contain exact lowercase HTTPS/custom origins without paths, credentials or wildcards');
+    }
+    if (match[1] === 'https' && new URL(origin).origin !== origin) throw new Error('links.origins must use canonical HTTPS origins (omit default ports)');
+  }
+  return origins;
+}
+
+/** Writes website association documents only; native intent filters/entitlements remain store setup. */
+export function association({ kind, packageId, fingerprints, appId, out }) {
+  let name, document;
+  if (kind === 'assetlinks') {
+    if (!/^[A-Za-z]\w*(?:\.[A-Za-z]\w*)+$/.test(packageId ?? '')) throw new Error('--package must be an Android applicationId');
+    const certs = (fingerprints ?? '').split(',');
+    if (!certs.length || certs.some((s) => !/^(?:[0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$/.test(s))) throw new Error('--fingerprints requires comma-separated SHA-256 certificate fingerprints');
+    name = 'assetlinks.json';
+    document = [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: packageId, sha256_cert_fingerprints: [...new Set(certs.map((s) => s.toUpperCase()))] } }];
+  } else {
+    if (!/^[A-Z0-9]{10}\.[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/.test(appId ?? '')) throw new Error('--app-id must be TEAMID.bundle.id (10-character team ID; letters, digits and hyphens in bundle ID)');
+    name = 'apple-app-site-association';
+    document = { applinks: { apps: [], details: [{ appID: appId, paths: ['*'] }] } };
+  }
+  if (!out) throw new Error('--out is required (website public directory)');
+  const dir = join(resolve(out), '.well-known');
+  mkdirSync(dir, { recursive: true });
+  const target = join(dir, name);
+  writeFileSync(target, `${JSON.stringify(document, null, 2)}\n`, { flag: 'wx' });
+  return { file: target };
+}
+
 const HELP = `Valence CLI ${VALENCE_VERSION} (spec: references/contracts.md)
 
   valence version                        print the CLI version (doctor compares it with the skill copy)
@@ -1213,6 +1257,8 @@ const HELP = `Valence CLI ${VALENCE_VERSION} (spec: references/contracts.md)
                                     --files is the content-addressed files/ directory inside the bundle, not the bundle directory
   valence seed --from dir                <bucket>.json files {schema, rows:[{k,v,u,d}]} -> host assets/valence/seed.db
   valence doctor [--tests]               mechanical diagnostics; execute mapped unit tests with --tests
+  valence assetlinks --package id --fingerprints SHA256,... --out public-dir
+  valence aasa --app-id TEAMID.bundle.id --out public-dir
 
 Options: --root <project root> (default .)`;
 
@@ -1237,6 +1283,10 @@ export async function main(argv) {
       manifest: { type: 'string' },
       files: { type: 'string' },
       key: { type: 'string' },
+      package: { type: 'string' },
+      fingerprints: { type: 'string' },
+      'app-id': { type: 'string' },
+      out: { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
@@ -1245,6 +1295,9 @@ export async function main(argv) {
   if (v.rebaseline && !(cmd === 'bundle' && v.store)) throw new Error('--rebaseline only means something with "bundle --store"');
   if (cmd === 'version') return console.log(VALENCE_VERSION);
   if (!cmd || v.help) return console.log(HELP);
+  if (cmd === 'assetlinks' || cmd === 'aasa') {
+    return console.log(JSON.stringify(association({ kind: cmd, packageId: v.package, fingerprints: v.fingerprints, appId: v['app-id'], out: v.out }), null, 2));
+  }
   const root = resolve(v.root);
   const cfg = loadConfig(root);
   const p = paths(root, cfg);

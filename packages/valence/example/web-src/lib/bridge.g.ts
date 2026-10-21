@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 4;
+export const BRIDGE_VERSION = 5;
 
 export interface AppInfo {
   platform: string;
@@ -42,6 +42,11 @@ export interface SyncStatus {
   pending: number;
   lastSyncedAt?: number | null;
   offline: boolean;
+}
+
+export interface Link {
+  url: string;
+  path: string;
 }
 
 export interface Methods {
@@ -101,6 +106,7 @@ export interface Methods {
     keys: string[];
   }; returns: Row[] };
   'sync.status': { params: Record<string, never>; returns: SyncStatus };
+  'link.initial': { params: Record<string, never>; returns: Link | null };
 }
 
 export interface Events {
@@ -112,6 +118,10 @@ export interface Events {
   };
   'app.resumed': Record<string, never>;
   'auth.expired': Record<string, never>;
+  'link.opened': {
+    url: string;
+    path: string;
+  };
 }
 
 export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
@@ -134,6 +144,7 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'http.request': 4,
   'data.getMany': 3,
   'sync.status': 3,
+  'link.initial': 5,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
@@ -141,6 +152,7 @@ export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
   'bundle.updateReady': 1,
   'app.resumed': 1,
   'auth.expired': 2,
+  'link.opened': 5,
 };
 
 /** Browser fallbacks for this app, so the same build also runs as the website. */
@@ -152,6 +164,6 @@ export type AppShim = Shim<Methods>;
  * `connect()` once at startup, then `has()` tells you whether a method added in a later release
  * exists on *this* host. `ready()` after the first meaningful paint is what commits an OTA bundle.
  */
-export const { call, has, on, ready, connect, installShim } = createBridge<Methods, Events>(
+export const { call, has, on, onLink, ready, connect, installShim } = createBridge<Methods, Events>(
   METHOD_SINCE,
 );

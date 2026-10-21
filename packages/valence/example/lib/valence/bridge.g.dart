@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 4;
+const hostBridgeVersion = 5;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale});
@@ -95,6 +95,21 @@ final class SyncStatus {
   final bool offline;
 
   Map<String, Object?> toJson() => {'pending': pending, 'lastSyncedAt': lastSyncedAt, 'offline': offline};
+}
+
+final class Link {
+  const Link({required this.url, required this.path});
+
+  factory Link.fromJson(Object? j, [String f = 'Link']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'url', 'path'}, f);
+    return Link(url: decodeString(m['url'], '$f.url'), path: decodeString(m['path'], '$f.path'));
+  }
+
+  final String url;
+  final String path;
+
+  Map<String, Object?> toJson() => {'url': url, 'path': path};
 }
 
 final class DataGetParams {
@@ -310,6 +325,7 @@ abstract interface class BridgeHandlers {
   Future<HttpResponse> httpRequest(HttpRequestParams p);
   Future<List<Row>> dataGetMany(DataGetManyParams p);
   Future<SyncStatus> syncStatus();
+  Future<Link?> linkInitial();
 }
 
 /// Opt-in defaults for test doubles or partial hosts. Production hosts extend ValenceBuiltins.
@@ -352,6 +368,8 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<List<Row>> dataGetMany(DataGetManyParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.getMany is not implemented');
   @override
   Future<SyncStatus> syncStatus() async => throw const BridgeError('E_UNSUPPORTED', 'sync.status is not implemented');
+  @override
+  Future<Link?> linkInitial() async => throw const BridgeError('E_UNSUPPORTED', 'link.initial is not implemented');
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
@@ -433,6 +451,10 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.syncStatus();
         return replyOk(id, r.toJson());
+      case 'link.initial':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.linkInitial();
+        return replyOk(id, r?.toJson());
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
     }
@@ -449,6 +471,7 @@ abstract final class BridgeEvents {
   static String bundleUpdateReady({required int seq}) => eventScript('bundle.updateReady', {'seq': seq});
   static String appResumed() => eventScript('app.resumed', const <String, Object?>{});
   static String authExpired() => eventScript('auth.expired', const <String, Object?>{});
+  static String linkOpened({required String url, required String path}) => eventScript('link.opened', {'url': url, 'path': path});
 }
 
 /// The built-in bridge methods, implemented against the `valence` runtime.
@@ -565,5 +588,11 @@ abstract class ValenceBuiltins {
   Future<SyncStatus> syncStatus() async {
     final r = await valence.syncStatus();
     return SyncStatus(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline);
+  }
+
+  /// `link.initial`, from the package.
+  Future<Link?> linkInitial() async {
+    final r = valence.linkInitial();
+    return r == null ? null : Link(url: r.url, path: r.path);
   }
 }

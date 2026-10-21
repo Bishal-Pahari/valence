@@ -24,6 +24,7 @@ import {
   codegen,
   diagnose,
   pointer,
+  association,
   loadConfig,
   parseSchema,
   verifyBundle,
@@ -34,6 +35,46 @@ import {
 const TEMPLATES = join(import.meta.dirname, '..', 'templates');
 const NOW = Date.UTC(2026, 9, 15);
 
+test('association generators validate identity/certificates, write the website layout and refuse overwrites', () => {
+  const out = mkdtempSync(join(tmpdir(), 'valence-links-'));
+  const fingerprint = Array(32).fill('ab').join(':');
+  const r = association({ kind: 'assetlinks', packageId: 'com.example.app', fingerprints: fingerprint, out });
+  const android = JSON.parse(readFileSync(r.file, 'utf8'));
+  assert.equal(android[0].target.package_name, 'com.example.app');
+  assert.deepEqual(android[0].target.sha256_cert_fingerprints, [fingerprint.toUpperCase()]);
+  assert.ok(r.file.endsWith(join('.well-known', 'assetlinks.json')));
+  assert.throws(() => association({ kind: 'assetlinks', packageId: 'com.example.app', fingerprints: fingerprint, out }), /EEXIST/);
+  for (const value of ['ab', fingerprint + ',oops', '', '../bad']) {
+    assert.throws(() => association({ kind: 'assetlinks', packageId: 'com.example.app', fingerprints: value, out }), /fingerprints/);
+  }
+  assert.throws(() => association({ kind: 'assetlinks', packageId: '../bad', fingerprints: fingerprint, out }), /applicationId/);
+  const aasa = association({ kind: 'aasa', appId: 'ABCDE12345.com.example.app', out });
+  assert.deepEqual(JSON.parse(readFileSync(aasa.file, 'utf8')).applinks.details, [{ appID: 'ABCDE12345.com.example.app', paths: ['*'] }]);
+  assert.throws(() => association({ kind: 'aasa', appId: 'com.example.app', out }), /TEAMID/);
+  assert.throws(() => association({ kind: 'aasa', appId: 'ABCDE12345.com.example.bad_app', out }), /TEAMID/);
+  const hyphenated = mkdtempSync(join(tmpdir(), 'valence-aasa-'));
+  const hyphen = association({ kind: 'aasa', appId: 'ABCDE12345.com.example.my-app', out: hyphenated });
+  assert.equal(JSON.parse(readFileSync(hyphen.file, 'utf8')).applinks.details[0].appID, 'ABCDE12345.com.example.my-app');
+  const other = mkdtempSync(join(tmpdir(), 'valence-links-cli-'));
+  execSync(`node "${join(import.meta.dirname, '../../../../bin/valence.mjs')}" aasa --app-id ABCDE12345.com.example.app --out "${other}"`, { stdio: 'pipe' });
+  assert.ok(existsSync(join(other, '.well-known', 'apple-app-site-association')));
+});
+
+test('link origins compile into the native policy and built-in nullable shape stays frozen', () => {
+  const { root, cfg } = fixture({ latest: true });
+  cfg.links = { origins: ['https://links.example.com', 'myapp://app'] };
+  codegen({ root, cfg });
+  const generated = readFileSync(join(root, cfg.host.dir, 'lib/valence/config.g.dart'), 'utf8');
+  assert.match(generated, /linkOrigins: \{'https:\/\/links.example.com', 'myapp:\/\/app'\}/);
+  for (const value of ['http://example.com', 'javascript://app', 'https://example.com/x', 'myapp://app:80', 'https://example.com:443', 'https://u@example.com', 'https://*.example.com', 'https://EXAMPLE.COM', 'myapp://app\\evil']) {
+    cfg.links.origins = [value];
+    assert.throws(() => codegen({ root, cfg }), /links.origins/);
+  }
+  cfg.links.origins = [];
+  editSchema(root, (s) => { s.methods['link.initial'].returns = 'Link'; });
+  assert.throws(() => codegen({ root, cfg }), /must return/);
+});
+
 function fixture({ data = { calendar: 1 }, latest = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'mr-'));
   mkdirSync(join(root, 'valence'));
@@ -43,6 +84,9 @@ function fixture({ data = { calendar: 1 }, latest = false } = {}) {
     const p = join(root, 'valence', 'bridge.schema.json');
     const s = JSON.parse(readFileSync(p, 'utf8'));
     s.version = 4;
+    delete s.methods['link.initial'];
+    delete s.events['link.opened'];
+    delete s.types.Link;
     delete s.methods['data.getMany'];
     delete s.methods['sync.status'];
     delete s.types.SyncStatus;
@@ -437,7 +481,7 @@ test('doctor reports absent evidence as warnings, compatibility errors as failur
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'native value'));
   bundle({ root, cfg, key, builtin: true, now: NOW });
   const dart = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
-  writeFileSync(dart, readFileSync(dart, 'utf8').replace('const hostBridgeVersion = 4;', 'const hostBridgeVersion = 1;'));
+  writeFileSync(dart, readFileSync(dart, 'utf8').replace(/const hostBridgeVersion = \d+;/, 'const hostBridgeVersion = 1;'));
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'built-in compatibility'));
 });
 

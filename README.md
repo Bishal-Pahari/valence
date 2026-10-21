@@ -151,3 +151,5 @@ node valence/valence.mjs keygen | codegen [--check] | bundle [--builtin|--store]
 Run `node valence/valence.mjs doctor --tests` for mechanical checks and mapped unit tests. WARN means missing or unexecuted evidence; device behavior still needs a device run. [Full guide](https://getvalence.pages.dev/docs/guides/offline-tooling/).
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
+
+Deep links in 0.4: [setup and routing](docs/deep-links.md) covers store-compiled link origins, Android App Links, custom schemes, `onLink()` and website association generators. iOS is experimental and untested.

@@ -95,6 +95,18 @@ void main() {
     expect(h.taps, 1);
   });
 
+  test('link.initial delegates through the nonce-protected generated path', () async {
+    final h = await handlers();
+    h.valence.links.receive('valence-example://app/shelf?q=1#note');
+    final denied = await dispatch(h, 'link.initial', withNonce: 'wrong');
+    expect((denied['e']! as Map)['code'], BridgeErrorCode.denied);
+    final accepted = await dispatch(h, 'link.initial');
+    expect(accepted['v'], {'url': 'valence-example://app/shelf?q=1#note', 'path': '/shelf?q=1#note'});
+    expect((await dispatch(h, 'link.initial'))['v'], isNull);
+    h.valence.links.receive('https://unlisted.invalid/');
+    expect((await dispatch(h, 'link.initial'))['v'], isNull);
+  });
+
   test(
     'the built-ins are inherited from ValenceBuiltins, not written here',
     () async {

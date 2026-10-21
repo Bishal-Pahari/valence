@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: deep links
+
+Open local screens from Android App Links or custom schemes with schema-5
+`link.initial`, `link.opened` and the web `onLink()` helper. Regenerate the bridge,
+compile `links.origins` and add matching native registrations in a store build.
+Existing hosts remain supported; OTA cannot expand accepted origins. New
+`assetlinks` and `aasa` commands write website association documents for separate
+HTTPS hosting. iOS is experimental and untested. See [setup](docs/deep-links.md).
+
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
 ## Unreleased: offline tooling
