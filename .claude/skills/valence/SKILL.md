@@ -7,6 +7,11 @@ argument-hint: "[init|release|doctor] [--channel name] [--rollout 0-100] [--floo
 
 # /valence
 
+For task restoration, follow [contracts §4.6](references/contracts.md#46-task-state-restoration-r7).
+Use the template's state.* built-ins; on iOS set the FlutterViewController
+restorationIdentifier in Main.storyboard (experimental and untested). Verify
+Home → am kill → retained-task reopen, then force-stop and Recents removal.
+
 Builds this architecture as open contracts:
 
 - a **Flutter host** that the stores review rarely;

@@ -1,5 +1,15 @@
 # valence
 
+## Task restoration in 0.4
+
+Schema 5 adds `state.save({json})` and `state.restore()` for at most 65,536 JSON
+UTF-8 bytes of task-local UI state. ValenceApp installs its own RootRestorationScope
+and restores the local path/query/hash after OS process reclamation. A fresh task
+after explicit closure starts empty; an update or rollback clears the snapshot.
+Use SQLite for durable records and secure storage for secrets.
+[Guide](../../docs/state-restoration.md). The iOS FlutterViewController needs a
+restoration identifier in Main.storyboard; iOS is experimental and untested.
+
 The Flutter host runtime for [Valence](https://getvalence.pages.dev): your web app runs inside a native
 app as a **signed over-the-air bundle**, on top of an **offline-first SQLite** store with incremental sync
 and a **typed bridge**. UI changes ship without an app-store review; the native shell is reviewed rarely.
