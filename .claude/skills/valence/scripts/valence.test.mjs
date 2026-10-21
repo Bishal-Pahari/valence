@@ -43,6 +43,9 @@ function fixture({ data = { calendar: 1 }, latest = false } = {}) {
     const p = join(root, 'valence', 'bridge.schema.json');
     const s = JSON.parse(readFileSync(p, 'utf8'));
     s.version = 4;
+    for (const k of Object.keys(s.methods)) if (k.startsWith('push.')) delete s.methods[k];
+    for (const k of Object.keys(s.events)) if (k.startsWith('push.')) delete s.events[k];
+    delete s.types.PushMessage;
     delete s.methods['data.getMany'];
     delete s.methods['sync.status'];
     delete s.types.SyncStatus;
@@ -437,7 +440,7 @@ test('doctor reports absent evidence as warnings, compatibility errors as failur
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'native value'));
   bundle({ root, cfg, key, builtin: true, now: NOW });
   const dart = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
-  writeFileSync(dart, readFileSync(dart, 'utf8').replace('const hostBridgeVersion = 4;', 'const hostBridgeVersion = 1;'));
+  writeFileSync(dart, readFileSync(dart, 'utf8').replace(/const hostBridgeVersion = \d+;/, 'const hostBridgeVersion = 1;'));
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'built-in compatibility'));
 });
 
@@ -1017,4 +1020,16 @@ test('legacy CSP origins do not grant native credentials or break codegen', () =
   assert.match(config, /httpOrigins: \{\}/);
   assert.ok(!config.includes('analytics.example.test'));
   assert.ok(!config.includes('maps.example.test'));
+});
+
+test('push builtins freeze permission and nullable initial-message shapes', () => {
+  const { root, cfg } = fixture({ latest: true });
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(dart, /Future<PushMessage\?> pushInitial\(\)/);
+  assert.match(dart, /valence.pushPermission\(request: p.request \?\? false\)/);
+  editSchema(root, (s) => { s.methods['push.initial'].returns = 'PushMessage'; });
+  assert.throws(() => codegen({ root, cfg }), /must return/);
+  editSchema(root, (s) => { s.methods['push.initial'].returns = 'PushMessage?'; s.methods['push.permission'].params.request = 'string?'; });
+  assert.throws(() => codegen({ root, cfg }), /must stay/);
 });

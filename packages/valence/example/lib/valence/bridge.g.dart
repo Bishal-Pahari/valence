@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 4;
+const hostBridgeVersion = 5;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale});
@@ -95,6 +95,24 @@ final class SyncStatus {
   final bool offline;
 
   Map<String, Object?> toJson() => {'pending': pending, 'lastSyncedAt': lastSyncedAt, 'offline': offline};
+}
+
+final class PushMessage {
+  const PushMessage({this.id, required this.data, this.title, this.body, this.image});
+
+  factory PushMessage.fromJson(Object? j, [String f = 'PushMessage']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'id', 'data', 'title', 'body', 'image'}, f);
+    return PushMessage(id: m['id'] == null ? null : decodeString(m['id'], '$f.id'), data: m['data'], title: m['title'] == null ? null : decodeString(m['title'], '$f.title'), body: m['body'] == null ? null : decodeString(m['body'], '$f.body'), image: m['image'] == null ? null : decodeString(m['image'], '$f.image'));
+  }
+
+  final String? id;
+  final Object? data;
+  final String? title;
+  final String? body;
+  final String? image;
+
+  Map<String, Object?> toJson() => {'id': id, 'data': data, 'title': title, 'body': body, 'image': image};
 }
 
 final class DataGetParams {
@@ -290,6 +308,20 @@ final class DataGetManyParams {
   Map<String, Object?> toJson() => {'bucket': bucket, 'keys': keys};
 }
 
+final class PushPermissionParams {
+  const PushPermissionParams({this.request});
+
+  factory PushPermissionParams.fromJson(Object? j, [String f = 'PushPermissionParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'request'}, f);
+    return PushPermissionParams(request: m['request'] == null ? null : decodeBool(m['request'], '$f.request'));
+  }
+
+  final bool? request;
+
+  Map<String, Object?> toJson() => {'request': request};
+}
+
 abstract interface class BridgeHandlers {
   Future<void> appReady();
   Future<AppInfo> appInfo();
@@ -310,6 +342,9 @@ abstract interface class BridgeHandlers {
   Future<HttpResponse> httpRequest(HttpRequestParams p);
   Future<List<Row>> dataGetMany(DataGetManyParams p);
   Future<SyncStatus> syncStatus();
+  Future<String?> pushToken();
+  Future<String> pushPermission(PushPermissionParams p);
+  Future<PushMessage?> pushInitial();
 }
 
 /// Opt-in defaults for test doubles or partial hosts. Production hosts extend ValenceBuiltins.
@@ -352,6 +387,12 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<List<Row>> dataGetMany(DataGetManyParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.getMany is not implemented');
   @override
   Future<SyncStatus> syncStatus() async => throw const BridgeError('E_UNSUPPORTED', 'sync.status is not implemented');
+  @override
+  Future<String?> pushToken() async => throw const BridgeError('E_UNSUPPORTED', 'push.token is not implemented');
+  @override
+  Future<String> pushPermission(PushPermissionParams p) async => throw const BridgeError('E_UNSUPPORTED', 'push.permission is not implemented');
+  @override
+  Future<PushMessage?> pushInitial() async => throw const BridgeError('E_UNSUPPORTED', 'push.initial is not implemented');
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
@@ -433,6 +474,17 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.syncStatus();
         return replyOk(id, r.toJson());
+      case 'push.token':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.pushToken();
+        return replyOk(id, r);
+      case 'push.permission':
+        final r = await h.pushPermission(PushPermissionParams.fromJson(p, 'p'));
+        return replyOk(id, r);
+      case 'push.initial':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.pushInitial();
+        return replyOk(id, r?.toJson());
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
     }
@@ -449,6 +501,9 @@ abstract final class BridgeEvents {
   static String bundleUpdateReady({required int seq}) => eventScript('bundle.updateReady', {'seq': seq});
   static String appResumed() => eventScript('app.resumed', const <String, Object?>{});
   static String authExpired() => eventScript('auth.expired', const <String, Object?>{});
+  static String pushReceived({required PushMessage message}) => eventScript('push.received', {'message': message.toJson()});
+  static String pushTapped({required PushMessage message}) => eventScript('push.tapped', {'message': message.toJson()});
+  static String pushTokenChanged({required String token}) => eventScript('push.tokenChanged', {'token': token});
 }
 
 /// The built-in bridge methods, implemented against the `valence` runtime.
@@ -565,5 +620,21 @@ abstract class ValenceBuiltins {
   Future<SyncStatus> syncStatus() async {
     final r = await valence.syncStatus();
     return SyncStatus(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline);
+  }
+
+  /// `push.token`, from the package.
+  Future<String?> pushToken() async {
+    return valence.pushToken();
+  }
+
+  /// `push.permission`, from the package.
+  Future<String> pushPermission(PushPermissionParams p) async {
+    return valence.pushPermission(request: p.request ?? false);
+  }
+
+  /// `push.initial`, from the package.
+  Future<PushMessage?> pushInitial() async {
+    final m = await valence.pushInitial();
+    return m == null ? null : PushMessage(id: m.id, data: m.data, title: m.title, body: m.body, image: m.toJson()['image'] as String?);
   }
 }

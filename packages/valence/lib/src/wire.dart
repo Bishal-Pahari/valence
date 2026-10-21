@@ -113,7 +113,9 @@ String replyError(Object? id, String code, String message) =>
 
 /// Builds the script that delivers one event to the page. Used by generated code.
 String eventScript(String name, Object? payload) =>
-    'window.__valence&&window.__valence.e(${jsonEncode(name)},${jsonEncode(payload)})';
+    _escapeScriptSeparators('window.__valence&&window.__valence.e(${jsonEncode(name)},${jsonEncode(payload)})');
 
 /// Wraps a reply from the generated `bridgeDispatch` in the script the host passes to `runJavaScript`.
-String bridgeReplyScript(String reply) => 'window.__valence&&window.__valence.r($reply)';
+String bridgeReplyScript(String reply) => _escapeScriptSeparators('window.__valence&&window.__valence.r($reply)');
+
+String _escapeScriptSeparators(String script) => script.replaceAll('\u2028', r'\u2028').replaceAll('\u2029', r'\u2029');

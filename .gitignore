@@ -9,3 +9,5 @@ packages/valence/build/
 packages/valence/example/.dart_tool/
 packages/valence/example/build/
 pubspec.lock
+**/google-services.json
+**/GoogleService-Info.plist

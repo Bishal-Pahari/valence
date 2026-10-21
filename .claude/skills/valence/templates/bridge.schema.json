@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -127,6 +127,23 @@
       "since": 3,
       "params": {},
       "returns": "SyncStatus"
+    },
+    "push.token": {
+      "since": 5,
+      "params": {},
+      "returns": "string?"
+    },
+    "push.permission": {
+      "since": 5,
+      "params": {
+        "request": "bool?"
+      },
+      "returns": "string"
+    },
+    "push.initial": {
+      "since": 5,
+      "params": {},
+      "returns": "PushMessage?"
     }
   },
   "events": {
@@ -149,6 +166,24 @@
     "auth.expired": {
       "since": 2,
       "payload": {}
+    },
+    "push.received": {
+      "since": 5,
+      "payload": {
+        "message": "PushMessage"
+      }
+    },
+    "push.tapped": {
+      "since": 5,
+      "payload": {
+        "message": "PushMessage"
+      }
+    },
+    "push.tokenChanged": {
+      "since": 5,
+      "payload": {
+        "token": "string"
+      }
     }
   },
   "types": {
@@ -180,6 +215,13 @@
       "pending": "int",
       "lastSyncedAt": "int?",
       "offline": "bool"
+    },
+    "PushMessage": {
+      "id": "string?",
+      "data": "json",
+      "title": "string?",
+      "body": "string?",
+      "image": "string?"
     }
   }
 }

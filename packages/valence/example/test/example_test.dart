@@ -45,7 +45,7 @@ void main() {
 
   /// A real runtime on a temp directory, with the network mocked: the built-in handlers under test here
   /// are the generated delegations, so they have to reach the package for real.
-  Future<_Handlers> handlers({ValenceConfig? config}) async => _Handlers(
+  Future<_Handlers> handlers({ValenceConfig? config, ValencePush? push}) async => _Handlers(
     await Valence.open(
       // The OTA and sync hosts in the example config are .invalid, so nothing can leave the machine.
       config ?? valenceConfig,
@@ -58,6 +58,7 @@ void main() {
         ),
       ),
       supportDir: support,
+      push: push,
     ),
   );
 
@@ -86,6 +87,20 @@ void main() {
     expect(valenceConfig.writableBuckets, {'shelf'});
     expect(valenceConfig.dataSchemas, {'plants': 1});
     expect(valenceConfig.channel, 'production');
+  });
+
+  test('push is explicitly unsupported without native setup and rejects untrusted params first', () async {
+    final h = await handlers();
+    for (final method in ['push.token', 'push.permission', 'push.initial']) {
+      final result = await dispatch(h, method);
+      expect((result['e'] as Map)['code'], 'E_UNSUPPORTED');
+    }
+    for (final params in [{'request': 'yes'}, {'request': true, 'url': 'https://evil.test'}]) {
+      final result = await dispatch(h, 'push.permission', params: params);
+      expect((result['e'] as Map)['code'], 'E_PARAMS');
+    }
+    final result = await dispatch(h, 'push.token', withNonce: 'wrong');
+    expect((result['e'] as Map)['code'], 'E_DENIED');
   });
 
   test('the app’s own method reaches the dispatcher', () async {

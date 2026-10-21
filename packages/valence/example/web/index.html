@@ -57,6 +57,15 @@
       <pre id="http-result"></pre>
     </section>
 
+    <section>
+      <h2>Remote push</h2>
+      <p>Requires a Firebase-configured host. Permission is requested only when you tap.</p>
+      <button id="push-check">Check permission</button>
+      <button id="push-request">Allow notifications</button>
+      <button id="push-token">Check registration</button>
+      <pre id="push-result">Push device check blocked: needs Firebase project.</pre>
+    </section>
+
     <!--
       A real app imports @getvalence/bridge through the generated web/lib/bridge.g.ts. This example talks
       to the wire protocol directly, so it needs no bundler and `valence bundle` can sign the folder as is
@@ -74,6 +83,8 @@
           reply.ok ? p.resolve(reply.v) : p.reject(new Error(`${reply.e.code}: ${reply.e.message}`));
         },
         e(name, payload) {
+          if (name === 'push.tokenChanged') document.getElementById('push-result').textContent = 'Registration changed; update your backend.';
+          if (name === 'push.received' || name === 'push.tapped') document.getElementById('push-result').textContent = name + ': ' + JSON.stringify(payload.message);
           if (name === 'sync.changed') void refresh();
           // The host fires this when a sync request carrying the token came back 401 (§4.4). A real app
           // refreshes the token here, or shows a login screen.
@@ -189,6 +200,22 @@
           }
         });
       }
+
+      for (const [id, method, params] of [
+        ['push-check', 'push.permission', {}],
+        ['push-request', 'push.permission', { request: true }],
+        ['push-token', 'push.token', {}],
+      ]) {
+        document.getElementById(id).addEventListener('click', async () => {
+          try {
+            const result = await call(method, params);
+            document.getElementById('push-result').textContent = method === 'push.token' ? (result ? 'Installation registered (token hidden).' : 'Not registered yet.') : result;
+          } catch (error) { document.getElementById('push-result').textContent = String(error); }
+        });
+      }
+      void call('push.initial').then((message) => {
+        if (message) document.getElementById('push-result').textContent = 'Initial tap: ' + JSON.stringify(message);
+      }).catch(() => {});
 
       (async () => {
         try {

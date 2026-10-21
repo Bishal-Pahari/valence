@@ -52,6 +52,16 @@ const RESERVED_TYPES = new Set('Json Methods Events Object String Number Boolean
 // what exists. A field never moves from `fields` to `optional` or back: `fields` is the shape every host
 // has always returned.
 const BUILTINS = {
+  'push.token': { params: {}, returns: 'string?', call: () => 'return valence.pushToken();' },
+  'push.permission': {
+    params: { request: 'bool?' }, returns: 'string',
+    call: () => 'return valence.pushPermission(request: p.request ?? false);',
+  },
+  'push.initial': {
+    params: {},
+    returns: { nullable: true, fields: { id: 'string?', data: 'json', title: 'string?', body: 'string?', image: 'string?' } },
+    call: (t) => `final m = await valence.pushInitial();\n        return m == null ? null : ${t}(id: m.id, data: m.data, title: m.title, body: m.body, image: m.toJson()['image'] as String?);`,
+  },
   'app.ready': { params: {}, returns: 'void', call: () => 'await valence.appReady();' },
   'app.info': {
     params: {},
@@ -993,7 +1003,7 @@ export function assertBuiltinShapes(s) {
     const required = Object.fromEntries(Object.entries(fields).filter(([f]) => !(f in optional)));
     const extras = Object.entries(fields).filter(([f]) => f in optional);
     const bad =
-      m.returns.nullable ||
+      !!m.returns.nullable !== !!want.returns.nullable ||
       !!m.returns.list !== !!want.returns.list ||
       !type ||
       canonical(required) !== canonical(want.returns.fields) ||

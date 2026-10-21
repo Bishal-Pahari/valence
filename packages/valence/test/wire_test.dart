@@ -134,6 +134,16 @@ void main() {
   });
 
   group('script building (§4.2)', () {
+    test('both event and reply scripts escape Unicode line separators without changing JSON', () {
+      const value = '\u2028\u2029";evil()';
+      for (final script in [eventScript('push.received', {'body': value}), bridgeReplyScript(replyOk(1, value))]) {
+        expect(script, contains(r'\u2028\u2029'));
+        expect(script, isNot(contains('\u2028')));
+        expect(script, isNot(contains('\u2029')));
+      }
+      final reply = bridgeReplyScript(replyOk(1, value));
+      expect((jsonDecode(reply.substring(reply.indexOf('(') + 1, reply.length - 1)) as Map)['v'], value);
+    });
     test('an event script goes through jsonEncode, so nothing is concatenated raw', () {
       expect(
         eventScript('sync.changed', {'buckets': ['plants']}),

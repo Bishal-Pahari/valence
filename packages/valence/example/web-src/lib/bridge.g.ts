@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 4;
+export const BRIDGE_VERSION = 5;
 
 export interface AppInfo {
   platform: string;
@@ -42,6 +42,14 @@ export interface SyncStatus {
   pending: number;
   lastSyncedAt?: number | null;
   offline: boolean;
+}
+
+export interface PushMessage {
+  id?: string | null;
+  data: Json;
+  title?: string | null;
+  body?: string | null;
+  image?: string | null;
 }
 
 export interface Methods {
@@ -101,6 +109,11 @@ export interface Methods {
     keys: string[];
   }; returns: Row[] };
   'sync.status': { params: Record<string, never>; returns: SyncStatus };
+  'push.token': { params: Record<string, never>; returns: string | null };
+  'push.permission': { params: {
+    request?: boolean | null;
+  }; returns: string };
+  'push.initial': { params: Record<string, never>; returns: PushMessage | null };
 }
 
 export interface Events {
@@ -112,6 +125,15 @@ export interface Events {
   };
   'app.resumed': Record<string, never>;
   'auth.expired': Record<string, never>;
+  'push.received': {
+    message: PushMessage;
+  };
+  'push.tapped': {
+    message: PushMessage;
+  };
+  'push.tokenChanged': {
+    token: string;
+  };
 }
 
 export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
@@ -134,6 +156,9 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'http.request': 4,
   'data.getMany': 3,
   'sync.status': 3,
+  'push.token': 5,
+  'push.permission': 5,
+  'push.initial': 5,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
@@ -141,6 +166,9 @@ export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
   'bundle.updateReady': 1,
   'app.resumed': 1,
   'auth.expired': 2,
+  'push.received': 5,
+  'push.tapped': 5,
+  'push.tokenChanged': 5,
 };
 
 /** Browser fallbacks for this app, so the same build also runs as the website. */
