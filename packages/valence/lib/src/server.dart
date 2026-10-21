@@ -328,6 +328,25 @@ final class ValenceServer {
       await _text(req, HttpStatus.notFound, 'not found');
       return;
     }
+
+    final isEntry = path == m.entry;
+    // The URL of a bundle file is stable across releases — the path comes from the web build and the port
+    // survives a resume (§3) — so the *only* thing that distinguishes one release's `assets/index-x.js`
+    // from the next one's is the hash behind it. That hash is the validator. Without it a WebView serves
+    // the previous bundle's copy of the same URL for a year, the new code never runs, and the trial still
+    // ends in `committed` because the old page called `ready()`: the update and its rollback safety net
+    // are both defeated, silently (§2.4).
+    final etag = '"${entry.hash}"';
+    if (!isEntry && _verified.contains(entry.hash) && _ifNoneMatch(req, etag)) {
+      final res = req.response
+        ..statusCode = HttpStatus.notModified
+        ..headers.set(HttpHeaders.etagHeader, etag)
+        ..headers.set(HttpHeaders.cacheControlHeader, 'no-cache')
+        ..headers.set('X-Content-Type-Options', 'nosniff');
+      await res.close();
+      return;
+    }
+
     var bytes = file.readAsBytesSync();
     // Content-addressed integrity is re-checked **lazily**, the first time this manifest serves this file,
     // and cached for the manifest's lifetime. Nothing re-hashes the store at startup, so a file verified at
@@ -351,7 +370,6 @@ final class ValenceServer {
       _verified.add(entry.hash);
     }
 
-    final isEntry = path == m.entry;
     final res = req.response..statusCode = HttpStatus.ok;
     if (isEntry) {
       bytes = utf8.encode(_withNonce(utf8.decode(bytes), nonce));
@@ -359,7 +377,11 @@ final class ValenceServer {
         ..set(HttpHeaders.cacheControlHeader, 'no-store')
         ..set('Content-Security-Policy', m.csp);
     } else {
-      res.headers.set(HttpHeaders.cacheControlHeader, 'public, max-age=31536000, immutable');
+      // `no-cache` stores the bytes and revalidates before using them; it is not `no-store`. The WebView
+      // keeps its copy and the conditional request that follows costs one loopback round trip and no body.
+      res.headers
+        ..set(HttpHeaders.cacheControlHeader, 'no-cache')
+        ..set(HttpHeaders.etagHeader, etag);
     }
     res.headers
       ..set(HttpHeaders.contentTypeHeader, _extTypes[_extensionOf(path) ?? ''] ?? 'application/octet-stream')
@@ -381,6 +403,21 @@ final class ValenceServer {
       ..headers.set('X-Content-Type-Options', 'nosniff')
       ..headers.set(HttpHeaders.cacheControlHeader, 'no-store');
     await _send(req, res, body);
+  }
+
+  /// True when the request's `If-None-Match` names [etag], so the client's copy is still the right bytes.
+  ///
+  /// The header is a comma-separated list, each entry optionally weak (`W/"…"`). `*` matches anything that
+  /// exists. A request sent before the hash was ever served simply misses and gets the body.
+  static bool _ifNoneMatch(HttpRequest req, String etag) {
+    final header = req.headers.value(HttpHeaders.ifNoneMatchHeader);
+    if (header == null) return false;
+    for (final raw in header.split(',')) {
+      final tag = raw.trim();
+      if (tag == '*') return true;
+      if ((tag.startsWith('W/') ? tag.substring(2) : tag) == etag) return true;
+    }
+    return false;
   }
 
   static String? _extensionOf(String path) {

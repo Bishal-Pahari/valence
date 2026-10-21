@@ -64,10 +64,12 @@ void main() {
     ValenceServer server,
     String path, {
     String method = 'GET',
+    Map<String, String> headers = const {},
   }) async {
     final client = HttpClient();
     try {
       final req = await client.openUrl(method, Uri.parse('${server.origin}$path'));
+      headers.forEach(req.headers.set);
       final res = await req.close();
       final body = await res.transform(utf8.decoder).join();
       return (status: res.statusCode, headers: res.headers, body: body);
@@ -248,19 +250,75 @@ void main() {
   });
 
   group('branch order and the SPA fallback (§3)', () {
-    test('a bundle file is served from CAS with immutable caching', () async {
+    test('a bundle file is served from CAS, revalidated against its hash', () async {
       final b = await signBundle(key, seq: 10, files: {
         'index.html': entryHtml,
         'assets/app.js': 'console.log(1)',
       });
-      final server = await start(manifest: await install(b));
+      final m = await install(b);
+      final server = await start(manifest: m);
       addTearDown(server.close);
       final res = await request(server, '/assets/app.js');
       expect(res.status, 200);
       expect(res.body, 'console.log(1)');
-      expect(res.headers.value('cache-control'), 'public, max-age=31536000, immutable');
+      expect(res.headers.value('cache-control'), 'no-cache');
+      expect(res.headers.value('etag'), '"${m.files['assets/app.js']!.hash}"');
       expect(res.headers.contentType!.mimeType, 'text/javascript');
       expect(res.headers.value('x-content-type-options'), 'nosniff');
+    });
+
+    test('a matching If-None-Match is answered 304 with no body', () async {
+      final b = await signBundle(key, seq: 10, files: {
+        'index.html': entryHtml,
+        'assets/app.js': 'console.log(1)',
+      });
+      final m = await install(b);
+      final server = await start(manifest: m);
+      addTearDown(server.close);
+      final etag = (await request(server, '/assets/app.js')).headers.value('etag')!;
+      for (final sent in [etag, 'W/$etag', '*', '"other", $etag']) {
+        final res = await request(server, '/assets/app.js', headers: {'if-none-match': sent});
+        expect(res.status, 304, reason: sent);
+        expect(res.body, isEmpty, reason: sent);
+        expect(res.headers.value('etag'), etag, reason: sent);
+        expect(res.headers.value('cache-control'), 'no-cache', reason: sent);
+      }
+      final miss = await request(server, '/assets/app.js', headers: {'if-none-match': '"stale"'});
+      expect(miss.status, 200);
+      expect(miss.body, 'console.log(1)');
+    });
+
+    test('the same path in a new bundle gets a new ETag, so a cached copy cannot answer for it', () async {
+      // F-39: the path and the port are identical across releases, so the hash is the only thing that
+      // tells the WebView its stored copy is the wrong code. Served `immutable`, the new bundle never ran.
+      final first = await install(await signBundle(key, seq: 10, files: {
+        'index.html': entryHtml,
+        'assets/app.js': 'console.log(1)',
+      }));
+      final second = await install(await signBundle(key, seq: 11, files: {
+        'index.html': entryHtml,
+        'assets/app.js': 'console.log(2)',
+      }));
+      final server = await start(manifest: first);
+      addTearDown(server.close);
+      final old = (await request(server, '/assets/app.js')).headers.value('etag')!;
+
+      server.serveManifest(second);
+      final res = await request(server, '/assets/app.js', headers: {'if-none-match': old});
+      expect(res.status, 200);
+      expect(res.body, 'console.log(2)');
+      expect(res.headers.value('etag'), isNot(old));
+    });
+
+    test('the entry page is never cached and carries no ETag', () async {
+      final b = await signBundle(key, seq: 10, files: {'index.html': entryHtml});
+      final m = await install(b);
+      final server = await start(manifest: m);
+      addTearDown(server.close);
+      final res = await request(server, '/index.html', headers: {'if-none-match': '*'});
+      expect(res.status, 200);
+      expect(res.headers.value('cache-control'), 'no-store');
+      expect(res.headers.value('etag'), isNull);
     });
 
     test('the SPA fallback answers an extensionless path with the entry page', () async {
