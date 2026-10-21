@@ -439,6 +439,28 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
   }
 
   if (floor !== undefined && floor < (baseline.floor ?? 0)) throw new Error(`--floor ${floor} is below the current floor ${baseline.floor}; the floor only goes up`);
+  // The floor applies to the built-in bundle too (§2.2), and the built-in bundle is the one artifact every
+  // device is guaranteed to have — a wiped or offline phone's last resort, and the only code a store review
+  // ever saw. A floor above it therefore retires it *from the client side*, with no store release: §2.4's
+  // ladder is left with `current` and nothing underneath, so if the floor-raising bundle itself later fails
+  // a check, recovery is a full store review — exactly what OTA exists to avoid. One unreviewed OTA should
+  // not be able to do that silently, and `baseline.storeSeq` is in the file the CLI is already writing.
+  // A `--store` build is its own fallback, so its own seq is the ceiling, which §2.3's check below enforces.
+  const storeSeq = baseline.storeSeq ?? 0;
+  const effectiveFloor = floor ?? baseline.floor ?? 0;
+  if (!store && storeSeq > 0 && effectiveFloor > storeSeq) {
+    const how = `Raise it to at most ${storeSeq} to keep the store build runnable, or ship a store build above ${effectiveFloor} first and raise the floor after it is live.`;
+    if (floor !== undefined) {
+      throw new Error(
+        `--floor ${floor} is above the store build's seq ${storeSeq}, so every device would refuse its own built-in bundle at check 4 and have no fallback below this release. ${how}`,
+      );
+    }
+    // Carried forward from a project that raised the floor before this check existed. Not refused, because
+    // that would make every later release unbuildable, but it is the same device state and must be said.
+    warnings.push(
+      `the floor carried forward (${effectiveFloor}) is above the store build's seq ${storeSeq}, so devices refuse their own built-in bundle and have no fallback below "current". ${how}`,
+    );
+  }
   // requires.bridge is a one-way door like floor: check 5 makes every host below it refuse this bundle *and* every
   // later release, because they inherit the same default. has() exists so one bundle can serve old and new hosts, so
   // say so when the default would undo it.

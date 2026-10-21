@@ -236,15 +236,22 @@ void main() {
     });
 
     test('after pages past the clamp, and data.count answers the size question for free', () async {
-      final v = await open(writableBuckets: {'shelf'});
-      for (var i = 0; i < 600; i++) {
-        await v.store.put('shelf', 'k${i.toString().padLeft(4, '0')}', i, opId: 'op-$i');
-      }
-      expect(await v.dataCount('shelf'), 600, reason: 'a number the clamped list could never report');
-      expect(await v.dataCount('shelf', prefix: 'k05'), 100);
+      // Seeded through one pull page rather than 600 `put`s: a put fires a background sync each time, and
+      // the catalogue this models is read-only anyway.
+      final v = await open(dataSchemas: {'places': 1});
+      await v.store.applyPullPage(
+        bucket: 'places',
+        schema: 1,
+        rows: [
+          for (var i = 0; i < 600; i++) {'k': 'k${i.toString().padLeft(4, '0')}', 'v': i, 'u': i + 1, 'd': 0},
+        ],
+        maxUsnAfter: 600,
+      );
+      expect(await v.dataCount('places'), 600, reason: 'a number the clamped list could never report');
+      expect(await v.dataCount('places', prefix: 'k05'), 100);
 
-      final first = await v.dataList('shelf', limit: maxListLimit);
-      final rest = await v.dataList('shelf', limit: maxListLimit, after: first.last.key);
+      final first = await v.dataList('places', limit: maxListLimit);
+      final rest = await v.dataList('places', limit: maxListLimit, after: first.last.key);
       expect(first.length + rest.length, 600);
       expect({...first.map((r) => r.key), ...rest.map((r) => r.key)}.length, 600);
       // The presence question the clamp used to answer wrongly: a key in the tail is found, not absent.

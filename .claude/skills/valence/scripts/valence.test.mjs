@@ -297,6 +297,41 @@ test('floor only goes up and never exceeds seq', () => {
   assert.throws(() => bundle({ root, cfg, key, floor: Number.MAX_SAFE_INTEGER, now: NOW }), /above this bundle/);
 });
 
+test('a floor above the store build retires the one bundle every device is guaranteed to have', () => {
+  // §2.2: the floor applies to the built-in bundle too, so one unreviewed OTA can strand both fallbacks a
+  // device has — its `previous` *and* the bundle inside the APK, which is the only code the store review
+  // saw. §2.4's ladder is then `current` and nothing underneath, and recovery is a full store review: the
+  // thing OTA exists to avoid. Observed in the field, with `doctor` green and no warning anywhere.
+  const { root, cfg, key } = fixture();
+  const store = bundle({ root, cfg, key, store: true, now: NOW });
+  const ota = bundle({ root, cfg, key, now: NOW + 1000 });
+  assert.ok(ota.manifest.seq > store.manifest.seq);
+
+  assert.throws(
+    () => bundle({ root, cfg, key, floor: ota.manifest.seq, now: NOW + 2000 }),
+    /above the store build's seq \d+/,
+    'the number that makes this checkable was already in baseline.json',
+  );
+  // Up to the store build is the useful case and stays allowed: it strands every OTA below it and leaves
+  // the APK runnable.
+  const safe = bundle({ root, cfg, key, floor: store.manifest.seq, now: NOW + 3000 });
+  assert.equal(safe.manifest.floor, store.manifest.seq);
+  assert.equal(safe.warnings.filter((w) => w.includes('no fallback')).length, 0);
+
+  // A store build is its own fallback, so it may raise the floor to its own seq.
+  const next = bundle({ root, cfg, key, store: true, floor: store.manifest.seq + 1, now: NOW + 4000 });
+  assert.ok(next.manifest.floor > store.manifest.seq);
+
+  // A project already in that state before the check existed is warned, not blocked — refusing would make
+  // every later release unbuildable, and the floor carries forward on its own.
+  const baselinePath = join(root, '.valence', 'baseline.json');
+  const b = JSON.parse(readFileSync(baselinePath, 'utf8'));
+  writeFileSync(baselinePath, JSON.stringify({ ...b, floor: b.storeSeq + 1 }));
+  const carried = bundle({ root, cfg, key, now: NOW + 5000 });
+  assert.match(carried.warnings.join('\n'), /carried forward .* above the store build's seq/);
+  assert.equal(carried.manifest.floor, b.storeSeq + 1, 'and it still carries forward');
+});
+
 test('bundle rejects native code anywhere in the path', () => {
   const { root, cfg, key } = fixture();
   mkdirSync(join(root, 'web', 'build', 'x.framework'));

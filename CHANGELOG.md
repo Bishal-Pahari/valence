@@ -115,6 +115,61 @@ package's test suite covers that. If your 0.3 host named its database something
 other than `valence.db`, one config line keeps it. Swapping the runtime is a
 store release, because `lib/` changed.
 
+### One OTA could retire the bundle inside your APK, silently
+
+- **`valence bundle --floor N` now refuses an `N` above your store build's
+  `seq`.** The floor applies to the built-in bundle too, which the spec left to
+  inference. That bundle is the one artifact every device is guaranteed to
+  have — what a wiped or offline phone falls back to, and the only code a store
+  review ever saw — so raising the floor past it retired **both** fallbacks a
+  device had, from the client side, with no store release. §2.4's ladder was left
+  with `current` and nothing underneath, and if that bundle later failed a check
+  the only recovery was a store release above the floor: a full review cycle,
+  which is exactly what OTA exists to avoid.
+
+  Nothing warned. `verify` was happy, `doctor` was green, and `baseline.json`
+  held the number that made it checkable in the file the CLI had just written.
+
+  **What you must do:** nothing, unless a build starts failing — in which case
+  the message names your store build's seq and the two ways forward. Raising the
+  floor *to* that seq is still allowed and is almost always what you want: it
+  strands every OTA below it and keeps the APK runnable. If you already have a
+  floor above your store seq, you get a warning rather than a refusal, because
+  the floor carries forward on its own and refusing would make every later
+  release unbuildable.
+- **The reference REST adapter refuses item keys of `.` and `..`.** Those two
+  survive `encodeURIComponent`, so URL resolution strips them as dot segments:
+  `/items/..` resolves to `/`. An accepted push would have sent an authenticated
+  `PUT` or `DELETE` to the upstream's root or collection endpoint. Found by an
+  independent review.
+
+### Smaller things the migration got wrong
+
+- **Migration step 2 now covers the `pub add` failure.** An app using
+  `flutter_local_notifications` cannot resolve `valence`, because
+  `connectivity_plus` wants `dbus ^0.8.0` and the notifications plugin's Linux
+  implementation wants `^0.7.8` — two Linux-only packages an Android build never
+  compiles. The host guide documented it; the migration page, which is where you
+  are standing when it happens, did not. The `dependency_overrides` fix is now
+  next to the `flutter pub add` line.
+- **`BridgeError`'s import is in the docs.** 0.3 generated it into your
+  `bridge.g.dart`; 0.4 imports it from the package without re-exporting, so every
+  file that throws one stops compiling with *"The name 'BridgeError' isn't a
+  class"*. Add `import 'package:valence/valence.dart';` — the migration page's
+  `handlers.dart` example now shows it.
+- **`lastSyncedAt` reads `null` after migrating, and the docs say so.**
+  `sync.status` is new in 0.4, so no 0.3 host wrote the timestamp: a migrated
+  device reports `null` while holding a complete database, and the honest
+  rendering of that is "Never synced" under current data. Treat `null` as "not
+  known yet" rather than "never". It self-corrects on the first 0.4 sync.
+- **A resume can arrive before start-up finishes.** On Android the lifecycle
+  observer fires during the first launch, so a resume handler can run before the
+  server, the store or the active bundle exists — and worse, can start an update
+  check alongside the UI-start transition still in flight. `ValenceApp` now
+  ignores a resume until start-up completes (it runs the same triggers itself at
+  the end of start-up anyway), and §3 states the rule for hosts that build their
+  own WebView.
+
 ### A bucket over 500 rows can finally be read completely
 
 - **`data.list` takes an `after` cursor, and there is a new `data.count`**
