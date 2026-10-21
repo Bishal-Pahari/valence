@@ -410,9 +410,11 @@ final class ValenceServer {
   /// The header is a comma-separated list, each entry optionally weak (`W/"…"`). `*` matches anything that
   /// exists. A request sent before the hash was ever served simply misses and gets the body.
   static bool _ifNoneMatch(HttpRequest req, String etag) {
-    final header = req.headers.value(HttpHeaders.ifNoneMatchHeader);
-    if (header == null) return false;
-    for (final raw in header.split(',')) {
+    // `headers.value` throws when a header arrives twice, and the throw would come back as a 500 for a
+    // file the page needs. A browser merges duplicates; anything else on the loopback port need not.
+    final sent = req.headers[HttpHeaders.ifNoneMatchHeader];
+    if (sent == null) return false;
+    for (final raw in sent.expand((v) => v.split(','))) {
       final tag = raw.trim();
       if (tag == '*') return true;
       if ((tag.startsWith('W/') ? tag.substring(2) : tag) == etag) return true;

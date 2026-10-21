@@ -236,6 +236,19 @@ test('requires.bridge rising above the shipped store build warns, because it str
   assert.deepEqual(bridgeWarn(bundle({ root, cfg, key, now: NOW })), []);
 });
 
+test('a service worker in the output warns, because it answers before the host server does', () => {
+  // The host makes bundle files revalidate against their hash (§3). A service worker serving from Cache
+  // Storage is never asked, so a precaching build reopens the whole stale-bundle hole: the new release
+  // activates, the old page renders, and the trial commits on that old page's ready().
+  const { root, cfg, key } = fixture();
+  const clean = bundle({ root, cfg, key, now: NOW }).warnings;
+  assert.ok(!clean.some((x) => x.includes('service worker')));
+
+  writeFileSync(join(root, 'web', 'build', 'registerSW.js'), "navigator.serviceWorker.register('/sw.js', { scope: '/' });\n");
+  const w = bundle({ root, cfg, key, now: NOW + 1000 }).warnings;
+  assert.ok(w.some((x) => x.includes('service worker') && x.includes('inHost()')), w.join('\n'));
+});
+
 test('the relative-asset warning ignores script bodies and an absolute base href, and reads srcset', () => {
   const { root, cfg, key } = fixture();
   const html = (head) => writeFileSync(join(root, 'web', 'build', 'index.html'), `<!doctype html><head>${head}</head>`);
@@ -421,6 +434,43 @@ test('a built-in grows a field without breaking an app that has not taken it', (
   const without = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
   assert.doesNotMatch(without, /reason:/, 'and the delegation does not pass a field its type does not have');
   assert.match(without, /offline: r\.offline/);
+});
+
+test('an app that already shipped a store build can take a built-in\'s new field', () => {
+  // The case that matters and the one a fresh fixture misses: `bundle --store` records the schema the
+  // stores reviewed, and §4.1 refuses any later change to a type in it. Relaxing only assertBuiltinShapes
+  // would leave every real adopter — anyone who has ever cut a store build — unable to take the field the
+  // docs tell them to take, with --rebaseline (which overwrites that reviewed record) as the only way out.
+  const { root, cfg, key } = fixture();
+  editSchema(root, (s) => {
+    delete s.types.SyncResult.reason;
+    // An app-owned type in the same store build, to prove the relaxation does not leak to one.
+    s.types.Mine = { a: 'string' };
+    s.methods['mine.get'] = { since: 1, params: {}, returns: 'Mine' };
+  });
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const shipped = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8')).storeSchema;
+  assert.deepEqual(Object.keys(shipped.types.SyncResult), ['buckets', 'changed', 'offline']);
+
+  editSchema(root, (s) => (s.types.SyncResult.reason = 'string?'));
+  assert.ok(codegen({ root, cfg }).written.length, 'the runtime field is additive against the recorded schema');
+  assert.match(readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8'), /reason: r\.reason\.name/);
+
+  // The relaxation is exactly that field at exactly that type, and nothing else.
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  const bad = (mutate, re) => {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), re);
+  };
+  bad((s) => (s.types.SyncResult.reason = 'string'), /fields are not/); // the runtime declares it nullable
+  bad((s) => (s.types.SyncResult.other = 'string?'), /fields are not/); // not a field the runtime added
+  bad((s) => delete s.types.SyncResult.offline, /fields are not/);
+  // An app's own type gets no such latitude: §4.1 still refuses any change to a shipped one, even to a
+  // field a built-in happens to have grown.
+  bad((s) => (s.types.Mine.reason = 'string?'), /"Mine" shipped in a store build and cannot change/);
+  bad((s) => (s.types.Mine.a = 'int'), /"Mine" shipped in a store build and cannot change/);
 });
 
 test('a second --store build cannot quietly rewrite the schema the stores reviewed', () => {

@@ -15,6 +15,9 @@ import 'store.dart';
 /// and a page that retries on an empty result cannot tell there is anything to retry.
 enum ValenceSyncReason {
   /// The run happened. `changed` is then the real answer, zero included.
+  ///
+  /// An app with no `syncBase` also reports `ok`: there is no server for its data to be stale against,
+  /// so "nothing to do" is the honest answer rather than a blocked or failed run.
   ok,
 
   /// Another sync held the lease, so **nothing was attempted**. Not evidence of anything about the data.
@@ -110,7 +113,11 @@ final class ValenceSync {
       // ponytail: single-process assumption. A host that puts a service in its own `android:process` would
       // need the owner to be a token both processes agree on, written at launch.
       if (live && owner == pid) return;
-      if (live) _log('sync: taking over a lease left by process $owner, which is gone');
+      if (live) {
+        _log(owner == null
+            ? 'sync: clearing a lease written by an older host, which records no owner'
+            : 'sync: taking over a lease left by process $owner, which is gone');
+      }
       await txn.insert(
         'prefs',
         {'key': syncLeaseKey, 'value': _leaseValue(now)},

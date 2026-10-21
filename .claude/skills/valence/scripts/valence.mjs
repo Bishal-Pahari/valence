@@ -29,6 +29,10 @@ const PRIMS = new Set(['string', 'int', 'num', 'bool', 'json', 'void']);
 const CORE_METHODS = ['app.ready', 'app.info'];
 const SPKI_ED25519 = Buffer.from('302a300506032b6570032100', 'hex');
 const HASH_RE = /^[0-9a-f]{64}$/;
+// A service worker can only take over the page by being registered from it, and every framework's helper
+// ends up calling this. Matching the registration rather than a file name covers Workbox, vite-plugin-pwa
+// and a hand-written one alike.
+const SERVICE_WORKER_RE = /serviceWorker\s*\.\s*register\s*\(/;
 // Names that break the generated Dart (reserved words, built-in identifiers, Object members, generated members).
 const DART_RESERVED = new Set(`abstract as assert await break case catch class const continue covariant default deferred do dynamic else enum export extends extension external factory false final finally for Function get if implements import in interface is late library mixin new null operator part required rethrow return set static super switch this throw true try typedef var void while with yield hashCode runtimeType toString noSuchMethod toJson fromJson`.split(' '));
 // Type names that collide with Dart/TS builtins or with names the generator emits.
@@ -76,7 +80,7 @@ const BUILTINS = {
       fields: { buckets: 'string[]', changed: 'int', offline: 'bool' },
       // "nothing was attempted" and "nothing changed" are otherwise the same answer, so an app that shows
       // freshness reports confident freshness over stale data. `"ok"`, `"busy"` or `"offline"`.
-      optional: { reason: 'string' },
+      optional: { reason: 'string?' },
     },
     call: (t, has) =>
       `final r = await valence.syncNow(buckets: p.buckets);\n        return ${t}(buckets: r.buckets, changed: r.changed, offline: r.offline${has('reason') ? ', reason: r.reason.name' : ''});`,
@@ -355,6 +359,17 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
     );
   }
 
+  // §3: the host makes a bundle file's bytes revalidate by serving them no-cache with the hash as an
+  // ETag. A service worker answering from Cache Storage is never asked, so a precache-first build puts
+  // the stale-bundle hole straight back: the new bundle activates, the old page renders, and it calls
+  // ready() so the trial commits. Only the registration is detectable from the output, so warn on it.
+  const sw = [...blobs.keys()].some((h) => SERVICE_WORKER_RE.test(blobs.get(h).toString('latin1')));
+  if (sw) {
+    warnings.push(
+      `this build registers a service worker. A service worker serves the page from Cache Storage without asking the host's server, which revalidates every bundle file against its hash (contracts §3) — so a precaching worker can answer a new release with the previous one's code, and the trial still commits because the old page calls ready(). Inside the app you do not need one: the bundle is already on the device and served locally. Register it only when inHost() is false, or drop it from the build the bundle is cut from.`,
+    );
+  }
+
   const { routes, source } = listRoutes(root, cfg);
   if (source === 'none') {
     const why = cfg.web.routes ? `web.routes is set to "${cfg.web.routes}", which does not exist` : 'web.routes is unset';
@@ -624,14 +639,46 @@ export function parseSchema(schema) {
   return { version, types: typeList, methods, events };
 }
 
+// Which optional fields each built-in's returned type may gain, keyed by the type name this app gave it.
+// The names and types come from BUILTINS, so this is not a general escape hatch: it is exactly the set of
+// fields the runtime itself added, on exactly the type the built-in returns.
+function builtinOptionalFields(schema) {
+  const byType = {};
+  for (const [name, want] of Object.entries(BUILTINS)) {
+    const optional = typeof want.returns === 'string' ? null : want.returns.optional;
+    const declared = schema.methods?.[name]?.returns;
+    if (!optional || typeof declared !== 'string') continue;
+    byType[declared.replace(/[[\]?]/g, '')] = { ...byType[declared.replace(/[[\]?]/g, '')], ...optional };
+  }
+  return byType;
+}
+
+// True when `now` is `was` plus nothing but fields from `allowed`, each at the type `allowed` names.
+// Every shipped field must still be there, unchanged, at its old type.
+function isBuiltinGrowth(was, now, allowed) {
+  if (!allowed || !now || typeof now !== 'object') return false;
+  for (const [f, t] of Object.entries(was)) if (now[f] !== t) return false;
+  for (const [f, t] of Object.entries(now)) {
+    if (Object.hasOwn(was, f)) continue;
+    if (allowed[f] !== t) return false;
+  }
+  return true;
+}
+
 // The schema is additive only once a store build has shipped it (contracts §4.1).
 export function assertAdditive(shipped, current) {
   if (!shipped) return;
   if (current.version < shipped.version) throw new Error(`schema version went down: ${current.version} < shipped ${shipped.version}`);
+  const grows = builtinOptionalFields(current);
   for (const kind of ['methods', 'events', 'types']) {
     for (const [name, def] of Object.entries(shipped[kind] ?? {})) {
       if (!Object.hasOwn(current[kind] ?? {}, name)) throw new Error(`${kind} "${name}" shipped in a store build and cannot be removed`);
-      if (canonical(def) !== canonical(current[kind][name])) throw new Error(`${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
+      if (canonical(def) === canonical(current[kind][name])) continue;
+      // A built-in's returned type may gain the fields the runtime added to it, and nothing else. Without
+      // this the additive-only guard refuses the very upgrade §4.3 tells an adopter to make, and the only
+      // way through would be --rebaseline, which overwrites the schema the stores reviewed.
+      if (kind === 'types' && isBuiltinGrowth(def, current.types[name], grows[name])) continue;
+      throw new Error(`${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
     }
   }
   // New methods/events must be newer than every shipped host, or has() lies on old hosts and they get E_UNKNOWN.

@@ -78,6 +78,26 @@ void main() {
     }
   }
 
+  /// One request written straight onto the socket with [extra] header lines, returning the status.
+  ///
+  /// `HttpClient` folds repeated headers into one value, which is exactly the case worth testing.
+  Future<int> rawRequest(ValenceServer server, String path, List<String> extra) async {
+    final socket = await Socket.connect(InternetAddress.loopbackIPv4, server.port);
+    try {
+      socket.write(
+        'GET $path HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\n'
+        '${extra.map((h) => '$h\r\n').join()}Connection: close\r\n\r\n',
+      );
+      await socket.flush();
+      final response = latin1.decode(await socket.fold<List<int>>(<int>[], (a, b) => a..addAll(b)));
+      final status = RegExp(r'^HTTP/1\.\d (\d{3})').firstMatch(response);
+      if (status == null) throw StateError('no status line in: $response');
+      return int.parse(status.group(1)!);
+    } finally {
+      socket.destroy();
+    }
+  }
+
   /// One request written straight onto the socket, so the path arrives exactly as given.
   ///
   /// Dart's HttpClient normalises `.` and `..` segments before sending, which would hide the very thing
@@ -286,6 +306,14 @@ void main() {
       final miss = await request(server, '/assets/app.js', headers: {'if-none-match': '"stale"'});
       expect(miss.status, 200);
       expect(miss.body, 'console.log(1)');
+
+      // Two header lines rather than one list. `headers.value` throws on that, and the throw would reach
+      // the catch-all as a 500 for a file the page needs.
+      final twice = await rawRequest(server, '/assets/app.js', [
+        'If-None-Match: "nope"',
+        'If-None-Match: $etag',
+      ]);
+      expect(twice, 304);
     });
 
     test('the same path in a new bundle gets a new ETag, so a cached copy cannot answer for it', () async {
@@ -529,6 +557,30 @@ void main() {
       final res = await request(server, '/assets/app.js');
       expect(res.status, 500);
       expect(file.existsSync(), isFalse, reason: 'deleted, so the next update check re-downloads it');
+    });
+
+    test('a conditional request cannot 304 past the integrity check', () async {
+      // The 304 fast path sits above the hash check and is gated on this manifest having verified the hash
+      // already. Drop that gate — it reads like an optimisation — and a rotted file is never detected: the
+      // WebView revalidates, is told its copy is still good, the bytes are never read, and nothing asks the
+      // repair pass for them.
+      final b = await signBundle(key, seq: 10, files: {
+        'index.html': entryHtml,
+        'assets/app.js': 'console.log(1)',
+      });
+      final manifest = await install(b);
+      final server = await start(manifest: manifest);
+      addTearDown(server.close);
+      final etag = (await request(server, '/assets/app.js')).headers.value('etag')!;
+
+      final hash = manifest.files['assets/app.js']!.hash;
+      final file = File('${casDir.path}/$hash');
+      file.writeAsBytesSync(utf8.encode('console.log(2)'));
+      server.serveManifest(manifest); // ends the verified-for-this-manifest lifetime
+
+      final res = await request(server, '/assets/app.js', headers: {'if-none-match': etag});
+      expect(res.status, 500, reason: 'the hash is checked before the client is told its copy is current');
+      expect(file.existsSync(), isFalse);
     });
 
     test('a CAS file of the wrong size is caught too', () async {
