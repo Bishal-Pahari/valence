@@ -108,7 +108,7 @@ final class ValenceConfig {
   final Future<String?> Function()? authToken;
 
   /// Exact HTTP(S) origins trusted with the bearer token by `http.request` (§4.5).
-  /// Compiled from `web.connect`; empty denies every request. Never supplied by an OTA manifest.
+  /// Compiled from `http.origins`; empty denies every request. Never supplied by an OTA manifest.
   final Set<String> httpOrigins;
 
   /// Copy with overrides. Handy in tests and for pointing a debug build at a local OTA host.

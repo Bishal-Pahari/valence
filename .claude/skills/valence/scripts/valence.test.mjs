@@ -38,11 +38,11 @@ function fixture({ data = { calendar: 1 }, latest = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'mr-'));
   mkdirSync(join(root, 'valence'));
   cpSync(join(TEMPLATES, 'bridge.schema.json'), join(root, 'valence', 'bridge.schema.json'));
-  // Historical evolution cases start from the shipped bridge-2 shape.
+  // Field evolution cases omit the optional batch/status additions.
   if (!latest) {
     const p = join(root, 'valence', 'bridge.schema.json');
     const s = JSON.parse(readFileSync(p, 'utf8'));
-    s.version = 2;
+    s.version = 4;
     delete s.methods['data.getMany'];
     delete s.methods['sync.status'];
     delete s.types.SyncStatus;
@@ -437,7 +437,7 @@ test('doctor reports absent evidence as warnings, compatibility errors as failur
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'native value'));
   bundle({ root, cfg, key, builtin: true, now: NOW });
   const dart = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
-  writeFileSync(dart, readFileSync(dart, 'utf8').replace('const hostBridgeVersion = 3;', 'const hostBridgeVersion = 1;'));
+  writeFileSync(dart, readFileSync(dart, 'utf8').replace('const hostBridgeVersion = 4;', 'const hostBridgeVersion = 1;'));
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'built-in compatibility'));
 });
 

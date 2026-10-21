@@ -250,7 +250,7 @@ void main() {
       'https://api.test@evil.test/',
       'https://api.test./',
       'https://[::1]/',
-      'https://b?cher.test/',
+      'https://b\u00fccher.test/',
       'https://xn--bcher-kva.test/',
     ]) {
       await expectLater(api(token: () async => fail('credential read for $url'))
