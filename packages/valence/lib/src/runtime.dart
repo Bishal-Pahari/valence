@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'config.dart';
 import 'log.dart';
 import 'manifest.dart';
+import 'native_http.dart';
 import 'secure.dart';
 import 'server.dart';
 import 'state.dart';
@@ -30,6 +31,7 @@ export 'manifest.dart'
         fnv1a32,
         isReservedBundlePath,
         isSafeBundlePath;
+export 'native_http.dart' show ValenceHttp, ValenceHttpResponse;
 export 'secure.dart' show ValenceSecure, secureAuthTokenKey;
 export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
@@ -399,6 +401,20 @@ final class Valence {
 
   /// `auth.hasToken`. Whether a token is stored — the only thing the page may learn about it.
   Future<bool> authHasToken() => secure.hasAuthToken();
+
+  /// `http.request`: online text RPC restricted to the host's compiled origins (§4.5).
+  Future<ValenceHttpResponse> httpRequest({
+    required String url,
+    String? method,
+    Object? headers,
+    String? body,
+  }) =>
+      ValenceHttp(
+        origins: config.httpOrigins,
+        token: config.authToken ?? secure.authToken,
+        onUnauthorized: () =>
+            emit(eventScript('auth.expired', const <String, Object?>{})),
+      ).request(url: url, method: method, headers: headers, body: body);
 
   /// `open.external`. Only `https:`, `mailto:` and `tel:` leave the app.
   Future<void> openExternal(String url) async {

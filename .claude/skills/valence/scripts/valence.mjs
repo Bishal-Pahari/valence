@@ -131,6 +131,12 @@ const BUILTINS = {
   // There is deliberately no auth.getToken: the token lives under the reserved `valence.` prefix, so the
   // page can set and clear it and ask whether one is there, and can never read it back (§4.4).
   'auth.hasToken': { params: {}, returns: 'bool', call: () => 'return valence.authHasToken();' },
+  'http.request': {
+    params: { url: 'string', method: 'string?', headers: 'json?', body: 'string?' },
+    returns: { fields: { status: 'int', headers: 'json', body: 'string' } },
+    call: (t) =>
+      `final r = await valence.httpRequest(url: p.url, method: p.method, headers: p.headers, body: p.body);\n        return ${t}(status: r.status, headers: r.headers, body: r.body);`,
+  },
 };
 
 const SEED_SQL = `
@@ -1011,6 +1017,17 @@ const dartStr = (s) =>
     .replace(/[\x00-\x1f\x7f]/g, (c) => `\\u{${c.charCodeAt(0).toString(16)}}`)}'`;
 
 export function genDartConfig(cfg, keyring) {
+  const connect = cfg.http?.origins ?? [];
+  if (!Array.isArray(connect)) throw new Error('http.origins must be an array of exact HTTP(S) origins');
+  for (const origin of connect) {
+    let u;
+    try { u = new URL(origin); } catch { /* rejected below */ }
+    if (typeof origin !== 'string' || !u || !['http:', 'https:'].includes(u.protocol) ||
+        u.username || u.password || u.search || u.hash || (u.pathname !== '/' && u.pathname !== '') ||
+        origin.includes('*') || !/^https?:\/\/[^/?#]+\/?$/.test(origin)) {
+      throw new Error('http.origins entries must be exact HTTP(S) origins without credentials, paths, query or fragment');
+    }
+  }
   const ring = Object.entries(keyring).map(([k, v]) => `${dartStr(k)}: ${dartStr(v)}`).join(', ');
   const data = Object.entries(cfg.data ?? {}).map(([k, v]) => `${dartStr(k)}: ${v}`).join(', ');
   const writable = (cfg.writable ?? []).map(dartStr).join(', ');
@@ -1025,6 +1042,7 @@ export function genDartConfig(cfg, keyring) {
     `  syncBase: ${dartStr(cfg.sync?.base ?? '')},`,
     `  writableBuckets: {${writable}},`,
     `  dataSchemas: {${data}},`,
+    `  httpOrigins: {${connect.map((o) => dartStr(new URL(o).origin)).join(', ')}},`,
     `  seedSchemas: {${Object.entries(cfg.seedSchemas ?? {}).map(([b, ns]) => `${dartStr(b)}: [${ns.join(', ')}]`).join(', ')}},`,
   ];
   if (cfg.sync?.mode === 'static') lines.push('  syncMode: ValenceSyncMode.staticChunks,');

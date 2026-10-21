@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 3;
+export const BRIDGE_VERSION = 4;
 
 export interface AppInfo {
   platform: string;
@@ -24,18 +24,24 @@ export interface Row {
   usn: number;
 }
 
-export interface SyncStatus {
-  pending: number;
-  lastSyncedAt?: number | null;
-  offline: boolean;
-}
-
 export interface SyncResult {
   buckets: string[];
   changed: number;
   offline: boolean;
   reason?: string | null;
   pending?: number | null;
+}
+
+export interface HttpResponse {
+  status: number;
+  headers: Json;
+  body: string;
+}
+
+export interface SyncStatus {
+  pending: number;
+  lastSyncedAt?: number | null;
+  offline: boolean;
 }
 
 export interface Methods {
@@ -50,11 +56,6 @@ export interface Methods {
     prefix?: string | null;
     limit?: number | null;
   }; returns: Row[] };
-  'data.getMany': { params: {
-    bucket: string;
-    keys: string[];
-  }; returns: Row[] };
-  'sync.status': { params: Record<string, never>; returns: SyncStatus };
   'data.put': { params: {
     bucket: string;
     key: string;
@@ -89,6 +90,17 @@ export interface Methods {
     token?: string | null;
   }; returns: void };
   'auth.hasToken': { params: Record<string, never>; returns: boolean };
+  'http.request': { params: {
+    url: string;
+    method?: string | null;
+    headers?: Json | null;
+    body?: string | null;
+  }; returns: HttpResponse };
+  'data.getMany': { params: {
+    bucket: string;
+    keys: string[];
+  }; returns: Row[] };
+  'sync.status': { params: Record<string, never>; returns: SyncStatus };
 }
 
 export interface Events {
@@ -107,8 +119,6 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'app.info': 1,
   'data.get': 1,
   'data.list': 1,
-  'data.getMany': 3,
-  'sync.status': 3,
   'data.put': 1,
   'sync.now': 1,
   'prefs.get': 1,
@@ -121,6 +131,9 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'secure.delete': 2,
   'auth.setToken': 2,
   'auth.hasToken': 2,
+  'http.request': 4,
+  'data.getMany': 3,
+  'sync.status': 3,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {

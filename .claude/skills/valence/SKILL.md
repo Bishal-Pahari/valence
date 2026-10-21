@@ -323,3 +323,9 @@ For batch reads, use `data.getMany` (since 3, max 500 keys). Read outbox depth f
 - **`jsonEncode` output is safe to embed in `runJavaScript`** (ES2019 allows U+2028), but never concatenate raw strings into scripts.
 - **The updater must compare `requires.bridge` against the generated `hostBridgeVersion`.** A second literal drifts: bump the schema, and the host refuses its own built-in bundle with nothing left to serve — on every install, from first launch. §8 tests that a bundle requiring exactly `hostBridgeVersion` is *accepted*, which is the half everyone forgets.
 - **A bundle needs a bridge version the host doesn't have?** Build with `--requires-bridge <old>` and guard newer calls with `has()`. Otherwise older hosts never receive the update.
+
+## Calling an existing backend (section 4.5)
+
+Use the built-in `http.request` (since 4, with 3 providing data.getMany and sync.status) for online text RPC. Add exact trusted origins to `http.origins`, regenerate and ship a new host: `ValenceConfig.httpOrigins` is compiled policy; an OTA CSP cannot broaden it. Default deny all. The package attaches the R1 token, blocks page credential/transport headers, returns every redirect without following it, caps bodies at 64 KiB and headers at 16 KiB, and has a 20-second total deadline. A token-bearing 401 emits `auth.expired`. Guard new calls with `has()`. Do not write a custom HTTP handler or hide service credentials in the APK.
+
+For offline use of existing REST APIs, adapt them to sections 5.3 and 5.5; `sync.base` is not an arbitrary REST URL. See `examples/rest-sync-adapter/` and the [backend guide](https://getvalence.pages.dev/docs/guides/your-backend/). Partial pull pages use the last included USN, tombstones persist, pushes deduplicate by id, and retry echoes the current winning row. Keep the durable cursor/id database. Android is tested; iOS is experimental and untested.

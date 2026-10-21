@@ -112,6 +112,9 @@ schema's `BRIDGE_VERSION`.
 MIT. The spec is `contracts.md`, which ships inside the `/valence` Claude Code skill and is restated at
 <https://getvalence.pages.dev/docs/>.
 
+## Native HTTP (contracts section 4.5)
+
+Generated `http.request` delegates to `Valence.httpRequest`. Configure exact trusted `http.origins` origins, regenerate, and ship a host; they become `ValenceConfig.httpOrigins` (default deny all). The host reads the R1 token per request, with `authToken` callback precedence, and emits `auth.expired` for an authenticated 401. Redirects are returned without following them. Text bodies: 64 KiB; headers: 16 KiB; total deadline: 20 seconds. Use HTTPS in production and no shared server secrets in an APK. [API and adapter guide](https://getvalence.pages.dev/docs/guides/your-backend/). iOS remains experimental and untested.
 ## Batch reads and sync observations
 
 `Valence.dataGetMany(bucket, keys)` returns distinct live rows in requested order (maximum 500 input keys), using the active manifest schema. `Valence.syncStatus()` reads current outbox depth, last successful unscoped sync time and the last attempt's transport failure. It does not probe connectivity. Generated schema-3 built-ins expose these as `data.getMany` and `sync.status`; `ValenceSyncResult.pending` counts remaining operations. The runtime constrains `path_provider_android` to >=2.2.17 <2.3.0 temporarily for pre-JNI compatibility (U-7, checked 2026-10-21); no app override is needed.

@@ -13,6 +13,10 @@ Newest first. One version for `create-valence`, `@getvalence/bridge` and the `va
 
 ## Unreleased
 
+### Calling your own backend
+
+Call your API with `http.request` (schema 4): the host enforces compiled `http.origins` origins, attaches the stored token, and never follows redirects. Existing hosts need codegen and a store build to add the capability or origins. A reference Node REST-to-sync adapter demonstrates durable pagination, tombstones and idempotent pushes. iOS remains experimental and untested.
+
 Everything below is unpublished. Two headlines: an app can finally log a user
 in, and the runtime is two published packages instead of generated code. Under
 them are the test-week fixes, logged by four independent teams who built Android
