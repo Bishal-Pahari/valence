@@ -52,6 +52,18 @@ const defaultListLimit = 100;
 /// The hard cap `data.list` clamps `limit` to, host-side, rather than trusting the page.
 const maxListLimit = 500;
 
+/// Whether [e] is SQLite refusing because something else holds the file: `SQLITE_BUSY` or `SQLITE_LOCKED`.
+///
+/// The open that takes `BEGIN EXCLUSIVE` for a schema upgrade is the one that collides, and an app update
+/// is when it happens: WorkManager fires the registered periodic job as the UI isolate comes up (§5.6).
+bool isDatabaseLocked(Object e) {
+  if (e is! DatabaseException) return false;
+  // Extended result codes are `code | (n << 8)`, so mask to the primary code. `getResultCode` is null on
+  // some platforms, which is why the message — the one Android actually prints — is the fallback.
+  final code = (e.getResultCode() ?? 0) & 0xff;
+  return code == 5 || code == 6 || e.toString().toLowerCase().contains('database is locked');
+}
+
 /// The schema from contracts §5.1. `user_version` is carried by sqflite's own `version` argument.
 const _schemaSql = [
   'CREATE TABLE kv (bucket TEXT NOT NULL, schema INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, '
@@ -80,8 +92,20 @@ final class ValenceStore {
   /// Each isolate calls this on the same path and gets the same plugin-side connection back. A background
   /// isolate must call `DartPluginRegistrant.ensureInitialized()` before its first call, or the plugin is
   /// not registered in that isolate at all.
-  static Future<ValenceStore> open(String path, {DatabaseFactory? factory}) =>
-      _open.putIfAbsent(path, () => _openAt(path, factory ?? databaseFactory));
+  ///
+  /// A failed open is **not** cached. The schema upgrade takes `BEGIN EXCLUSIVE`, so a background isolate
+  /// opening while the UI isolate upgrades gets `SQLITE_BUSY` — and caching that rejection would make every
+  /// later call in the isolate fail against a database that is now perfectly fine.
+  static Future<ValenceStore> open(String path, {DatabaseFactory? factory}) {
+    final existing = _open[path];
+    if (existing != null) return existing;
+    final opening = _openAt(path, factory ?? databaseFactory);
+    _open[path] = opening;
+    return opening.catchError((Object e) {
+      if (_open[path] == opening) _open.remove(path);
+      throw e;
+    });
+  }
 
   static Future<ValenceStore> _openAt(String path, DatabaseFactory factory) async {
     var mode = 'unknown';

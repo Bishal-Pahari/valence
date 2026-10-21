@@ -41,6 +41,7 @@ export 'src/runtime.dart'
         defaultValenceLogger,
         fnv1a32,
         hostFileContentTypes,
+        isDatabaseLocked,
         isReservedBundlePath,
         isSafeBundlePath,
         maxListLimit,

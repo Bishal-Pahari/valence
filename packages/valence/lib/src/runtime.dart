@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'config.dart';
@@ -35,7 +36,7 @@ export 'native_http.dart' show ValenceHttp, ValenceHttpResponse;
 export 'secure.dart' show ValenceSecure, secureAuthTokenKey;
 export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
-export 'store.dart' show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, maxListLimit;
+export 'store.dart' show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, isDatabaseLocked, maxListLimit;
 export 'sync.dart' show ValenceSync, ValenceSyncReason, ValenceSyncResult, ValenceSyncStatus;
 export 'updater.dart' show ValenceUpdater;
 export 'wire.dart' show BridgeError, BridgeErrorCode, maxMessageBytes;
@@ -125,7 +126,9 @@ final class Valence {
     ValenceLogger log = defaultValenceLogger,
     http.Client? client,
     Directory? supportDir,
+    Directory? documentsDir,
     ValenceSecure? secure,
+    DatabaseFactory? databaseFactory,
   }) async {
     // `open` is awaited in `main()` **before** `runApp`, and `runApp` is what would otherwise create the
     // binding — but the store's directory (path_provider), the seed (rootBundle) and secure storage all
@@ -143,9 +146,7 @@ final class Valence {
     // dataExtractionRules/fullBackupContent. See the package README; a plugin would be the upgrade path.
 
     // The database lives *outside* valence/, because it holds user data and should be backed up.
-    final store = await ValenceStore.open(
-      '${support.path}${Platform.pathSeparator}${config.databaseName}',
-    );
+    final store = await _openStore(config, support, documentsDir, log, databaseFactory);
     if (!store.isWal) {
       log('store: journal_mode is "${store.journalMode}", not wal; the concurrency the data layer '
           'assumes is not available on this filesystem');
@@ -476,12 +477,22 @@ final class Valence {
     ValenceLogger log = defaultValenceLogger,
     http.Client? client,
     Directory? supportDir,
+    Directory? documentsDir,
     ValenceSecure? secure,
+    DatabaseFactory? databaseFactory,
   }) async {
     final support = supportDir ?? await getApplicationSupportDirectory();
-    final store = await ValenceStore.open(
-      '${support.path}${Platform.pathSeparator}${config.databaseName}',
-    );
+    final ValenceStore store;
+    try {
+      store = await _openStore(config, support, documentsDir, log, databaseFactory);
+    } on Object catch (e) {
+      // A background run that cannot even open the store has not observed anything, and the UI isolate
+      // holding the file is itself about to sync. `busy` is the honest answer and the one the page's
+      // freshness line already knows how to not lie about; a throw would be a WorkManager FAILURE instead.
+      if (!isDatabaseLocked(e)) rethrow;
+      log('sync: the UI isolate holds the database, so this background run did not start');
+      return const ValenceSyncResult([], 0, false, ValenceSyncReason.busy);
+    }
     // The same token the UI isolate uses (§4.4). There is no page to tell about a 401 here, so
     // `onUnauthorized` stays null and the log line is the record.
     final keystore = secure ?? ValenceSecure(log: log);
@@ -494,6 +505,89 @@ final class Valence {
     // The active manifest is not loaded in a background isolate, so the configured schemas are what this
     // can follow. They are the schemas the store build reads, which is the conservative choice.
     return sync.run(readSchemas: config.dataSchemas);
+  }
+
+  /// Opens the store at `<appSupport>/<databaseName>`, adopting a 0.3 database left in the application
+  /// *documents* directory first.
+  ///
+  /// 0.3's contract never named a directory — §5.1 said only that the database lives outside `valence/` —
+  /// so a conforming 0.3 host could have used either `path_provider` directory, and on Android those are
+  /// different places (`files` and `app_flutter`). 0.4 fixes the choice to appSupport, which would
+  /// otherwise create an empty database beside a full one and present a fresh install to a user whose
+  /// data is still on disk. `host.database` cannot fix it: it names the file, not the directory.
+  ///
+  /// The package does this rather than the app because it is the only component that knows nothing else
+  /// holds the file open yet.
+  static Future<ValenceStore> _openStore(
+    ValenceConfig config,
+    Directory support,
+    Directory? documentsDir,
+    ValenceLogger log,
+    DatabaseFactory? factory,
+  ) async {
+    final path = '${support.path}${Platform.pathSeparator}${config.databaseName}';
+    if (!File(path).existsSync()) {
+      await _adoptLegacyDatabase(path, config.databaseName, documentsDir, log);
+    }
+    // A locked open is retried rather than thrown. The schema upgrade takes `BEGIN EXCLUSIVE`, and the
+    // launch that runs it is exactly the launch WorkManager fires the registered periodic job on, so the
+    // UI isolate and the background isolate race for the file (§5.6). `busy_timeout` does not cover it:
+    // the lock is refused before the connection that would wait on it exists. The budget matches the sync
+    // lease's own five seconds, after which the caller decides — `backgroundSync` reports `busy`, and
+    // `open` rethrows, because an app with no store cannot start.
+    for (var attempt = 0;; attempt++) {
+      try {
+        return await ValenceStore.open(path, factory: factory);
+      } on Object catch (e) {
+        if (attempt >= 4 || !isDatabaseLocked(e)) rethrow;
+        log('store: the database is locked by another isolate; retrying in one second');
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+    }
+  }
+
+  /// Moves a 0.3 database and its write-ahead-log sidecars from the documents directory. See [_openStore].
+  static Future<void> _adoptLegacyDatabase(
+    String path,
+    String name,
+    Directory? documentsDir,
+    ValenceLogger log,
+  ) async {
+    final Directory documents;
+    try {
+      documents = documentsDir ?? await getApplicationDocumentsDirectory();
+    } on Object catch (e) {
+      // A platform without the plugin, or a test binding without it. Nothing to adopt; never fatal.
+      log('store: could not look for a 0.3 database: $e');
+      return;
+    }
+    if (documents.path == File(path).parent.path) return;
+    final legacy = '${documents.path}${Platform.pathSeparator}$name';
+    if (!File(legacy).existsSync()) return;
+    final moved = <String>[];
+    try {
+      // `-wal` first and the `.db` last. Until the `.db` lands the destination is still "no database", so a
+      // crash midway leaves the 0.3 copy readable and the next launch retries the whole move. Moving the
+      // `.db` alone would discard every commit still in the write-ahead log — for a syncing app, the last
+      // sync.
+      for (final suffix in const ['-wal', '-shm', '']) {
+        final from = File('$legacy$suffix');
+        if (!from.existsSync()) continue;
+        // ponytail: rename, not copy. Both path_provider directories live in the app's private data on
+        // every platform it supports, so they share a filesystem. A cross-device move would throw here and
+        // be logged; copy-then-delete is the upgrade path if one ever does.
+        from.renameSync('$path$suffix');
+        moved.add('$name$suffix');
+      }
+    } on FileSystemException catch (e) {
+      // The UI isolate and a background sync can reach this at the same moment on the launch that migrates.
+      // Whoever renames first wins; the loser finds the source gone with the destination already correct.
+      log(File(path).existsSync()
+          ? 'store: another isolate moved the 0.3 database first'
+          : 'store: moving the 0.3 database from ${documents.path} failed, so this launch starts empty: ${e.message}');
+      return;
+    }
+    if (moved.isNotEmpty) log('store: moved the 0.3 database to ${File(path).parent.path} (${moved.join(', ')})');
   }
 
   /// Reads one asset as bytes. Used for the built-in bundle and the seed.

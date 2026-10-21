@@ -115,6 +115,60 @@ package's test suite covers that. If your 0.3 host named its database something
 other than `valence.db`, one config line keeps it. Swapping the runtime is a
 store release, because `lib/` changed.
 
+### Upgrading could silently start your users on an empty database
+
+Found by an independent team migrating a live app holding 30.8 MB of synced
+data. **If you are on 0.3, read this before you ship the upgrade.**
+
+- **The package now moves a 0.3 database out of the documents directory.** 0.4
+  opens `<applicationSupportDirectory>/<databaseName>`. 0.3's spec never named a
+  directory — it said only "outside `valence/`" — so a 0.3 host could equally
+  have used `getApplicationDocumentsDirectory()`, and on Android those are two
+  different places (`files` and `app_flutter`).
+
+  The bug: such a host, migrated exactly as documented, created a **new, empty**
+  database beside the full one and showed the user a fresh install. No error, no
+  warning, and `host.database` could not fix it, because that setting names the
+  file and the problem was the directory.
+
+  The package now looks for the database in the documents directory when the
+  support directory has none, and moves it before opening anything — the `-wal`
+  and `-shm` sidecars included, and the `.db` last. Moving the `.db` alone would
+  discard every commit still in the write-ahead log, which for a syncing app is
+  the last sync. It never overwrites a database that is already there, and it
+  logs one line saying what it moved.
+
+  **What you must do:** upgrade the package, then confirm your row counts on a
+  device carrying real data — install over the top with `adb install -r`, never
+  uninstall first. If you already wrote a move of your own in `main()`, you can
+  delete it; the package will find nothing to do.
+
+### A background sync could fail the launch that migrated the database
+
+- **A locked database open is retried, and a blocked background run reports
+  `busy` instead of failing.** A schema migration runs in `BEGIN EXCLUSIVE`, and
+  the launch that runs it is the launch WorkManager fires your already-registered
+  periodic job on — so on every app update the UI isolate and the background
+  isolate race for the file, and the loser gets
+  `DatabaseException(database is locked (code 5 SQLITE_BUSY))`. The sync lease
+  cannot help, because the lease lives inside the database being opened.
+
+  The package now retries a locked open five times a second apart;
+  `Valence.backgroundSync` then returns `reason: "busy"` rather than throwing,
+  because nothing was attempted and the isolate holding the file is itself about
+  to sync. `Valence.open` still rethrows, because an app with no store cannot
+  start. A failed open is also no longer cached, which used to leave every later
+  call in that isolate failing against a database that was by then healthy.
+
+  **What you must do:** nothing. `busy` in a background run on an upgrade launch
+  is expected and not a bug to chase.
+- **The host guide's `backgroundSync` example now compiles.**
+  `Workmanager().executeTask` wants a `Future<bool>` and `backgroundSync` returns
+  a `ValenceSyncResult`, so the one-line example did not build. The guide shows
+  the whole callback, and says to return `true` even for an offline or empty run —
+  `false` is WorkManager backoff, and the package already has better triggers
+  (resume, connectivity) waiting.
+
 ### An OTA release could silently not happen, and the rollback could not tell
 
 Found by an independent team's deliberate-break test, and the most important fix

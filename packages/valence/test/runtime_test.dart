@@ -431,6 +431,83 @@ void main() {
       );
     });
   });
+
+  group('a database locked by another isolate', () {
+    // §5.6. An app update is the launch that collides: WorkManager fires the already-registered periodic
+    // job while the UI isolate holds `BEGIN EXCLUSIVE` for the schema upgrade. `busy_timeout` does not
+    // cover it, because the lock is refused before the connection that would wait on it exists.
+
+    test('open retries until the lock clears rather than failing the launch', () async {
+      final locking = LockingDatabaseFactory(databaseFactoryFfi, locks: 2);
+      final log = LogSpy();
+
+      final v = await Valence.open(
+        testConfig(key),
+        log: log.call,
+        client: MockClient((_) async => http.Response('{}', 200)),
+        supportDir: support,
+        documentsDir: support,
+        secure: testSecure({}),
+        databaseFactory: locking,
+      );
+
+      expect(locking.attempts, 3, reason: 'two refusals, then the open that worked');
+      expect(await v.syncStatus(), isNotNull, reason: 'a usable store, not a half-open one');
+      expect(log.has('the database is locked by another isolate'), isTrue);
+    });
+
+    test('open gives up and rethrows once the budget is spent, because an app with no store cannot start',
+        () async {
+      await expectLater(
+        Valence.open(
+          testConfig(key),
+          log: LogSpy().call,
+          client: MockClient((_) async => http.Response('{}', 200)),
+          supportDir: support,
+          documentsDir: support,
+          secure: testSecure({}),
+          databaseFactory: LockingDatabaseFactory(databaseFactoryFfi, locks: 99),
+        ),
+        throwsA(isA<DatabaseException>()),
+      );
+    });
+
+    test('a failed open is not cached, so the next call sees a database that is now fine', () async {
+      // Caching the rejection would leave every later call in the isolate failing against a healthy file.
+      final locking = LockingDatabaseFactory(databaseFactoryFfi, locks: 1);
+      final path = '${support.path}${Platform.pathSeparator}valence.db';
+      await expectLater(ValenceStore.open(path, factory: locking), throwsA(isA<DatabaseException>()));
+
+      final store = await ValenceStore.open(path, factory: locking);
+      expect(await store.prefGet('anything'), isNull);
+    });
+
+    test('backgroundSync reports busy instead of throwing, so WorkManager does not record a failure',
+        () async {
+      final log = LogSpy();
+
+      final result = await Valence.backgroundSync(
+        testConfig(key),
+        log: log.call,
+        client: MockClient((_) async => http.Response('{}', 200)),
+        supportDir: support,
+        documentsDir: support,
+        secure: testSecure({}),
+        databaseFactory: LockingDatabaseFactory(databaseFactoryFfi, locks: 99),
+      );
+
+      expect(result.reason, ValenceSyncReason.busy);
+      expect(result.changed, 0);
+      expect(result.offline, isFalse, reason: 'nothing was attempted, so nothing observed the network');
+      expect(log.has('the UI isolate holds the database'), isTrue);
+    });
+
+    test('isDatabaseLocked matches what Android prints, and nothing else', () {
+      expect(isDatabaseLocked(LockedDatabaseException()), isTrue);
+      expect(isDatabaseLocked(const SocketException('offline')), isFalse);
+      expect(isDatabaseLocked(StateError('no such table')), isFalse);
+    });
+  });
 }
 
 /// A host view that records the event scripts the runtime emits.
