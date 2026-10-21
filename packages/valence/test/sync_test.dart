@@ -110,6 +110,41 @@ void main() {
       final result = await s.run(readSchemas: {'plants': 1});
       expect(result.changed, 0);
       expect(log.has('another sync holds the lease'), isTrue);
+      // F-40: without the reason, this is bit-for-bit "you are already up to date", so a freshness
+      // indicator reports confident freshness over data that was never looked at.
+      expect(result.reason, ValenceSyncReason.busy);
+      expect(result.offline, isFalse);
+    });
+
+    test('a lease left by a process that is gone is taken over, not waited out', () async {
+      // The lease keeps the UI isolate and the background isolate apart, and those share a process. A
+      // foreign pid therefore means a launch that crashed or was force-stopped, and waiting out its two
+      // minutes blocks every sync of the new launch while reporting each one as a successful empty sync.
+      final now = DateTime(2026, 10, 21, 12);
+      await store.hostPrefSet('valence.sync.lease', '${now.millisecondsSinceEpoch}:${pid + 1}');
+      final log = LogSpy();
+      final s = syncWith(MockClient((_) async => http.Response('{}', 200)), clock: () => now, log: log);
+      expect(await s.acquireLease(), isTrue);
+      expect(log.has('which is gone'), isTrue);
+      // Our own live lease is still respected, which is the whole point of having one.
+      final mine = syncWith(MockClient((_) async => http.Response('{}', 200)), clock: () => now);
+      expect(await mine.acquireLease(), isFalse);
+    });
+
+    test('a lease written by an older host, with no owner, is cleared rather than waited out', () async {
+      final now = DateTime(2026, 10, 21, 12);
+      await store.hostPrefSet('valence.sync.lease', '${now.millisecondsSinceEpoch}');
+      final s = syncWith(MockClient((_) async => http.Response('{}', 200)), clock: () => now);
+      expect(await s.acquireLease(), isTrue);
+    });
+
+    test('a completed run reports ok, and a run that could not reach the server reports offline', () async {
+      final ok = syncWith(MockClient((_) async => http.Response('{"rows":[],"max_usn":0,"more":false}', 200)));
+      expect((await ok.run(readSchemas: {'plants': 1})).reason, ValenceSyncReason.ok);
+      final down = syncWith(MockClient((_) => throw const SocketException('down')));
+      final r = await down.run(readSchemas: {'plants': 1});
+      expect(r.reason, ValenceSyncReason.offline);
+      expect(r.offline, isTrue, reason: 'the old field keeps its old meaning');
     });
   });
 

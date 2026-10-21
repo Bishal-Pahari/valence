@@ -40,6 +40,12 @@ const RESERVED_TYPES = new Set('Json Methods Events Object String Number Boolean
 //
 // `params` is compared literally against the IDL. `returns` is either an IDL type string or
 // {fields, list}, meaning "a named type with exactly these fields" — the app picks the type's name.
+//
+// `returns.optional` holds fields a later runtime added, which rule 5 (the IDL is additive only) requires
+// be possible without breaking every app already on the older shape. An app's type may carry any subset of
+// them, including none, and `call` is handed the names it actually declared so the delegation only passes
+// what exists. A field never moves from `fields` to `optional` or back: `fields` is the shape every host
+// has always returned.
 const BUILTINS = {
   'app.ready': { params: {}, returns: 'void', call: () => 'await valence.appReady();' },
   'app.info': {
@@ -66,9 +72,14 @@ const BUILTINS = {
   },
   'sync.now': {
     params: { buckets: 'string[]?' },
-    returns: { fields: { buckets: 'string[]', changed: 'int', offline: 'bool' } },
-    call: (t) =>
-      `final r = await valence.syncNow(buckets: p.buckets);\n        return ${t}(buckets: r.buckets, changed: r.changed, offline: r.offline);`,
+    returns: {
+      fields: { buckets: 'string[]', changed: 'int', offline: 'bool' },
+      // "nothing was attempted" and "nothing changed" are otherwise the same answer, so an app that shows
+      // freshness reports confident freshness over stale data. `"ok"`, `"busy"` or `"offline"`.
+      optional: { reason: 'string' },
+    },
+    call: (t, has) =>
+      `final r = await valence.syncNow(buckets: p.buckets);\n        return ${t}(buckets: r.buckets, changed: r.changed, offline: r.offline${has('reason') ? ', reason: r.reason.name' : ''});`,
   },
   'prefs.get': { params: { key: 'string' }, returns: 'string?', call: () => 'return valence.prefsGet(p.key);' },
   'prefs.set': {
@@ -830,9 +841,12 @@ function dartBuiltins(s) {
     if (!builtin) continue;
     const typeName = m.returns.base === 'void' || PRIMS.has(m.returns.base) ? '' : m.returns.base;
     const arg = m.params.length ? `${pascal(m.name)}Params p` : '';
+    // Which of the built-in's optional fields this app actually declared, so the delegation passes those
+    // and no others. An app that never regenerated against the newer runtime keeps compiling.
+    const declared = new Set((s.types.find((t) => t.name === m.returns.base)?.fields ?? []).map((f) => f.name));
     o.push(`  /// \`${m.name}\`, from the package.`);
     o.push(`  Future<${dartType(m.returns)}> ${camel(m.name)}(${arg}) async {`);
-    for (const line of builtin.call(typeName).split('\n')) {
+    for (const line of builtin.call(typeName, (f) => declared.has(f)).split('\n')) {
       o.push(line.startsWith('        ') ? `    ${line.trimStart()}` : `    ${line}`);
     }
     o.push('  }', '');
@@ -862,14 +876,23 @@ export function assertBuiltinShapes(s) {
       continue;
     }
     const type = s.types.find((t) => t.name === m.returns.base);
+    // The required fields must be there, exactly. Beyond them only this built-in's own optional fields are
+    // allowed, each at its declared type — that is what makes a runtime able to add one (rule 5) without
+    // every app on the older shape failing codegen.
+    const optional = want.returns.optional ?? {};
+    const fields = Object.fromEntries((type?.fields ?? []).map((f) => [f.name, typeString(f.type)]));
+    const required = Object.fromEntries(Object.entries(fields).filter(([f]) => !(f in optional)));
+    const extras = Object.entries(fields).filter(([f]) => f in optional);
     const bad =
       m.returns.nullable ||
       !!m.returns.list !== !!want.returns.list ||
       !type ||
-      canonical(Object.fromEntries(type.fields.map((f) => [f.name, typeString(f.type)]))) !== canonical(want.returns.fields);
+      canonical(required) !== canonical(want.returns.fields) ||
+      extras.some(([f, t]) => t !== optional[f]);
     if (bad) {
+      const allowed = Object.keys(optional).length ? ` It may also carry ${Object.entries(optional).map(([f, t]) => `"${f}": ${t}`).join(', ')}.` : '';
       throw new Error(
-        `"${m.name}" is implemented by the valence package, so it must return ${show(want.returns)}, not "${typeString(m.returns)}". The type's name is yours; its fields are not.`,
+        `"${m.name}" is implemented by the valence package, so it must return ${show(want.returns)}, not "${typeString(m.returns)}". The type's name is yours; its fields are not.${allowed}`,
       );
     }
   }

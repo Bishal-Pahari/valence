@@ -28,6 +28,7 @@ export 'src/runtime.dart'
         ValenceSync,
         ValenceSyncMode,
         ValenceServer,
+        ValenceSyncReason,
         ValenceSyncResult,
         ValenceUpdater,
         checkManifest,

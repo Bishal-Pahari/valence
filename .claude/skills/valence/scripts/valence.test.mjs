@@ -398,10 +398,29 @@ test('a built-in may be omitted but not redefined, because the package implement
   bad((s) => (s.methods['prefs.get'].returns = 'string'), /must return string\?/);
   bad((s) => (s.types.SyncResult.changed = 'num'), /fields are not/);
   bad((s) => (s.methods['data.list'].returns = 'Row'), /a type with \{key, value, usn\}\[\]/);
+  // A field the runtime added is still refused at the wrong type.
+  bad((s) => (s.types.SyncResult.reason = 'int'), /fields are not/);
   // Omitting one is fine: an app that never syncs simply has no sync.now, and ValenceBuiltins drops it.
   writeFileSync(schemaFile(root), pristine);
   editSchema(root, (s) => delete s.methods['sync.now']);
   assert.ok(codegen({ root, cfg }).written.length);
+});
+
+test('a built-in grows a field without breaking an app that has not taken it', () => {
+  // Rule 5: the IDL is additive only. Before this, every built-in's shape was compared literally, so a
+  // runtime could never add a field to one — the next codegen in every existing app would fail. The two
+  // directions that matter: an app that declares the new field gets it passed through, and an app still
+  // on the old shape keeps generating code that compiles.
+  const { root, cfg } = fixture();
+  codegen({ root, cfg });
+  const withReason = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(withReason, /reason: r\.reason\.name/, 'the template schema takes reason, so the delegation passes it');
+
+  editSchema(root, (s) => delete s.types.SyncResult.reason);
+  assert.ok(codegen({ root, cfg }).written.length, 'an app on the old three-field shape still generates');
+  const without = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.doesNotMatch(without, /reason:/, 'and the delegation does not pass a field its type does not have');
+  assert.match(without, /offline: r\.offline/);
 });
 
 test('a second --store build cannot quietly rewrite the schema the stores reviewed', () => {
@@ -723,7 +742,7 @@ final class H implements BridgeHandlers {
     }
   }
   @override
-  Future<SyncResult> syncNow(SyncNowParams p) async => SyncResult(buckets: p.buckets ?? const [], changed: 0, offline: true);
+  Future<SyncResult> syncNow(SyncNowParams p) async => SyncResult(buckets: p.buckets ?? const [], changed: 0, offline: true, reason: 'offline');
   @override
   Future<String?> prefsGet(PrefsGetParams p) async => null;
   @override

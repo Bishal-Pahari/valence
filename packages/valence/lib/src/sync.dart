@@ -8,10 +8,26 @@ import 'config.dart';
 import 'log.dart';
 import 'store.dart';
 
+/// Why a sync run ended the way it did (contracts §5.6).
+///
+/// Without this, "I was not allowed to try" and "you are already up to date" are the same answer —
+/// `changed: 0, offline: false` — so a freshness indicator reports confident freshness over stale data,
+/// and a page that retries on an empty result cannot tell there is anything to retry.
+enum ValenceSyncReason {
+  /// The run happened. `changed` is then the real answer, zero included.
+  ok,
+
+  /// Another sync held the lease, so **nothing was attempted**. Not evidence of anything about the data.
+  busy,
+
+  /// The run was attempted and at least one request could not reach the server.
+  offline,
+}
+
 /// What one sync run did, as `sync.now` returns it.
 final class ValenceSyncResult {
   /// Creates a result.
-  const ValenceSyncResult(this.buckets, this.changed, this.offline);
+  const ValenceSyncResult(this.buckets, this.changed, this.offline, [this.reason = ValenceSyncReason.ok]);
 
   /// The buckets this run touched.
   final List<String> buckets;
@@ -21,6 +37,9 @@ final class ValenceSyncResult {
 
   /// True when the run could not reach the server at all.
   final bool offline;
+
+  /// Why the run ended as it did. `busy` means the run never started.
+  final ValenceSyncReason reason;
 }
 
 /// The prefs key holding the sync lease. Reserved: the bridge refuses `valence.*` from the page (§4.2).
@@ -79,11 +98,22 @@ final class ValenceSync {
         whereArgs: [syncLeaseKey],
         limit: 1,
       );
-      final held = rows.isEmpty ? null : int.tryParse(rows.first['value']! as String);
-      if (held != null && held > now - syncLeaseTtl.inMilliseconds && held <= now) return;
+      final (held, owner) = _readLease(rows.isEmpty ? null : rows.first['value'] as String);
+      final live = held != null && held > now - syncLeaseTtl.inMilliseconds && held <= now;
+      // A lease recorded by **another process** cannot be held by anything running now. The lease exists to
+      // keep the UI isolate and the background isolate apart, and those share this process (§5.6), so the
+      // only way to see a foreign pid is a launch that is gone: a crash, a force-stop, or Android reclaiming
+      // the app. Waiting out the two minutes in that case blocks every sync of the new launch and reports
+      // each one as a successful empty sync, which is exactly when a user has just reopened a stale app.
+      // A recycled pid that matches ours degrades to the old behaviour: we wait for the expiry.
+      //
+      // ponytail: single-process assumption. A host that puts a service in its own `android:process` would
+      // need the owner to be a token both processes agree on, written at launch.
+      if (live && owner == pid) return;
+      if (live) _log('sync: taking over a lease left by process $owner, which is gone');
       await txn.insert(
         'prefs',
-        {'key': syncLeaseKey, 'value': '$now'},
+        {'key': syncLeaseKey, 'value': _leaseValue(now)},
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
       taken = true;
@@ -92,7 +122,18 @@ final class ValenceSync {
   }
 
   /// Pushes the lease forward. Call after every applied page, so a long `since = 0` pull keeps it.
-  Future<void> renewLease() => store.hostPrefSet(syncLeaseKey, '${_now().millisecondsSinceEpoch}');
+  Future<void> renewLease() => store.hostPrefSet(syncLeaseKey, _leaseValue(_now().millisecondsSinceEpoch));
+
+  String _leaseValue(int millis) => '$millis:$pid';
+
+  /// `<millis>:<pid>`. A value written by an older host is just `<millis>`, and reads back with a null
+  /// owner, which never matches this process — so the first launch after an upgrade clears it.
+  static (int?, int?) _readLease(String? raw) {
+    if (raw == null) return (null, null);
+    final colon = raw.indexOf(':');
+    if (colon < 0) return (int.tryParse(raw), null);
+    return (int.tryParse(raw.substring(0, colon)), int.tryParse(raw.substring(colon + 1)));
+  }
 
   /// Releases the lease.
   Future<void> releaseLease() => store.hostPrefSet(syncLeaseKey, null);
@@ -116,7 +157,7 @@ final class ValenceSync {
     }
     if (!await acquireLease()) {
       _log('sync: another sync holds the lease; skipping this run');
-      return const ValenceSyncResult([], 0, false);
+      return const ValenceSyncResult([], 0, false, ValenceSyncReason.busy);
     }
     final touched = <String>[];
     var changed = 0;
@@ -176,7 +217,7 @@ final class ValenceSync {
     } finally {
       await releaseLease();
     }
-    return ValenceSyncResult(touched, changed, offline);
+    return ValenceSyncResult(touched, changed, offline, offline ? ValenceSyncReason.offline : ValenceSyncReason.ok);
   }
 
   // ---------------------------------------------------------------------------

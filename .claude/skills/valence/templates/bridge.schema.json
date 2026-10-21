@@ -20,6 +20,6 @@
   "types": {
     "AppInfo":    { "platform": "string", "host": "int", "bridge": "int", "bundle": "int", "locale": "string" },
     "Row":        { "key": "string", "value": "json", "usn": "int" },
-    "SyncResult": { "buckets": "string[]", "changed": "int", "offline": "bool" }
+    "SyncResult": { "buckets": "string[]", "changed": "int", "offline": "bool", "reason": "string" }
   }
 }

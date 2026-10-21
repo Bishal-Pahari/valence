@@ -31,7 +31,7 @@ export 'manifest.dart'
 export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
 export 'store.dart' show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, maxListLimit;
-export 'sync.dart' show ValenceSync, ValenceSyncResult;
+export 'sync.dart' show ValenceSync, ValenceSyncReason, ValenceSyncResult;
 export 'updater.dart' show ValenceUpdater;
 export 'wire.dart' show BridgeError, BridgeErrorCode, maxMessageBytes;
 
@@ -322,7 +322,7 @@ final class Valence {
     unawaited(
       syncNow(buckets: [bucket]).catchError((Object e) {
         _log('sync: background push for $bucket failed: $e');
-        return const ValenceSyncResult([], 0, true);
+        return const ValenceSyncResult([], 0, true, ValenceSyncReason.offline);
       }),
     );
   }
