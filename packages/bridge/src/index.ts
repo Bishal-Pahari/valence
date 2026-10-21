@@ -123,7 +123,13 @@ export interface Bridge<M, E> {
   has(m: keyof M & string): boolean;
   /** Subscribe to a host event. The returned unsubscribe is void, so it is a valid React effect cleanup. */
   on<K extends keyof E & string>(e: K, fn: (payload: E[K]) => void): () => void;
-  /** Tell the host the first meaningful paint happened. Commits a trial bundle (§2.4). */
+  /**
+   * Tell the host this page is on screen. Commits a trial bundle (§2.4).
+   *
+   * Call it once per page load, from **every path that paints** — a first-run gate, an empty state, a
+   * permission prompt and an error screen all paint without a data load finishing, and a path that stays
+   * silent gets healthy code rolled back two launches later.
+   */
   ready(): Promise<void>;
   /** Call once at startup, before has(). */
   connect(): Promise<void>;

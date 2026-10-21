@@ -27,7 +27,7 @@ The spec is `valence` [contracts.md](https://github.com/Bishal-Pahari/valence/bl
    - Guard methods newer than the oldest live host with `has()`.
    - Every browser fallback lives in `<web lib>/shim.ts`.
 4. **Durable data goes in native SQLite** (`data.*`, `prefs.*`), never in localStorage or IndexedDB, which are only a cache.
-5. **The web app must call `ready()` after its first meaningful paint.** If a bundle misses it twice, devices drop that bundle.
+5. **The web app must call `ready()` exactly once per page load, on every path that paints — including the ones that show no data.** A first-run gate, an empty state, a permission prompt, an error screen and an offline screen all paint without the data load ever finishing, and on a fresh install one of them is the whole first launch. If a bundle misses `ready()` twice, devices drop that bundle: healthy code gets rolled back and it looks like the OTA is broken. Put the call where every rendered path reaches it, not at the end of the data load.
 6. **No iframes to other origins and no CSP meta tag.** Embeds open externally. The host sends the CSP from the signed manifest; add API origins to `valence.config.json` `web.connect`.
 7. **Never put native code in the web output.** That means no `.so`, `.dex`, `.jar`, `.dylib` or `.framework` files; `valence bundle` rejects them.
 8. **The signing key lives in `~/.valence/keys/` or the `VALENCE_SIGNING_KEY` CI secret.** Never commit it, print it or paste it into a prompt.

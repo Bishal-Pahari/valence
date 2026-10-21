@@ -18,7 +18,7 @@ import { call, connect, has, on, ready } from '$lib/valence/bridge.g';
 await connect();                                  // once at startup, before has()
 const plant = await call('data.get', { bucket: 'plants', key: 'fern' });
 const off = on('sync.changed', ({ buckets }) => refresh(buckets));
-await ready();                                    // after the first meaningful paint
+await ready();                                    // on every path that paints, once per page load
 ```
 
 `connect()` asks the host which bridge version it has, so `has()` can tell you whether a method added in a
@@ -51,7 +51,7 @@ if (!inHost()) {
 | `call(method, params?)` | Sends one message and resolves its reply. `params` is required whenever any field is required. Rejects with `BridgeError`. |
 | `has(method)` | True when this host (or, on the web, your shim) can serve the method. Call `connect()` first. |
 | `on(event, fn)` | Subscribes. Returns an unsubscribe that returns **void**, so it is a valid React `useEffect` cleanup. |
-| `ready()` | Tells the host the first meaningful paint happened. This is what commits a trial bundle — without it every OTA release rolls back. |
+| `ready()` | Tells the host this page is on screen. This is what commits a trial bundle — without it every OTA release rolls back. Call it once per page load, from **every path that paints**: a first-run gate, an empty state and an error screen all paint without a data load finishing. |
 | `connect()` | Reads the host's bridge version. Call once at startup. |
 | `installShim(shim)` | Browser fallbacks for running the same build as a website. |
 | `inHost()` | True inside the Valence host, false in a normal browser. |

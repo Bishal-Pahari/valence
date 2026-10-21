@@ -175,7 +175,7 @@ Spawn two `valence-builder` agents in a single message. **Each one owns only its
 
 - `npm install @getvalence/bridge` (or the project's package manager). The wizard has usually declared it already.
 - **Static build:** configure it with relative-safe asset paths (§3).
-- **Root layout:** call `connect()` and then `ready()` after the first meaningful paint.
+- **Root layout:** call `connect()`, then `ready()` once per page load from a mount effect **every rendered path reaches** — including a first-run gate, an empty state, a permission prompt and an error screen, none of which finish a data load. `ready()` at the end of the data load is the usual bug, and it rolls back healthy bundles (§2.4).
 - **Shim:** write `shim.ts` with browser fallbacks (`fetch` against the same sync API, `localStorage` for prefs) and install it with `installShim`. Its type is the generated `AppShim`, so a fallback with the wrong signature does not compile.
 - **No CSP meta tag.** Inside the app, the host sends the CSP from the signed manifest as a header (§3). The website keeps whatever CSP its hosting sets. If the app calls APIs other than `sync.base`, list their origins in `valence.config.json` under `web.connect`.
 - **Package scripts:** add `valence:codegen`, `valence:bundle` and `valence:release`.

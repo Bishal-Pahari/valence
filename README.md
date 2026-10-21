@@ -35,7 +35,7 @@ Every UI change to a native app normally waits on App Store and Play review, and
 
 1. The app downloads only the files whose hash changed.
 2. On the next launch it starts the new bundle as a *trial*.
-3. The web app calls `ready()` after its first paint, which commits the update.
+3. The web app calls `ready()` once it has painted — on every path that paints, including a first-run screen — which commits the update.
 4. If it crashes, or `ready()` doesn't arrive within 15 s of foreground time, the device goes back to the last good version. After a second failure it marks the new one bad. The bundle built into the app is the final fallback.
 5. To roll back a release everywhere, release the last good commit again. It gets a new, higher sequence number, so devices move forward to it.
 
