@@ -11,5 +11,6 @@
   "ota": { "base": "https://ota.example.com" },
   "sync": { "base": "https://api.example.com/sync" },
   "data": {},
-  "writable": []
+  "writable": [],
+  "plugins": []
 }

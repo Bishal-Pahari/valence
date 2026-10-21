@@ -1,5 +1,5 @@
 // The built-in bridge methods' policy: the trust boundary that lives in the package rather than in the
-// generated marshalling. Contracts §4.2, §5.4, §5.5.
+// generated marshalling. Contracts Ã‚Â§4.2, Ã‚Â§5.4, Ã‚Â§5.5.
 import 'dart:convert';
 import 'dart:io';
 
@@ -38,10 +38,14 @@ void main() {
     ValenceSecure? secure,
   }) =>
       Valence.open(
-        config ?? testConfig(key, writableBuckets: writableBuckets, dataSchemas: dataSchemas),
+        config ??
+            testConfig(key,
+                writableBuckets: writableBuckets, dataSchemas: dataSchemas),
         hostBuild: 42,
         log: (log ?? LogSpy()).call,
-        client: client ?? MockClient((_) async => http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200)),
+        client: client ??
+            MockClient((_) async => http.Response(
+                jsonEncode({'rows': [], 'max': 0, 'more': false}), 200)),
         supportDir: support,
         secure: secure ?? testSecure({}),
       );
@@ -53,7 +57,9 @@ void main() {
       );
 
   group('app.info', () {
-    test('it reports the platform, the host build, the bridge version and the locale', () async {
+    test(
+        'it reports the platform, the host build, the bridge version and the locale',
+        () async {
       final v = await open();
       final info = v.appInfo();
       expect(info.platform, Platform.operatingSystem);
@@ -65,16 +71,88 @@ void main() {
     });
   });
 
-  group('data.put is only for writable buckets (§5.5)', () {
+  group('native plugins (Ã‚Â§4.5)', () {
+    test(
+        'reserved owners, duplicate owners and cross-namespace methods fail at registration',
+        () {
+      expect(
+          () => ValencePluginRegistry([
+                _Plugin('auth', {'auth.read'})
+              ]),
+          throwsArgumentError);
+      expect(
+          () => ValencePluginRegistry([
+                _Plugin('open', {'open.external'})
+              ]),
+          throwsArgumentError);
+      expect(
+          () => ValencePluginRegistry([
+                _Plugin('probe', {'probe.read'}),
+                _Plugin('probe', {'probe.more'})
+              ]),
+          throwsArgumentError);
+      expect(
+          () => ValencePluginRegistry([
+                _Plugin('probe', {'secure.get'})
+              ]),
+          throwsArgumentError);
+      expect(
+          () => ValencePluginRegistry([
+                _Plugin('probe', {'probe..read'})
+              ]),
+          throwsArgumentError);
+    });
+
+    test(
+        'registration snapshots the method set and missing methods are unsupported',
+        () async {
+      final v = await open();
+      final methods = {'probe.read'};
+      final plugin = _Plugin('probe', methods);
+      final registry = ValencePluginRegistry([plugin]);
+      methods.add('probe.hidden');
+      expect(
+          await registry.invoke(v, 'probe.read', {'key': 'k'}), {'key': 'k'});
+      expect(
+          () => registry.invoke(v, 'probe.hidden', {}),
+          throwsA(isA<BridgeError>()
+              .having((e) => e.code, 'code', 'E_UNSUPPORTED')));
+      expect(() => registry.invoke(v, 'probe.absent', {}),
+          throwsA(isA<BridgeError>()));
+    });
+
+    test('the built-in open plugin preserves scheme and parameter restrictions',
+        () async {
+      final v = await open();
+      final registry = ValencePluginRegistry();
+      for (final url in [
+        'javascript:alert(1)',
+        'file:///tmp/secret',
+        'http://evil.test',
+        'data:text/html,x'
+      ]) {
+        await expectLater(registry.invoke(v, 'open.external', {'url': url}),
+            throwsDenied('accepts https'));
+      }
+      await expectLater(
+          registry.invoke(v, 'open.external', {'url': 42}),
+          throwsA(
+              isA<BridgeError>().having((e) => e.code, 'code', 'E_PARAMS')));
+    });
+  });
+
+  group('data.put is only for writable buckets (Ã‚Â§5.5)', () {
     test('a read-only bucket is refused with E_DENIED', () async {
       final v = await open(dataSchemas: {'plants': 1});
-      expect(() => v.dataPut('plants', 'fern', {'x': 1}), throwsDenied('not a writable bucket'));
+      expect(() => v.dataPut('plants', 'fern', {'x': 1}),
+          throwsDenied('not a writable bucket'));
       expect(await v.dataGet('plants', 'fern'), isNull);
     });
 
     test('an unknown bucket is refused too', () async {
       final v = await open();
-      expect(() => v.dataPut('nope', 'k', {'x': 1}), throwsDenied('not a writable bucket'));
+      expect(() => v.dataPut('nope', 'k', {'x': 1}),
+          throwsDenied('not a writable bucket'));
     });
 
     test('a writable bucket is written at schema 1, with usn -1', () async {
@@ -94,13 +172,15 @@ void main() {
     });
   });
 
-  group('schemaFor (§5.4)', () {
+  group('schemaFor (Ã‚Â§5.4)', () {
     test('a writable bucket is always schema 1', () async {
       final v = await open(writableBuckets: {'shelf'});
       expect(v.schemaFor('shelf'), 1);
     });
 
-    test('a read-only bucket falls back to the configured schema with no manifest', () async {
+    test(
+        'a read-only bucket falls back to the configured schema with no manifest',
+        () async {
       final v = await open(dataSchemas: {'plants': 3});
       expect(v.schemaFor('plants'), 3);
     });
@@ -128,32 +208,38 @@ void main() {
       expect(v.schemaFor('plants'), 2);
     });
 
-    test('an undeclared bucket is E_PARAMS with advice, not a silent empty read', () async {
+    test(
+        'an undeclared bucket is E_PARAMS with advice, not a silent empty read',
+        () async {
       final v = await open();
       expect(
         () => v.schemaFor('mystery'),
         throwsA(
           isA<BridgeError>()
               .having((e) => e.code, 'code', BridgeErrorCode.params)
-              .having((e) => e.message, 'message', contains('valence.config.json')),
+              .having(
+                  (e) => e.message, 'message', contains('valence.config.json')),
         ),
       );
     });
   });
 
-  group('data.list clamps host-side (§4.2)', () {
-    test('the default and the maximum are applied by the host, not trusted from the page', () async {
+  group('data.list clamps host-side (Ã‚Â§4.2)', () {
+    test(
+        'the default and the maximum are applied by the host, not trusted from the page',
+        () async {
       final v = await open(writableBuckets: {'shelf'});
       for (var i = 0; i < 600; i++) {
-        await v.store.put('shelf', 'k${i.toString().padLeft(4, '0')}', i, opId: 'op-$i');
+        await v.store
+            .put('shelf', 'k${i.toString().padLeft(4, '0')}', i, opId: 'op-$i');
       }
       expect((await v.dataList('shelf')).length, defaultListLimit);
       expect((await v.dataList('shelf', limit: 1000000)).length, maxListLimit);
     });
   });
 
-  group('prefs reserve the valence. prefix (§4.2)', () {
-    test('the page cannot read or write the host’s own keys', () async {
+  group('prefs reserve the valence. prefix (Ã‚Â§4.2)', () {
+    test('the page cannot read or write the hostÃ¢â‚¬â„¢s own keys', () async {
       final v = await open();
       for (final k in ['valence', 'valence.sync.lease', 'valence.anything']) {
         expect(() => v.prefsGet(k), throwsDenied('reserved'), reason: k);
@@ -175,16 +261,19 @@ void main() {
       expect(await v.prefsGet('valenceish'), 'ok');
     });
 
-    test('the store refuses the prefix too, so an app’s own settings method cannot be a way round it', () async {
+    test(
+        'the store refuses the prefix too, so an appÃ¢â‚¬â„¢s own settings method cannot be a way round it',
+        () async {
       final v = await open();
-      await expectLater(v.store.prefSet('valence.sync.lease', '1'), throwsA(isA<BridgeError>()));
+      await expectLater(v.store.prefSet('valence.sync.lease', '1'),
+          throwsA(isA<BridgeError>()));
       // The runtime writes its own keys through the unchecked entry point.
       await v.store.hostPrefSet('valence.sync.lease', '1');
       expect(await v.store.hostPrefGet('valence.sync.lease'), '1');
     });
   });
 
-  group('open.external allows three schemes (§4.2)', () {
+  group('open.external allows three schemes (Ã‚Â§4.2)', () {
     test('anything else is E_DENIED and never reaches the launcher', () async {
       final v = await open();
       for (final url in [
@@ -197,7 +286,8 @@ void main() {
         'not a url at all',
         '',
       ]) {
-        expect(() => v.openExternal(url), throwsDenied('https, mailto and tel'), reason: url);
+        expect(() => v.openExternal(url), throwsDenied('https, mailto and tel'),
+            reason: url);
       }
     });
 
@@ -205,10 +295,15 @@ void main() {
       // They then reach url_launcher, which has no platform implementation under flutter_test, so the
       // assertion is that the *scheme check* passed rather than that the OS opened anything.
       final v = await open();
-      for (final url in ['https://example.com', 'mailto:a@b.c', 'tel:+15551234']) {
+      for (final url in [
+        'https://example.com',
+        'mailto:a@b.c',
+        'tel:+15551234'
+      ]) {
         await expectLater(
           v.openExternal(url),
-          throwsA(isNot(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.denied))),
+          throwsA(isNot(isA<BridgeError>()
+              .having((e) => e.code, 'code', BridgeErrorCode.denied))),
           reason: url,
         );
       }
@@ -216,28 +311,32 @@ void main() {
 
     test('the scheme check is case-insensitive', () async {
       final v = await open();
-      expect(() => v.openExternal('JAVASCRIPT:alert(1)'), throwsDenied('https, mailto and tel'));
+      expect(() => v.openExternal('JAVASCRIPT:alert(1)'),
+          throwsDenied('https, mailto and tel'));
     });
   });
 
-  group('publishHostFile (§3, §4.2)', () {
+  group('publishHostFile (Ã‚Â§3, Ã‚Â§4.2)', () {
     test('it fails clearly before the server is bound', () async {
       final v = await open();
       expect(
         () => v.publishHostFile([1, 2, 3], contentType: 'image/png'),
-        throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.internal)),
+        throwsA(isA<BridgeError>()
+            .having((e) => e.code, 'code', BridgeErrorCode.internal)),
       );
     });
   });
 
   group('sync.now', () {
-    test('it follows the configured schemas when nothing is being served', () async {
+    test('it follows the configured schemas when nothing is being served',
+        () async {
       final seen = <String>[];
       final v = await open(
         dataSchemas: {'plants': 2},
         client: MockClient((req) async {
           seen.add(req.url.toString());
-          return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+          return http.Response(
+              jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
         }),
       );
       final result = await v.syncNow();
@@ -246,13 +345,17 @@ void main() {
     });
   });
 
-  group('open (§5.1, §5.2)', () {
-    test('it creates the valence directory and leaves the database outside it', () async {
+  group('open (Ã‚Â§5.1, Ã‚Â§5.2)', () {
+    test('it creates the valence directory and leaves the database outside it',
+        () async {
       final v = await open();
       expect(v.dir.path, endsWith('valence'));
       expect(v.dir.existsSync(), isTrue);
       // The database holds user data and should be backed up, so it lives outside the excluded directory.
-      expect(File('${support.path}${Platform.pathSeparator}valence.db').existsSync(), isTrue);
+      expect(
+          File('${support.path}${Platform.pathSeparator}valence.db')
+              .existsSync(),
+          isTrue);
     });
 
     test('a missing seed asset is logged, not fatal', () async {
@@ -267,8 +370,10 @@ void main() {
     });
   });
 
-  group('secure.* and auth.* reach the keystore (§4.4)', () {
-    test('the page can set, read and delete its own keys but not the host’s', () async {
+  group('secure.* and auth.* reach the keystore (Ã‚Â§4.4)', () {
+    test(
+        'the page can set, read and delete its own keys but not the hostÃ¢â‚¬â„¢s',
+        () async {
       final data = <String, String>{};
       final v = await open(secure: testSecure(data));
       await v.secureSet('refresh', 'r-1');
@@ -298,7 +403,8 @@ void main() {
         secure: testSecure({}),
         client: MockClient((req) async {
           seen.add(req.headers);
-          return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+          return http.Response(
+              jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
         }),
       );
       // This is the wiring R1 is about: the page sets a token through the bridge and the *host's own*
@@ -309,7 +415,9 @@ void main() {
       expect(seen.every((h) => h['authorization'] == 'Bearer jwt-1'), isTrue);
     });
 
-    test('an app’s own authToken callback still wins over the stored one', () async {
+    test(
+        'an appÃ¢â‚¬â„¢s own authToken callback still wins over the stored one',
+        () async {
       final seen = <Map<String, String>>[];
       final v = await open(
         config: ValenceConfig(
@@ -323,7 +431,8 @@ void main() {
         secure: testSecure({secureAuthTokenKey: 'from-the-page'}),
         client: MockClient((req) async {
           seen.add(req.headers);
-          return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+          return http.Response(
+              jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
         }),
       );
       await v.syncNow();
@@ -343,13 +452,26 @@ void main() {
       expect(
         view.scripts.single,
         'window.__valence&&window.__valence.e("auth.expired",{})',
-        reason: 'built through jsonEncode by the same helper as every other event',
+        reason:
+            'built through jsonEncode by the same helper as every other event',
       );
     });
   });
 }
 
 /// A host view that records the event scripts the runtime emits.
+final class _Plugin implements ValencePlugin {
+  _Plugin(this.namespace, this.methods);
+  @override
+  final String namespace;
+  @override
+  final Set<String> methods;
+  @override
+  Future<Object?> invoke(
+          Valence valence, String method, Map<String, Object?> params) async =>
+      params;
+}
+
 final class _ScriptSpy implements ValenceHostView {
   final List<String> scripts = [];
 

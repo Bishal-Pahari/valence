@@ -607,6 +607,43 @@ whether the device is shared. An app that must forget a user deletes those rows 
 
 ---
 
+### 4.5 Native plugins
+
+A plugin is store-compiled native code, never downloaded code. A Dart package supplies a
+`ValencePlugin` implementation, `valence.plugin.json`, and native setup notes; a matching npm
+package supplies its web types. The app explicitly installs both packages and registers the
+Dart instance in `ValenceBuiltins(valence, plugins: [...])`. Registration alone exposes nothing:
+only methods in the merged schema have generated dispatch cases, after the existing nonce and
+strict parameter checks. Plugin results are decoded against their declared return type before
+replying. Message limits, navigation locks, signatures and reserved secrets remain mandatory.
+Plugins are trusted native code, with the same privileges as the host, not a sandbox.
+
+`valence.config.json.plugins` is an optional array of project-root-relative fragment paths.
+Each fragment is `{namespace, dartPackage, npmPackage, setup, types, methods, events}`. Metadata
+strings name the packages and the setup document; they are not imports or commands to execute.
+The namespace is one lower-camel identifier. All method/event names start with `namespace.`;
+all type names start with its PascalCase spelling. Type references are local to that fragment.
+Two fragments cannot share a namespace, and no fragment can collide with an app method, event
+or type, even with an identical definition. Core namespaces (`app`, `data`, `prefs`, `sync`,
+`open`, `bundle`, `secure`, `auth`, `permissions`, `notify`, `badge`, `push`, `link`, `state`,
+`http`) are reserved. Fragments cannot declare a schema version: the app owns the combined
+version and each method/event's explicit `since`. After a store baseline exists, additions
+require a higher version; changes/removals are rejected by the same additive-only guard.
+Both codegen and bundle read the effective merged schema, including the recorded store
+baseline, so changing/removing a fragment cannot bypass compatibility checks.
+
+`ValencePlugin` declares a namespace, its exact method set, and
+`invoke(Valence, method, Map<String, Object?> params) -> Future<Object?>`. The registry snapshots
+these declarations, rejects reserved/duplicate namespaces and invalid methods at construction,
+and fails missing handlers with `E_UNSUPPORTED`. Plugins return JSON values and can use generated
+`BridgeEvents` scripts through the app's view wiring. They own native initialization, permissions
+and cleanup; the registry does not run background tasks or register callbacks. Native setup and
+any new capabilities require a store release. Use `has()` for older installed hosts.
+
+The built-in `open.external` delegates through this same registry to `ValenceOpenPlugin`,
+which calls the existing scheme-restricted runtime method. Applications cannot replace it.
+Its wire shape and `since` do not change. Android is tested; iOS is experimental and untested.
+
 ## 5. Data layer
 
 ### 5.1 SQLite schema (host, sqflite)
