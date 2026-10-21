@@ -68,6 +68,7 @@ package's own suite is the §8 matrix, and `flutter pub publish --dry-run` must 
 - Every message goes through the generated strict decoders. Nothing builds JS from raw strings; only the generated helpers and `jsonEncode` do.
 - `data.put` is limited to `valenceWritableBuckets`. `open.external` allows only `https`, `mailto` and `tel`. No method exposes raw SQL, file paths outside the app, or secrets.
 - The schema is additive only: `node valence/valence.mjs codegen --check` enforces this against `.valence/baseline.json` `storeSchema`. A shipped method that changed is HIGH.
+- Deep links follow §6.3: store-compiled origins, raw URL/path validation and local routing preserve the navigation lock. Confirm startup/live ordering, repeat taps and unsubscribe/dispose behavior; distinguish forced Android approval from real website association verification. A link that grants authorization or reaches an external origin is HIGH.
 
 **Update and rollback correctness (HIGH)**
 
