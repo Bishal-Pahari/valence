@@ -96,6 +96,28 @@ void main() {
   });
 
   test(
+    'app.info marshals system font scale and appearance uses the generated event',
+    () async {
+      final dispatcher = TestWidgetsFlutterBinding.instance.platformDispatcher;
+      dispatcher.textScaleFactorTestValue = 1.5;
+      addTearDown(dispatcher.clearTextScaleFactorTestValue);
+      final reply = await dispatch(await handlers(), 'app.info');
+      expect(reply['ok'], isTrue);
+      expect((reply['v']! as Map)['fontScale'], 1.5);
+      expect(
+        BridgeEvents.appAppearance(
+          darkMode: true,
+          highContrast: false,
+          reducedMotion: true,
+        ),
+        contains(
+          '"app.appearance",{"darkMode":true,"highContrast":false,"reducedMotion":true}',
+        ),
+      );
+    },
+  );
+
+  test(
     'the built-ins are inherited from ValenceBuiltins, not written here',
     () async {
       final h = await handlers();

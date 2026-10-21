@@ -11,15 +11,15 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 4;
+const hostBridgeVersion = 5;
 
 final class AppInfo {
-  const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale});
+  const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale, this.fontScale});
 
   factory AppInfo.fromJson(Object? j, [String f = 'AppInfo']) {
     final m = decodeObject(j, f);
-    decodeKeys(m, const {'platform', 'host', 'bridge', 'bundle', 'locale'}, f);
-    return AppInfo(platform: decodeString(m['platform'], '$f.platform'), host: decodeInt(m['host'], '$f.host'), bridge: decodeInt(m['bridge'], '$f.bridge'), bundle: decodeInt(m['bundle'], '$f.bundle'), locale: decodeString(m['locale'], '$f.locale'));
+    decodeKeys(m, const {'platform', 'host', 'bridge', 'bundle', 'locale', 'fontScale'}, f);
+    return AppInfo(platform: decodeString(m['platform'], '$f.platform'), host: decodeInt(m['host'], '$f.host'), bridge: decodeInt(m['bridge'], '$f.bridge'), bundle: decodeInt(m['bundle'], '$f.bundle'), locale: decodeString(m['locale'], '$f.locale'), fontScale: m['fontScale'] == null ? null : decodeNum(m['fontScale'], '$f.fontScale'));
   }
 
   final String platform;
@@ -27,8 +27,9 @@ final class AppInfo {
   final int bridge;
   final int bundle;
   final String locale;
+  final num? fontScale;
 
-  Map<String, Object?> toJson() => {'platform': platform, 'host': host, 'bridge': bridge, 'bundle': bundle, 'locale': locale};
+  Map<String, Object?> toJson() => {'platform': platform, 'host': host, 'bridge': bridge, 'bundle': bundle, 'locale': locale, 'fontScale': fontScale};
 }
 
 final class Row {
@@ -449,6 +450,7 @@ abstract final class BridgeEvents {
   static String bundleUpdateReady({required int seq}) => eventScript('bundle.updateReady', {'seq': seq});
   static String appResumed() => eventScript('app.resumed', const <String, Object?>{});
   static String authExpired() => eventScript('auth.expired', const <String, Object?>{});
+  static String appAppearance({required bool darkMode, required bool highContrast, required bool reducedMotion}) => eventScript('app.appearance', {'darkMode': darkMode, 'highContrast': highContrast, 'reducedMotion': reducedMotion});
 }
 
 /// The built-in bridge methods, implemented against the `valence` runtime.
@@ -479,7 +481,7 @@ abstract class ValenceBuiltins {
   /// `app.info`, from the package.
   Future<AppInfo> appInfo() async {
     final i = valence.appInfo();
-    return AppInfo(platform: i.platform, host: i.host, bridge: i.bridge, bundle: i.bundle, locale: i.locale);
+    return AppInfo(platform: i.platform, host: i.host, bridge: i.bridge, bundle: i.bundle, locale: i.locale, fontScale: i.fontScale);
   }
 
   /// `data.get`, from the package.

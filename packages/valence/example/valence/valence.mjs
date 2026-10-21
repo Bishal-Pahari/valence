@@ -55,9 +55,12 @@ const BUILTINS = {
   'app.ready': { params: {}, returns: 'void', call: () => 'await valence.appReady();' },
   'app.info': {
     params: {},
-    returns: { fields: { platform: 'string', host: 'int', bridge: 'int', bundle: 'int', locale: 'string' } },
-    call: (t) =>
-      `final i = valence.appInfo();\n        return ${t}(platform: i.platform, host: i.host, bridge: i.bridge, bundle: i.bundle, locale: i.locale);`,
+    returns: {
+      fields: { platform: 'string', host: 'int', bridge: 'int', bundle: 'int', locale: 'string' },
+      optional: { fontScale: 'num?' },
+    },
+    call: (t, has) =>
+      `final i = valence.appInfo();\n        return ${t}(platform: i.platform, host: i.host, bridge: i.bridge, bundle: i.bundle, locale: i.locale${has('fontScale') ? ', fontScale: i.fontScale' : ''});`,
   },
   'data.get': {
     params: { bucket: 'string', key: 'string' },

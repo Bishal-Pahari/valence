@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 4;
+export const BRIDGE_VERSION = 5;
 
 export interface AppInfo {
   platform: string;
@@ -16,6 +16,7 @@ export interface AppInfo {
   bridge: number;
   bundle: number;
   locale: string;
+  fontScale?: number | null;
 }
 
 export interface Row {
@@ -112,6 +113,11 @@ export interface Events {
   };
   'app.resumed': Record<string, never>;
   'auth.expired': Record<string, never>;
+  'app.appearance': {
+    darkMode: boolean;
+    highContrast: boolean;
+    reducedMotion: boolean;
+  };
 }
 
 export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
@@ -141,6 +147,7 @@ export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
   'bundle.updateReady': 1,
   'app.resumed': 1,
   'auth.expired': 2,
+  'app.appearance': 5,
 };
 
 /** Browser fallbacks for this app, so the same build also runs as the website. */
