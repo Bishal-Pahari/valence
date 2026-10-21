@@ -17,7 +17,7 @@ is needed. Native code, schema and compiled-origin changes still need codegen an
 
 | Check | Result |
 |---|---|
-| Root `npm test` | 56 passed, zero skipped; generated Dart compiled and ran with Flutter |
+| Root `npm test` | 57 passed, zero skipped; generated Dart compiled and ran with Flutter |
 | Runtime `flutter test` | 349 passed |
 | Runtime `dart analyze --fatal-infos .` | No issues |
 | Define-enabled `flutter test --dart-define=VALENCE_DEV_URL=http://127.0.0.1:55173 test/dev_test.dart` | 7 passed |
@@ -30,9 +30,10 @@ is needed. Native code, schema and compiled-origin changes still need codegen an
 | Example debug APK with dev define | Built |
 | Example release APK with sentinel dev define | Built; all 3 AOT libraries passed exclusion scan |
 | Site `npm run build` | 26 pages; SEO checks passed |
+| Runtime `flutter pub publish --dry-run` | Passed with 0 warnings from a clean package commit |
 
-The publish dry run is repeated from a clean package commit before handoff. An earlier dry run
-reported only the expected dirty-git warning while implementation was uncommitted.
+An earlier publish dry run reported only the dirty-git warning while implementation was
+uncommitted. The clean-commit repeat passed with 0 warnings.
 
 ## Release exclusion regression
 
