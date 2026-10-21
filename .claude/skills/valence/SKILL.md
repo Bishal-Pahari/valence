@@ -331,3 +331,7 @@ Use the built-in `http.request` (since 4, with 3 providing data.getMany and sync
 For offline use of existing REST APIs, adapt them to sections 5.3 and 5.5; `sync.base` is not an arbitrary REST URL. See `examples/rest-sync-adapter/` and the [backend guide](https://getvalence.pages.dev/docs/guides/your-backend/). Partial pull pages use the last included USN, tombstones persist, pushes deduplicate by id, and retry echoes the current winning row. Keep the durable cursor/id database. Android is tested; iOS is experimental and untested.
 
 For sync or schema-gate failures, use the package runtime: pull progress is distinct from completed pairs, push echoes never move cursors, and step 7 holds its lease through pending publication with a five-second bounded acquisition wait. The v2 database migration preserves queued operations in durable insertion order. Test partial HTTP/static pulls and GC/publication interleavings before claiming an update is safe.
+
+## Adaptive UI setup (contracts §4.6)
+
+When wiring the web UI, read [the accessibility guide](../../../docs/accessibility.md) in the framework repo, or https://getvalence.pages.dev/docs/guides/accessibility/ in an installed skill. Add width=device-width viewport metadata and inset-variable content padding. Do not wrap ValenceApp in SafeArea or double-scale Android text. Preserve optional AppInfo.fontScale and app.appearance from the template; subscribe before ready(). Test 200% text, rotation, keyboard and semantic HTML with TalkBack. Android is the validation target; iOS remains experimental and untested.
