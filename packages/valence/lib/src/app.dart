@@ -67,6 +67,13 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   /// The last `max_usn` each pair was reported to the page with, so resume can re-derive `sync.changed`.
   final Map<String, int> _lastSeenUsn = {};
 
+  /// Whether [_start] has finished, so a resume can tell steady state from start-up (§3).
+  ///
+  /// The observer is registered in [initState], and on Android it fires *during* the first launch — so
+  /// without this, backgrounding a cold app runs an update check alongside the §2.4 UI-start transition
+  /// that is still in flight, and a resume handler sees a server and a manifest that do not exist yet.
+  bool _started = false;
+
   Valence get _valence => widget.valence;
   ValenceLogger get _log => widget.log;
 
@@ -138,6 +145,8 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   }
 
   void _armTriggers() {
+    // From here a resume is steady state, so it may run the triggers below (§3).
+    _started = true;
     // §2.3: on UI start, on resume, and every 30 minutes in the foreground. Never blocking the first paint.
     unawaited(_checkForUpdate());
     unawaited(_syncNow());
@@ -362,6 +371,13 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   }
 
   Future<void> _onResume() async {
+    // §3: the resume callback can arrive before start-up finishes, and `_start` runs the same triggers at
+    // its end anyway — so there is nothing here that a mid-startup resume needs to do, and running it
+    // would put an update check alongside the UI-start transition still in flight.
+    if (!_started) {
+      _log('resume: start-up has not finished, so this resume does nothing');
+      return;
+    }
     await _reclaimPort();
     runScript(eventScript('app.resumed', const <String, Object?>{}));
     unawaited(_checkForUpdate());
