@@ -11,6 +11,7 @@ import 'config.dart';
 import 'log.dart';
 import 'manifest.dart';
 import 'native_http.dart';
+import 'restoration.dart';
 import 'secure.dart';
 import 'server.dart';
 import 'state.dart';
@@ -100,6 +101,15 @@ abstract interface class ValenceHostView {
 /// }
 /// ```
 final class Valence {
+  /// Task-local UI state. ValenceApp connects this to OS restoration (§4.6).
+  final restoration = ValenceRestoration();
+
+  /// `state.save`: small UI state only; never credentials or durable records.
+  void stateSave(Object? json) => restoration.save(json);
+
+  /// `state.restore`: the last task-local blob, or null in a fresh task.
+  Object? stateRestore() => restoration.restore();
+
   Valence._({
     required this.config,
     required this.state,
@@ -412,8 +422,7 @@ final class Valence {
       ValenceHttp(
         origins: config.httpOrigins,
         token: config.authToken ?? secure.authToken,
-        onUnauthorized: () =>
-            emit(eventScript('auth.expired', const <String, Object?>{})),
+        onUnauthorized: () => emit(eventScript('auth.expired', const <String, Object?>{})),
       ).request(url: url, method: method, headers: headers, body: body);
 
   /// `open.external`. Only `https:`, `mailto:` and `tel:` leave the app.

@@ -657,6 +657,32 @@ The example is one loopback-only user's database; multi-user deployments must is
 by authenticated identity, enforce authorization and put TLS in front of it.
 
 
+## 4.6 Task state restoration (R7)
+
+`state.save({json: json?}) -> void` and `state.restore() -> json?` are additive at
+`since: 5`. Saving null clears the blob. The compact JSON UTF-8 encoding is at most
+65,536 bytes; excess is E_PARAMS without replacing the previous value. This is
+ephemeral UI state, never credentials or durable user data.
+
+ValenceApp enables Flutter OS state restoration itself. It records the same-origin
+route (path, query and hash) as navigation changes and captures it again on background.
+Only absolute relative paths up to 4,096 UTF-8 bytes are accepted: no authority,
+scheme, backslash, control characters, dot segments or reserved /_host/ paths,
+including encoded forms. No persisted origin or port is ever used to navigate.
+After OS process reclamation, the restored route is resolved against the newly
+bound loopback origin. The blob and route are tied to the served signed bundle seq;
+an update or rollback drops both before serving the new bundle. Normal signature,
+nonce, navigation and trial-ready checks still run; restoration never commits a trial.
+
+The state lives only in the OS task restoration snapshot, not prefs or state.json.
+A fresh task (including Android force-stop or removal from Recents) starts at /
+with null. Backgrounding alone retains the current page. state.restore returns the
+latest saved/restored blob repeatedly, including in the current process. OS snapshots
+are best effort; applications save small UI changes promptly, not only at shutdown.
+Android process reclamation is tested with Home then `adb shell am kill <appId>` and
+reopening the retained task. iOS uses Flutter restoration too but is experimental
+and untested; its app must opt into native state restoration as Flutter documents.
+
 ## 5. Data layer
 
 ### 5.1 SQLite schema (host, sqflite)
@@ -879,6 +905,12 @@ Everything here is silent when it is wrong: the call succeeds, the UI says "Set"
 - `node valence/valence.mjs doctor [--tests]` runs mechanical diagnostics without an AI session. It checks config, codegen freshness, built-in signature/files/host bridge/data compatibility, current seed coverage, baseline and stack report presence, declared `nativeValue` (at least two distinct §6 capabilities), resolved Flutter dependencies, and app test-matrix evidence. Rows are `PASS`, `WARN` (missing or unexecuted evidence), or `FAIL` (a check ran and failed); any failure exits nonzero. Missing evidence never passes. `nativeValue` is a declaration, not proof of device behavior. `.valence/test-matrix.json` maps stable layer IDs `bridge`, `loopback`, `updater`, `store-sync`, `integration` to app-relative Flutter `test/` or `integration_test/` files; doctor lists every ID. `--tests` executes mapped unit tests; integration rows stay WARN and need a separate device run. File mappings are evidence pointers, not proof that assertions cover the contract. Doctor does not certify store approval or emulator behavior.
 
 ## 8. Test matrix (minimum; all must pass before "done")
+
+R7: bounded multibyte JSON, null clearing, strict nonce/params delegation, task
+snapshot restore and fresh-task reset, same-bundle isolation, hostile restored
+routes (including encoded /_host/), rotated loopback port, unchanged trial checks;
+Android Home → am kill → retained-task reopen restores path/query/hash and blob,
+force-stop and explicit task removal start fresh.
 
 R12 regression rows: batch reads preserve requested order, deduplicate, isolate bucket/schema, omit tombstones, bind hostile keys, and reject over-limit input; sync status counts deletes and survives reopen, preserves observations on busy and errors, timestamps only successful unscoped runs; generated defaults dispatch as `E_UNSUPPORTED`; old schemas still generate without grown fields; channel validation and beta pointer URL; store-baseline OTA default with explicit and built-in overrides; multi-schema seed declaration/duplicate/atomicity/current-coverage checks; doctor reports missing evidence as WARN and real failures as FAIL.
 

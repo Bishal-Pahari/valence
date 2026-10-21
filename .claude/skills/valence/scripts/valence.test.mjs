@@ -43,6 +43,8 @@ function fixture({ data = { calendar: 1 }, latest = false } = {}) {
     const p = join(root, 'valence', 'bridge.schema.json');
     const s = JSON.parse(readFileSync(p, 'utf8'));
     s.version = 4;
+    delete s.methods['state.save'];
+    delete s.methods['state.restore'];
     delete s.methods['data.getMany'];
     delete s.methods['sync.status'];
     delete s.types.SyncStatus;
@@ -73,6 +75,16 @@ const editSchema = (root, fn) => {
   fn(s);
   writeFileSync(schemaFile(root), JSON.stringify(s));
 };
+
+test('task restoration is optional, shape-frozen and delegated to the package', () => {
+  const { root, cfg } = fixture({ latest: true });
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(dart, /valence.stateSave\(p.json\)/);
+  assert.match(dart, /return valence.stateRestore\(\)/);
+  editSchema(root, (s) => (s.methods['state.save'].params.json = 'string?'));
+  assert.throws(() => codegen({ root, cfg }), /must stay/);
+});
 
 // ---------- keys ----------
 
@@ -437,7 +449,7 @@ test('doctor reports absent evidence as warnings, compatibility errors as failur
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'native value'));
   bundle({ root, cfg, key, builtin: true, now: NOW });
   const dart = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
-  writeFileSync(dart, readFileSync(dart, 'utf8').replace('const hostBridgeVersion = 4;', 'const hostBridgeVersion = 1;'));
+  writeFileSync(dart, readFileSync(dart, 'utf8').replace(/const hostBridgeVersion = \d+;/, 'const hostBridgeVersion = 1;'));
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'built-in compatibility'));
 });
 

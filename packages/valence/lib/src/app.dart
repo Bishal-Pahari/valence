@@ -8,6 +8,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'runtime.dart';
+import 'restoration.dart';
 import 'wire.dart';
 
 /// Turns one message from the JS channel into a reply. The generated `bridgeDispatch`, partially applied.
@@ -76,7 +77,6 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     WidgetsBinding.instance.addObserver(this);
     _valence.attach(this);
     _valence.onUpdateReady = (seq) => runScript(eventScript('bundle.updateReady', {'seq': seq}));
-    unawaited(_start());
   }
 
   @override
@@ -108,6 +108,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       );
       _valence.updater.save(); // bind may have moved state.port
       _valence.bound(server, manifest);
+      _valence.restoration.activate(manifest.seq);
       _origin = server.origin;
       _log('serving bundle ${manifest.seq} on ${server.origin}');
 
@@ -122,11 +123,16 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
           onNavigationRequest: _onNavigationRequest,
           onPageStarted: _onPageStarted,
           onPageFinished: _onPageFinished,
+          onUrlChange: (change) {
+            if (change.url != null) {
+              _valence.restoration.observe(change.url!, _origin);
+            }
+          },
           onHttpError: (e) => _log('webview http ${e.response?.statusCode} for ${e.request?.uri}'),
           onWebResourceError: (e) => _log('webview resource error ${e.errorCode}: ${e.description}'),
         ),
       );
-      await controller.loadRequest(Uri.parse(server.origin));
+      await controller.loadRequest(Uri.parse('${server.origin}${_valence.restoration.route}'));
       if (!mounted) return;
       setState(() => _controller = controller);
 
@@ -175,7 +181,9 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     try {
       final decoded = jsonDecode(reply);
       final e = decoded is Map<String, Object?> ? decoded['e'] : null;
-      if (e is Map<String, Object?>) _log('bridge error ${e['code']}: ${e['message']}');
+      if (e is Map<String, Object?>) {
+        _log('bridge error ${e['code']}: ${e['message']}');
+      }
     } on FormatException {
       // bridgeDispatch builds the reply with jsonEncode, so this cannot happen; not worth a crash if it does.
     }
@@ -220,6 +228,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   // ---------------------------------------------------------------------------
 
   void _onPageStarted(String url) {
+    _valence.restoration.observe(url, _origin);
     _log('webview started $url');
     _pageLoaded = false;
     final state = _valence.state;
@@ -336,6 +345,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     );
     _valence.updater.save();
     _valence.bound(server, manifest);
+    _valence.restoration.activate(manifest.seq);
     _origin = server.origin;
     _pageLoaded = false;
     _log('serving bundle ${manifest.seq} on ${server.origin}');
@@ -358,6 +368,21 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       case AppLifecycleState.hidden:
         // The ready timer counts foreground time, so it pauses with the app.
         _readyClock.stop();
+        unawaited(_captureRoute());
+    }
+  }
+
+  Future<void> _captureRoute() async {
+    final seq = _valence.manifest?.seq;
+    final controller = _controller;
+    final origin = _origin;
+    try {
+      final url = await controller?.currentUrl();
+      if (mounted && seq == _valence.manifest?.seq && controller == _controller && origin == _origin && url != null) {
+        _valence.restoration.observe(url, origin);
+      }
+    } on Object catch (e) {
+      _log('restoration: could not capture route: $e');
     }
   }
 
@@ -442,7 +467,9 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       // sync.changed, bundle.updateReady and app.resumed are the runtime's own events, so the package
       // builds them with the same jsonEncode-based helper the generated BridgeEvents uses. An app's own
       // events go through valence.emit(BridgeEvents.myEvent(...)).
-      if (moved.isNotEmpty) runScript(eventScript('sync.changed', {'buckets': moved}));
+      if (moved.isNotEmpty) {
+        runScript(eventScript('sync.changed', {'buckets': moved}));
+      }
     } on Object catch (e) {
       _log('sync: run failed: $e');
     }
@@ -454,6 +481,17 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
 
   @override
   Widget build(BuildContext context) {
+    return RootRestorationScope(
+      restorationId: 'valence.${_valence.config.appId}',
+      child: ValenceRestorationScope(
+        model: _valence.restoration,
+        onReady: () => unawaited(_start()),
+        child: _buildHost(context),
+      ),
+    );
+  }
+
+  Widget _buildHost(BuildContext context) {
     final error = _error;
     if (error != null) {
       return widget.onError?.call(error) ??
