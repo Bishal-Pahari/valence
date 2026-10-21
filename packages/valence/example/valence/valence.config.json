@@ -5,7 +5,13 @@
     "out": "web",
     "lib": "web-src/lib",
     "entry": "index.html",
-    "declaredRoutes": ["/", "/shelf"]
+    "declaredRoutes": [
+      "/",
+      "/shelf"
+    ],
+    "connect": [
+      "http://10.0.2.2:8787"
+    ]
   },
   "host": {
     "dir": "."
@@ -20,5 +26,7 @@
   "data": {
     "plants": 1
   },
-  "writable": ["shelf"]
+  "writable": [
+    "shelf"
+  ]
 }

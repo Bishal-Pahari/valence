@@ -14,5 +14,6 @@ const valenceConfig = ValenceConfig(
   syncBase: 'https://sync.example.invalid',
   writableBuckets: {'shelf'},
   dataSchemas: {'plants': 1},
+  connectOrigins: {'http://10.0.2.2:8787'},
   channel: 'production',
 );

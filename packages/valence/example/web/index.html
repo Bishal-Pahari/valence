@@ -46,6 +46,14 @@
       <pre id="auth">reading auth.hasToken…</pre>
     </section>
 
+    <section>
+      <h2>Your API</h2>
+      <p>Native HTTP to the local reference adapter. Set its bearer token above first.</p>
+      <button id="http">http.request</button>
+      <button id="http-denied">Try an unlisted origin</button>
+      <pre id="http-result"></pre>
+    </section>
+
     <!--
       A real app imports @getvalence/bridge through the generated web/lib/bridge.g.ts. This example talks
       to the wire protocol directly, so it needs no bundler and `valence bundle` can sign the folder as is
@@ -153,6 +161,17 @@
         }
         await showAuth(lines.join('\n'));
       });
+
+      for (const [id, url] of [['http', 'http://10.0.2.2:8787/rpc'], ['http-denied', 'https://unlisted.invalid/']]) {
+        document.getElementById(id).addEventListener('click', async () => {
+          try {
+            const response = await call('http.request', { url });
+            document.getElementById('http-result').textContent = JSON.stringify(response, null, 2);
+          } catch (e) {
+            document.getElementById('http-result').textContent = String(e);
+          }
+        });
+      }
 
       (async () => {
         try {

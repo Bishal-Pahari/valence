@@ -42,3 +42,7 @@ The contracts §8 matrix is the package's suite, one directory up. An app does n
 A green `flutter test` is **not** evidence that the store opens on a phone: it runs on
 `sqflite_common_ffi`, which accepts pragmas that Android's `SQLiteDatabase` rejects. Android is the tested
 platform for Valence; **iOS is experimental and untested**.
+
+## Native HTTP demo
+
+The schema is now 4 and `web.connect` compiles `http://10.0.2.2:8787` for emulator tests. Run the reference adapter in `examples/rest-sync-adapter/`, set its `ADAPTER_TOKEN` through the Login form, and tap `http.request`. `GET /rpc` returns authenticated status without echoing the token; the other button proves an unlisted origin is denied. No CORS headers are needed. This local HTTP endpoint is for tests; production uses HTTPS. The offline bundle and seed still work without that server.

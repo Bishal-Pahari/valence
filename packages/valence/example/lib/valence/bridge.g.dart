@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 2;
+const hostBridgeVersion = 4;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale});
@@ -62,6 +62,22 @@ final class SyncResult {
   final String? reason;
 
   Map<String, Object?> toJson() => {'buckets': buckets, 'changed': changed, 'offline': offline, 'reason': reason};
+}
+
+final class HttpResponse {
+  const HttpResponse({required this.status, required this.headers, required this.body});
+
+  factory HttpResponse.fromJson(Object? j, [String f = 'HttpResponse']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'status', 'headers', 'body'}, f);
+    return HttpResponse(status: decodeInt(m['status'], '$f.status'), headers: m['headers'], body: decodeString(m['body'], '$f.body'));
+  }
+
+  final int status;
+  final Object? headers;
+  final String body;
+
+  Map<String, Object?> toJson() => {'status': status, 'headers': headers, 'body': body};
 }
 
 final class DataGetParams {
@@ -225,6 +241,23 @@ final class AuthSetTokenParams {
   Map<String, Object?> toJson() => {'token': token};
 }
 
+final class HttpRequestParams {
+  const HttpRequestParams({required this.url, required this.method, required this.headers, required this.body});
+
+  factory HttpRequestParams.fromJson(Object? j, [String f = 'HttpRequestParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'url', 'method', 'headers', 'body'}, f);
+    return HttpRequestParams(url: decodeString(m['url'], '$f.url'), method: m['method'] == null ? null : decodeString(m['method'], '$f.method'), headers: m['headers'], body: m['body'] == null ? null : decodeString(m['body'], '$f.body'));
+  }
+
+  final String url;
+  final String? method;
+  final Object? headers;
+  final String? body;
+
+  Map<String, Object?> toJson() => {'url': url, 'method': method, 'headers': headers, 'body': body};
+}
+
 abstract interface class BridgeHandlers {
   Future<void> appReady();
   Future<AppInfo> appInfo();
@@ -242,6 +275,7 @@ abstract interface class BridgeHandlers {
   Future<void> secureDelete(SecureDeleteParams p);
   Future<void> authSetToken(AuthSetTokenParams p);
   Future<bool> authHasToken();
+  Future<HttpResponse> httpRequest(HttpRequestParams p);
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
@@ -313,6 +347,9 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.authHasToken();
         return replyOk(id, r);
+      case 'http.request':
+        final r = await h.httpRequest(HttpRequestParams.fromJson(p, 'p'));
+        return replyOk(id, r.toJson());
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
     }
@@ -427,5 +464,11 @@ abstract class ValenceBuiltins {
   /// `auth.hasToken`, from the package.
   Future<bool> authHasToken() async {
     return valence.authHasToken();
+  }
+
+  /// `http.request`, from the package.
+  Future<HttpResponse> httpRequest(HttpRequestParams p) async {
+    final r = await valence.httpRequest(url: p.url, method: p.method, headers: p.headers, body: p.body);
+    return HttpResponse(status: r.status, headers: r.headers, body: r.body);
   }
 }
