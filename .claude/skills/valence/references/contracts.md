@@ -667,6 +667,44 @@ The example is one loopback-only user's database; multi-user deployments must is
 by authenticated identity, enforce authorization and put TLS in front of it.
 
 
+### 4.6 Permissions (schema 9, R3)
+
+`permissions.check({kind}) -> string`, `permissions.request({kind}) -> string`, and
+`permissions.openSettings() -> bool` are built-ins at `since: 9`. Kinds are `camera`,
+`location` (foreground only), `notifications`, `contacts`, `bluetooth`
+(scan and connect, not advertise), `microphone`, and `photos` (the OS library permission group).
+Unknown kinds return `E_PARAMS`; known kinds outside the store-compiled
+`permissions.kinds` allowlist return `E_DENIED` before any platform call. The default
+allowlist is empty. Changing it requires codegen, native declarations and a store
+release; a signed OTA cannot grant itself another permission. No background request
+or startup prompt is allowed. Requests and opening settings require an attached,
+foreground host; otherwise `E_DENIED`. Calls are serialized to prevent overlapping
+OS dialogs, and a queued request rechecks foreground state before dispatching one to the platform.
+
+Statuses are `granted`, `denied`, `permanentlyDenied`, `restricted`, `limited`.
+Preserve the OS answer: Android checks can report `denied` after a permanent denial;
+only a request can disambiguate it. iOS provisional notifications map to `limited`.
+Approximate foreground location counts as granted; this is not a precision or
+service-enabled API. Android photos use storage through API 32 and images from 33;
+selected-image access from 34 is limited. iOS library permission includes images and videos; legacy Android storage is also broader than images. Contacts requests the platform group, including write/account permissions if the Android host declared them. Declarations should be minimal; the bridge does not narrow an OS grant. Android Bluetooth before 31 requires
+foreground location for scanning; from 31 both scan and connect must be granted.
+For combined permissions, return the most restrictive status (restricted,
+permanentlyDenied, denied, limited, granted). Unsupported platforms return
+`E_UNSUPPORTED`. Native errors remain errors, never fabricated grants.
+
+`permissions.changed({permissions: PermissionState[]})` (since 9), where
+`PermissionState = {kind: string, status: string}`, reports only changed configured
+kinds on resume. Startup establishes a baseline without prompting or emitting a
+change. Successful checks and requests update it. Each kind is checked independently;
+one native failure is logged and does not hide changes to the others. Resume checks
+share the request queue. The native adapter rechecks foreground after SDK preparation, immediately before dispatching a request. Events use the existing JSON escaping and page buffering;
+apps check on startup because these are changes, not a durable event log.
+
+Use `permission_handler` with native Android declarations and iOS usage strings and
+compile macros for the configured kinds only. Never enable every permission for a
+production app. iOS is experimental and untested. The setup table and runnable
+example are in `docs/permissions.md`.
+
 ## 5. Data layer
 
 ### 5.1 SQLite schema (host, sqflite)
@@ -902,6 +940,12 @@ Everything here is silent when it is wrong: the call succeeds, the UI says "Set"
 - `node valence/valence.mjs doctor [--tests]` runs mechanical diagnostics without an AI session. It checks config, codegen freshness, built-in signature/files/host bridge/data compatibility, current seed coverage, baseline and stack report presence, declared `nativeValue` (at least two distinct §6 capabilities), resolved Flutter dependencies, and app test-matrix evidence. Rows are `PASS`, `WARN` (missing or unexecuted evidence), or `FAIL` (a check ran and failed); any failure exits nonzero. Missing evidence never passes. `nativeValue` is a declaration, not proof of device behavior. `.valence/test-matrix.json` maps stable layer IDs `bridge`, `loopback`, `updater`, `store-sync`, `integration` to app-relative Flutter `test/` or `integration_test/` files; doctor lists every ID. `--tests` executes mapped unit tests; integration rows stay WARN and need a separate device run. File mappings are evidence pointers, not proof that assertions cover the contract. Doctor does not certify store approval or emulator behavior.
 
 ## 8. Test matrix (minimum; all must pass before "done")
+
+R3 permissions: unknown/unconfigured kinds and background/queued requests are
+denied before platform access; all five statuses and provisional normalization;
+legacy/modern Android photos and Bluetooth mappings; serialized dialogs recover
+after errors; resume emits changed kinds only, tolerates an individual failure and
+does not prompt; generated dispatch retains nonce and strict parameter checks.
 
 R12 regression rows: batch reads preserve requested order, deduplicate, isolate bucket/schema, omit tombstones, bind hostile keys, and reject over-limit input; sync status counts deletes and survives reopen, preserves observations on busy and errors, timestamps only successful unscoped runs; generated defaults dispatch as `E_UNSUPPORTED`; old schemas still generate without grown fields; channel validation and beta pointer URL; store-baseline OTA default with explicit and built-in overrides; multi-schema seed declaration/duplicate/atomicity/current-coverage checks; doctor reports missing evidence as WARN and real failures as FAIL.
 

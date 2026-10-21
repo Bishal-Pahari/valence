@@ -57,6 +57,20 @@
       <pre id="http-result"></pre>
     </section>
 
+    <section>
+      <h2>Permissions</h2>
+      <p>Choose a permission, check it, then request it only when needed.</p>
+      <select id="permission-kind" aria-label="Permission kind">
+        <option>camera</option><option>location</option><option>notifications</option>
+        <option>contacts</option><option>bluetooth</option><option>microphone</option><option>photos</option>
+      </select>
+      <button id="permission-check">Check</button>
+      <button id="permission-request">Request</button>
+      <button id="permission-settings">App settings</button>
+      <pre id="permission-result" aria-live="polite"></pre>
+      <pre id="permission-event" aria-live="polite"></pre>
+    </section>
+
     <!--
       A real app imports @getvalence/bridge through the generated web/lib/bridge.g.ts. This example talks
       to the wire protocol directly, so it needs no bundler and `valence bundle` can sign the folder as is
@@ -74,6 +88,7 @@
           reply.ok ? p.resolve(reply.v) : p.reject(new Error(`${reply.e.code}: ${reply.e.message}`));
         },
         e(name, payload) {
+          if (name === 'permissions.changed') document.getElementById('permission-event').textContent = name + ': ' + JSON.stringify(payload);
           if (name === 'sync.changed') void refresh();
           // The host fires this when a sync request carrying the token came back 401 (§4.4). A real app
           // refreshes the token here, or shows a login screen.
@@ -186,6 +201,18 @@
             document.getElementById('http-result').textContent = JSON.stringify(response, null, 2);
           } catch (e) {
             document.getElementById('http-result').textContent = String(e);
+          }
+        });
+      }
+
+      for (const action of ['check', 'request', 'settings']) {
+        document.getElementById('permission-' + action).addEventListener('click', async () => {
+          const kind = document.getElementById('permission-kind').value;
+          try {
+            const result = action === 'settings' ? await call('permissions.openSettings') : await call('permissions.' + action, { kind });
+            document.getElementById('permission-result').textContent = kind + ': ' + result;
+          } catch (e) {
+            document.getElementById('permission-result').textContent = String(e);
           }
         });
       }

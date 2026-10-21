@@ -88,6 +88,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
 
   @override
   void dispose() {
+    _valence.detach(this);
     _readyTicker?.cancel();
     _updateTicker?.cancel();
     unawaited(_connectivity?.cancel());
@@ -137,6 +138,8 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       if (!mounted) return;
       setState(() => _controller = controller);
 
+      await _valence.permissions.refresh(baseline: true);
+      if (!mounted) return;
       _armTriggers();
     } on Object catch (e, st) {
       _log('host: could not start: $e\n$st');
@@ -281,7 +284,8 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       _log('ready: timed out with no trial on screen; counting nothing');
       return;
     }
-    _log('ready: app.ready did not arrive within ${_valence.config.readyTimeout.inSeconds}s for trial $trial');
+    _log(
+        'ready: app.ready did not arrive within ${_valence.config.readyTimeout.inSeconds}s for trial $trial');
     _valence.updater.countFailure();
     await _reloadCurrent();
   }
@@ -384,6 +388,9 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       return;
     }
     await _reclaimPort();
+    final permissions = await _valence.permissions.refresh();
+    if (!mounted) return;
+    if (permissions.isNotEmpty) runScript(eventScript('permissions.changed', {'permissions': permissions}));
     runScript(eventScript('app.resumed', const <String, Object?>{}));
     unawaited(_checkForUpdate());
     await _syncNow();

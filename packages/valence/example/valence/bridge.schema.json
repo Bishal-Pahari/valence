@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 9,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -132,6 +132,25 @@
       "since": 3,
       "params": {},
       "returns": "SyncStatus"
+    },
+    "permissions.check": {
+      "since": 9,
+      "params": {
+        "kind": "string"
+      },
+      "returns": "string"
+    },
+    "permissions.request": {
+      "since": 9,
+      "params": {
+        "kind": "string"
+      },
+      "returns": "string"
+    },
+    "permissions.openSettings": {
+      "since": 9,
+      "params": {},
+      "returns": "bool"
     }
   },
   "events": {
@@ -154,6 +173,12 @@
     "auth.expired": {
       "since": 2,
       "payload": {}
+    },
+    "permissions.changed": {
+      "since": 9,
+      "payload": {
+        "permissions": "PermissionState[]"
+      }
     }
   },
   "types": {
@@ -185,6 +210,10 @@
       "pending": "int",
       "lastSyncedAt": "int?",
       "offline": "bool"
+    },
+    "PermissionState": {
+      "kind": "string",
+      "status": "string"
     }
   }
 }

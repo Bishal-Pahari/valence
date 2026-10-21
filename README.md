@@ -169,3 +169,7 @@ package adopts such a database on open — `-wal` and `-shm` move with it, the `
 destination is never overwritten, and the move is logged. A locked open (a schema migration's
 `BEGIN EXCLUSIVE` against the WorkManager job the same launch fires) is retried; `backgroundSync` then
 reports `reason: "busy"` rather than failing the job.
+
+## OS permissions
+
+Schema 9 adds check/request/settings and resume change events for seven permission kinds. Enable only `permissions.kinds` in a store build, add native declarations, and regenerate; OTA cannot expand the allowlist. Permission grants are separate from feature implementations. See [Permissions](docs/permissions.md). iOS is experimental and untested.

@@ -31,5 +31,16 @@
     "origins": [
       "http://10.0.2.2:8787"
     ]
+  },
+  "permissions": {
+    "kinds": [
+      "camera",
+      "location",
+      "notifications",
+      "contacts",
+      "bluetooth",
+      "microphone",
+      "photos"
+    ]
   }
 }

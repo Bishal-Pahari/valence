@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 4;
+const hostBridgeVersion = 9;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale});
@@ -95,6 +95,21 @@ final class SyncStatus {
   final bool offline;
 
   Map<String, Object?> toJson() => {'pending': pending, 'lastSyncedAt': lastSyncedAt, 'offline': offline};
+}
+
+final class PermissionState {
+  const PermissionState({required this.kind, required this.status});
+
+  factory PermissionState.fromJson(Object? j, [String f = 'PermissionState']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'kind', 'status'}, f);
+    return PermissionState(kind: decodeString(m['kind'], '$f.kind'), status: decodeString(m['status'], '$f.status'));
+  }
+
+  final String kind;
+  final String status;
+
+  Map<String, Object?> toJson() => {'kind': kind, 'status': status};
 }
 
 final class DataGetParams {
@@ -290,6 +305,34 @@ final class DataGetManyParams {
   Map<String, Object?> toJson() => {'bucket': bucket, 'keys': keys};
 }
 
+final class PermissionsCheckParams {
+  const PermissionsCheckParams({required this.kind});
+
+  factory PermissionsCheckParams.fromJson(Object? j, [String f = 'PermissionsCheckParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'kind'}, f);
+    return PermissionsCheckParams(kind: decodeString(m['kind'], '$f.kind'));
+  }
+
+  final String kind;
+
+  Map<String, Object?> toJson() => {'kind': kind};
+}
+
+final class PermissionsRequestParams {
+  const PermissionsRequestParams({required this.kind});
+
+  factory PermissionsRequestParams.fromJson(Object? j, [String f = 'PermissionsRequestParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'kind'}, f);
+    return PermissionsRequestParams(kind: decodeString(m['kind'], '$f.kind'));
+  }
+
+  final String kind;
+
+  Map<String, Object?> toJson() => {'kind': kind};
+}
+
 abstract interface class BridgeHandlers {
   Future<void> appReady();
   Future<AppInfo> appInfo();
@@ -310,6 +353,9 @@ abstract interface class BridgeHandlers {
   Future<HttpResponse> httpRequest(HttpRequestParams p);
   Future<List<Row>> dataGetMany(DataGetManyParams p);
   Future<SyncStatus> syncStatus();
+  Future<String> permissionsCheck(PermissionsCheckParams p);
+  Future<String> permissionsRequest(PermissionsRequestParams p);
+  Future<bool> permissionsOpenSettings();
 }
 
 /// Opt-in defaults for test doubles or partial hosts. Production hosts extend ValenceBuiltins.
@@ -352,6 +398,12 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<List<Row>> dataGetMany(DataGetManyParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.getMany is not implemented');
   @override
   Future<SyncStatus> syncStatus() async => throw const BridgeError('E_UNSUPPORTED', 'sync.status is not implemented');
+  @override
+  Future<String> permissionsCheck(PermissionsCheckParams p) async => throw const BridgeError('E_UNSUPPORTED', 'permissions.check is not implemented');
+  @override
+  Future<String> permissionsRequest(PermissionsRequestParams p) async => throw const BridgeError('E_UNSUPPORTED', 'permissions.request is not implemented');
+  @override
+  Future<bool> permissionsOpenSettings() async => throw const BridgeError('E_UNSUPPORTED', 'permissions.openSettings is not implemented');
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
@@ -433,6 +485,16 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.syncStatus();
         return replyOk(id, r.toJson());
+      case 'permissions.check':
+        final r = await h.permissionsCheck(PermissionsCheckParams.fromJson(p, 'p'));
+        return replyOk(id, r);
+      case 'permissions.request':
+        final r = await h.permissionsRequest(PermissionsRequestParams.fromJson(p, 'p'));
+        return replyOk(id, r);
+      case 'permissions.openSettings':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.permissionsOpenSettings();
+        return replyOk(id, r);
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
     }
@@ -449,6 +511,7 @@ abstract final class BridgeEvents {
   static String bundleUpdateReady({required int seq}) => eventScript('bundle.updateReady', {'seq': seq});
   static String appResumed() => eventScript('app.resumed', const <String, Object?>{});
   static String authExpired() => eventScript('auth.expired', const <String, Object?>{});
+  static String permissionsChanged({required List<PermissionState> permissions}) => eventScript('permissions.changed', {'permissions': permissions.map((e) => e.toJson()).toList()});
 }
 
 /// The built-in bridge methods, implemented against the `valence` runtime.
@@ -565,5 +628,20 @@ abstract class ValenceBuiltins {
   Future<SyncStatus> syncStatus() async {
     final r = await valence.syncStatus();
     return SyncStatus(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline);
+  }
+
+  /// `permissions.check`, from the package.
+  Future<String> permissionsCheck(PermissionsCheckParams p) async {
+    return valence.permissions.check(p.kind);
+  }
+
+  /// `permissions.request`, from the package.
+  Future<String> permissionsRequest(PermissionsRequestParams p) async {
+    return valence.permissions.request(p.kind);
+  }
+
+  /// `permissions.openSettings`, from the package.
+  Future<bool> permissionsOpenSettings() async {
+    return valence.permissions.openSettings();
   }
 }

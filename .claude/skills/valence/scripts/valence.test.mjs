@@ -44,6 +44,9 @@ function fixture({ data = { calendar: 1 }, latest = false } = {}) {
     const p = join(root, 'valence', 'bridge.schema.json');
     const s = JSON.parse(readFileSync(p, 'utf8'));
     s.version = 4;
+    for (const name of Object.keys(s.methods)) if (name.startsWith('permissions.')) delete s.methods[name];
+    delete s.events['permissions.changed'];
+    delete s.types.PermissionState;
     delete s.methods['data.getMany'];
     delete s.methods['sync.status'];
     delete s.methods['data.count'];
@@ -489,7 +492,7 @@ test('doctor reports absent evidence as warnings, compatibility errors as failur
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'native value'));
   bundle({ root, cfg, key, builtin: true, now: NOW });
   const dart = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
-  writeFileSync(dart, readFileSync(dart, 'utf8').replace('const hostBridgeVersion = 5;', 'const hostBridgeVersion = 1;'));
+  writeFileSync(dart, readFileSync(dart, 'utf8').replace(/const hostBridgeVersion = \d+;/, 'const hostBridgeVersion = 1;'));
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'built-in compatibility'));
 });
 
@@ -620,6 +623,9 @@ test('an app that already shipped a store build can take a built-in\'s new param
     delete s.methods['data.list'].params.after;
     delete s.methods['data.count'];
     s.version = 4;
+    for (const name of Object.keys(s.methods)) if (name.startsWith('permissions.')) delete s.methods[name];
+    delete s.events['permissions.changed'];
+    delete s.types.PermissionState;
     // An app-owned method in the same store build, to prove the relaxation does not leak to one.
     s.methods['mine.list'] = { since: 1, params: { bucket: 'string' }, returns: 'Row[]' };
   });
@@ -651,7 +657,10 @@ test('an app that already shipped a store build can take a built-in\'s new param
   // shipped version and leave the page no way to tell it from a host that answers E_PARAMS.
   bad((s) => {
     s.methods['data.list'].params.after = 'string?';
-    s.version = 4; // the shipped version, so nothing can gate on the new param
+    s.version = 4;
+    for (const name of Object.keys(s.methods)) if (name.startsWith('permissions.')) delete s.methods[name];
+    delete s.events['permissions.changed'];
+    delete s.types.PermissionState; // keep the shipped version, so nothing can gate the new param
   }, /needs "version" above the shipped 4/);
   // And a method-level key the IDL has not defined is not exempt from the baseline guard either.
   bad((s) => {
@@ -765,7 +774,7 @@ test('schema validation catches names that would break the generated code', () =
     assert.throws(() => parseSchema(s), re);
   };
   bad((s) => (s.methods['data.get'].returns = 'Nope'), /unknown type/);
-  bad((s) => (s.methods['data.get'].since = 9), /since/);
+  bad((s) => (s.methods['data.get'].since = s.version + 1), /since/);
   bad((s) => delete s.methods['app.info'], /must define app.info/);
   bad((s) => (s.methods['data.get'].params.key = 'void'), /void/);
   bad((s) => (s.methods['data.get'].params.default = 'string'), /reserved field/);
@@ -1142,4 +1151,22 @@ test('legacy CSP origins do not grant native credentials or break codegen', () =
   assert.match(config, /httpOrigins: \{\}/);
   assert.ok(!config.includes('analytics.example.test'));
   assert.ok(!config.includes('maps.example.test'));
+});
+
+
+test('R3 codegen compiles only configured permission kinds and freezes built-in shapes', () => {
+  const { root, cfg } = fixture({ latest: true });
+  cfg.permissions = { kinds: ['camera', 'photos'] };
+  codegen({ root, cfg });
+  const config = readFileSync(join(root, cfg.host.dir, 'lib/valence/config.g.dart'), 'utf8');
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(config, /permissionKinds: \{'camera', 'photos'\}/);
+  assert.match(dart, /valence.permissions.request\(p.kind\)/);
+  for (const kinds of [['camera', 'camera'], ['storage'], 'camera', [null]]) {
+    cfg.permissions = { kinds };
+    assert.throws(() => codegen({ root, cfg }), /permissions.kinds/);
+  }
+  cfg.permissions = { kinds: [] };
+  editSchema(root, (s) => { s.methods['permissions.request'].returns = 'bool'; });
+  assert.throws(() => codegen({ root, cfg }), /permissions.request/);
 });

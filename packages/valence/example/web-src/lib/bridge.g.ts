@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 4;
+export const BRIDGE_VERSION = 9;
 
 export interface AppInfo {
   platform: string;
@@ -42,6 +42,11 @@ export interface SyncStatus {
   pending: number;
   lastSyncedAt?: number | null;
   offline: boolean;
+}
+
+export interface PermissionState {
+  kind: string;
+  status: string;
 }
 
 export interface Methods {
@@ -101,6 +106,13 @@ export interface Methods {
     keys: string[];
   }; returns: Row[] };
   'sync.status': { params: Record<string, never>; returns: SyncStatus };
+  'permissions.check': { params: {
+    kind: string;
+  }; returns: string };
+  'permissions.request': { params: {
+    kind: string;
+  }; returns: string };
+  'permissions.openSettings': { params: Record<string, never>; returns: boolean };
 }
 
 export interface Events {
@@ -112,6 +124,9 @@ export interface Events {
   };
   'app.resumed': Record<string, never>;
   'auth.expired': Record<string, never>;
+  'permissions.changed': {
+    permissions: PermissionState[];
+  };
 }
 
 export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
@@ -134,6 +149,9 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'http.request': 4,
   'data.getMany': 3,
   'sync.status': 3,
+  'permissions.check': 9,
+  'permissions.request': 9,
+  'permissions.openSettings': 9,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
@@ -141,6 +159,7 @@ export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
   'bundle.updateReady': 1,
   'app.resumed': 1,
   'auth.expired': 2,
+  'permissions.changed': 9,
 };
 
 /** Browser fallbacks for this app, so the same build also runs as the website. */

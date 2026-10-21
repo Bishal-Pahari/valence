@@ -52,6 +52,9 @@ const RESERVED_TYPES = new Set('Json Methods Events Object String Number Boolean
 // what exists. A field never moves from `fields` to `optional` or back: `fields` is the shape every host
 // has always returned.
 const BUILTINS = {
+  'permissions.check': { params: { kind: 'string' }, returns: 'string', call: () => 'return valence.permissions.check(p.kind);' },
+  'permissions.request': { params: { kind: 'string' }, returns: 'string', call: () => 'return valence.permissions.request(p.kind);' },
+  'permissions.openSettings': { params: {}, returns: 'bool', call: () => 'return valence.permissions.openSettings();' },
   'app.ready': { params: {}, returns: 'void', call: () => 'await valence.appReady();' },
   'app.info': {
     params: {},
@@ -1089,6 +1092,11 @@ const dartStr = (s) =>
     .replace(/[\x00-\x1f\x7f]/g, (c) => `\\u{${c.charCodeAt(0).toString(16)}}`)}'`;
 
 export function genDartConfig(cfg, keyring) {
+  const kinds = cfg.permissions?.kinds ?? [];
+  const knownKinds = new Set(['camera', 'location', 'notifications', 'contacts', 'bluetooth', 'microphone', 'photos']);
+  if (!Array.isArray(kinds) || kinds.some((kind) => !knownKinds.has(kind)) || new Set(kinds).size !== kinds.length) {
+    throw new Error('permissions.kinds must be an array of unique supported permission kinds');
+  }
   const connect = cfg.http?.origins ?? [];
   if (!Array.isArray(connect)) throw new Error('http.origins must be an array of exact HTTP(S) origins');
   for (const origin of connect) {
@@ -1114,6 +1122,7 @@ export function genDartConfig(cfg, keyring) {
     `  syncBase: ${dartStr(cfg.sync?.base ?? '')},`,
     `  writableBuckets: {${writable}},`,
     `  dataSchemas: {${data}},`,
+    `  permissionKinds: {${kinds.map(dartStr).join(', ')}},`,
     `  httpOrigins: {${connect.map((o) => dartStr(new URL(o).origin)).join(', ')}},`,
     `  seedSchemas: {${Object.entries(cfg.seedSchemas ?? {}).map(([b, ns]) => `${dartStr(b)}: [${ns.join(', ')}]`).join(', ')}},`,
   ];
