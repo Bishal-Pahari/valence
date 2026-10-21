@@ -684,8 +684,11 @@ OS dialogs, and a queued request rechecks foreground state before dispatching on
 Statuses are `granted`, `denied`, `permanentlyDenied`, `restricted`, `limited`.
 Preserve the OS answer: Android checks can report `denied` after a permanent denial;
 only a request can disambiguate it. iOS provisional notifications map to `limited`.
-Approximate foreground location counts as granted; this is not a precision or
-service-enabled API. Android photos use storage through API 32 and images from 33;
+Location checks the declared OS permission group. Recommend coarse-only on Android
+12+ so approximate foreground access counts as granted; fine location for legacy
+Bluetooth is declared only through API 30. If another feature declares fine location
+on Android 12+, an approximate-only grant can report denied because the plugin
+requires the whole declared group. This is not a precision or service-enabled API. Android photos use storage through API 32 and images from 33;
 selected-image access from 34 is limited. iOS library permission includes images and videos; legacy Android storage is also broader than images. Contacts requests the platform group, including write/account permissions if the Android host declared them. Declarations should be minimal; the bridge does not narrow an OS grant. Android Bluetooth before 31 requires
 foreground location for scanning; from 31 both scan and connect must be granted.
 For combined permissions, return the most restrictive status (restricted,

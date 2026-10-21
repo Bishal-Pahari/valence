@@ -58,7 +58,7 @@ in `android/app/src/main/AndroidManifest.xml`, outside `<application>`.
 | Kind | Android declaration | iOS usage key / CocoaPods macro |
 |---|---|---|
 | `camera` | `android.permission.CAMERA`; optional camera `<uses-feature>` | `NSCameraUsageDescription` / `PERMISSION_CAMERA=1` |
-| `location` | `ACCESS_COARSE_LOCATION`, `ACCESS_FINE_LOCATION` | `NSLocationWhenInUseUsageDescription` / `PERMISSION_LOCATION_WHENINUSE=1` |
+| `location` | `ACCESS_COARSE_LOCATION` (coarse-only recommended) | `NSLocationWhenInUseUsageDescription` / `PERMISSION_LOCATION_WHENINUSE=1` |
 | `notifications` | `POST_NOTIFICATIONS` | No usage key / `PERMISSION_NOTIFICATIONS=1` |
 | `contacts` | `READ_CONTACTS` | `NSContactsUsageDescription` / `PERMISSION_CONTACTS=1` |
 | `bluetooth` | See the versioned declarations below | `NSBluetoothAlwaysUsageDescription` / `PERMISSION_BLUETOOTH=1` |
@@ -67,7 +67,7 @@ in `android/app/src/main/AndroidManifest.xml`, outside `<application>`.
 
 Android names in the table use the `android.permission.` prefix. Bluetooth means
 scan and connect, not advertising. Through API 30 scanning also needs foreground
-location, so include its two location declarations even if `location` is not exposed
+location, so also declare `ACCESS_FINE_LOCATION` with `android:maxSdkVersion="30"` and coarse location even if `location` is not exposed
 to the page. From API 31 the runtime asks for scan and connect together. If scanning
 is used to derive physical location, remove `neverForLocation` and implement the
 additional location flow for that feature; this API does not supply it.
@@ -77,7 +77,8 @@ additional location flow for that feature; this API does not supply it.
 <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
 <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
 <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
-<!-- For legacy scanning, also declare coarse/fine location as in the table. -->
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30"/>
+<!-- Also declare ACCESS_COARSE_LOCATION for legacy scanning. -->
 
 <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
 <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
@@ -109,7 +110,7 @@ For flavors, configure the plugin's per-flavor plist selection so development
 permissions do not leak into the production binary.
 
 Setup sources, checked 2026-10-22:
-[permission_handler 13.0.2](https://pub.dev/packages/permission_handler),
+[permission_handler 12.0.3](https://pub.dev/packages/permission_handler/versions/12.0.3),
 [status definitions](https://pub.dev/documentation/permission_handler/latest/permission_handler/PermissionStatus.html),
 [device_info_plus 13.3.0](https://pub.dev/packages/device_info_plus).
 The latter reads Android's SDK number to select legacy photos and Bluetooth groups;
@@ -130,8 +131,11 @@ Android's status check cannot distinguish a permanent denial from an initial den
 or an “Ask every time” reset. `check` therefore may return `denied` even after
 `request` returned `permanentlyDenied`; asking again resolves immediately when the
 OS will not show a dialog. Do not persist a guessed permanent-denial flag. iOS
-provisional notifications map to `limited`. Approximate foreground location counts
-as granted; permission is separate from location precision or whether GPS/Bluetooth
+provisional notifications map to `limited`. With the recommended coarse-only declaration on Android 12+, approximate foreground
+location counts as granted. The plugin checks the whole declared location group:
+if another feature declares fine location on Android 12+, an approximate-only grant
+can report denied because fine access was not granted. Use a separate native
+precision-aware flow for that case. Permission is separate from whether GPS/Bluetooth
 is switched on. Where two native permissions are needed, the most restrictive result
 wins: restricted, permanentlyDenied, denied, limited, then granted.
 
@@ -157,3 +161,5 @@ deny and grant a permission, open settings, change it there and return to see a 
 delta. iOS code paths and setup remain experimental and untested.
 
 Android contacts use the platform contacts permission group. Declare only `READ_CONTACTS` for read access; if another native feature declares `WRITE_CONTACTS`, the OS group request may include it and `GET_ACCOUNTS` too if declared. The allowlist gates permission kinds, not individual Android manifest permissions.
+
+Compatibility note (2026-10-22): the host stays on permission_handler 12.x. Its 13.x line brings an SDK-37 Android plugin whose target could not be resolved by the tested Flutter/AGP toolchain. Android check results normalize inferred permanent denial to denied; request preserves the OS answer. Resolved Apple 9.6.x supplies the SPM setup described above.

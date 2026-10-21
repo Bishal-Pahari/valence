@@ -80,7 +80,10 @@ final class _NativePermissions implements ValencePermissionBackend {
   @override
   Future<String> check(String kind) async {
     final permissions = await _permissions(kind);
-    return _combined(await Future.wait(permissions.map((p) => p.status)));
+    final status = _combined(await Future.wait(permissions.map((p) => p.status)));
+    // Android cannot distinguish never-requested / Ask every time / permanent denial on a check.
+    // Older plugin versions infer permanence from request history; do not expose that guess.
+    return _platform == 'android' && status == 'permanentlyDenied' ? 'denied' : status;
   }
 
   @override

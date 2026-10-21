@@ -198,6 +198,13 @@ void main() {
       expect(calls.single.arguments, native.Permission.locationWhenInUse.value);
     });
 
+    test('Android checks never infer permanent denial from historical request state', () async {
+      final adapter = ValencePermissionBackend.native(platform: 'android', androidSdk: () async => 36);
+      statuses[native.Permission.camera.value] = 4;
+      expect(await adapter.check('camera'), 'denied');
+      expect(await adapter.request('camera', isForeground: () => true), 'permanentlyDenied');
+    });
+
     test('backgrounding during SDK preparation cannot dispatch a permission dialog', () async {
       final sdk = Completer<int>();
       var foreground = true;
