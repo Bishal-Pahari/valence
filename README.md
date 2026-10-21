@@ -10,6 +10,7 @@ Every UI change to a native app normally waits on App Store and Play review, and
 - **Over-the-air UI updates**: the web build is shipped as a signed bundle. Phones verify it, try it, and roll back automatically if it fails to start.
 - **Offline first**: data lives in native SQLite, starts from a seed bundled in the app, and updates incrementally ("give me everything after update #1234"). Corrections to bundled data are just newer rows.
 - **A typed bridge**: one schema generates the Dart host interface and the TypeScript client, so web and native can't drift apart.
+- **Bring your own login**: your web app authenticates against your own API and hands the host the token. The host keeps it in the Android Keystore — not in the database — and sends `Authorization: Bearer` on every sync of the user's data, including the background runs the page is not awake for. The page can replace or clear the token, and never read it back.
 - **Two packages, not generated code**: the Flutter host is [`valence`](https://pub.dev/packages/valence) on pub.dev and the web client is [`@getvalence/bridge`](https://www.npmjs.com/package/@getvalence/bridge) on npm. Your `main.dart` is about twenty lines; a fix to the runtime arrives with an ordinary update instead of being hand-applied to every app.
 
 ## How it works
@@ -43,7 +44,8 @@ Every UI change to a native app normally waits on App Store and Play review, and
 
 - it is reachable only from pages the app's own server delivered (a per-launch nonce);
 - every message is decoded strictly against the schema;
-- the page runs under a CSP that comes from the signed manifest.
+- the page runs under a CSP that comes from the signed manifest;
+- the `valence.` key prefix is the host's, in prefs and in secure storage alike, which is what makes the stored token unreadable by the page.
 
 ## Is it allowed by the stores?
 

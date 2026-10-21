@@ -165,6 +165,31 @@ method table, so `call('data.get', { bucket, key })` is type-checked against *yo
 package directly loses that. Your `shim.ts` can now be typed as the generated `AppShim`, which makes a
 fallback with the wrong signature a compile error.
 
+## Optional: take the 0.4 auth methods
+
+Nothing in the migration requires this, but if your app has a login, 0.4 is the release that gives it
+somewhere to keep a token. Add five methods and one event to `valence/bridge.schema.json`, bump
+`version` to `2`, and run `codegen` again:
+
+```json
+"secure.get":     { "since": 2, "params": { "key": "string" }, "returns": "string?" },
+"secure.set":     { "since": 2, "params": { "key": "string", "value": "string" }, "returns": "void" },
+"secure.delete":  { "since": 2, "params": { "key": "string" }, "returns": "void" },
+"auth.setToken":  { "since": 2, "params": { "token": "string?" }, "returns": "void" },
+"auth.hasToken":  { "since": 2, "params": {}, "returns": "bool" }
+```
+
+```json
+"auth.expired":   { "since": 2, "payload": {} }
+```
+
+They are built-ins, so there is no handler to write — `ValenceBuiltins` delegates them to the package.
+What they do and what they deliberately do not do is on the [Login and secrets](https://getvalence.pages.dev/docs/guides/auth/) page.
+
+**The bump has one consequence:** `requires.bridge` follows the schema version, so your next OTA release
+declares `2` and the hosts already in the field stop taking it until your store build lands. If you need
+one more release to reach them, pin it with `valence bundle --requires-bridge 1`.
+
 ## Keeping your database
 
 The package opens `<appSupport>/valence.db` by default. If your 0.3 host chose a different file name,

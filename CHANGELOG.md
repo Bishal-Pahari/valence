@@ -4,10 +4,60 @@ Newest first. One version for `create-valence`, `@getvalence/bridge` and the `va
 
 ## Unreleased
 
-Everything below is unpublished. The headline is the packaging change; under it
-are the test-week fixes, logged by four independent teams who built Android apps
-from the public docs and wrote down what broke. The version for this batch is the
-maintainer's call.
+Everything below is unpublished. Two headlines: an app can finally log a user
+in, and the runtime is two published packages instead of generated code. Under
+them are the test-week fixes, logged by four independent teams who built Android
+apps from the public docs and wrote down what broke. The version for this batch
+is the maintainer's call.
+
+### Logging a user in, at last
+
+Until now an app with private synced data had no auth story at all: four test
+apps needed one, none got past it cleanly, and the workarounds all came down to
+a token in the `prefs` table — plain text, inside a database meant to be backed
+up — that the background sync could not reach anyway.
+
+0.4 adds the smallest thing that actually works, **bring your own token**. You
+keep your own login: the web app authenticates against your API however it
+already does, then hands the host the token.
+
+```ts
+await call('auth.setToken', { token });
+```
+
+From then on the host attaches `Authorization: Bearer` to every pull and push of
+a **writable** bucket, including the runs it makes by itself on resume, on
+reconnect and in the background — which is the whole point, because those happen
+while your JavaScript is not running. Public read-only buckets stay
+unauthenticated, so a CDN can still serve them.
+
+- **The token is stored in the Android Keystore** (an AES-GCM record with a
+  hardware-wrapped key, `minSdk 23`) or the **iOS Keychain** (experimental and
+  untested, like every iOS path here), never in SQLite.
+- **The page can never read it back.** It lives under the reserved `valence.`
+  prefix, which `secure.get` refuses, so `auth.setToken` and `auth.hasToken`
+  are the whole surface. There is deliberately no `auth.getToken`.
+- **A 401 is reported as a 401:** the new `auth.expired` event fires once per
+  sync run and `SyncResult.reason` is `"unauthorized"` — not `"ok"`, which a
+  freshness indicator reads as "up to date", and not `"offline"`, which would
+  have the page wait for connectivity it has. The token is kept, because a
+  refresh flow usually has to present the expired one, and queued writes stay
+  queued.
+- **`secure.get` / `secure.set` / `secure.delete`** are open to your app for
+  other short secrets. `secure.set` takes a non-null value on purpose:
+  `secure.delete` is the only delete, so clearing a credential says so at the
+  call site.
+- **`ValenceConfig.authToken` still wins when you set it**, so a host with its
+  own refresh loop in Dart is unaffected.
+
+**To take it, add five methods and `auth.expired` at `since: 2` and bump your
+schema `version` to 2** — they are built-ins, so there is no handler to write.
+That moves `requires.bridge` to 2, so the next OTA release needs the matching
+store build; `valence bundle --requires-bridge 1` buys one more release for the
+hosts already out there. The [Login and secrets](https://getvalence.pages.dev/docs/guides/auth/)
+page has the details, including what Valence deliberately does not do: it is not
+an identity provider, there is no per-request scoping, and logging out does not
+wipe the rows already on the device.
 
 ### The runtime is two packages now
 

@@ -13,6 +13,11 @@ Implements contracts.md:
 - **§3** — the loopback server: a per-install port in 10000..29999, a per-launch nonce in the entry page,
   the three serving branches in their contractual order with the reserved `/_host/` prefix matched first,
   path normalisation, and lazy content-addressed integrity re-checking.
+- **§4.4** — secure storage and the bearer token: `secure.get/set/delete` over the Android Keystore and
+  the iOS Keychain, `auth.setToken` / `auth.hasToken` keeping the token at the reserved
+  `valence.auth.token` where the page cannot read it back, `Authorization: Bearer` on every writable
+  bucket's pull and push, and `auth.expired` plus `ValenceSyncReason.unauthorized` on a 401. Needs
+  `minSdk 23` on Android.
 - **§4.2** — the strict decoders, the closed error-code set, the 256 KB UTF-8 message cap in both
   directions, and event scripts built only through `jsonEncode`.
 - **§5** — the SQLite store with the pragmas through `rawQuery`, a never-closed connection shared across
@@ -24,7 +29,8 @@ Implements contracts.md:
 
 Also here, and not in the generated hosts it replaces:
 
-- `ValenceConfig.authToken`, so a user-scoped bucket can carry a bearer token.
+- `ValenceConfig.authToken`, so an app with its own refresh loop in Dart can own the token instead;
+  when it is unset, the host uses whatever the page stored through `auth.setToken`.
 - `ValenceConfig.syncMode: staticChunks`, the CDN-only pull from §5.3's static variant.
 - `ValenceConfig.databaseName`, so a 0.3 app whose generated host chose its own file name keeps its data.
 - `Valence.publishHostFile`, the only path from native bytes to the page.

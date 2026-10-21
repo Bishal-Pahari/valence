@@ -51,8 +51,9 @@ class AppHandlers extends ValenceBuiltins implements BridgeHandlers {
 }
 ```
 
-`ValenceBuiltins` already implements `app.*`, `data.*`, `prefs.*`, `sync.*`, `open.external` and
-`bundle.*` by delegating to the runtime, so only what is app-specific is left abstract.
+`ValenceBuiltins` already implements `app.*`, `data.*`, `prefs.*`, `sync.*`, `secure.*`, `auth.*`,
+`open.external` and `bundle.*` by delegating to the runtime, so only what is app-specific is left
+abstract.
 
 ## What you still do yourself
 
@@ -61,6 +62,7 @@ The package cannot write native project files, so these are yours:
 | | |
 |---|---|
 | **Assets** | Declare `assets/valence/builtin/`, `assets/valence/builtin/files/` and `assets/valence/seed.db` in `pubspec.yaml`. Flutter asset directories are **not** recursive, so the two `builtin` lines are both needed. |
+| **Android `minSdk`** | 23 or later. `flutter_secure_storage`, which holds the bearer token and `secure.*` (contracts §4.4), needs the Keystore APIs added there. |
 | **Android cleartext** | `res/xml/network_security_config.xml` permitting cleartext for `127.0.0.1` **only**, referenced from `AndroidManifest.xml`. |
 | **Android backups** | `dataExtractionRules` and `fullBackupContent` excluding `valence/`. A restore should start clean from the built-in bundle. |
 | **iOS ATS** | The App Transport Security loopback exception. Never `NSAllowsArbitraryLoads`. |
