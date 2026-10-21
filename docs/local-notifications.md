@@ -45,7 +45,7 @@ so a phone timezone change does not move them. For â€œ6 AM local time every dayâ
 window using the user's IANA timezone and rebuild it after timezone/settings changes. Cancel obsolete
 pending IDs by difference; retain IDs that are still desired. `notify.cancel({id})` also dismisses a
 displayed notification, so cancel-all is unsuitable for simply refilling a window. Reboot receivers
-restore accepted Android requests; force-stop requires opening the app again. Revoking exact access
+restore accepted Android requests when the OS delivers the boot broadcast. Android can defer that delivery; [background restrictions](https://developer.android.google.cn/about/versions/13/behavior-changes-13?hl=en) can require another app start. Force-stop requires opening the app again. Revoking exact access
 can remove already scheduled alarms, so refill after permission changes.
 
 `notify.pending()` reads the native queue and returns `{id,title,body,payload}[]`. IDs are
