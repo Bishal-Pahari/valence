@@ -77,3 +77,7 @@ The generated `bridge.g.ts` and this package move together: `BRIDGE_VERSION` in 
 schema's version, independent of this package's version.
 
 MIT. Spec: `contracts.md` §4.
+
+## Offline status (schema 3)
+
+Import through your generated `bridge.g.ts`. After `connect()`, guard `has("data.getMany")` and `has("sync.status")` for older hosts. `call("data.getMany", {bucket, keys})` returns distinct live rows in first-requested order, omitting missing/deleted keys (max 500 inputs). `call("sync.status")` returns outbox operation count (including deletes), nullable last-success timestamp, and the last attempt's offline flag. It makes no network request. `SyncResult.pending` is nullable for older hosts.

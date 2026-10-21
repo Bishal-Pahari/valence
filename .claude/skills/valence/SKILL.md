@@ -265,7 +265,13 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
   - at least two §6 items.
 - **Tests.** Run the host and web tests and report the counts. An app's suite covers its *wiring* — its own bridge methods, the built-in delegations reaching the runtime, the §4.2 denials through the generated path. The contracts §8 matrix is the `valence` package's own suite and is **not** expected here; an app that re-tests the state machine against code it does not contain gets a **WARN** for maintaining dead tests.
 
-## Stack baseline (verified 2026-10-15 from pub.dev, npm and Flutter release JSON; `flutter_secure_storage` added 2026-10-21)
+### R12 mechanical checks
+
+Run `node valence/valence.mjs doctor --tests` before the manual audit. Report every WARN separately: missing stack/baseline, current seed pairs, dependency resolution, native-value declarations, and unexecuted section 8 mappings. `.valence/test-matrix.json` maps `bridge`, `loopback`, `updater`, `store-sync`, `integration` to host-relative test files. The package owns its invariants; map app wiring and device evidence rather than duplicating the runtime suite.
+
+For batch reads, use `data.getMany` (since 3, max 500 keys). Read outbox depth from `sync.status`, including deletes; its offline flag is the last attempt, not connectivity. `SyncResult.pending` can be absent on older hosts. Set `ota.channel` before codegen; bundles are channel-neutral. OTA bridge defaults to the recorded store baseline; guard newer calls. Declare older seed schemas under `seedSchemas` and use versioned filenames. Test doubles can opt into `BridgeHandlersDefaults`; production hosts extend `ValenceBuiltins`.
+
+## Stack baseline (U-7 checked 2026-10-21; otherwise verified 2026-10-15 from pub.dev, npm and Flutter release JSON; `flutter_secure_storage` added 2026-10-21)
 
 | Item | Version | Note |
 |---|---|---|
@@ -279,6 +285,7 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
 | workmanager | 0.10.10 (2026-09-07) | Background sync; best effort on iOS. **The app's dependency, not the package's** — `valence` gives you `Valence.backgroundSync(config)` and deliberately does not depend on `workmanager`. **Applies the Kotlin Gradle Plugin, and every Android build warns that future Flutter versions will refuse to build plugins that do** (observed 2026-10-17). Still current; re-check by 2026-12. If it becomes unbuildable, drive `WorkManager` and `BGTaskScheduler` through a platform channel — §5.6 specifies the triggers, not the package |
 | home_widget | 0.10.0 (2026-09-17) | Optional native value (§6) |
 | the other §6 packages | **not pinned here** | `share_plus`, `flutter_local_notifications` and `local_auth` are named in contracts §6 with the native setup each needs, but no version in this table has been verified against a primary source. Resolve them with the docs-scout before relying on an API. Observed 2026-10-17: `connectivity_plus 7.3.2` and `flutter_local_notifications 19.x` **cannot resolve together** (`dbus ^0.8.0` vs `^0.7.8`, both through Linux-only transitive deps); pin `connectivity_plus: ^7.3.1` in a host that has both. Resolve the §6 packages as a set, not one at a time |
+| path_provider_android | >=2.2.17 <2.3.0 (temporary compatibility range, checked 2026-10-21) | Ordinary dependency inside `valence`, propagates to adopters. App-b device-tested this pin. Latest 2.3.1 (2026-04-08) switched to JNI in 2.3.0; 2.2.23 is the last pre-JNI release. Flutter 3.44.2 does support native assets; the missing-library cause remains unverified. Re-check before removing the pin. Sources: https://pub.dev/api/packages/path_provider_android and https://raw.githubusercontent.com/flutter/packages/main/packages/path_provider/path_provider_android/CHANGELOG.md; scout checked Flutter revision c9a6c48423. |
 | path_provider / url_launcher / connectivity_plus / http | 2.1.6 / 6.3.3 / 7.3.2 / 1.6.0 | |
 | @sveltejs/kit / adapter-static | 3.1.0 / 4.0.0 | Kit 3 needs Node 22+ and TypeScript 6+, and always emits `modulepreload` (one reason we don't use `file://`) |
 | Apple App Store Review Guidelines | last updated 2026-06-08 | Guidelines 2.5.2, 4.2, 4.3(b), 4.7.x |
