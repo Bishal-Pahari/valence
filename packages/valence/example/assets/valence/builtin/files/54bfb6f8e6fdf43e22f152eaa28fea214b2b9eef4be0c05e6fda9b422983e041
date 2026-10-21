@@ -36,6 +36,19 @@
       <pre id="error"></pre>
     </section>
 
+    <section>
+      <h2>Login and secrets</h2>
+      <p>
+        The token goes to the host, not into the page's storage: the host attaches it to every sync of
+        <code>shelf</code>, including the ones it runs while this page is not on screen.
+      </p>
+      <input id="token" placeholder="paste any string as a token" size="24" />
+      <button id="set-token">auth.setToken</button>
+      <button id="clear-token">clear</button>
+      <button id="probe">secure.* round trip</button>
+      <pre id="auth">reading auth.hasToken…</pre>
+    </section>
+
     <!--
       A real app imports @getvalence/bridge through the generated web/lib/bridge.g.ts. This example talks
       to the wire protocol directly, so it needs no bundler and `valence bundle` can sign the folder as is
@@ -54,6 +67,9 @@
         },
         e(name, payload) {
           if (name === 'sync.changed') void refresh();
+          // The host fires this when a sync request carrying the token came back 401 (§4.4). A real app
+          // refreshes the token here, or shows a login screen.
+          if (name === 'auth.expired') document.getElementById('auth').textContent = 'auth.expired: the server rejected the token';
         },
       };
 
@@ -107,11 +123,60 @@
         }
       });
 
+      async function showAuth(extra = '') {
+        const has = await call('auth.hasToken');
+        document.getElementById('auth').textContent = `auth.hasToken: ${has}${extra ? '\n' + extra : ''}`;
+      }
+
+      document.getElementById('set-token').addEventListener('click', async () => {
+        show(null);
+        try {
+          await call('auth.setToken', { token: document.getElementById('token').value || 'demo-token' });
+          await showAuth('stored in the Keystore; every shelf sync now sends Authorization: Bearer');
+
+        } catch (e) {
+          show(e);
+        }
+      });
+
+      document.getElementById('clear-token').addEventListener('click', async () => {
+        show(null);
+        try {
+          await call('auth.setToken', { token: null });
+          await showAuth('cleared');
+        } catch (e) {
+          show(e);
+        }
+      });
+
+      // Proves the two halves of §4.4 on a real device: an ordinary key round-trips through the
+      // Keystore, and the host's own key is refused — which is why the page can never read the token back.
+      document.getElementById('probe').addEventListener('click', async () => {
+        show(null);
+        const lines = [];
+        try {
+          await call('secure.set', { key: 'demo', value: `written at ${new Date().toISOString()}` });
+          lines.push(`secure.get("demo") → ${await call('secure.get', { key: 'demo' })}`);
+          await call('secure.delete', { key: 'demo' });
+          lines.push(`after delete → ${await call('secure.get', { key: 'demo' })}`);
+        } catch (e) {
+          lines.push(`unexpected: ${e}`);
+        }
+        try {
+          await call('secure.get', { key: 'valence.auth.token' });
+          lines.push('secure.get("valence.auth.token") → NOT REFUSED, which is a bug');
+        } catch (e) {
+          lines.push(`secure.get("valence.auth.token") → ${e}`);
+        }
+        await showAuth(lines.join('\n'));
+      });
+
       (async () => {
         try {
           const info = await call('app.info');
           document.getElementById('info').textContent = JSON.stringify(info, null, 2);
           await refresh();
+          await showAuth();
         } catch (e) {
           show(e);
         }
