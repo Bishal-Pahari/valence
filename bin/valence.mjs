@@ -37,7 +37,7 @@ const NPX = `npx ${NPM}@latest`;
 const SKILL_SRC = join(PKG, '.claude', 'skills', 'valence');
 const AGENTS_SRC = join(PKG, '.claude', 'agents');
 const AGENT_PREFIX = 'valence-';
-const CLI = new Set(['keygen', 'codegen', 'bundle', 'verify', 'pointer', 'seed', 'version']);
+const CLI = new Set(['dev', 'keygen', 'codegen', 'bundle', 'verify', 'pointer', 'seed', 'version']);
 // The two published runtimes the generated code imports. Their version is deliberately independent of
 // this CLI's: a fix to a runtime ships with "flutter pub upgrade" or "npm update", with no new wizard.
 // A test keeps it equal to both packages/*/ versions in this repo.

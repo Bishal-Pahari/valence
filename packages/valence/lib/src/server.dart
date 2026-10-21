@@ -3,8 +3,10 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 
 import 'config.dart';
+import 'dev.dart';
 import 'log.dart';
 import 'manifest.dart';
 import 'state.dart';
@@ -96,7 +98,7 @@ List<String>? normaliseRequestPath(String path) {
 /// It owns the per-install port, the per-launch nonce, the three serving branches in their contractual
 /// order, and the lazy integrity re-check of content-addressed files.
 final class ValenceServer {
-  ValenceServer._(this._server, this.port, this.nonce, this._casDir, this._hostDir, this._log);
+  ValenceServer._(this._server, this.port, this.nonce, this._casDir, this._hostDir, this._log, this._dev);
 
   /// Binds the server, preferring the port already in [state].
   ///
@@ -112,6 +114,7 @@ final class ValenceServer {
     ValenceLogger log = defaultValenceLogger,
     String? keepNonce,
   }) async {
+    final dev = kDebugMode && _devUrl != '' ? ValenceDevProxy(_devUrl) : null;
     final rng = Random.secure();
     final preferred = state.port ?? (fnv1a32('${config.appId}:${state.installId}') % 20000 + 10000);
     HttpServer? server;
@@ -127,6 +130,7 @@ final class ValenceServer {
       }
     }
     if (server == null) {
+      if (kDebugMode) dev?.close();
       throw StateError('valence: could not bind a loopback port in 10000..29999 after 12 attempts');
     }
     // The nonce rotates only together with a port change, and every port change reloads the page. A
@@ -135,10 +139,14 @@ final class ValenceServer {
         ? base64Url.encode(List<int>.generate(16, (_) => rng.nextInt(256)))
         : keepNonce;
     state.port = port;
-    final s = ValenceServer._(server, port, nonce, casDir, hostDir, log);
+    final s = ValenceServer._(server, port, nonce, casDir, hostDir, log, dev);
     server.listen(s._handle, onError: (Object e) => log('server: $e'));
     return s;
   }
+
+  // The URL and constructor disappear in profile/release AOT builds.
+  static const _devUrl = kDebugMode ? String.fromEnvironment('VALENCE_DEV_URL') : '';
+  final ValenceDevProxy? _dev;
 
   final HttpServer _server;
 
@@ -183,7 +191,10 @@ final class ValenceServer {
   /// Applying an update and reverting a failed trial both swap the manifest, and a swap restarts the
   /// server — so **close before binding again**, or the host collides with its own listening socket, moves
   /// to a new port and rotates the nonce in the middle of a fallback (§3).
-  Future<void> close() => _server.close(force: true);
+  Future<void> close() async {
+    if (kDebugMode) _dev?.close();
+    await _server.close(force: true);
+  }
 
   /// Writes [bytes] under `/_host/` and returns the **relative** URL to hand the page.
   ///
@@ -235,6 +246,11 @@ final class ValenceServer {
       // back as HTTP 200 with the entry page's HTML — a blank <img> and nothing in either log (§3).
       if (segments.isNotEmpty && segments.first == '_host') {
         await _serveHostFile(req, segments);
+        return;
+      }
+
+      if (kDebugMode && _devUrl != '') {
+        await _dev!.handle(req, nonce);
         return;
       }
 

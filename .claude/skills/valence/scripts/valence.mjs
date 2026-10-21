@@ -21,7 +21,7 @@ import {
 import { homedir } from 'node:os';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 
 export const VALENCE_VERSION = '0.3.0'; // keep equal to package.json "version" (tested)
@@ -1199,6 +1199,46 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter }) {
   return rows;
 }
 
+// A dev package script is trusted local code, like `npm run build`.
+export function devPlan({ root, cfg, webDir = 'web', port = '5173', deviceHost = '10.0.2.2' }) {
+  if (!/^\d+$/.test(port) || Number(port) < 1024 || Number(port) > 65535) throw new Error('--port must be 1024..65535');
+  if (!/^(?:localhost|(?:[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?))$/.test(deviceHost)) throw new Error('--device-host must be a hostname or IPv4 address');
+  const cwd = resolve(root, webDir);
+  if (!readJson(join(cwd, 'package.json')).scripts?.dev) throw new Error('--web-dir must contain a package.json with a dev script');
+  return {
+    cwd,
+    args: ['run', 'dev', '--', '--host', '0.0.0.0', '--port', port, '--strictPort'],
+    command: `cd "${resolve(root, cfg.host.dir)}"\nflutter run --debug --dart-define=VALENCE_DEV_URL=http://${deviceHost}:${port}`,
+  };
+}
+
+async function dev(options) {
+  const plan = devPlan(options);
+  console.log(`Development server grants its code the full native bridge. Use test accounts only.\n${plan.command}`);
+  // Windows requires cmd for npm.cmd; every argument here is fixed or validated numeric.
+  const child = process.platform === 'win32'
+    ? spawn('cmd.exe', ['/d', '/s', '/c', `npm ${plan.args.join(' ')}`], { cwd: plan.cwd, stdio: 'inherit' })
+    : spawn('npm', plan.args, { cwd: plan.cwd, stdio: 'inherit', detached: true });
+  const stop = () => {
+    if (process.platform === 'win32' && child.pid) spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' });
+    else if (child.pid) {
+      try { process.kill(-child.pid, 'SIGTERM'); }
+      catch (error) { if (error.code !== 'ESRCH') throw error; }
+    }
+  };
+  process.once('SIGINT', stop);
+  process.once('SIGTERM', stop);
+  try {
+    await new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('exit', (code, signal) => code === 0 || signal ? resolve() : reject(new Error(`dev server exited ${code}`)));
+    });
+  } finally {
+    process.removeListener('SIGINT', stop);
+    process.removeListener('SIGTERM', stop);
+  }
+}
+
 const HELP = `Valence CLI ${VALENCE_VERSION} (spec: references/contracts.md)
 
   valence version                        print the CLI version (doctor compares it with the skill copy)
@@ -1213,6 +1253,8 @@ const HELP = `Valence CLI ${VALENCE_VERSION} (spec: references/contracts.md)
                                     --files is the content-addressed files/ directory inside the bundle, not the bundle directory
   valence seed --from dir                <bucket>.json files {schema, rows:[{k,v,u,d}]} -> host assets/valence/seed.db
   valence doctor [--tests]               mechanical diagnostics; execute mapped unit tests with --tests
+  valence dev [--web-dir web] [--port 5173] [--device-host 10.0.2.2]
+                                    run the dev script and print the debug-only Flutter command
 
 Options: --root <project root> (default .)`;
 
@@ -1222,6 +1264,9 @@ export async function main(argv) {
     allowPositionals: true,
     options: {
       root: { type: 'string', default: '.' },
+      'web-dir': { type: 'string', default: 'web' },
+      port: { type: 'string', default: '5173' },
+      'device-host': { type: 'string', default: '10.0.2.2' },
       check: { type: 'boolean', default: false },
       tests: { type: 'boolean', default: false },
       builtin: { type: 'boolean', default: false },
@@ -1249,6 +1294,8 @@ export async function main(argv) {
   const cfg = loadConfig(root);
   const p = paths(root, cfg);
   const log = (o) => console.log(JSON.stringify(o, null, 2));
+
+  if (cmd === 'dev') return dev({ root, cfg, webDir: v['web-dir'], port: v.port, deviceHost: v['device-host'] });
 
   if (cmd === 'keygen') return log(keygen({ root, cfg }));
   if (cmd === 'codegen') return log(codegen({ root, cfg, check: v.check }));

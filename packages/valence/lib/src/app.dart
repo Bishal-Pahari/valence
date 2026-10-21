@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/services.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -49,6 +50,8 @@ class ValenceApp extends StatefulWidget {
 }
 
 class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver implements ValenceHostView {
+  static const _devMode = kDebugMode && String.fromEnvironment('VALENCE_DEV_URL') != '';
+
   WebViewController? _controller;
   Object? _error;
   String _origin = '';
@@ -98,7 +101,9 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   Future<void> _start() async {
     try {
       // §2.4: the UI-start transitions, here and nowhere else.
-      final manifest = await _valence.updater.activateForUiStart();
+      final manifest = _devMode
+          ? await _valence.updater.developmentManifest()
+          : await _valence.updater.activateForUiStart();
       final server = await ValenceServer.bind(
         config: _valence.config,
         state: _valence.state,
@@ -225,7 +230,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     final state = _valence.state;
     // Armed only while serving a trial. A `current` page is not on probation, so a slow start costs it
     // nothing — and a ready timeout on a `current` page must count no failure at all.
-    if (state.trial != null && state.serving == state.trial) {
+    if (!_devMode && state.trial != null && state.serving == state.trial) {
       _readyClock
         ..reset()
         ..start();
@@ -274,6 +279,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
 
   @override
   Future<void> handleReady() async {
+    if (_devMode) return;
     final state = _valence.state;
     final trial = state.trial;
     // It commits only if app.ready comes from the page that is serving the trial. A ready() from a
@@ -304,6 +310,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
 
   @override
   Future<void> reloadPage() async {
+    if (_devMode) return;
     // Step 4 only. `applyUpdate` has already promoted the trial and set `serving`, so re-running the
     // UI-start transitions would make step 2's crash check true by construction and spend a strike on the
     // bundle this reload is about to show (§2.4).
@@ -417,6 +424,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   }
 
   Future<void> _checkForUpdate() async {
+    if (_devMode) return;
     try {
       await _valence.updater.checkForUpdate();
     } on Object catch (e) {

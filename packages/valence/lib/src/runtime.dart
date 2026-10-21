@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -432,6 +433,7 @@ final class Valence {
 
   /// `bundle.applyUpdate`. A full trial promotion, then a reload (§2.4).
   Future<void> applyUpdate() async {
+    if (kDebugMode && const String.fromEnvironment('VALENCE_DEV_URL') != '') return;
     final seq = await updater.applyUpdate();
     if (seq == null) return;
     await _view?.reloadPage();

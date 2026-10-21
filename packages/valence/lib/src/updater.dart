@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:http/http.dart' as http;
 
 import 'config.dart';
@@ -471,6 +472,21 @@ final class ValenceUpdater {
   /// time, 15 s later — burning in this session the retry the spec grants to the *next* UI start.
   Future<ValenceManifest> serveCurrent() => _serve(ignoreTrial: true);
 
+  /// Debug schema context without changing activation state or consuming crash evidence.
+  Future<ValenceManifest> developmentManifest() async {
+    if (!kDebugMode) throw StateError('development is unavailable');
+    final current = state.current;
+    if (current != null) {
+      final manifest = await _loadManifest(current, enforceFloor: true);
+      if (manifest != null && manifest.seq >= state.floor && !state.bad.contains(manifest.seq)) return manifest;
+    }
+    final builtin = await _loadBuiltinManifest(install: true, enforceFloor: true);
+    if (builtin == null || builtin.seq < state.floor || state.bad.contains(builtin.seq)) {
+      throw StateError('development needs a valid installed bundle above the floor');
+    }
+    return builtin;
+  }
+
   /// §2.4 step 4.
   Future<ValenceManifest> _serve({bool ignoreTrial = false}) async {
     if (!ignoreTrial && state.trial != null) {
@@ -844,7 +860,7 @@ final class ValenceUpdater {
   /// Re-verified rather than trusted: the file has been sitting in app storage since it was downloaded,
   /// and the signature is cheap next to the cost of serving an unsigned bundle. Check 3 is skipped (there
   /// is no pointer here) and so is check 4, because the floor is tested where a bundle is promoted.
-  Future<ValenceManifest?> _loadManifest(int seq) async {
+  Future<ValenceManifest?> _loadManifest(int seq, {bool enforceFloor = false}) async {
     final file = _manifestFile(seq);
     final sig = _signatureFile(seq);
     if (!file.existsSync() || !sig.existsSync()) return null;
@@ -853,7 +869,7 @@ final class ValenceUpdater {
         bytes: file.readAsBytesSync(),
         signature: sig.readAsStringSync(),
         config: config,
-        state: ValenceState(installId: state.installId, floor: 0),
+        state: ValenceState(installId: state.installId, floor: enforceFloor ? state.floor : 0),
         pointerSeq: null,
       );
     } on ValenceCheckFailure catch (f) {
@@ -868,8 +884,8 @@ final class ValenceUpdater {
   ///
   /// With [install] set, any of its files missing from CAS are written there first, through check 7 — the
   /// same path an OTA bundle takes, minus check 3, because a built-in bundle has no pointer.
-  Future<ValenceManifest?> _loadBuiltinManifest({bool install = false}) async {
-    if (_builtinCache != null && !install) return _builtinCache;
+  Future<ValenceManifest?> _loadBuiltinManifest({bool install = false, bool enforceFloor = false}) async {
+    if (_builtinCache != null && !install && !enforceFloor) return _builtinCache;
     final Uint8List bytes;
     final String signature;
     try {
@@ -886,7 +902,7 @@ final class ValenceUpdater {
         bytes: bytes,
         signature: signature,
         config: config,
-        state: ValenceState(installId: state.installId, floor: 0),
+        state: ValenceState(installId: state.installId, floor: enforceFloor ? state.floor : 0),
         pointerSeq: null,
       );
     } on ValenceCheckFailure catch (f) {
