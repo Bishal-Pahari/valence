@@ -30,6 +30,12 @@ Tooling that ships with this skill (it is tested, so copy it rather than rewriti
 
 ## Mode
 
+For live web development after init, use the CLI `node valence/valence.mjs dev --web-dir <web app dir>`
+and its printed Flutter debug command. Read contracts section 3.1 for the trust grant, supported
+server arguments and release exclusion. Use a separate development app id and test accounts.
+Return to a host without the define for signed-bundle, offline and rollback validation. Codegen
+and the generated bridge stay unchanged; native/schema changes still require a host rebuild.
+
 Arguments: `$ARGUMENTS`
 
 - `init`, or empty with no `valence/valence.config.json` in the project: set up the architecture (§Init).

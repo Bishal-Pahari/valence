@@ -19,6 +19,14 @@ the [`valence`](https://pub.dev/packages/valence) package. This app is the part 
 
 ## Run it
 
+For the R9 live-development demo, run `npm install` in `dev-web`, then from this example root
+run `node ../../../.claude/skills/valence/scripts/valence.mjs dev --web-dir dev-web`.
+In another terminal run the printed Flutter command. Tap the counter, edit `dev-web/message.js`
+and verify the label changes while the counter stays put. The HMR callback also writes a native
+preference through the generated typed bridge and logs its success. The alias in `vite.config.mjs`
+uses this repository's bridge source; an adopter uses the ordinary npm package. Stop the dev
+server and rebuild without the define for signed-bundle tests. iOS remains untested.
+
 ```sh
 flutter pub get
 flutter test              # the wiring tests
