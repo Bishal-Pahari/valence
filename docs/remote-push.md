@@ -156,3 +156,5 @@ Primary references checked 2026-10-22:
 [native setup](https://firebase.google.com/docs/cloud-messaging/flutter/get-started),
 [Messaging 16.7](https://pub.dev/packages/firebase_messaging/versions/16.7.0),
 [image payloads](https://firebase.google.com/docs/cloud-messaging/android/send-image).
+
+Host-to-page push events are capped at 256 KiB including script escaping. Successful and error replies count Unicode separator escapes before enforcing their JSON byte cap. An oversized error returns E_TOO_LARGE with a finite numeric correlation id, or null for an invalid/oversized id.

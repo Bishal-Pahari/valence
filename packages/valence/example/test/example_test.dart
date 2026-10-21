@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:valence/valence.dart';
+import 'package:valence/codegen.dart' show bridgeReplyScript;
 import 'package:valence_example/main.dart';
 import 'package:valence_example/valence/bridge.g.dart';
 import 'package:valence_example/valence/config.g.dart';
@@ -101,6 +102,17 @@ void main() {
     }
     final result = await dispatch(h, 'push.token', withNonce: 'wrong');
     expect((result['e'] as Map)['code'], 'E_DENIED');
+  });
+
+  test('a bad nonce with a separator-heavy correlation id returns a bounded error script', () async {
+    final h = await handlers();
+    final raw = jsonEncode({'id': '\u2028' * 60000, 'n': 'wrong', 'm': 'push.token', 'p': {}});
+    expect(utf8.encode(raw).length, lessThan(maxMessageBytes));
+    final reply = await bridgeDispatch(h, raw, nonce: nonce);
+    expect(utf8.encode(bridgeReplyScript(reply)).length, lessThan(maxMessageBytes));
+    final result = jsonDecode(reply) as Map;
+    expect(result['id'], isNull);
+    expect((result['e'] as Map)['code'], 'E_TOO_LARGE');
   });
 
   test('the app’s own method reaches the dispatcher', () async {

@@ -280,3 +280,5 @@ Each of these has a regression test, and the spec carries the rule.
 - **Android is tested; iOS is experimental and untested.**
 
 Firebase dependencies now require iOS 15.0 or later, even with push disabled. Upgrade Runner/extension target settings; iOS remains experimental and untested.
+
+Bridge success and error reply caps now include Unicode separator escaping; oversized errors retain only safe numeric correlation ids.

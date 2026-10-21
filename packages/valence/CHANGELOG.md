@@ -78,3 +78,5 @@ Corrections an independent review found before this first release, each with a r
 284 tests. `dart analyze --fatal-infos` clean. `flutter pub publish --dry-run` has 0 warnings.
 
 Firebase dependencies now require iOS 15.0 or later, even with push disabled. Upgrade Runner/extension target settings; iOS remains experimental and untested.
+
+Bridge success and error reply caps now include Unicode separator escaping; oversized errors retain only safe numeric correlation ids.

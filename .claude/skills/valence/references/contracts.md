@@ -859,6 +859,9 @@ Tokens identify installations, not users or authentication. Never log them.
 Incoming payloads are untrusted display/data values, never scripts, URLs to load,
 credentials, schemas, or bundle pointers. The bridge encodes them as JSON with the
 existing U+2028/U+2029 escaping and rejects oversized event envelopes (256 KiB).
+Success and error replies measure their JSON cap after separator escaping too.
+An oversized error returns a bounded `E_TOO_LARGE` envelope, retaining only a
+finite numeric correlation id (otherwise null), never echoing an oversized id.
 Images are HTTPS metadata only; the Dart bridge never fetches them. Android's FCM
 SDK displays a background notification image supplied in `android.notification.image`;
 foreground messages reach the page for an in-app presentation. iOS rich images
