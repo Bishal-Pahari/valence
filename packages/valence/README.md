@@ -124,3 +124,5 @@ Sync correctness: pull cursors advance only through returned rows, never push ec
 ### Remote push
 
 Remote push is opt-in in schema 5: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** Initialize Firebase and pass `push: ValencePush()` to `Valence.open`; register a top-level background callback using `ValencePush.handleBackground` and `Valence.backgroundSync`. [Setup](https://getvalence.pages.dev/docs/guides/remote-push/).
+
+The Firebase native dependencies ship even when push is disabled; iOS hosts must target 15.0 or later. Firebase initialization remains opt-in. iOS is experimental and untested.

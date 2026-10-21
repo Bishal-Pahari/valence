@@ -837,7 +837,9 @@ Everything here is silent when it is wrong: the call succeeds, the UI says "Set"
 `ValencePush` wraps Firebase Messaging: FCM on Android, APNs through FCM on iOS
 (experimental and untested). A host initializes Firebase and passes a push instance
 to `Valence.open(push: ...)`. Without one, all `push.*` methods return
-`E_UNSUPPORTED`; ordinary offline startup never initializes or contacts Firebase.
+`E_UNSUPPORTED`; Valence never initializes Firebase itself or calls messaging
+without an adapter. Firebase's own native auto-init is governed by the host's
+project configuration, separately from this bridge opt-in.
 
 | Method | Params | Returns |
 |---|---|---|

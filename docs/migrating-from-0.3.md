@@ -240,3 +240,7 @@ Run `/valence doctor` first. It compares the built-in manifest's `requires.bridg
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 This update prevents new cursor skips. It cannot infer rows omitted by an older host that already persisted an advanced cursor. Recover those omissions by republishing affected server records with newer USNs or providing a new read-only schema; do not delete the device database or its outbox.
+
+## Optional remote push
+
+Schema 5 adds opt-in push methods/events. Add the schema and regenerate, configure Firebase and ship a native store build before using them. Firebase dependencies require iOS 15.0 even if push is disabled. Android delivery/image/silent-sync validation is blocked pending a maintainer project; iOS/APNs remains experimental and untested. See [Remote push](remote-push.md).
