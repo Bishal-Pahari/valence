@@ -859,7 +859,8 @@ final class ValenceUpdater {
   ///
   /// Re-verified rather than trusted: the file has been sitting in app storage since it was downloaded,
   /// and the signature is cheap next to the cost of serving an unsigned bundle. Check 3 is skipped (there
-  /// is no pointer here) and so is check 4, because the floor is tested where a bundle is promoted.
+  /// is no pointer here). Check 4 is normally deferred to promotion; [enforceFloor] includes it in
+  /// canonical order for development schema selection.
   Future<ValenceManifest?> _loadManifest(int seq, {bool enforceFloor = false}) async {
     final file = _manifestFile(seq);
     final sig = _signatureFile(seq);
