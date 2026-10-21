@@ -43,6 +43,9 @@ function fixture({ data = { calendar: 1 }, latest = false } = {}) {
     const p = join(root, 'valence', 'bridge.schema.json');
     const s = JSON.parse(readFileSync(p, 'utf8'));
     s.version = 4;
+    for (const kind of ['methods', 'events']) {
+      for (const [name, def] of Object.entries(s[kind])) if (def.since > 4) delete s[kind][name];
+    }
     delete s.methods['data.getMany'];
     delete s.methods['sync.status'];
     delete s.types.SyncStatus;
@@ -437,7 +440,7 @@ test('doctor reports absent evidence as warnings, compatibility errors as failur
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'native value'));
   bundle({ root, cfg, key, builtin: true, now: NOW });
   const dart = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
-  writeFileSync(dart, readFileSync(dart, 'utf8').replace('const hostBridgeVersion = 4;', 'const hostBridgeVersion = 1;'));
+  writeFileSync(dart, readFileSync(dart, 'utf8').replace(/const hostBridgeVersion = \d+;/, 'const hostBridgeVersion = 1;'));
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'built-in compatibility'));
 });
 
@@ -1017,4 +1020,33 @@ test('legacy CSP origins do not grant native credentials or break codegen', () =
   assert.match(config, /httpOrigins: \{\}/);
   assert.ok(!config.includes('analytics.example.test'));
   assert.ok(!config.includes('maps.example.test'));
+});
+
+
+test('notification builtins are frozen and compiled opt-in validates drawable names', () => {
+  const { root, cfg } = fixture({ latest: true });
+  cfg.notifications = { enabled: true, icon: 'ic_stat_demo' };
+  const result = codegen({ root, cfg });
+  const config = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'config.g.dart'), 'utf8');
+  assert.match(config, /notificationsEnabled: true/);
+  assert.match(config, /notificationIcon: 'ic_stat_demo'/);
+  cfg.notifications.icon = '../secret';
+  assert.throws(() => codegen({ root, cfg }), /notifications accepts/);
+  cfg.notifications.icon = 'ic_stat_demo';
+  editSchema(root, (s) => { s.methods['notify.schedule'].params.at = 'string'; });
+  assert.throws(() => codegen({ root, cfg }), /params must stay/);
+});
+
+
+test('pre-schema-5 custom notification names retain app-owned shapes', () => {
+  const { root, cfg, key } = fixture();
+  editSchema(root, (s) => { s.methods['notify.schedule'] = { since: 1, params: { hour: 'int' }, returns: 'void' }; });
+  codegen({ root, cfg });
+  const source = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(source, /Future<void> notifySchedule/);
+  assert.doesNotMatch(source, /valence.notifications.schedule/);
+  // Freezing that old signature remains enforced by the additive baseline.
+  bundle({ root, cfg, key, store: true, now: NOW });
+  editSchema(root, (s) => { s.methods['notify.schedule'].params.hour = 'string'; });
+  assert.throws(() => codegen({ root, cfg }), /changed|additive|shipped/);
 });

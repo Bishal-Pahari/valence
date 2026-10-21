@@ -35,6 +35,8 @@ final class ValenceConfig {
     this.seedAsset = 'assets/valence/seed.db',
     this.authToken,
     this.httpOrigins = const {},
+    this.notificationsEnabled = false,
+    this.notificationIcon = 'ic_stat_valence',
   });
 
   /// The reverse-domain id a manifest must carry (canonical check 2).
@@ -111,6 +113,12 @@ final class ValenceConfig {
   /// Compiled from `http.origins`; empty denies every request. Never supplied by an OTA manifest.
   final Set<String> httpOrigins;
 
+  /// Store-build opt-in to local notifications. Initialization never prompts.
+  final bool notificationsEnabled;
+
+  /// Bundled Android drawable for the notification status icon.
+  final String notificationIcon;
+
   /// Copy with overrides. Handy in tests and for pointing a debug build at a local OTA host.
   ValenceConfig copyWith({
     String? otaBase,
@@ -146,5 +154,7 @@ final class ValenceConfig {
         seedAsset: seedAsset,
         authToken: authToken ?? this.authToken,
         httpOrigins: httpOrigins ?? this.httpOrigins,
+        notificationsEnabled: notificationsEnabled,
+        notificationIcon: notificationIcon,
       );
 }

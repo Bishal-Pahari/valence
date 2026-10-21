@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { test, beforeEach } from 'node:test';
 
 interface Methods {
+  'notify.schedule': { params: { id: number; title: string; at: number }; returns: { id: number; timing: string } };
   'app.ready': { params: Record<string, never>; returns: void };
   'app.info': { params: Record<string, never>; returns: { bridge: number } };
   'data.get': { params: { bucket: string; key: string }; returns: unknown };
@@ -18,11 +19,13 @@ interface Methods {
 }
 
 interface Events {
+  'notify.action': { id: number; payload?: string | null; action?: string | null };
   'sync.changed': { buckets: string[] };
   'app.resumed': Record<string, never>;
 }
 
 const SINCE = {
+  'notify.schedule': 5,
   'app.ready': 1,
   'app.info': 1,
   'data.get': 1,
@@ -255,4 +258,21 @@ test('ids increase, so concurrent calls resolve to their own replies', async () 
   reply({ id: sent[1]!.id, ok: true, v: 'second' });
   reply({ id: sent[0]!.id, ok: true, v: 'first' });
   assert.deepEqual(await Promise.all([a, b]), ['first', 'second']);
+});
+
+
+test('schema-5 notifications guard older hosts and deliver action payloads as data', async () => {
+  const { sent } = host();
+  const v = bridge();
+  const old = v.connect();
+  reply({ id: sent[0]!.id, ok: true, v: { bridge: 4 } });
+  await old;
+  assert.equal(v.has('notify.schedule'), false);
+  await assert.rejects(v.call('notify.schedule', { id: 42, title: 'Demo', at: 123 }), (e: unknown) => e instanceof BridgeError && e.code === 'E_UNSUPPORTED');
+  const actions: unknown[] = [];
+  const off = v.on('notify.action', (payload) => actions.push(payload));
+  emit('notify.action', { id: 42, action: 'done', payload: '<script>never evaluate</script>' });
+  off();
+  emit('notify.action', { id: 43 });
+  assert.deepEqual(actions, [{ id: 42, action: 'done', payload: '<script>never evaluate</script>' }]);
 });

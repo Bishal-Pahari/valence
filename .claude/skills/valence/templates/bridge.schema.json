@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -127,6 +127,70 @@
       "since": 3,
       "params": {},
       "returns": "SyncStatus"
+    },
+    "notify.permission": {
+      "since": 5,
+      "params": {
+        "request": "bool?"
+      },
+      "returns": "bool"
+    },
+    "notify.schedule": {
+      "since": 5,
+      "params": {
+        "id": "int",
+        "title": "string",
+        "body": "string?",
+        "at": "int",
+        "channel": "string?",
+        "exact": "bool?",
+        "payload": "string?",
+        "image": "string?",
+        "actions": "string[]?",
+        "group": "string?"
+      },
+      "returns": "NotifyScheduled"
+    },
+    "notify.cancel": {
+      "since": 5,
+      "params": {
+        "id": "int"
+      },
+      "returns": "void"
+    },
+    "notify.pending": {
+      "since": 5,
+      "params": {},
+      "returns": "NotifyPending[]"
+    },
+    "notify.initial": {
+      "since": 5,
+      "params": {},
+      "returns": "json?"
+    },
+    "notify.channels.set": {
+      "since": 5,
+      "params": {
+        "id": "string",
+        "name": "string",
+        "importance": "string?",
+        "sound": "string?",
+        "group": "string?",
+        "groupName": "string?"
+      },
+      "returns": "void"
+    },
+    "badge.set": {
+      "since": 5,
+      "params": {
+        "n": "int"
+      },
+      "returns": "bool"
+    },
+    "badge.clear": {
+      "since": 5,
+      "params": {},
+      "returns": "bool"
     }
   },
   "events": {
@@ -149,6 +213,22 @@
     "auth.expired": {
       "since": 2,
       "payload": {}
+    },
+    "notify.tapped": {
+      "since": 5,
+      "payload": {
+        "id": "int",
+        "payload": "string?",
+        "action": "string?"
+      }
+    },
+    "notify.action": {
+      "since": 5,
+      "payload": {
+        "id": "int",
+        "payload": "string?",
+        "action": "string?"
+      }
     }
   },
   "types": {
@@ -180,6 +260,16 @@
       "pending": "int",
       "lastSyncedAt": "int?",
       "offline": "bool"
+    },
+    "NotifyScheduled": {
+      "id": "int",
+      "timing": "string"
+    },
+    "NotifyPending": {
+      "id": "int",
+      "title": "string?",
+      "body": "string?",
+      "payload": "string?"
     }
   }
 }

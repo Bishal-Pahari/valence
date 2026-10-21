@@ -56,6 +56,10 @@ void main() {
       );
 
   group('app.info', () {
+    test('notification capability cannot be enabled by page calls', () async {
+      final v = await open();
+      expect(() => v.notifications, throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.unsupported)));
+    });
     test('it reports the platform, the host build, the bridge version and the locale', () async {
       final v = await open();
       final info = v.appInfo();

@@ -22,5 +22,9 @@
   "writable": [],
   "http": {
     "origins": []
+  },
+  "notifications": {
+    "enabled": false,
+    "icon": "ic_stat_valence"
   }
 }
