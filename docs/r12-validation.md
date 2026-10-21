@@ -49,3 +49,7 @@ network sync is claimed. Successful timestamps and multi-schema imports are cove
 
 The example is stopped and the shared lock released. No test-app repositories were modified. iOS is
 experimental and untested. No push, merge into a shared branch, release tag or publication was performed.
+
+## Sprint merge refresh ? 2026-10-21
+
+Merged the latest packages branch, preserving both the auth/secure demo and the schema-3 batch/status demo. Rebuilt and signed built-in 1792594935 with the CLI; codegen and signature/file verification pass. Refreshed gates: 52 CLI/wizard tests (zero skipped), 311 Flutter tests, 13 example tests, 18 bridge tests, strict TypeScript, Dart analysis, bridge pack dry run, debug APK and 24-page site/SEO build all pass. Pub dry run after the merge commit reports zero warnings. Independent security review found no confirmed defect in the merge resolution. No additional device run was performed during this refresh.
