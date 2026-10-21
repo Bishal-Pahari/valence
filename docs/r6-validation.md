@@ -58,6 +58,13 @@ the former and rejects the latter, with regression tests.
 
 ## Limits
 
+The optional emulator check was skipped after waiting over 20 minutes while
+`claude` held the shared lock. The waiting process was cancelled and the
+owner-checked unlock preserved Claude's lock. No device was touched. Cold/warm
+Android intent delivery, repeated taps, and `pm verify-app-links` /
+`pm set-app-links` are not claimed for this branch. They remain follow-up checks
+for the improver or the next available emulator slot.
+
 iOS custom schemes and Universal Links are experimental and untested. The example
 uses `links.example.invalid`, so genuine HTTPS ownership verification requires a
 maintainer-controlled domain and the real app-signing certificate. A forced
