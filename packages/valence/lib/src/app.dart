@@ -13,6 +13,25 @@ import 'wire.dart';
 /// Turns one message from the JS channel into a reply. The generated `bridgeDispatch`, partially applied.
 typedef ValenceDispatch = Future<String> Function(String raw, String nonce);
 
+/// Flutter's five lifecycle states as the four a page sees (§4.6).
+///
+/// Top-level and pure on purpose: [ValenceApp] needs a WebView platform to build at all, so the mapping
+/// and the dedupe it feeds are the half of this that a unit test can reach.
+ValenceLifecycle valenceLifecycleFor(AppLifecycleState state) => switch (state) {
+      AppLifecycleState.resumed => ValenceLifecycle.foreground,
+      AppLifecycleState.inactive => ValenceLifecycle.inactive,
+      // Android delivers hidden and then paused for one backgrounding. One transition, so one event.
+      AppLifecycleState.hidden || AppLifecycleState.paused => ValenceLifecycle.background,
+      AppLifecycleState.detached => ValenceLifecycle.detached,
+    };
+
+/// Whether a connectivity report means online: **any** interface that is not `none` (§4.6).
+///
+/// connectivity_plus reports a list, and a device on Wi-Fi and VPN at once has two entries — so a check
+/// written against `results.first` calls a working device offline whenever the VPN sorts first. This is
+/// interface state and never reachability.
+bool valenceOnline(List<ConnectivityResult> results) => results.any((r) => r != ConnectivityResult.none);
+
 /// The host widget: the loopback server, the WebView, the navigation lock, the back gesture, the ready
 /// timer and the lifecycle triggers (contracts §2.4, §3, §4.2, §7).
 ///
@@ -181,11 +200,8 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   }
 
   /// Records connectivity, emits `app.online` on a change, and returns whether we are online.
-  ///
-  /// Online means *any* interface that is not `none`: connectivity_plus reports a list, and a device on
-  /// Wi-Fi and VPN at once has two entries. It is interface state, never reachability (§4.6).
   bool _noteConnectivity(List<ConnectivityResult> results) {
-    final online = results.any((r) => r != ConnectivityResult.none);
+    final online = valenceOnline(results);
     if (_valence.noteOnline(online)) {
       runScript(eventScript('app.online', {'online': online}));
     }
@@ -409,13 +425,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   /// Not gated on `_started`, unlike the resume *work* below: a page that exists must be told the app went
   /// to the background during start-up, or the first transition it hears about is the second one.
   void _noteLifecycle(AppLifecycleState state) {
-    final mapped = switch (state) {
-      AppLifecycleState.resumed => ValenceLifecycle.foreground,
-      AppLifecycleState.inactive => ValenceLifecycle.inactive,
-      // Android delivers hidden and then paused for one backgrounding. One transition, so one event.
-      AppLifecycleState.hidden || AppLifecycleState.paused => ValenceLifecycle.background,
-      AppLifecycleState.detached => ValenceLifecycle.detached,
-    };
+    final mapped = valenceLifecycleFor(state);
     if (!_valence.noteLifecycle(mapped)) return;
     runScript(eventScript('app.lifecycle', {'state': mapped.name}));
   }
@@ -512,15 +522,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       // §4.6: after sync.changed for the same run, so the page's data is refetched before it is told the
       // run finished. Emitted for every completed run, changed: 0 and busy included — that is the whole
       // point: "nothing moved" is the answer a freshness line needs and the one sync.changed never sends.
-      runScript(eventScript('sync.done', {
-        'result': {
-          'buckets': result.buckets,
-          'changed': result.changed,
-          'offline': result.offline,
-          'reason': result.reason.name,
-          'pending': result.pending,
-        },
-      }));
+      runScript(eventScript('sync.done', {'result': result.toJson()}));
     } on Object catch (e) {
       _log('sync: run failed: $e');
     }

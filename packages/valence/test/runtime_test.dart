@@ -4,7 +4,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -572,6 +574,91 @@ void main() {
       // `data.put(bucket, 'database is locked', v)` as a lock, and retry instead of surfacing it.
       expect(isDatabaseLocked(NotLockedDatabaseException("UNIQUE constraint failed", "database is locked")), isFalse,
           reason: 'the phrase appears only in a page-supplied argument');
+    });
+  });
+
+  // ===========================================================================
+  group('§4.6 lifecycle, connectivity and update status', () {
+    test('the five platform states are the four the page sees', () {
+      // The mapping is the contract, not an implementation detail: a page switching on the value has to
+      // be able to cover it, and "hidden" and "paused" are one backgrounding, not two.
+      expect(valenceLifecycleFor(AppLifecycleState.resumed), ValenceLifecycle.foreground);
+      expect(valenceLifecycleFor(AppLifecycleState.inactive), ValenceLifecycle.inactive);
+      expect(valenceLifecycleFor(AppLifecycleState.hidden), ValenceLifecycle.background);
+      expect(valenceLifecycleFor(AppLifecycleState.paused), ValenceLifecycle.background);
+      expect(valenceLifecycleFor(AppLifecycleState.detached), ValenceLifecycle.detached);
+    });
+
+    test('online means any interface that is not none', () {
+      // A device on Wi-Fi and VPN at once reports two, and a check written against the first entry calls
+      // it offline whenever the VPN sorts first.
+      expect(valenceOnline([ConnectivityResult.wifi]), isTrue);
+      expect(valenceOnline([ConnectivityResult.none, ConnectivityResult.vpn]), isTrue);
+      expect(valenceOnline([ConnectivityResult.none]), isFalse);
+      expect(valenceOnline([]), isFalse, reason: 'no interfaces at all is not online');
+    });
+
+    test('app.state answers before any event has been emitted, and optimistically', () async {
+      // A page only ever runs while the app is on screen, and a host whose connectivity plugin has not
+      // answered yet must not claim the device is offline: the cost of that error is a UI that refuses
+      // to try on a working network.
+      final v = await open();
+      expect(v.appState().lifecycle, ValenceLifecycle.foreground);
+      expect(v.appState().online, isTrue);
+    });
+
+    test('only a change is a change, which is what makes the two events countable', () async {
+      final v = await open();
+      // Android delivers hidden then paused for one backgrounding: both map to background, and the
+      // second one must not produce an event a page would count.
+      expect(v.noteLifecycle(ValenceLifecycle.background), isTrue);
+      expect(v.noteLifecycle(ValenceLifecycle.background), isFalse);
+      expect(v.appState().lifecycle, ValenceLifecycle.background);
+      expect(v.noteLifecycle(ValenceLifecycle.foreground), isTrue);
+
+      expect(v.noteOnline(true), isFalse, reason: 'already the optimistic default');
+      expect(v.noteOnline(false), isTrue);
+      expect(v.noteOnline(false), isFalse);
+      expect(v.appState().online, isFalse);
+    });
+
+    test('bundle.status before any check says idle rather than "up to date"', () async {
+      // The distinction the page needs: nothing has been asked yet, so claiming freshness would be a
+      // guess. serving is 0 because the host widget has not bound a manifest in a unit test.
+      final v = await open();
+      final s = v.bundleStatus();
+      expect(s.reason, ValenceBundleReason.idle);
+      expect(s.checkedAt, isNull);
+      expect(s.offered, isNull);
+      expect(s.serving, 0);
+      expect(s.pending, isNull);
+      expect(s.trial, isNull);
+    });
+
+    test('bundle.status reports the live activation state and the last check', () async {
+      final v = await open(config: testConfig(key, otaBase: ''));
+      v.state.pending = 31;
+      v.state.trial = 30;
+      // No otaBase, so the check is honest about never having run rather than guessing freshness.
+      await v.updater.checkForUpdate();
+      final s = v.bundleStatus();
+      expect(s.pending, 31);
+      expect(s.trial, 30);
+      expect(s.reason, ValenceBundleReason.unconfigured);
+      expect(s.checkedAt, isNotNull);
+    });
+
+    test('a SyncResult crosses the bridge the same way in a reply and in sync.done', () async {
+      // sync.done carries the whole record, including the two fields a schema may not declare: an app's
+      // handler reads what it knows about and an older host simply never sends them (§4.3).
+      const result = ValenceSyncResult(['notes'], 3, false, ValenceSyncReason.busy, 7);
+      expect(result.toJson(), {
+        'buckets': ['notes'],
+        'changed': 3,
+        'offline': false,
+        'reason': 'busy',
+        'pending': 7,
+      });
     });
   });
 }
