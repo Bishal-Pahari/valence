@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -124,6 +125,14 @@ final class Valence {
     Directory? supportDir,
     ValenceSecure? secure,
   }) async {
+    // `open` is awaited in `main()` **before** `runApp`, and `runApp` is what would otherwise create the
+    // binding — but the store's directory (path_provider), the seed (rootBundle) and secure storage all
+    // travel over platform channels, which need it. Done here rather than asking every app's `main()` to
+    // remember, because forgetting fails only on a device: `flutter_test` always has a binding, so the
+    // whole unit suite passes while the first real launch dies with "Binding has not yet been
+    // initialized" before a single frame. It is idempotent, and it returns an existing test binding
+    // unchanged.
+    WidgetsFlutterBinding.ensureInitialized();
     final support = supportDir ?? await getApplicationSupportDirectory();
     final dir = Directory('${support.path}${Platform.pathSeparator}valence');
     await dir.create(recursive: true);
