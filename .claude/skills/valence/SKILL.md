@@ -275,7 +275,7 @@ For batch reads, use `data.getMany` (since 3, max 500 keys). Read outbox depth f
 
 | Item | Version | Note |
 |---|---|---|
-| `valence` (pub.dev) | 0.4.0-beta.0 | **The host runtime.** `flutter pub add valence`. It brings `webview_flutter`, `sqflite`, `path_provider`, `cryptography`, `crypto`, `http`, `url_launcher`, `connectivity_plus` and `flutter_secure_storage` with it, so a host declares none of those itself. Needs Flutter 3.44 or later, and `minSdk 23` on Android (secure storage). Versioned independently of this CLI |
+| `valence` (pub.dev) | 0.4.0-beta.0 | **The host runtime.** `flutter pub add valence`. It brings `webview_flutter`, `sqflite`, `path_provider`, `cryptography`, `crypto`, `http`, `url_launcher`, `connectivity_plus`, `flutter_secure_storage`, `permission_handler` and `device_info_plus` with it, so a host declares none of those itself. Needs Flutter 3.44 or later, and `minSdk 23` on Android (secure storage). Versioned independently of this CLI |
 | `@getvalence/bridge` (npm) | 0.4.0-beta.0 | **The web client.** ESM, zero runtime dependencies, Node 22.18+ to run its own tests. App code imports it through the generated `bridge.g.ts`, never directly |
 | Flutter / Dart | 3.47.7 / 3.13.5 (stable, 2026-10-08) | `sqflite` 2.4.4+2 needs Flutter 3.44 or later |
 | webview_flutter | 4.14.1 (2026-07-07) | **default WebView**. `flutter_inappwebview` has had no stable release since 6.1.5 (2024-10-08) |
