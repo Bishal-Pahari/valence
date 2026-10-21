@@ -90,7 +90,8 @@ class AttachmentPlatform extends ValenceNotificationPlatform {
   @override
   bool get isIOS => true;
   @override
-  Future<List<PendingNotificationRequest>> pending() async => [const PendingNotificationRequest(7, 'Keep', null, null)];
+  Future<List<PendingNotificationRequest>> pending() async =>
+      [const PendingNotificationRequest(7, 'Keep', null, null)];
 }
 
 void main() {
@@ -112,13 +113,20 @@ void main() {
   });
   tearDown(() async => directory.delete(recursive: true));
 
-  test('iOS attachments prune historical IDs and alternate extensions; cancel removes owned files', () async {
+  test(
+      'iOS attachments prune historical IDs and alternate extensions; cancel removes owned files',
+      () async {
     final native = AttachmentPlatform();
     await File('${directory.path}/7.png').writeAsString('pending');
     await File('${directory.path}/8.jpg').writeAsString('old');
     await File('${directory.path}/9.jpg').writeAsString('previous extension');
     await File('${directory.path}/unrelated').writeAsString('keep');
-    await native.details(directory: directory, id: 9, channel: 'care', image: Uint8List.fromList([0x89, 1]), actionIds: ['done']);
+    await native.details(
+        directory: directory,
+        id: 9,
+        channel: 'care',
+        image: Uint8List.fromList([0x89, 1]),
+        actionIds: ['done']);
     expect(await File('${directory.path}/7.png').exists(), true);
     expect(await File('${directory.path}/8.jpg').exists(), false);
     expect(await File('${directory.path}/9.jpg').exists(), false);
@@ -213,14 +221,20 @@ void main() {
     expect(platform.initialized, 0);
     expect(platform.sends, 0);
   });
-  test('PNG dimensions are bounded; small PNG and JPEG are accepted', () async {
+  test('PNG pixels and dimensions are validated; malformed JPEG is refused',
+      () async {
     const png =
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII=';
+        'iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAMAAABiM0N1AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAK5QTFRFAAAAAU6KAVebKbb2VMX4Kbb2VMX4AVaaAVebKbb2RsD3VMX4VMX4AVaZAVebGHalKbb2VMX4Pa7jADJZADhkAStLATBTAT5uAT5vAUd/AUmCAUyHAU6KAU6LAU6MAVGRAVKSAVKTAVOUAVWXAVWYAVaYAVaaAVeaAVebAjtnAkBwAkN2AkmAA02GA0+KA1CLFmiQF2+ZGXimGn6wG4O2G4a6HIe8Kbb2RL/3VMX47aEaPQAAABN0Uk5TABAQEBBQUGBgYGBggM/Pz8/P3xkQ5PoAAADpSURBVFjD7czXDoJAEEBRVOy9YO+KjB0r+v8/ZoQIC0sizq4PxrmvNzmKQklMrd758uSQQw455JBDDjnvnFSBL4Vw8iGzqn7TCYUwTpiEc3gJ6wQlvOOXXCf3ucNKrpO1bp87nsQ4FidFcF6SzwlKkRxHCjh+KaLzlDiHlSI7TJ7jSaLOSxJ3HEmG85QwTtLiqyEcJVHhnOs+rciQLjsdMhKk83ZmgATptBnrCxCXjuvB1IYEpcOyM5zMbEhIMpvtTn+sAwhKplZv9aYGgKBkao3uHNhwUnk1gmAoKVYEkCPFSyT9qvSvPQCNJCMEO265wAAAAABJRU5ErkJggg==';
     await schedule(image: png, actions: ['done', 'snooze']);
     final huge = base64Decode(png);
     ByteData.sublistView(huge).setUint32(16, 100000);
     await expectLater(
         schedule(image: base64Encode(huge)), throwsA(isA<BridgeError>()));
+    await expectLater(
+        schedule(
+            image:
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII='),
+        throwsA(isA<BridgeError>()));
     // SOF segment bounds are checked before reading dimensions.
     await expectLater(
         schedule(image: base64Encode([255, 216, 255, 192, 0, 255, 0])),

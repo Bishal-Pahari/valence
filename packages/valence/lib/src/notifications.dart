@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:app_badge_plus/app_badge_plus.dart';
 import 'package:flutter/services.dart';
@@ -136,6 +137,7 @@ final class ValenceNotifications {
           _bad('unknown or duplicate action');
         }
         final bytes = image == null ? null : _image(image);
+        if (bytes != null) await _validateImage(bytes);
         await initialize();
         if (!await permission()) return {'id': id, 'timing': 'blocked'};
         final pending = await _platform.pending();
@@ -316,6 +318,23 @@ final class ValenceNotifications {
       _bad('PNG/JPEG image must be at most 1024 pixels per side');
     }
     return bytes;
+  }
+
+  static Future<void> _validateImage(Uint8List bytes) async {
+    // Header bounds are checked first. A bounded decode then catches corrupt pixels/CRC rather than
+    // returning "scheduled" while the native notification silently drops its picture.
+    try {
+      final codec = await ui.instantiateImageCodec(bytes,
+          targetWidth: 1024, targetHeight: 1024, allowUpscaling: false);
+      try {
+        final frame = await codec.getNextFrame();
+        frame.image.dispose();
+      } finally {
+        codec.dispose();
+      }
+    } on Object {
+      _bad('image pixels could not be decoded as PNG or JPEG');
+    }
   }
 
   /// Store-compiled action IDs. Every action opens the UI; no background UI activation occurs.

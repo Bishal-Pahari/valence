@@ -912,7 +912,8 @@ Initialization never requests permission and never changes bundle activation, tr
 - IDs are app-wide integers 0..2147483647; scheduling the same ID replaces it. At most 64 pending
   requests; replacement at the cap is allowed. Coordinate ID ranges with app-owned plugin use.
   Title/body/payload UTF-8 limits are 256/4096/4096 bytes. `image` is base64 PNG or JPEG only, at most
-  96 KiB decoded and 1024 pixels per side, checked before native decoding; no URL or page-supplied file
+  96 KiB decoded and 1024 pixels per side, checked before a bounded pixel decode; corrupt pixel data
+  is refused before scheduling, rather than silently omitting the image. No URL or page-supplied file
   path is accepted. iOS attachments are written only to a host-owned private directory. Images are
   optional, not downloaded. Actions are up to three unique compiled IDs `open`, `done`, `snooze` with
   those English labels. Each opens the UI, including on iOS; reply inputs are deferred to S1.

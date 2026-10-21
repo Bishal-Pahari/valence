@@ -55,7 +55,9 @@ Actions are the compiled `open`, `done`, `snooze` IDs, with English labels; ever
 The app decides what Done and Snooze mean. Reply inputs and custom layouts are deferred.
 
 For an image, pass base64 PNG/JPEG in `image`: maximum 96 KiB decoded and 1024 pixels per side.
-URLs, filesystem paths and SVGs are refused. Android uses a big-picture style; iOS uses a private
+URLs, filesystem paths, SVGs and corrupt pixel data are refused. Header limits precede a bounded
+pixel decode so an invalid image cannot silently disappear from an accepted request.
+Android uses a big-picture style; iOS uses a private
 attachment. iOS source files are pruned to pending IDs and replaced/cancelled files are removed.
 The bridge's whole-message limit still applies. Keep images small and size them before encoding.
 
