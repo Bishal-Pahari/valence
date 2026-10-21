@@ -136,6 +136,10 @@ node valence/valence.mjs keygen | codegen [--check] | bundle [--builtin|--store]
 - **CRDTs and real-time collaboration.**
 - **Downloading native code.**
 
+## Your own backend in 0.4
+
+`http.request` calls your own API natively, restricted to exact `web.connect` origins compiled into the host. It attaches the stored user token, returns redirects without following them, and supports bounded UTF-8 text bodies. New at schema 4; guard with `has()` on older hosts. An origin change needs codegen and a store build. Online HTTP does not replace offline sync: the [reference REST adapter](examples/rest-sync-adapter/) shows durable cursors, tombstones and idempotent pushes. [Guide](https://getvalence.pages.dev/docs/guides/your-backend/). Android is tested; iOS is experimental and untested.
+
 ## License
 
 [MIT](LICENSE) © 2026 Bishal Pahari

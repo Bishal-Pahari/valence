@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased - native HTTP and REST adapter
+
+Call your API with `http.request` (schema 4): the host enforces compiled `web.connect` origins, attaches the stored token, and never follows redirects. Existing hosts need codegen and a store build to add the capability or origins. A reference Node REST-to-sync adapter demonstrates durable pagination, tombstones and idempotent pushes. iOS remains experimental and untested.
+
 ## 0.4.0-beta.0
 
 First release. The Flutter host runtime that `/valence init` used to generate into every app now ships as

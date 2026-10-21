@@ -111,3 +111,7 @@ schema's `BRIDGE_VERSION`.
 
 MIT. The spec is `contracts.md`, which ships inside the `/valence` Claude Code skill and is restated at
 <https://getvalence.pages.dev/docs/>.
+
+## Native HTTP (contracts section 4.5)
+
+Generated `http.request` delegates to `Valence.httpRequest`. Configure exact trusted `web.connect` origins, regenerate, and ship a host; they become `ValenceConfig.connectOrigins` (default deny all). The host reads the R1 token per request, with `authToken` callback precedence, and emits `auth.expired` for an authenticated 401. Redirects are returned without following them. Text bodies: 64 KiB; headers: 16 KiB; total deadline: 20 seconds. Use HTTPS in production and no shared server secrets in an APK. [API and adapter guide](https://getvalence.pages.dev/docs/guides/your-backend/). iOS remains experimental and untested.
