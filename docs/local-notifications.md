@@ -86,7 +86,7 @@ depends on the launcher, and may need manufacturer permissions and an active not
 
 The package depends on `flutter_local_notifications` 22.3.2+, `timezone` 0.11 and `app_badge_plus`
 1.3.5+. These resolve together with `connectivity_plus` 7.3.2 without the old dbus override.
-Desugaring is required even for a host which has not enabled local notifications.
+App-owned Dart code using an older notification plugin must adopt the 22.x named-parameter API or delegate to the built-in service; preserve any shipped bridge signature. Desugaring is required even for a host which has not enabled local notifications.
 In `android/app/build.gradle.kts`:
 
 ```kotlin
