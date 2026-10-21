@@ -151,3 +151,21 @@ node valence/valence.mjs keygen | codegen [--check] | bundle [--builtin|--store]
 Run `node valence/valence.mjs doctor --tests` for mechanical checks and mapped unit tests. WARN means missing or unexecuted evidence; device behavior still needs a device run. [Full guide](https://getvalence.pages.dev/docs/guides/offline-tooling/).
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
+
+### Reading a bucket bigger than 500 rows
+
+`data.list` clamps `limit` to 500 (an unbounded reply kills the WebView), so `data.list`'s `after` takes
+the last key of the previous page and resumes strictly after it — a complete read of any bucket. Without
+it a bucket past the clamp had none, and a truncated list is indistinguishable from a short one: a stored
+key outside the first page reads as a key the device has never held. `data.count` reports how many live
+rows a bucket holds without reading any of them. Both are version 5; `after` is a new *param* on a
+since-1 method, so gate it on `has("data.count")` or `app.info().bridge >= 5` rather than
+`has("data.list")`. A built-in may now grow an optional param the same way it may grow an optional
+returned field, additive against a recorded store baseline.
+
+The database lives at `<applicationSupportDirectory>/<databaseName>`; `host.database` names the file and
+the directory is fixed. A 0.3 host may have used the application documents directory instead, so the
+package adopts such a database on open — `-wal` and `-shm` move with it, the `.db` last, an existing
+destination is never overwritten, and the move is logged. A locked open (a schema migration's
+`BEGIN EXCLUSIVE` against the WorkManager job the same launch fires) is retried; `backgroundSync` then
+reports `reason: "busy"` rather than failing the job.

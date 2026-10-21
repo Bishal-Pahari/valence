@@ -203,19 +203,25 @@ final class ValenceStore {
   ///
   /// The clamp is host-side on purpose: the page is untrusted, and an unbounded list is the reply that
   /// kills the WebView.
+  ///
+  /// [after] is the key cursor that makes the clamp survivable: pass the last key of the previous page and
+  /// the scan resumes strictly after it, so a bucket of any size has a complete read. Without it a bucket
+  /// past [maxListLimit] has none at all, and a prefix is not a general answer — real key spaces are not
+  /// evenly distributed, and a truncated list is indistinguishable from a short one. `key` is the leading
+  /// column of the primary key, so this stays an index range scan. Paging by key rather than by offset
+  /// also means a concurrent sync cannot shift rows across a page boundary.
   Future<List<ValenceRow>> list(
     String bucket,
     int schema, {
     String? prefix,
     int? limit,
+    String? after,
   }) async {
     final n = (limit == null || limit <= 0) ? defaultListLimit : (limit > maxListLimit ? maxListLimit : limit);
-    final where = StringBuffer('bucket = ? AND schema = ? AND deleted = 0');
-    final args = <Object?>[bucket, schema];
-    if (prefix != null && prefix.isNotEmpty) {
-      // ESCAPE, so a key prefix containing % or _ matches literally.
-      where.write(r" AND key LIKE ? ESCAPE '\'");
-      args.add('${prefix.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_')}%');
+    final (where, args) = _liveRowsWhere(bucket, schema, prefix);
+    if (after != null && after.isNotEmpty) {
+      where.write(' AND key > ?');
+      args.add(after);
     }
     final rows = await db.query(
       'kv',
@@ -228,6 +234,26 @@ final class ValenceStore {
     return [
       for (final r in rows) ValenceRow(r['key']! as String, jsonDecode(r['value']! as String), r['usn']! as int),
     ];
+  }
+
+  /// Counts live rows, so "how much does this device hold?" and "is this key space empty?" cost one
+  /// indexed count rather than every row's JSON.
+  Future<int> count(String bucket, int schema, {String? prefix}) async {
+    final (where, args) = _liveRowsWhere(bucket, schema, prefix);
+    final rows = await db.rawQuery('SELECT COUNT(*) AS n FROM kv WHERE $where', args);
+    return rows.first['n']! as int;
+  }
+
+  /// The `(bucket, schema)` filter [list] and [count] share, with an optional key prefix.
+  (StringBuffer, List<Object?>) _liveRowsWhere(String bucket, int schema, String? prefix) {
+    final where = StringBuffer('bucket = ? AND schema = ? AND deleted = 0');
+    final args = <Object?>[bucket, schema];
+    if (prefix != null && prefix.isNotEmpty) {
+      // ESCAPE, so a key prefix containing % or _ matches literally.
+      where.write(r" AND key LIKE ? ESCAPE '\'");
+      args.add('${prefix.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_')}%');
+    }
+    return (where, args);
   }
 
   /// The highest applied `usn` for one `(bucket, schema)` pair, or 0 when the pair is unknown.

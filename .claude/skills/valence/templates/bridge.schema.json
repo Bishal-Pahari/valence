@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -24,7 +24,8 @@
       "params": {
         "bucket": "string",
         "prefix": "string?",
-        "limit": "int?"
+        "limit": "int?",
+        "after": "string?"
       },
       "returns": "Row[]"
     },
@@ -127,6 +128,14 @@
       "since": 3,
       "params": {},
       "returns": "SyncStatus"
+    },
+    "data.count": {
+      "since": 5,
+      "params": {
+        "bucket": "string",
+        "prefix": "string?"
+      },
+      "returns": "int"
     }
   },
   "events": {

@@ -234,6 +234,28 @@ void main() {
       expect((await v.dataList('shelf')).length, defaultListLimit);
       expect((await v.dataList('shelf', limit: 1000000)).length, maxListLimit);
     });
+
+    test('after pages past the clamp, and data.count answers the size question for free', () async {
+      final v = await open(writableBuckets: {'shelf'});
+      for (var i = 0; i < 600; i++) {
+        await v.store.put('shelf', 'k${i.toString().padLeft(4, '0')}', i, opId: 'op-$i');
+      }
+      expect(await v.dataCount('shelf'), 600, reason: 'a number the clamped list could never report');
+      expect(await v.dataCount('shelf', prefix: 'k05'), 100);
+
+      final first = await v.dataList('shelf', limit: maxListLimit);
+      final rest = await v.dataList('shelf', limit: maxListLimit, after: first.last.key);
+      expect(first.length + rest.length, 600);
+      expect({...first.map((r) => r.key), ...rest.map((r) => r.key)}.length, 600);
+      // The presence question the clamp used to answer wrongly: a key in the tail is found, not absent.
+      expect(rest.map((r) => r.key), contains('k0599'));
+    });
+
+    test('data.count resolves the bucket the same way every other read does', () async {
+      final v = await open(dataSchemas: {'plants': 1});
+      expect(await v.dataCount('plants'), 0);
+      expect(() => v.dataCount('nope'), throwsA(isA<BridgeError>()), reason: 'an undeclared bucket, as data.get');
+    });
   });
 
   group('prefs reserve the valence. prefix (§4.2)', () {

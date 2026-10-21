@@ -38,13 +38,16 @@ function fixture({ data = { calendar: 1 }, latest = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'mr-'));
   mkdirSync(join(root, 'valence'));
   cpSync(join(TEMPLATES, 'bridge.schema.json'), join(root, 'valence', 'bridge.schema.json'));
-  // Field evolution cases omit the optional batch/status additions.
+  // Field evolution cases omit the optional batch/status/paging additions: this is the shape of an app
+  // that has not regenerated against the newer runtime, which must still codegen and compile.
   if (!latest) {
     const p = join(root, 'valence', 'bridge.schema.json');
     const s = JSON.parse(readFileSync(p, 'utf8'));
     s.version = 4;
     delete s.methods['data.getMany'];
     delete s.methods['sync.status'];
+    delete s.methods['data.count'];
+    delete s.methods['data.list'].params.after;
     delete s.types.SyncStatus;
     delete s.types.SyncResult.pending;
     writeFileSync(p, JSON.stringify(s));
@@ -437,7 +440,7 @@ test('doctor reports absent evidence as warnings, compatibility errors as failur
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'native value'));
   bundle({ root, cfg, key, builtin: true, now: NOW });
   const dart = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
-  writeFileSync(dart, readFileSync(dart, 'utf8').replace('const hostBridgeVersion = 4;', 'const hostBridgeVersion = 1;'));
+  writeFileSync(dart, readFileSync(dart, 'utf8').replace('const hostBridgeVersion = 5;', 'const hostBridgeVersion = 1;'));
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'built-in compatibility'));
 });
 
@@ -492,7 +495,10 @@ test('a built-in may be omitted but not redefined, because the package implement
     assert.throws(() => codegen({ root, cfg }), re);
   };
   bad((s) => (s.methods['data.list'].params.limit = 'int'), /must stay/);
-  bad((s) => (s.methods['data.list'].params.after = 'string?'), /must stay/);
+  // `after` is a declared optional param, so it is allowed — but only at the type the runtime declares,
+  // and no other new param is.
+  bad((s) => (s.methods['data.list'].params.after = 'string'), /must stay/);
+  bad((s) => (s.methods['data.list'].params.offset = 'int?'), /must stay/);
   bad((s) => (s.methods['prefs.get'].returns = 'string'), /must return string\?/);
   bad((s) => (s.types.SyncResult.changed = 'num'), /fields are not/);
   bad((s) => (s.methods['data.list'].returns = 'Row'), /a type with \{key, value, usn\}\[\]/);
@@ -533,6 +539,64 @@ test('a built-in grows a field without breaking an app that has not taken it', (
   const without = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
   assert.doesNotMatch(without, /reason:/, 'and the delegation does not pass a field its type does not have');
   assert.match(without, /offline: r\.offline/);
+});
+
+test('a built-in grows a param without breaking an app that has not taken it', () => {
+  // The params half of rule 5. `data.list` gained `after` — the key cursor that makes a bucket past the
+  // 500-row clamp readable at all — and a built-in's params were compared literally, so adding one would
+  // have failed the next codegen in every existing app.
+  const { root, cfg } = fixture({ latest: true });
+  codegen({ root, cfg });
+  const withAfter = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(withAfter, /after: p\.after/, 'the template schema takes after, so the delegation passes it');
+
+  editSchema(root, (s) => delete s.methods['data.list'].params.after);
+  assert.ok(codegen({ root, cfg }).written.length, 'an app on the old three-param shape still generates');
+  const without = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.doesNotMatch(without, /after: p\.after/, 'and the delegation does not pass a param its schema lacks');
+  assert.match(without, /limit: p\.limit/);
+
+  // The allowance is per built-in: `after` belongs to data.list, not to every method with a bucket.
+  editSchema(root, (s) => (s.methods['data.count'].params.after = 'string?'));
+  assert.throws(() => codegen({ root, cfg }), /must stay/);
+});
+
+test('an app that already shipped a store build can take a built-in\'s new param', () => {
+  // The same trap as the new-field case: `bundle --store` records the schema the stores reviewed, and
+  // §4.1 refuses any later change to a method in it. Without the params allowance, every adopter who has
+  // ever cut a store build could not take `after` except through --rebaseline, which overwrites that
+  // reviewed record.
+  const { root, cfg, key } = fixture({ latest: true });
+  editSchema(root, (s) => {
+    delete s.methods['data.list'].params.after;
+    delete s.methods['data.count'];
+    s.version = 4;
+    // An app-owned method in the same store build, to prove the relaxation does not leak to one.
+    s.methods['mine.list'] = { since: 1, params: { bucket: 'string' }, returns: 'Row[]' };
+  });
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const shipped = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8')).storeSchema;
+  assert.deepEqual(Object.keys(shipped.methods['data.list'].params), ['bucket', 'prefix', 'limit']);
+
+  editSchema(root, (s) => {
+    s.methods['data.list'].params.after = 'string?';
+    s.version = 5;
+  });
+  assert.ok(codegen({ root, cfg }).written.length, 'the runtime param is additive against the recorded schema');
+  assert.match(readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8'), /after: p\.after/);
+
+  // The relaxation is exactly that param at exactly that type, and nothing else about the method.
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  const bad = (mutate, re) => {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), re);
+  };
+  bad((s) => (s.methods['data.list'].params.after = 'string'), /must stay/); // the runtime declares it nullable
+  bad((s) => (s.methods['data.list'].params.cursor = 'string?'), /must stay/); // not a param the runtime added
+  bad((s) => (s.methods['mine.list'].params.after = 'string?'), /cannot change/); // an app's own method may not grow
+  bad((s) => (s.methods['data.list'].since = 2), /cannot change/); // since is not negotiable
 });
 
 test('an app that already shipped a store build can take a built-in\'s new field', () => {

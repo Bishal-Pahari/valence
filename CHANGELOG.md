@@ -115,6 +115,41 @@ package's test suite covers that. If your 0.3 host named its database something
 other than `valence.db`, one config line keeps it. Swapping the runtime is a
 store release, because `lib/` changed.
 
+### A bucket over 500 rows can finally be read completely
+
+- **`data.list` takes an `after` cursor, and there is a new `data.count`**
+  (schema version 5). `after` is the last key of the previous page, and the scan
+  resumes strictly after it, so a bucket of any size has a complete read.
+
+  The clamp itself was right — an unbounded reply kills the WebView, and that can
+  roll back a healthy release — but with no way to page past it, **a bucket over
+  500 rows had no complete read at all.** And the damage was not a short list: a
+  truncated list is indistinguishable from a short one, so a stored key that
+  happened to fall outside the first page read as a key the device had never held.
+  One test app showed a first-run location chooser to a device that had been
+  configured for days, because the user's saved place was row 600 of 912. A prefix
+  is not a general answer; those keys were GeoNames ids and one prefix covered
+  about 900 of them.
+
+  `data.count(bucket, prefix?)` answers "how many does this device hold?" and "is
+  this key space empty?" with one indexed count instead of paging every row's
+  JSON.
+
+  **What you must do:** regenerate, and page anywhere you call `data.list` without
+  an explicit `limit`. **`has('data.list')` cannot gate `after`** — it is a new
+  *parameter* on a method that has existed since version 1, so it is true on a
+  host that will reject the unknown field with `E_PARAMS`. Gate on
+  `has('data.count')`, which ships in the same version, or on
+  `app.info().bridge >= 5`.
+- **A built-in can now grow an optional *param*,** not just an optional returned
+  field. Before this, a built-in's params were compared literally, so adding one
+  would have failed the next `codegen` in every existing app — and `--rebaseline`,
+  which overwrites the schema your store build recorded, would have been the only
+  way through. An app that has not declared `after` keeps generating code that
+  compiles; declaring it at the wrong type, under another name, or on a different
+  built-in is still refused, and your own methods still may not grow a param once
+  a store build has recorded them.
+
 ### Upgrading could silently start your users on an empty database
 
 Found by an independent team migrating a live app holding 30.8 MB of synced

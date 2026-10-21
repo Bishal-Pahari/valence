@@ -347,8 +347,13 @@ final class Valence {
   Future<ValenceSyncStatus> syncStatus() => sync.status();
 
   /// `data.list`. The host clamps `limit`, rather than trusting the page (§4.2).
-  Future<List<ValenceRow>> dataList(String bucket, {String? prefix, int? limit}) =>
-      store.list(bucket, schemaFor(bucket), prefix: prefix, limit: limit);
+  ///
+  /// [after] resumes strictly after that key, which is how a page reads a bucket larger than the clamp.
+  Future<List<ValenceRow>> dataList(String bucket, {String? prefix, int? limit, String? after}) =>
+      store.list(bucket, schemaFor(bucket), prefix: prefix, limit: limit, after: after);
+
+  /// `data.count`. Live rows only, resolved against the same schema as [dataList].
+  Future<int> dataCount(String bucket, {String? prefix}) => store.count(bucket, schemaFor(bucket), prefix: prefix);
 
   /// `data.put`. A null [value] is the delete. Refuses a bucket that is not writable.
   Future<void> dataPut(String bucket, String key, Object? value) async {
