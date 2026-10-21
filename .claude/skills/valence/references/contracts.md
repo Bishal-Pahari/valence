@@ -578,7 +578,7 @@ replace it and clear it, and can ask `auth.hasToken()` whether one is there, whi
 needs after a cold start. The host then attaches it itself:
 
 - `Authorization: Bearer <token>` on every pull and push of a **writable** bucket (§5.3, §5.5);
-- and on every request the host performs for the page once `http.request` exists (R11).
+- and on every `http.request` the host performs for the page (§4.5).
 
 **Public read-only buckets stay unauthenticated,** so a CDN can serve them and a cache can keep them. If a
 read-only bucket needs a user's identity it is the wrong shape for this: make it writable, or put the
@@ -606,6 +606,52 @@ whether the device is shared. An app that must forget a user deletes those rows 
 `data.put(bucket, key, null)` — and should know that the tombstones then push to the server.
 
 ---
+
+### 4.5 Native HTTP and existing backends
+
+`http.request` is additive at `since: 4` (version 3 is reserved by R12). Its params are
+`{url: string, method: string?, headers: json?, body: string?}` and its result is
+`HttpResponse {status: int, headers: json, body: string}`. The default method is GET;
+GET, HEAD, POST, PUT, PATCH, DELETE and OPTIONS are supported. GET/HEAD cannot carry a body.
+Bodies are UTF-8 text, including JSON explicitly encoded by the caller. Binary downloads and
+multipart uploads are outside this method's scope. HTTP errors return their status and body;
+network, timeout and invalid UTF-8 failures return `E_INTERNAL`, without remote or credential text.
+
+The host enforces the **compiled** `web.connect` origin list, emitted as
+`ValenceConfig.connectOrigins`. An OTA CSP or page cannot broaden it. Entries are exact HTTP(S)
+origins (scheme, hostname, effective port), without credentials, paths, query, fragments or
+wildcards. The default is empty: deny all. `sync.base` does not implicitly authorize HTTP calls.
+Request URLs must be absolute HTTP(S), without credentials or fragments. All redirects are
+returned as 3xx and never followed, including same-origin redirects. Thus a redirect cannot
+send the bearer token to another origin. Use HTTPS in production; an explicitly configured HTTP
+origin sends credentials in cleartext and is intended for local testing only.
+
+Headers must be an object of string values with valid HTTP names and printable ASCII values.
+The page cannot supply Authorization, Proxy-*, Sec-*, Cookie, Cookie2, Host, Origin, Referer,
+Connection, Content-Length, Transfer-Encoding, Upgrade, TE, Trailer, Expect, Accept-Encoding or
+Keep-Alive (case insensitive). The host obtains the R1 token per request, with
+`ValenceConfig.authToken` taking precedence over secure storage, and sets Authorization itself.
+A 401 on a request carrying that token emits `auth.expired` once for that request, retains the
+token, and still returns the HTTP response. No cookie jar is used; Set-Cookie and Set-Cookie2
+are omitted from returned headers. Origins in this list are trusted with the user's token:
+an API that echoes credentials can disclose them in its response, so never allow third-party
+origins. This is a CORS bypass for the app's API, not a credential firewall against that API.
+
+Each call has a 20-second total deadline, including token lookup and reading the response;
+timeout closes its dedicated client. Request and response bodies are capped at 64 KiB each,
+headers at 16 KiB each, measured as UTF-8 bytes. Responses are read with a running byte cap,
+not buffered without limit. Over-limit input or response returns `E_TOO_LARGE`; forbidden
+origins and headers return `E_DENIED`; malformed arguments return `E_PARAMS`. The ordinary
+262144-byte bridge envelope cap still applies after JSON encoding (§4.2).
+
+**Existing REST APIs need an adapter for offline sync.** `http.request` is an online RPC:
+it does not populate SQLite, retry, queue a write, or work offline. The reference Node adapter
+in `examples/rest-sync-adapter/` maps a REST snapshot onto §5.3/§5.5, assigns durable monotonic
+USNs, retains tombstones, and acknowledges push ids idempotently. Its pull `max` is the last
+row included when `more` is true, never a later server head that would skip unseen rows.
+The example is one loopback-only user's database; multi-user deployments must isolate state
+by authenticated identity, enforce authorization and put TLS in front of it.
+
 
 ## 5. Data layer
 
@@ -818,6 +864,8 @@ Everything here is silent when it is wrong: the call succeeds, the UI says "Set"
 
 | Layer | Tests |
 |---|---|
+| native HTTP (§4.5) | deny unlisted schemes, hosts and ports before token lookup; generated strict decoding and nonce denial reach the runtime; host token callback takes precedence and token is read per request; page credential and transport headers rejected; real cross-origin redirects returned without contacting the target; authenticated 401 emits once; UTF-8 body and header limits, streamed response cap and total deadline (including late token lookup) enforced; malformed UTF-8 and transport errors disclose no remote text |
+| reference REST adapter | real 600-row pull over two pages without skipped rows; durable USNs, tombstones and idempotent push across restart; reused operation id with different payload rejected; lost-reply retry returns current winning row; 601 queued operations accepted within the byte limit and replayed without repeating REST writes |
 | `valence.mjs` (the skill's `valence.test.mjs`) | key directory inside git, including through a link; keyring entry never overwritten; signing key must match the keyring; sign/verify round trip; tampering, bad signature, unknown key, other `appId` and unsafe paths rejected; native extensions rejected; **a bundle file under the reserved `_host/` prefix is refused by both `bundle` and `verify`, and a relative asset URL in the entry page warns**; **a service-worker registration in the output warns**; `seq` monotonic with the same clock and a slow clock; floor only rises; CSP hashes (CRLF-safe, `wasm-unsafe-eval` only with `.wasm`); additive-only against `storeSchema`, recorded only by `--store`; **a second `--store` build cannot rewrite the recorded schema with a non-additive one, `--rebaseline` lets it through with a warning, and `--store` reports what it recorded**; **`--store` warns when a channel points below the seq it just wrote**; **`requires.bridge` rising above the shipped store build warns, and `--requires-bridge` silences it**; new names need `since` above the shipped version; reserved and colliding names; SvelteKit co-located files aren't routes; `web.declaredRoutes` is validated, feeds the manifest and the baseline, and silences the inactive-check warning a project with no scannable routes gets; atomic and validated seed, with a warning for unseeded buckets; the CLI runs through a link; **a wrong `verify --files` level says the directory is wrong rather than naming the first file as missing**; a built-in may be omitted but not redefined with a different shape, including `secure.*` and `auth.*`; **a built-in's optional field is passed through when the app's type declares it, omitted from the delegation when it does not, still refused at the wrong type, and additive against a type a `--store` build already recorded — while an app's own shipped type may not grow at all**; generated Dart passes `analyze --fatal-infos` against `package:valence` and satisfies the dispatch cases; the generated `bridge.g.ts` binds the package, including `METHOD_SINCE` refusing a method newer than the host |
 | updater (dart test) | each check 1–7 rejects; `pointer.seq` below `pending` drops `pending`; the rollout gate is deterministic; size cap; **a bundle requiring exactly `hostBridgeVersion` is accepted**; **check 5 refuses a `requires.data` key that is malformed or writable** (the mirror of "a newer bridge is refused": without it a host can under-report its version and brick itself on first launch after a schema bump); **check 5 compares against the generated constant, not a second literal**; an update isn't pending until its data pairs are synced; **a bundle requiring a pair the device lacks becomes pending only after step 7 pulls that pair, and never on an offline device**; **a device holding v1 and v2 of one bucket satisfies a requirement for either** |
 | state machine | **a mid-session reload runs step 4 only**: `applyUpdate` serves the promoted trial without counting a failure against it, and a ready timeout serves `current` while leaving `trial` set so the next UI start retries it once; **a refused built-in bundle is remembered by manifest bytes and host bridge version, so a host upgrade that fixes check 5 installs it rather than skipping it**, and step 1 reads only the `seq` on an ordinary launch; **a collection that runs between §2.3 steps 6 and 8 keeps the in-flight bundle's CAS files and any `tmp-*`**; **a corrupt file of the *active* bundle is re-fetched by the repair pass before step 1**; trial then ready → committed and floor raised; `ready()` from a `current` page after a timeout never commits the trial; a timeout counts exactly one failure; trial fails once → retried at the next UI start → fails again → marked bad; **a UI start with no trial counts no failure and adds nothing to `bad`** (both `serving` and `trial` are null); **a ready timeout on a `current` page counts no failure**; **a late `ready()` after a trial was given up commits nothing**; **a `pending` below `current` or below `state.floor` is dropped rather than promoted**; **the UI start after two strikes serves `current`, not the bad bundle** (a `pending` in `bad` is dropped, never promoted); **an update check while a seq is on trial does not re-pend it**; **a commit clears a `pending` holding the committed seq**; a crash while `serving == trial` counts one failure; a newer built-in bundle wins and drops older pending and trial; **a built-in bundle that fails its checks promotes nothing, leaves the state untouched, is not added to `bad`, and with no `current` is surfaced rather than served**; GC keeps current, previous, pending, trial and built-in; **GC after a commit leaves writable buckets untouched**; **a supersede collects the pairs that fell out of `previous`, and GC skips the pair step when the sync lease is held**; no transition runs from a background isolate; the ready timer pauses in the background |

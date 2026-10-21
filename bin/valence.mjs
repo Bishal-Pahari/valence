@@ -414,7 +414,7 @@ async function init(o) {
       const config = {
         appId,
         keyId: 'k1',
-        web: { out: web.out, lib: web.lib, routes: web.routes, entry: 'index.html' },
+        web: { out: web.out, lib: web.lib, routes: web.routes, entry: 'index.html', connect: [] },
         host: { dir: host },
         ota: { base: ota },
         sync: syncBase ? { base: syncBase } : {},

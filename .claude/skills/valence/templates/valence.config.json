@@ -5,7 +5,8 @@
     "out": "web/build",
     "lib": "web/src/lib/valence",
     "routes": "web/src/routes",
-    "entry": "index.html"
+    "entry": "index.html",
+    "connect": []
   },
   "host": { "dir": "mobile" },
   "ota": { "base": "https://ota.example.com" },

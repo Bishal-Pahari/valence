@@ -33,6 +33,7 @@ final class ValenceConfig {
     this.builtinAssetDir = 'assets/valence/builtin',
     this.seedAsset = 'assets/valence/seed.db',
     this.authToken,
+    this.connectOrigins = const {},
   });
 
   /// The reverse-domain id a manifest must carry (canonical check 2).
@@ -102,6 +103,10 @@ final class ValenceConfig {
   /// Called per request, so a rotating token works. The host never persists what this returns.
   final Future<String?> Function()? authToken;
 
+  /// Exact HTTP(S) origins trusted with the bearer token by `http.request` (§4.5).
+  /// Compiled from `web.connect`; empty denies every request. Never supplied by an OTA manifest.
+  final Set<String> connectOrigins;
+
   /// Copy with overrides. Handy in tests and for pointing a debug build at a local OTA host.
   ValenceConfig copyWith({
     String? otaBase,
@@ -114,6 +119,7 @@ final class ValenceConfig {
     Duration? updateInterval,
     int? pullPageLimit,
     Future<String?> Function()? authToken,
+    Set<String>? connectOrigins,
   }) =>
       ValenceConfig(
         appId: appId,
@@ -134,5 +140,6 @@ final class ValenceConfig {
         builtinAssetDir: builtinAssetDir,
         seedAsset: seedAsset,
         authToken: authToken ?? this.authToken,
+        connectOrigins: connectOrigins ?? this.connectOrigins,
       );
 }

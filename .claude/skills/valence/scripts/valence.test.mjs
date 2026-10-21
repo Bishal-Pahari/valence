@@ -94,14 +94,14 @@ test('store build signs, verifies and records the store baseline', () => {
   const m = verifyBundle({ manifestPath: r.manifestPath, filesDir: r.filesDir, keyring, appId: cfg.appId });
   assert.equal(m.seq, NOW / 1000);
   assert.deepEqual(m.routes, ['/', '/calendar', '/settings']);
-  // The template schema is at version 2 since §4.4 added secure.* and auth.*, and requires.bridge
+  // The template schema is at version 4 since §4.5 added http.request, and requires.bridge
   // defaults to it.
-  assert.deepEqual(m.requires, { bridge: 2, data: { calendar: 1 } });
+  assert.deepEqual(m.requires, { bridge: 4, data: { calendar: 1 } });
   assert.equal(Object.keys(m.files).length, 2);
   assert.ok(!readFileSync(r.manifestPath + '.sig', 'utf8').includes('\n'), 'sig has no trailing newline');
   const b = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8'));
   assert.deepEqual(b.storeRoutes, m.routes);
-  assert.equal(b.storeSchema.version, 2);
+  assert.equal(b.storeSchema.version, 4);
   assert.equal(b.lastSeq, m.seq);
 });
 
@@ -219,12 +219,12 @@ test('requires.bridge rising above the shipped store build warns, because it str
 
   // A guarded method added at since: 3 bumps the schema version, and the default silently inherits it.
   editSchema(root, (s) => {
-    s.version = 3;
-    s.methods['share.image'] = { since: 3, params: { png: 'string' }, returns: 'bool' };
+    s.version = 5;
+    s.methods['share.image'] = { since: 5, params: { png: 'string' }, returns: 'bool' };
   });
   const bumped = bundle({ root, cfg, key, now: NOW });
-  assert.equal(bumped.manifest.requires.bridge, 3);
-  assert.match(bridgeWarn(bumped)[0], /--requires-bridge 2/);
+  assert.equal(bumped.manifest.requires.bridge, 5);
+  assert.match(bridgeWarn(bumped)[0], /--requires-bridge 4/);
 
   // Pinning to the oldest host in the field is the lever, and it is the right move — but it is not silent: an
   // unguarded call to a since: 3 method would then be dead in the field with no build-time or store signal.
@@ -366,7 +366,7 @@ test('codegen writes once, is stable, survives formatters, and --check detects r
   writeFileSync(dart, readFileSync(dart, 'utf8').replace(/\n/g, '\r\n').replace(/\);/g, ',\n);'));
   codegen({ root, cfg, check: true });
   editSchema(root, (s) => {
-    s.version = 2;
+    s.version = 5;
     s.methods['share.text'] = { since: 2, params: { text: 'string' }, returns: 'void' };
   });
   assert.throws(() => codegen({ root, cfg, check: true }), /stale/);
@@ -384,11 +384,11 @@ test('a schema shipped in a store build is additive only', () => {
   editSchema(root, (s) => (s.methods['haptics.tap'].params.heavy = 'bool?'));
   bundle({ root, cfg, key, store: true, now: NOW });
   editSchema(root, (s) => (s.methods['share.early'] = { since: 2, params: {}, returns: 'void' }));
-  assert.throws(() => codegen({ root, cfg }), /needs since > 2/);
+  assert.throws(() => codegen({ root, cfg }), /needs since > 4/);
   editSchema(root, (s) => {
     delete s.methods['share.early'];
-    s.version = 3;
-    s.methods['share.text'] = { since: 3, params: { text: 'string' }, returns: 'void' };
+    s.version = 5;
+    s.methods['share.text'] = { since: 5, params: { text: 'string' }, returns: 'void' };
   });
   codegen({ root, cfg });
   editSchema(root, (s) => (s.methods['haptics.tap'].returns = 'string'));
@@ -493,14 +493,14 @@ test('a second --store build cannot quietly rewrite the schema the stores review
   const { root, cfg, key } = fixture();
   codegen({ root, cfg });
   const first = bundle({ root, cfg, key, store: true, now: NOW });
-  assert.equal(first.recorded.bridge, 2);
+  assert.equal(first.recorded.bridge, 4);
   assert.deepEqual(first.recorded.routes, ['/', '/calendar', '/settings']);
   assert.ok(first.recorded.added.includes('+ method app.ready'), 'the first baseline records the whole schema as new');
   // The exact hole: codegen refuses a method added at the shipped `since`, and re-running --store used to erase
   // the baseline that refusal was made against.
   editSchema(root, (s) => (s.methods['share.early'] = { since: 2, params: {}, returns: 'void' }));
-  assert.throws(() => codegen({ root, cfg }), /needs since > 2/);
-  assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW + 1000 }), /needs since > 2/);
+  assert.throws(() => codegen({ root, cfg }), /needs since > 4/);
+  assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW + 1000 }), /needs since > 4/);
   const b = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8'));
   assert.ok(!Object.hasOwn(b.storeSchema.methods, 'share.early'), 'the refused build left the baseline alone');
   // --rebaseline is the deliberate way out, and it says so.
@@ -509,31 +509,31 @@ test('a second --store build cannot quietly rewrite the schema the stores review
   assert.deepEqual(forced.recorded.added, ['+ method share.early']);
   // An additive bump still goes through untouched, and reports what it added.
   editSchema(root, (s) => {
-    s.version = 3;
-    s.methods['share.text'] = { since: 3, params: { text: 'string' }, returns: 'void' };
+    s.version = 5;
+    s.methods['share.text'] = { since: 5, params: { text: 'string' }, returns: 'void' };
   });
   codegen({ root, cfg });
   const bumped = bundle({ root, cfg, key, store: true, now: NOW + 2000 });
   assert.deepEqual(bumped.recorded.added, ['+ method share.text']);
   // A bump is also the moment the OTA pin stops being warned about, so the build names the number while it still can.
-  assert.match(bumped.warnings.join('\n'), /takes the bridge from 2 to 3[\s\S]*--requires-bridge 2/);
+  assert.match(bumped.warnings.join('\n'), /takes the bridge from 4 to 5[\s\S]*--requires-bridge 4/);
 });
 
 test('a built-in build cannot require a bridge its own host does not have', () => {
   const { root, cfg, key } = fixture();
   assert.throws(
-    () => bundle({ root, cfg, key, store: true, requiresBridge: 3, now: NOW }),
+    () => bundle({ root, cfg, key, store: true, requiresBridge: 5, now: NOW }),
     /refuses its own built-in bundle at check 5/,
   );
   // The common way to get here is a schema bumped without a codegen run, so compare against the generated constant.
   codegen({ root, cfg });
   editSchema(root, (s) => {
-    s.version = 3;
-    s.methods['share.text'] = { since: 3, params: { text: 'string' }, returns: 'void' };
+    s.version = 5;
+    s.methods['share.text'] = { since: 5, params: { text: 'string' }, returns: 'void' };
   });
   assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW }), /the generated constant is behind the schema/);
   codegen({ root, cfg });
-  assert.equal(bundle({ root, cfg, key, store: true, now: NOW }).manifest.requires.bridge, 3);
+  assert.equal(bundle({ root, cfg, key, store: true, now: NOW }).manifest.requires.bridge, 5);
   // Pinning an OTA release down is the legitimate use of the flag and stays allowed.
   assert.equal(bundle({ root, cfg, key, requiresBridge: 1, now: NOW }).manifest.requires.bridge, 1);
 });
@@ -622,7 +622,7 @@ const BRIDGE_SRC = join(import.meta.dirname, '..', '..', '..', '..', 'packages',
 test('the generated bridge binds the package: nonce, errors, events, the cap and the web shim', async () => {
   const { root, cfg } = fixture();
   editSchema(root, (s) => {
-    s.version = 2;
+    s.version = 5;
     s.methods['later.method'] = { since: 2, params: {}, returns: 'void' };
   });
   codegen({ root, cfg });
@@ -828,6 +828,8 @@ final class H implements BridgeHandlers {
   @override
   Future<bool> authHasToken() async => true;
   @override
+  Future<HttpResponse> httpRequest(HttpRequestParams p) async => const HttpResponse(status: 200, headers: {}, body: 'ok');
+  @override
   Future<List<Row>?> xEdge(XEdgeParams p) async => p.blobs == null ? null : [Row(key: p.type, value: p.blobs, usn: p.rows?.length ?? 0)];
 }
 
@@ -901,3 +903,19 @@ void main() {
   });
 }
 `;
+
+// Native HTTP policy is compiled into the host, not inferred from an OTA CSP.
+test('codegen freezes native HTTP shape and compiles only exact web.connect origins', () => {
+  const { root, cfg } = fixture();
+  cfg.web.connect = ['https://API.example.com:443', 'http://127.0.0.1:8787'];
+  codegen({ root, cfg });
+  const config = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'config.g.dart'), 'utf8');
+  assert.match(config, /connectOrigins: \{'https:\/\/api.example.com', 'http:\/\/127.0.0.1:8787'\}/);
+  for (const origin of ['https://api.test/path', 'https://user@api.test', 'https://*.test', 'file:///tmp', 'https://api.test?x=1', 'https://api.test/#', 'https://api.test/..']) {
+    cfg.web.connect = [origin];
+    assert.throws(() => codegen({ root, cfg }), /exact HTTP/);
+  }
+  cfg.web.connect = [];
+  editSchema(root, (s) => (s.methods['http.request'].params.body = 'json?'));
+  assert.throws(() => codegen({ root, cfg }), /must stay/);
+});

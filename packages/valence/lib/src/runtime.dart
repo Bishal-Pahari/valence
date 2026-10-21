@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'config.dart';
 import 'log.dart';
 import 'manifest.dart';
+import 'native_http.dart';
 import 'secure.dart';
 import 'server.dart';
 import 'state.dart';
@@ -31,9 +32,17 @@ export 'manifest.dart'
         isReservedBundlePath,
         isSafeBundlePath;
 export 'secure.dart' show ValenceSecure, secureAuthTokenKey;
-export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestPath;
+export 'native_http.dart' show ValenceHttp, ValenceHttpResponse;
+export 'server.dart'
+    show ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
-export 'store.dart' show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, maxListLimit;
+export 'store.dart'
+    show
+        ValenceOutboxOp,
+        ValenceRow,
+        ValenceStore,
+        defaultListLimit,
+        maxListLimit;
 export 'sync.dart' show ValenceSync, ValenceSyncReason, ValenceSyncResult;
 export 'updater.dart' show ValenceUpdater;
 export 'wire.dart' show BridgeError, BridgeErrorCode, maxMessageBytes;
@@ -157,7 +166,9 @@ final class Valence {
     // that already had one.
     final sync = ValenceSync(
       store: store,
-      config: config.authToken == null ? config.copyWith(authToken: keystore.authToken) : config,
+      config: config.authToken == null
+          ? config.copyWith(authToken: keystore.authToken)
+          : config,
       client: client,
       log: log,
     );
@@ -189,7 +200,8 @@ final class Valence {
     updater.onUpdateReady = (seq) => valence.onUpdateReady?.call(seq);
     // §4.4: a rejected token is the page's problem to fix, so it has to reach the page. Buffered like
     // every other event, which matters here because a cold start's first sync beats the entry page.
-    sync.onUnauthorized = () => valence.emit(eventScript('auth.expired', const <String, Object?>{}));
+    sync.onUnauthorized = () =>
+        valence.emit(eventScript('auth.expired', const <String, Object?>{}));
     await valence._importSeed();
     return valence;
   }
@@ -245,7 +257,8 @@ final class Valence {
     // The server can delete a rotted CAS file and answer 500, but it cannot re-fetch one: §2.3 step 1
     // stops on `pointer.seq <= current`, so a bundle that is already current never reaches step 6. The
     // updater has to be told where to look (§2.4, "CAS integrity is re-checked lazily").
-    updater.repairFrom = () => (manifest: manifest, corrupt: server.corruptHashes);
+    updater.repairFrom =
+        () => (manifest: manifest, corrupt: server.corruptHashes);
   }
 
   /// §5.2: imports the bundled seed on first launch **and after a host upgrade**, not on every launch.
@@ -263,18 +276,21 @@ final class Valence {
     try {
       asset = await rootBundle.load(config.seedAsset);
     } on Object catch (e) {
-      _log('seed: no bundled seed at ${config.seedAsset} ($e); the app starts with an empty store');
+      _log(
+          'seed: no bundled seed at ${config.seedAsset} ($e); the app starts with an empty store');
       return;
     }
     // The host build plus the asset length: the build alone misses a seed changed by an OTA-era rebuild
     // at the same version, and the length alone misses a same-size replacement across an upgrade.
     final stamp = '$hostBuild.${asset.lengthInBytes}';
-    final done = await store.hostPrefGet(_seedStamp) == stamp && seedFile.existsSync();
+    final done =
+        await store.hostPrefGet(_seedStamp) == stamp && seedFile.existsSync();
     if (!done) {
       try {
         await seedFile.writeAsBytes(asset.buffer.asUint8List(), flush: true);
       } on Object catch (e) {
-        _log('seed: could not write $seedPath ($e); the app starts with an empty store');
+        _log(
+            'seed: could not write $seedPath ($e); the app starts with an empty store');
         return;
       }
     }
@@ -331,10 +347,12 @@ final class Valence {
   }
 
   /// `data.get`.
-  Future<Object?> dataGet(String bucket, String key) => store.get(bucket, schemaFor(bucket), key);
+  Future<Object?> dataGet(String bucket, String key) =>
+      store.get(bucket, schemaFor(bucket), key);
 
   /// `data.list`. The host clamps `limit`, rather than trusting the page (§4.2).
-  Future<List<ValenceRow>> dataList(String bucket, {String? prefix, int? limit}) =>
+  Future<List<ValenceRow>> dataList(String bucket,
+          {String? prefix, int? limit}) =>
       store.list(bucket, schemaFor(bucket), prefix: prefix, limit: limit);
 
   /// `data.put`. A null [value] is the delete. Refuses a bucket that is not writable.
@@ -390,17 +408,33 @@ final class Valence {
   /// `auth.hasToken`. Whether a token is stored — the only thing the page may learn about it.
   Future<bool> authHasToken() => secure.hasAuthToken();
 
+  /// `http.request`: online text RPC restricted to the host's compiled origins (§4.5).
+  Future<ValenceHttpResponse> httpRequest({
+    required String url,
+    String? method,
+    Object? headers,
+    String? body,
+  }) =>
+      ValenceHttp(
+        origins: config.connectOrigins,
+        token: config.authToken ?? secure.authToken,
+        onUnauthorized: () =>
+            emit(eventScript('auth.expired', const <String, Object?>{})),
+      ).request(url: url, method: method, headers: headers, body: body);
+
   /// `open.external`. Only `https:`, `mailto:` and `tel:` leave the app.
   Future<void> openExternal(String url) async {
     final uri = Uri.tryParse(url);
-    if (uri == null || !const {'https', 'mailto', 'tel'}.contains(uri.scheme.toLowerCase())) {
+    if (uri == null ||
+        !const {'https', 'mailto', 'tel'}.contains(uri.scheme.toLowerCase())) {
       throw BridgeError(
         BridgeErrorCode.denied,
         'open.external accepts https, mailto and tel only, not "$url"',
       );
     }
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      throw BridgeError(BridgeErrorCode.internal, 'nothing on this device could open $url');
+      throw BridgeError(
+          BridgeErrorCode.internal, 'nothing on this device could open $url');
     }
   }
 
@@ -429,10 +463,12 @@ final class Valence {
   ///
   /// This is the only path from native bytes to the page: the bridge carries JSON only, capped at
   /// [maxMessageBytes] in each direction (§4.2).
-  Future<String> publishHostFile(List<int> bytes, {required String contentType}) {
+  Future<String> publishHostFile(List<int> bytes,
+      {required String contentType}) {
     final server = _server;
     if (server == null) {
-      throw BridgeError(BridgeErrorCode.internal, 'the loopback server is not bound yet');
+      throw BridgeError(
+          BridgeErrorCode.internal, 'the loopback server is not bound yet');
     }
     return server.publishHostFile(bytes, contentType: contentType);
   }
@@ -461,7 +497,9 @@ final class Valence {
     final keystore = secure ?? ValenceSecure(log: log);
     final sync = ValenceSync(
       store: store,
-      config: config.authToken == null ? config.copyWith(authToken: keystore.authToken) : config,
+      config: config.authToken == null
+          ? config.copyWith(authToken: keystore.authToken)
+          : config,
       client: client,
       log: log,
     );
