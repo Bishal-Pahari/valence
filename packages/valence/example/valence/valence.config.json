@@ -20,5 +20,6 @@
   "data": {
     "plants": 1
   },
-  "writable": ["shelf"]
+  "writable": ["shelf"],
+  "plugins": ["plugins/haptics/valence.plugin.json"]
 }

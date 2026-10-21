@@ -62,7 +62,6 @@ export interface Methods {
     url: string;
   }; returns: void };
   'bundle.applyUpdate': { params: Record<string, never>; returns: void };
-  'haptics.tap': { params: Record<string, never>; returns: void };
   'secure.get': { params: {
     key: string;
   }; returns: string | null };
@@ -77,6 +76,7 @@ export interface Methods {
     token?: string | null;
   }; returns: void };
   'auth.hasToken': { params: Record<string, never>; returns: boolean };
+  'haptics.tap': { params: Record<string, never>; returns: void };
 }
 
 export interface Events {
@@ -101,12 +101,12 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'prefs.set': 1,
   'open.external': 1,
   'bundle.applyUpdate': 1,
-  'haptics.tap': 1,
   'secure.get': 2,
   'secure.set': 2,
   'secure.delete': 2,
   'auth.setToken': 2,
   'auth.hasToken': 2,
+  'haptics.tap': 1,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {

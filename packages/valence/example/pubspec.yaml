@@ -33,6 +33,8 @@ dependencies:
 
   valence:
     path: ../
+  valence_example_haptics:
+    path: plugins/haptics
 
 dependency_overrides:
   # path_provider_android 2.3.1 routes through jni/jni_flutter, whose libdartjni.so is a Dart native

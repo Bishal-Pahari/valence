@@ -11,7 +11,6 @@
     "prefs.set":          { "since": 1, "params": { "key": "string", "value": "string?" }, "returns": "void" },
     "open.external":      { "since": 1, "params": { "url": "string" }, "returns": "void" },
     "bundle.applyUpdate": { "since": 1, "params": {}, "returns": "void" },
-    "haptics.tap":        { "since": 1, "params": {}, "returns": "void" },
     "secure.get":         { "since": 2, "params": { "key": "string" }, "returns": "string?" },
     "secure.set":         { "since": 2, "params": { "key": "string", "value": "string" }, "returns": "void" },
     "secure.delete":      { "since": 2, "params": { "key": "string" }, "returns": "void" },

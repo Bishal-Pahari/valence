@@ -14,12 +14,24 @@ import 'package:valence/valence.dart';
 const hostBridgeVersion = 2;
 
 final class AppInfo {
-  const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale});
+  const AppInfo({
+    required this.platform,
+    required this.host,
+    required this.bridge,
+    required this.bundle,
+    required this.locale,
+  });
 
   factory AppInfo.fromJson(Object? j, [String f = 'AppInfo']) {
     final m = decodeObject(j, f);
     decodeKeys(m, const {'platform', 'host', 'bridge', 'bundle', 'locale'}, f);
-    return AppInfo(platform: decodeString(m['platform'], '$f.platform'), host: decodeInt(m['host'], '$f.host'), bridge: decodeInt(m['bridge'], '$f.bridge'), bundle: decodeInt(m['bundle'], '$f.bundle'), locale: decodeString(m['locale'], '$f.locale'));
+    return AppInfo(
+      platform: decodeString(m['platform'], '$f.platform'),
+      host: decodeInt(m['host'], '$f.host'),
+      bridge: decodeInt(m['bridge'], '$f.bridge'),
+      bundle: decodeInt(m['bundle'], '$f.bundle'),
+      locale: decodeString(m['locale'], '$f.locale'),
+    );
   }
 
   final String platform;
@@ -28,7 +40,13 @@ final class AppInfo {
   final int bundle;
   final String locale;
 
-  Map<String, Object?> toJson() => {'platform': platform, 'host': host, 'bridge': bridge, 'bundle': bundle, 'locale': locale};
+  Map<String, Object?> toJson() => {
+    'platform': platform,
+    'host': host,
+    'bridge': bridge,
+    'bundle': bundle,
+    'locale': locale,
+  };
 }
 
 final class Row {
@@ -37,7 +55,11 @@ final class Row {
   factory Row.fromJson(Object? j, [String f = 'Row']) {
     final m = decodeObject(j, f);
     decodeKeys(m, const {'key', 'value', 'usn'}, f);
-    return Row(key: decodeString(m['key'], '$f.key'), value: m['value'], usn: decodeInt(m['usn'], '$f.usn'));
+    return Row(
+      key: decodeString(m['key'], '$f.key'),
+      value: m['value'],
+      usn: decodeInt(m['usn'], '$f.usn'),
+    );
   }
 
   final String key;
@@ -48,12 +70,28 @@ final class Row {
 }
 
 final class SyncResult {
-  const SyncResult({required this.buckets, required this.changed, required this.offline, required this.reason});
+  const SyncResult({
+    required this.buckets,
+    required this.changed,
+    required this.offline,
+    required this.reason,
+  });
 
   factory SyncResult.fromJson(Object? j, [String f = 'SyncResult']) {
     final m = decodeObject(j, f);
     decodeKeys(m, const {'buckets', 'changed', 'offline', 'reason'}, f);
-    return SyncResult(buckets: decodeListOf(m['buckets'], '$f.buckets', (e, p) => decodeString(e, p)), changed: decodeInt(m['changed'], '$f.changed'), offline: decodeBool(m['offline'], '$f.offline'), reason: m['reason'] == null ? null : decodeString(m['reason'], '$f.reason'));
+    return SyncResult(
+      buckets: decodeListOf(
+        m['buckets'],
+        '$f.buckets',
+        (e, p) => decodeString(e, p),
+      ),
+      changed: decodeInt(m['changed'], '$f.changed'),
+      offline: decodeBool(m['offline'], '$f.offline'),
+      reason: m['reason'] == null
+          ? null
+          : decodeString(m['reason'], '$f.reason'),
+    );
   }
 
   final List<String> buckets;
@@ -61,7 +99,12 @@ final class SyncResult {
   final bool offline;
   final String? reason;
 
-  Map<String, Object?> toJson() => {'buckets': buckets, 'changed': changed, 'offline': offline, 'reason': reason};
+  Map<String, Object?> toJson() => {
+    'buckets': buckets,
+    'changed': changed,
+    'offline': offline,
+    'reason': reason,
+  };
 }
 
 final class DataGetParams {
@@ -70,7 +113,10 @@ final class DataGetParams {
   factory DataGetParams.fromJson(Object? j, [String f = 'DataGetParams']) {
     final m = decodeObject(j, f);
     decodeKeys(m, const {'bucket', 'key'}, f);
-    return DataGetParams(bucket: decodeString(m['bucket'], '$f.bucket'), key: decodeString(m['key'], '$f.key'));
+    return DataGetParams(
+      bucket: decodeString(m['bucket'], '$f.bucket'),
+      key: decodeString(m['key'], '$f.key'),
+    );
   }
 
   final String bucket;
@@ -80,35 +126,61 @@ final class DataGetParams {
 }
 
 final class DataListParams {
-  const DataListParams({required this.bucket, required this.prefix, required this.limit});
+  const DataListParams({
+    required this.bucket,
+    required this.prefix,
+    required this.limit,
+  });
 
   factory DataListParams.fromJson(Object? j, [String f = 'DataListParams']) {
     final m = decodeObject(j, f);
     decodeKeys(m, const {'bucket', 'prefix', 'limit'}, f);
-    return DataListParams(bucket: decodeString(m['bucket'], '$f.bucket'), prefix: m['prefix'] == null ? null : decodeString(m['prefix'], '$f.prefix'), limit: m['limit'] == null ? null : decodeInt(m['limit'], '$f.limit'));
+    return DataListParams(
+      bucket: decodeString(m['bucket'], '$f.bucket'),
+      prefix: m['prefix'] == null
+          ? null
+          : decodeString(m['prefix'], '$f.prefix'),
+      limit: m['limit'] == null ? null : decodeInt(m['limit'], '$f.limit'),
+    );
   }
 
   final String bucket;
   final String? prefix;
   final int? limit;
 
-  Map<String, Object?> toJson() => {'bucket': bucket, 'prefix': prefix, 'limit': limit};
+  Map<String, Object?> toJson() => {
+    'bucket': bucket,
+    'prefix': prefix,
+    'limit': limit,
+  };
 }
 
 final class DataPutParams {
-  const DataPutParams({required this.bucket, required this.key, required this.value});
+  const DataPutParams({
+    required this.bucket,
+    required this.key,
+    required this.value,
+  });
 
   factory DataPutParams.fromJson(Object? j, [String f = 'DataPutParams']) {
     final m = decodeObject(j, f);
     decodeKeys(m, const {'bucket', 'key', 'value'}, f);
-    return DataPutParams(bucket: decodeString(m['bucket'], '$f.bucket'), key: decodeString(m['key'], '$f.key'), value: m['value']);
+    return DataPutParams(
+      bucket: decodeString(m['bucket'], '$f.bucket'),
+      key: decodeString(m['key'], '$f.key'),
+      value: m['value'],
+    );
   }
 
   final String bucket;
   final String key;
   final Object? value;
 
-  Map<String, Object?> toJson() => {'bucket': bucket, 'key': key, 'value': value};
+  Map<String, Object?> toJson() => {
+    'bucket': bucket,
+    'key': key,
+    'value': value,
+  };
 }
 
 final class SyncNowParams {
@@ -117,7 +189,15 @@ final class SyncNowParams {
   factory SyncNowParams.fromJson(Object? j, [String f = 'SyncNowParams']) {
     final m = decodeObject(j, f);
     decodeKeys(m, const {'buckets'}, f);
-    return SyncNowParams(buckets: m['buckets'] == null ? null : decodeListOf(m['buckets'], '$f.buckets', (e, p) => decodeString(e, p)));
+    return SyncNowParams(
+      buckets: m['buckets'] == null
+          ? null
+          : decodeListOf(
+              m['buckets'],
+              '$f.buckets',
+              (e, p) => decodeString(e, p),
+            ),
+    );
   }
 
   final List<String>? buckets;
@@ -145,7 +225,10 @@ final class PrefsSetParams {
   factory PrefsSetParams.fromJson(Object? j, [String f = 'PrefsSetParams']) {
     final m = decodeObject(j, f);
     decodeKeys(m, const {'key', 'value'}, f);
-    return PrefsSetParams(key: decodeString(m['key'], '$f.key'), value: m['value'] == null ? null : decodeString(m['value'], '$f.value'));
+    return PrefsSetParams(
+      key: decodeString(m['key'], '$f.key'),
+      value: m['value'] == null ? null : decodeString(m['value'], '$f.value'),
+    );
   }
 
   final String key;
@@ -157,7 +240,10 @@ final class PrefsSetParams {
 final class OpenExternalParams {
   const OpenExternalParams({required this.url});
 
-  factory OpenExternalParams.fromJson(Object? j, [String f = 'OpenExternalParams']) {
+  factory OpenExternalParams.fromJson(
+    Object? j, [
+    String f = 'OpenExternalParams',
+  ]) {
     final m = decodeObject(j, f);
     decodeKeys(m, const {'url'}, f);
     return OpenExternalParams(url: decodeString(m['url'], '$f.url'));
@@ -188,7 +274,10 @@ final class SecureSetParams {
   factory SecureSetParams.fromJson(Object? j, [String f = 'SecureSetParams']) {
     final m = decodeObject(j, f);
     decodeKeys(m, const {'key', 'value'}, f);
-    return SecureSetParams(key: decodeString(m['key'], '$f.key'), value: decodeString(m['value'], '$f.value'));
+    return SecureSetParams(
+      key: decodeString(m['key'], '$f.key'),
+      value: decodeString(m['value'], '$f.value'),
+    );
   }
 
   final String key;
@@ -200,7 +289,10 @@ final class SecureSetParams {
 final class SecureDeleteParams {
   const SecureDeleteParams({required this.key});
 
-  factory SecureDeleteParams.fromJson(Object? j, [String f = 'SecureDeleteParams']) {
+  factory SecureDeleteParams.fromJson(
+    Object? j, [
+    String f = 'SecureDeleteParams',
+  ]) {
     final m = decodeObject(j, f);
     decodeKeys(m, const {'key'}, f);
     return SecureDeleteParams(key: decodeString(m['key'], '$f.key'));
@@ -214,10 +306,15 @@ final class SecureDeleteParams {
 final class AuthSetTokenParams {
   const AuthSetTokenParams({required this.token});
 
-  factory AuthSetTokenParams.fromJson(Object? j, [String f = 'AuthSetTokenParams']) {
+  factory AuthSetTokenParams.fromJson(
+    Object? j, [
+    String f = 'AuthSetTokenParams',
+  ]) {
     final m = decodeObject(j, f);
     decodeKeys(m, const {'token'}, f);
-    return AuthSetTokenParams(token: m['token'] == null ? null : decodeString(m['token'], '$f.token'));
+    return AuthSetTokenParams(
+      token: m['token'] == null ? null : decodeString(m['token'], '$f.token'),
+    );
   }
 
   final String? token;
@@ -236,17 +333,21 @@ abstract interface class BridgeHandlers {
   Future<void> prefsSet(PrefsSetParams p);
   Future<void> openExternal(OpenExternalParams p);
   Future<void> bundleApplyUpdate();
-  Future<void> hapticsTap();
   Future<String?> secureGet(SecureGetParams p);
   Future<void> secureSet(SecureSetParams p);
   Future<void> secureDelete(SecureDeleteParams p);
   Future<void> authSetToken(AuthSetTokenParams p);
   Future<bool> authHasToken();
+  Future<void> hapticsTap();
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
 /// calls the handler and returns the reply JSON. Never throws.
-Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String nonce}) async {
+Future<String> bridgeDispatch(
+  BridgeHandlers h,
+  String raw, {
+  required String nonce,
+}) async {
   Object? id;
   try {
     final Object? decoded;
@@ -257,7 +358,8 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
     }
     final msg = decodeObject(decoded, 'message');
     id = msg['id'];
-    if (nonce.isEmpty || msg['n'] != nonce) throw const BridgeError('E_DENIED', 'bad nonce');
+    if (nonce.isEmpty || msg['n'] != nonce)
+      throw const BridgeError('E_DENIED', 'bad nonce');
     final p = msg['p'] ?? const <String, Object?>{};
     switch (msg['m']) {
       case 'app.ready':
@@ -293,10 +395,6 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         await h.bundleApplyUpdate();
         return replyOk(id, null);
-      case 'haptics.tap':
-        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
-        await h.hapticsTap();
-        return replyOk(id, null);
       case 'secure.get':
         final r = await h.secureGet(SecureGetParams.fromJson(p, 'p'));
         return replyOk(id, r);
@@ -313,6 +411,10 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.authHasToken();
         return replyOk(id, r);
+      case 'haptics.tap':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        await h.hapticsTap();
+        return replyOk(id, null);
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
     }
@@ -325,10 +427,14 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
 
 /// Scripts that emit typed events into the web view. Pass the result to runJavaScript.
 abstract final class BridgeEvents {
-  static String syncChanged({required List<String> buckets}) => eventScript('sync.changed', {'buckets': buckets});
-  static String bundleUpdateReady({required int seq}) => eventScript('bundle.updateReady', {'seq': seq});
-  static String appResumed() => eventScript('app.resumed', const <String, Object?>{});
-  static String authExpired() => eventScript('auth.expired', const <String, Object?>{});
+  static String syncChanged({required List<String> buckets}) =>
+      eventScript('sync.changed', {'buckets': buckets});
+  static String bundleUpdateReady({required int seq}) =>
+      eventScript('bundle.updateReady', {'seq': seq});
+  static String appResumed() =>
+      eventScript('app.resumed', const <String, Object?>{});
+  static String authExpired() =>
+      eventScript('auth.expired', const <String, Object?>{});
 }
 
 /// The built-in bridge methods, implemented against the `valence` runtime.
@@ -346,7 +452,11 @@ abstract final class BridgeEvents {
 /// ```
 abstract class ValenceBuiltins {
   /// Wraps an open runtime.
-  ValenceBuiltins(this.valence);
+  ValenceBuiltins(this.valence, {List<ValencePlugin> plugins = const []})
+    : plugins = ValencePluginRegistry(plugins);
+
+  /// Store-compiled native handlers. Dispatch still uses the generated strict decoders.
+  final ValencePluginRegistry plugins;
 
   /// The runtime every built-in delegates to.
   final Valence valence;
@@ -359,7 +469,13 @@ abstract class ValenceBuiltins {
   /// `app.info`, from the package.
   Future<AppInfo> appInfo() async {
     final i = valence.appInfo();
-    return AppInfo(platform: i.platform, host: i.host, bridge: i.bridge, bundle: i.bundle, locale: i.locale);
+    return AppInfo(
+      platform: i.platform,
+      host: i.host,
+      bridge: i.bridge,
+      bundle: i.bundle,
+      locale: i.locale,
+    );
   }
 
   /// `data.get`, from the package.
@@ -369,7 +485,11 @@ abstract class ValenceBuiltins {
 
   /// `data.list`, from the package.
   Future<List<Row>> dataList(DataListParams p) async {
-    final rows = await valence.dataList(p.bucket, prefix: p.prefix, limit: p.limit);
+    final rows = await valence.dataList(
+      p.bucket,
+      prefix: p.prefix,
+      limit: p.limit,
+    );
     return [for (final r in rows) Row(key: r.key, value: r.value, usn: r.usn)];
   }
 
@@ -381,7 +501,12 @@ abstract class ValenceBuiltins {
   /// `sync.now`, from the package.
   Future<SyncResult> syncNow(SyncNowParams p) async {
     final r = await valence.syncNow(buckets: p.buckets);
-    return SyncResult(buckets: r.buckets, changed: r.changed, offline: r.offline, reason: r.reason.name);
+    return SyncResult(
+      buckets: r.buckets,
+      changed: r.changed,
+      offline: r.offline,
+      reason: r.reason.name,
+    );
   }
 
   /// `prefs.get`, from the package.
@@ -396,7 +521,7 @@ abstract class ValenceBuiltins {
 
   /// `open.external`, from the package.
   Future<void> openExternal(OpenExternalParams p) async {
-    await valence.openExternal(p.url);
+    await plugins.invoke(valence, 'open.external', {'url': p.url});
   }
 
   /// `bundle.applyUpdate`, from the package.
@@ -427,5 +552,10 @@ abstract class ValenceBuiltins {
   /// `auth.hasToken`, from the package.
   Future<bool> authHasToken() async {
     return valence.authHasToken();
+  }
+
+  /// `haptics.tap`, from the package.
+  Future<void> hapticsTap() async {
+    await plugins.invoke(valence, 'haptics.tap', const <String, Object?>{});
   }
 }

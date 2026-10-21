@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -16,11 +17,6 @@ import 'package:valence_example/valence/config.g.dart';
 
 class _Handlers extends AppHandlers {
   _Handlers(super.valence);
-
-  int taps = 0;
-
-  @override
-  Future<void> hapticsTap() async => taps++;
 }
 
 void main() {
@@ -28,6 +24,7 @@ void main() {
 
   const nonce = 'test-nonce';
   late Directory support;
+  var taps = 0;
 
   setUpAll(() {
     sqfliteFfiInit();
@@ -37,22 +34,31 @@ void main() {
   setUp(() async {
     support = await Directory.systemTemp.createTemp('valence-example');
     ValenceStore.resetCacheForTests();
+    taps = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'HapticFeedback.vibrate') taps++;
+          return null;
+        });
   });
 
   /// A real runtime on a temp directory, with the network mocked: the built-in handlers under test here
   /// are the generated delegations, so they have to reach the package for real.
   Future<_Handlers> handlers() async => _Handlers(
-        await Valence.open(
-          // The OTA and sync hosts in the example config are .invalid, so nothing can leave the machine.
-          valenceConfig,
-          hostBuild: 1,
-          log: (_) {},
-          client: MockClient(
-            (_) async => http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200),
-          ),
-          supportDir: support,
+    await Valence.open(
+      // The OTA and sync hosts in the example config are .invalid, so nothing can leave the machine.
+      valenceConfig,
+      hostBuild: 1,
+      log: (_) {},
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({'rows': [], 'max': 0, 'more': false}),
+          200,
         ),
-      );
+      ),
+      supportDir: support,
+    ),
+  );
 
   Future<Map<String, Object?>> dispatch(
     _Handlers h,
@@ -60,8 +66,14 @@ void main() {
     Object? params,
     String withNonce = nonce,
   }) async {
-    final raw = jsonEncode({'id': 1, 'n': withNonce, 'm': method, 'p': params ?? const <String, Object?>{}});
-    return jsonDecode(await bridgeDispatch(h, raw, nonce: nonce)) as Map<String, Object?>;
+    final raw = jsonEncode({
+      'id': 1,
+      'n': withNonce,
+      'm': method,
+      'p': params ?? const <String, Object?>{},
+    });
+    return jsonDecode(await bridgeDispatch(h, raw, nonce: nonce))
+        as Map<String, Object?>;
   }
 
   test('the generated config carries what the spec compiles into a host', () {
@@ -79,23 +91,25 @@ void main() {
     final h = await handlers();
     final reply = await dispatch(h, 'haptics.tap');
     expect(reply['ok'], isTrue);
-    expect(h.taps, 1);
+    expect(taps, 1);
   });
 
-  test('the built-ins are inherited from ValenceBuiltins, not written here', () async {
-    final h = await handlers();
-    // AppHandlers declares exactly one method; everything else comes from the generated base class, which
-    // delegates to the package. That is the whole point of the packaging change.
-    expect(h, isA<ValenceBuiltins>());
-    expect(h, isA<BridgeHandlers>());
-  });
+  test(
+    'the built-ins are inherited from ValenceBuiltins, not written here',
+    () async {
+      final h = await handlers();
+    // AppHandlers registers its plugin; all adapters come from the generated base class.
+      expect(h, isA<ValenceBuiltins>());
+      expect(h, isA<BridgeHandlers>());
+    },
+  );
 
   test('a message without the nonce is denied', () async {
     final h = await handlers();
     final reply = await dispatch(h, 'haptics.tap', withNonce: 'wrong');
     expect(reply['ok'], isFalse);
     expect((reply['e']! as Map)['code'], BridgeErrorCode.denied);
-    expect(h.taps, 0, reason: 'the handler must not run');
+    expect(taps, 0, reason: 'the handler must not run');
   });
 
   test('an unknown method is E_UNKNOWN', () async {
@@ -105,22 +119,36 @@ void main() {
 
   test('bad params are E_PARAMS, and an unknown field is named', () async {
     final h = await handlers();
-    final wrongType = await dispatch(h, 'data.get', params: {'bucket': 1, 'key': 'k'});
+    final wrongType = await dispatch(
+      h,
+      'data.get',
+      params: {'bucket': 1, 'key': 'k'},
+    );
     expect((wrongType['e']! as Map)['code'], BridgeErrorCode.params);
-    final unknownField = await dispatch(h, 'data.get', params: {'bucket': 'b', 'key': 'k', 'extra': 1});
+    final unknownField = await dispatch(
+      h,
+      'data.get',
+      params: {'bucket': 'b', 'key': 'k', 'extra': 1},
+    );
     expect((unknownField['e']! as Map)['message'], contains('extra'));
     final notAnObject = await dispatch(h, 'data.get', params: 'nope');
     expect((notAnObject['e']! as Map)['code'], BridgeErrorCode.params);
   });
 
   test('a method taking no params rejects params anyway', () async {
-    final reply = await dispatch(await handlers(), 'haptics.tap', params: {'x': 1});
+    final reply = await dispatch(
+      await handlers(),
+      'haptics.tap',
+      params: {'x': 1},
+    );
     expect((reply['e']! as Map)['code'], BridgeErrorCode.params);
   });
 
   test('non-JSON input is rejected rather than thrown', () async {
     final h = await handlers();
-    final reply = jsonDecode(await bridgeDispatch(h, 'not json', nonce: nonce)) as Map<String, Object?>;
+    final reply =
+        jsonDecode(await bridgeDispatch(h, 'not json', nonce: nonce))
+            as Map<String, Object?>;
     expect(reply['ok'], isFalse);
     expect((reply['e']! as Map)['code'], BridgeErrorCode.params);
   });
@@ -128,39 +156,77 @@ void main() {
   test('the built-in handlers really reach the package', () async {
     final h = await handlers();
     // data.put on a writable bucket goes all the way to SQLite, through the generated delegation.
-    final put = await dispatch(h, 'data.put', params: {'bucket': 'shelf', 'key': 'n-1', 'value': {'a': 1}});
+    final put = await dispatch(
+      h,
+      'data.put',
+      params: {
+        'bucket': 'shelf',
+        'key': 'n-1',
+        'value': {'a': 1},
+      },
+    );
     expect(put['ok'], isTrue, reason: '${put['e']}');
     final list = await dispatch(h, 'data.list', params: {'bucket': 'shelf'});
     final rows = list['v']! as List;
     expect(rows, hasLength(1));
-    expect((rows.single as Map)['usn'], -1, reason: 'written locally, not yet synced');
+    expect(
+      (rows.single as Map)['usn'],
+      -1,
+      reason: 'written locally, not yet synced',
+    );
     // And the policy the package owns is enforced through the same path.
-    final readOnly = await dispatch(h, 'data.put', params: {'bucket': 'plants', 'key': 'k', 'value': {}});
+    final readOnly = await dispatch(
+      h,
+      'data.put',
+      params: {'bucket': 'plants', 'key': 'k', 'value': {}},
+    );
     expect((readOnly['e']! as Map)['code'], BridgeErrorCode.denied);
-    final reserved = await dispatch(h, 'prefs.set', params: {'key': 'valence.sync.lease', 'value': '1'});
+    final reserved = await dispatch(
+      h,
+      'prefs.set',
+      params: {'key': 'valence.sync.lease', 'value': '1'},
+    );
     expect((reserved['e']! as Map)['code'], BridgeErrorCode.denied);
-    final scheme = await dispatch(h, 'open.external', params: {'url': 'javascript:alert(1)'});
+    final scheme = await dispatch(
+      h,
+      'open.external',
+      params: {'url': 'javascript:alert(1)'},
+    );
     expect((scheme['e']! as Map)['code'], BridgeErrorCode.denied);
   });
 
-  test('the generated secure.* and auth.* delegations reach the package (§4.4)', () async {
-    final h = await handlers();
-    // The reserved key is refused before any platform call, so this runs without a Keystore.
-    final token = await dispatch(h, 'secure.get', params: {'key': secureAuthTokenKey});
-    expect((token['e']! as Map)['code'], BridgeErrorCode.denied);
-    // And a host with no secure-storage platform at all — a plain `flutter test` — reads as "no token"
-    // rather than throwing out of the bridge. The Keystore behaviour is tested in the package.
-    final has = await dispatch(h, 'auth.hasToken');
-    expect(has['ok'], isTrue, reason: '${has['e']}');
-    expect(has['v'], isFalse);
-  });
+  test(
+    'the generated secure.* and auth.* delegations reach the package (§4.4)',
+    () async {
+      final h = await handlers();
+      // The reserved key is refused before any platform call, so this runs without a Keystore.
+      final token = await dispatch(
+        h,
+        'secure.get',
+        params: {'key': secureAuthTokenKey},
+      );
+      expect((token['e']! as Map)['code'], BridgeErrorCode.denied);
+      // And a host with no secure-storage platform at all — a plain `flutter test` — reads as "no token"
+      // rather than throwing out of the bridge. The Keystore behaviour is tested in the package.
+      final has = await dispatch(h, 'auth.hasToken');
+      expect(has['ok'], isTrue, reason: '${has['e']}');
+      expect(has['v'], isFalse);
+    },
+  );
 
-  test('the seed is imported on first launch, so the app works offline', () async {
-    final h = await handlers();
-    final reply = await dispatch(h, 'data.get', params: {'bucket': 'plants', 'key': 'fern'});
-    expect(reply['ok'], isTrue, reason: '${reply['e']}');
-    expect((reply['v']! as Map)['name'], 'Boston fern');
-  });
+  test(
+    'the seed is imported on first launch, so the app works offline',
+    () async {
+      final h = await handlers();
+      final reply = await dispatch(
+        h,
+        'data.get',
+        params: {'bucket': 'plants', 'key': 'fern'},
+      );
+      expect(reply['ok'], isTrue, reason: '${reply['e']}');
+      expect((reply['v']! as Map)['name'], 'Boston fern');
+    },
+  );
 
   test('the generated event builders go through jsonEncode', () {
     expect(
