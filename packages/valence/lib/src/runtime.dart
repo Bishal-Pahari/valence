@@ -33,7 +33,7 @@ export 'secure.dart' show ValenceSecure, secureAuthTokenKey;
 export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
 export 'store.dart' show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, maxListLimit;
-export 'sync.dart' show ValenceSync, ValenceSyncReason, ValenceSyncResult;
+export 'sync.dart' show ValenceSync, ValenceSyncReason, ValenceSyncResult, ValenceSyncStatus;
 export 'updater.dart' show ValenceUpdater;
 export 'wire.dart' show BridgeError, BridgeErrorCode, maxMessageBytes;
 
@@ -270,7 +270,10 @@ final class Valence {
       }
     }
     try {
-      final counts = await store.importSeed(seedPath, config.dataSchemas);
+      final counts = await store.importSeed(seedPath, config.dataSchemas, additionalSchemas: {
+        for (final e in config.seedSchemas.entries)
+          if (config.dataSchemas.containsKey(e.key) && !config.writableBuckets.contains(e.key)) e.key: e.value,
+      });
       final moved = counts.values.fold<int>(0, (a, b) => a + b);
       if (moved > 0) _log('seed: imported $counts');
       // Stamped only after a clean import, so a crash mid-import retries on the next launch.
@@ -323,6 +326,13 @@ final class Valence {
 
   /// `data.get`.
   Future<Object?> dataGet(String bucket, String key) => store.get(bucket, schemaFor(bucket), key);
+
+  /// `data.getMany`, using the active bundle's schema just like [dataGet].
+  Future<List<ValenceRow>> dataGetMany(String bucket, List<String> keys) =>
+      store.getMany(bucket, schemaFor(bucket), keys);
+
+  /// `sync.status`. A local snapshot; never starts a network request.
+  Future<ValenceSyncStatus> syncStatus() => sync.status();
 
   /// `data.list`. The host clamps `limit`, rather than trusting the page (§4.2).
   Future<List<ValenceRow>> dataList(String bucket, {String? prefix, int? limit}) =>
@@ -462,6 +472,5 @@ final class Valence {
   }
 
   /// Reads one asset as bytes. Used for the built-in bundle and the seed.
-  static Future<Uint8List> readAsset(String key) async =>
-      (await rootBundle.load(key)).buffer.asUint8List();
+  static Future<Uint8List> readAsset(String key) async => (await rootBundle.load(key)).buffer.asUint8List();
 }

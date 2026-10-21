@@ -22,6 +22,7 @@ import {
   bundle,
   keygen,
   codegen,
+  diagnose,
   pointer,
   loadConfig,
   parseSchema,
@@ -33,10 +34,21 @@ import {
 const TEMPLATES = join(import.meta.dirname, '..', 'templates');
 const NOW = Date.UTC(2026, 9, 15);
 
-function fixture({ data = { calendar: 1 } } = {}) {
+function fixture({ data = { calendar: 1 }, latest = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'mr-'));
   mkdirSync(join(root, 'valence'));
   cpSync(join(TEMPLATES, 'bridge.schema.json'), join(root, 'valence', 'bridge.schema.json'));
+  // Historical evolution cases start from the shipped bridge-2 shape.
+  if (!latest) {
+    const p = join(root, 'valence', 'bridge.schema.json');
+    const s = JSON.parse(readFileSync(p, 'utf8'));
+    s.version = 2;
+    delete s.methods['data.getMany'];
+    delete s.methods['sync.status'];
+    delete s.types.SyncStatus;
+    delete s.types.SyncResult.pending;
+    writeFileSync(p, JSON.stringify(s));
+  }
   const cfg = JSON.parse(readFileSync(join(TEMPLATES, 'valence.config.json'), 'utf8'));
   cfg.data = data;
   cfg.writable = ['user'];
@@ -212,7 +224,7 @@ test('_host/ is reserved for the host, and a relative asset base in the entry pa
   assert.throws(() => bundle({ root, cfg, key, now: NOW }), /_host\/ is reserved/);
 });
 
-test('requires.bridge rising above the shipped store build warns, because it strands those hosts for ever', () => {
+test('OTA defaults to the store bridge while explicit and built-in builds can require the newer host', () => {
   const { root, cfg, key } = fixture();
   bundle({ root, cfg, key, store: true, now: NOW }); // ships bridge 2 to the stores
   const bridgeWarn = (r) => r.warnings.filter((w) => w.includes('requires.bridge'));
@@ -223,8 +235,11 @@ test('requires.bridge rising above the shipped store build warns, because it str
     s.methods['share.image'] = { since: 3, params: { png: 'string' }, returns: 'bool' };
   });
   const bumped = bundle({ root, cfg, key, now: NOW });
-  assert.equal(bumped.manifest.requires.bridge, 3);
-  assert.match(bridgeWarn(bumped)[0], /--requires-bridge 2/);
+  assert.equal(bumped.manifest.requires.bridge, 2);
+  assert.match(bridgeWarn(bumped).join('\n'), /pinned to 2.*share\.image.*has\(\)/s);
+  const explicit = bundle({ root, cfg, key, requiresBridge: 3, now: NOW });
+  assert.match(bridgeWarn(explicit).join('\n'), /--requires-bridge 2/);
+  assert.equal(bundle({ root, cfg, key, builtin: true, now: NOW }).manifest.requires.bridge, 3);
 
   // Pinning to the oldest host in the field is the lever, and it is the right move — but it is not silent: an
   // unguarded call to a since: 3 method would then be dead in the field with no build-time or store signal.
@@ -357,6 +372,74 @@ test('pointer defaults to the newest manifest', () => {
 });
 
 // ---------- codegen ----------
+
+test('multi-schema seeds require declarations, retain both versions and fail atomically on duplicates', async () => {
+  const { root, cfg } = fixture({ data: { calendar: 2 } });
+  cfg.seedSchemas = { calendar: [1] };
+  const from = mkdtempSync(join(tmpdir(), 'mr-multi-seed-'));
+  const doc = (schema, v) => JSON.stringify({ schema, rows: [{ k: 'day', v, u: 1 }] });
+  writeFileSync(join(from, 'calendar.v1.json'), doc(1, 'old'));
+  const old = await seed({ root, cfg, from });
+  assert.equal(old.warnings.length, 1, 'old seed does not satisfy current offline coverage');
+  writeFileSync(join(from, 'calendar.v2.json'), doc(2, 'new'));
+  const r = await seed({ root, cfg, from });
+  assert.equal(r.warnings.length, 0);
+  const { DatabaseSync } = await import('node:sqlite');
+  const db = new DatabaseSync(r.out, { readOnly: true });
+  assert.deepEqual(db.prepare('SELECT schema, value FROM kv ORDER BY schema').all().map((r) => [r.schema, JSON.parse(r.value)]), [[1, 'old'], [2, 'new']]);
+  db.close();
+  const before = readFileSync(r.out);
+  writeFileSync(join(from, 'calendar.json'), doc(1, 'duplicate'));
+  await assert.rejects(seed({ root, cfg, from }), /duplicate seed pair/);
+  assert.deepEqual(readFileSync(r.out), before);
+  rmSync(join(from, 'calendar.json'));
+  cfg.seedSchemas = {};
+  await assert.rejects(seed({ root, cfg, from }), /declared schema/);
+  cfg.seedSchemas = { calendar: [1] };
+  writeFileSync(join(from, 'calendar.v1.json'), doc(2, 'wrong filename'));
+  await assert.rejects(seed({ root, cfg, from }), /filename schema/);
+});
+
+test('ota.channel validates and codegen emits a named constant wired to the host', () => {
+  const { root, cfg } = fixture({ latest: true });
+  cfg.ota.channel = 'beta';
+  writeFileSync(join(root, 'valence', 'valence.config.json'), JSON.stringify(cfg));
+  codegen({ root, cfg: loadConfig(root) });
+  const generated = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'config.g.dart'), 'utf8');
+  assert.match(generated, /const valenceOtaChannel = 'beta';/);
+  assert.match(generated, /channel: valenceOtaChannel/);
+  cfg.ota.channel = '../production';
+  writeFileSync(join(root, 'valence', 'valence.config.json'), JSON.stringify(cfg));
+  assert.throws(() => loadConfig(root), /ota.channel/);
+});
+
+test('doctor reports absent evidence as warnings, compatibility errors as failures and mapped execution honestly', async () => {
+  const { root, cfg, key } = fixture({ latest: true });
+  codegen({ root, cfg });
+  const first = await diagnose({ root, cfg });
+  assert.equal(first.filter(([s]) => s === 'FAIL').length, 0);
+  for (const id of ['bridge', 'loopback', 'updater', 'store-sync', 'integration']) {
+    assert.ok(first.some(([s, name]) => s === 'WARN' && name === `§8 ${id}`));
+  }
+  mkdirSync(join(root, '.valence'), { recursive: true });
+  mkdirSync(join(root, cfg.host.dir, 'test'), { recursive: true });
+  writeFileSync(join(root, cfg.host.dir, 'test', 'wiring_test.dart'), 'void main() {}');
+  writeFileSync(join(root, '.valence', 'test-matrix.json'), JSON.stringify({ bridge: ['test/wiring_test.dart'] }));
+  const unrun = await diagnose({ root, cfg });
+  assert.ok(unrun.some(([s, n, msg]) => s === 'WARN' && n === '§8 bridge' && msg.includes('not executed')));
+  const ran = await diagnose({ root, cfg, tests: true, run: () => ({ status: 0 }) });
+  assert.ok(ran.some(([s, n]) => s === 'PASS' && n === '§8 bridge'));
+  const failed = await diagnose({ root, cfg, tests: true, run: () => ({ status: 1 }) });
+  assert.ok(failed.some(([s, n]) => s === 'FAIL' && n === '§8 bridge'));
+  writeFileSync(join(root, '.valence', 'test-matrix.json'), JSON.stringify({ bridge: ['test/../../outside_test.dart'] }));
+  assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === '§8 bridge'));
+  cfg.nativeValue = ['offline', 'offline'];
+  assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'native value'));
+  bundle({ root, cfg, key, builtin: true, now: NOW });
+  const dart = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
+  writeFileSync(dart, readFileSync(dart, 'utf8').replace('const hostBridgeVersion = 3;', 'const hostBridgeVersion = 1;'));
+  assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'built-in compatibility'));
+});
 
 test('codegen writes once, is stable, survives formatters, and --check detects real staleness', () => {
   const { root, cfg } = fixture();
@@ -699,7 +782,7 @@ test(
   'the generated TS type-checks under --strict --verbatimModuleSyntax',
   { skip: !existsSync(TSC) && 'run "npm install" in packages/bridge first', timeout: 300_000 },
   () => {
-    const { root, cfg } = fixture();
+    const { root, cfg } = fixture({ latest: true });
     codegen({ root, cfg });
     const lib = join(root, cfg.web.lib);
     // An app's web project is ESM; without this the compiler reads the file as CommonJS and every import
@@ -747,7 +830,7 @@ test(
   'generated Dart analyzes cleanly against the package, and dispatch behaves per contracts §4.2',
   { skip: !hasFlutter && 'flutter is not on PATH', timeout: 600_000 },
   () => {
-    const { root, cfg } = fixture();
+    const { root, cfg } = fixture({ latest: true });
     editSchema(root, (s) => {
       s.types.Empty = {};
       s.methods['x.edge'] = { since: 1, params: { blobs: 'json[]?', rows: 'Row[]?', type: 'string', empty: 'Empty?' }, returns: 'Row[]?' };
@@ -792,7 +875,7 @@ import 'package:valence/valence.dart';
 import 'package:valence_probe/valence/bridge.g.dart';
 import 'package:valence_probe/valence/config.g.dart';
 
-final class H implements BridgeHandlers {
+final class H with BridgeHandlersDefaults {
   @override
   Future<void> appReady() async {}
   @override
@@ -836,6 +919,10 @@ Future<Map<String, Object?>> call(String raw) async =>
 String code(Map<String, Object?> r) => (r['e']! as Map)['code'] as String;
 
 void main() {
+  test('new methods default to E_UNSUPPORTED through strict dispatch', () async {
+    expect(code(await call('{"id":1,"n":"n1","m":"sync.status","p":{}}')), 'E_UNSUPPORTED');
+    expect(code(await call('{"id":1,"n":"n1","m":"data.getMany","p":{"bucket":"calendar","keys":[3]}}')), 'E_PARAMS');
+  });
   test('the generated config is wired to the generated bridge version', () {
     expect(valenceConfig.bridgeVersion, hostBridgeVersion);
   });

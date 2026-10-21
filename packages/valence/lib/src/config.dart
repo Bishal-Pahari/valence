@@ -23,6 +23,7 @@ final class ValenceConfig {
     this.syncMode = ValenceSyncMode.api,
     this.writableBuckets = const {},
     this.dataSchemas = const {},
+    this.seedSchemas = const {},
     this.channel = 'production',
     this.bundleSizeCap = 50 * 1024 * 1024,
     this.dataSizeCap = 50 * 1024 * 1024,
@@ -64,6 +65,9 @@ final class ValenceConfig {
 
   /// Read-only buckets and the schema this build reads, from `data` in `valence.config.json`.
   final Map<String, int> dataSchemas;
+
+  /// Additional declared read-only schemas to import from the bundled seed (§5.2).
+  final Map<String, List<int>> seedSchemas;
 
   /// The OTA channel this build follows, for example `production` or `beta`.
   final String channel;
@@ -124,6 +128,7 @@ final class ValenceConfig {
         syncMode: syncMode ?? this.syncMode,
         writableBuckets: writableBuckets,
         dataSchemas: dataSchemas,
+        seedSchemas: seedSchemas,
         channel: channel ?? this.channel,
         bundleSizeCap: bundleSizeCap ?? this.bundleSizeCap,
         dataSizeCap: dataSizeCap ?? this.dataSizeCap,
