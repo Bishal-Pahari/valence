@@ -58,6 +58,8 @@ exclude the path in profile builds; a profile APK was not separately built.
 
 The shared `valence_test` emulator was locked as `codex-builder`, ensured ready and used only
 for `com.getvalence.valence_example`. No test app was installed, cleared or edited.
+The final APK repeated the HMR/native-write result. The example and dev server were stopped,
+the teaching message was restored, and the emulator lock was released before handoff.
 
 The example ran against Vite 8.3.4 on the computer at port 5173, reached through `10.0.2.2`.
 The WebView stayed at its owned `http://127.0.0.1:14757/` origin. Its log recorded:
