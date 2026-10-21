@@ -51,3 +51,8 @@ platform for Valence; **iOS is experimental and untested**.
 ## Native HTTP demo
 
 The schema is now 4 and `http.origins` compiles `http://10.0.2.2:8787` for emulator tests. Run the reference adapter in `examples/rest-sync-adapter/`, set its `ADAPTER_TOKEN` through the Login form, and tap `http.request`. `GET /rpc` returns authenticated status without echoing the token; the other button proves an unlisted origin is denied. No CORS headers are needed. This local HTTP endpoint is for tests; production uses HTTPS. The offline bundle and seed still work without that server.
+
+
+## Local reminder demo
+
+The schema is 5 and notifications.enabled is true. Allow reminders, then schedule 15 seconds ahead: the page shows exact or inexact, displays native pending requests, cancels ID 42 and records warm tap/action or the consumed cold initial response. Images use a tiny PNG; Done and Snooze open the UI and report an action without automatically changing app data. The Android platform files include receivers, a status drawable and desugaring. iOS/AppDelegate is implemented but experimental and untested. See [setup](../../../docs/local-notifications.md).

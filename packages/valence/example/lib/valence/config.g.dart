@@ -12,6 +12,8 @@ const valenceConfig = ValenceConfig(
   appId: 'com.getvalence.example',
   keyring: {'k1': 'cmDzyiObOIA2VI5Ke2uMSRilCC5rAlw/8bMElWtzxRk='},
   bridgeVersion: hostBridgeVersion,
+  notificationsEnabled: true,
+  notificationIcon: 'ic_stat_valence',
   channel: valenceOtaChannel,
   otaBase: 'https://ota.example.invalid',
   syncBase: 'https://sync.example.invalid',

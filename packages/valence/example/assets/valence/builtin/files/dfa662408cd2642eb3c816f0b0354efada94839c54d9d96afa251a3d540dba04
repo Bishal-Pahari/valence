@@ -57,6 +57,16 @@
       <pre id="http-result"></pre>
     </section>
 
+    <section>
+      <h2>Local reminders</h2>
+      <p>Request permission, then schedule a one-shot reminder 15 seconds from now. Exact requests may return inexact.</p>
+      <button id="notify-permission">Allow reminders</button>
+      <button id="notify-schedule">Remind in 15 seconds</button>
+      <button id="notify-pending">Pending reminders</button>
+      <button id="notify-cancel">Cancel reminder</button>
+      <button id="badge">Badge 3</button>
+      <pre id="notify-result"></pre>
+    </section>
     <!--
       A real app imports @getvalence/bridge through the generated web/lib/bridge.g.ts. This example talks
       to the wire protocol directly, so it needs no bundler and `valence bundle` can sign the folder as is
@@ -74,6 +84,7 @@
           reply.ok ? p.resolve(reply.v) : p.reject(new Error(`${reply.e.code}: ${reply.e.message}`));
         },
         e(name, payload) {
+          if (name.startsWith('notify.')) document.getElementById('notify-result').textContent = name + ': ' + JSON.stringify(payload);
           if (name === 'sync.changed') void refresh();
           // The host fires this when a sync request carrying the token came back 401 (§4.4). A real app
           // refreshes the token here, or shows a login screen.
@@ -190,12 +201,24 @@
         });
       }
 
+      for (const [id, method, params] of [
+        ['notify-permission', 'notify.permission', () => ({ request: true })],
+        ['notify-schedule', 'notify.schedule', () => ({ id: 42, title: 'Valence reminder', body: 'A local reminder from your signed page', at: Date.now() + 15000, exact: true, payload: 'demo', actions: ['done', 'snooze'], image: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII=' })],
+        ['notify-pending', 'notify.pending', () => ({})],
+        ['notify-cancel', 'notify.cancel', () => ({ id: 42 })],
+        ['badge', 'badge.set', () => ({ n: 3 })],
+      ]) document.getElementById(id).addEventListener('click', async () => {
+        try { document.getElementById('notify-result').textContent = method + ': ' + JSON.stringify(await call(method, params())); }
+        catch (e) { document.getElementById('notify-result').textContent = String(e); }
+      });
+
       (async () => {
         try {
           const info = await call('app.info');
           document.getElementById('info').textContent = JSON.stringify(info, null, 2);
           await refresh();
           await showAuth();
+          document.getElementById('notify-result').textContent = 'notify.initial: ' + JSON.stringify(await call('notify.initial'));
         } catch (e) {
           show(e);
         }

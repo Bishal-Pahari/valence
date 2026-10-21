@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 4;
+const hostBridgeVersion = 5;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale});
@@ -95,6 +95,38 @@ final class SyncStatus {
   final bool offline;
 
   Map<String, Object?> toJson() => {'pending': pending, 'lastSyncedAt': lastSyncedAt, 'offline': offline};
+}
+
+final class NotifyScheduled {
+  const NotifyScheduled({required this.id, required this.timing});
+
+  factory NotifyScheduled.fromJson(Object? j, [String f = 'NotifyScheduled']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'id', 'timing'}, f);
+    return NotifyScheduled(id: decodeInt(m['id'], '$f.id'), timing: decodeString(m['timing'], '$f.timing'));
+  }
+
+  final int id;
+  final String timing;
+
+  Map<String, Object?> toJson() => {'id': id, 'timing': timing};
+}
+
+final class NotifyPending {
+  const NotifyPending({required this.id, this.title, this.body, this.payload});
+
+  factory NotifyPending.fromJson(Object? j, [String f = 'NotifyPending']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'id', 'title', 'body', 'payload'}, f);
+    return NotifyPending(id: decodeInt(m['id'], '$f.id'), title: m['title'] == null ? null : decodeString(m['title'], '$f.title'), body: m['body'] == null ? null : decodeString(m['body'], '$f.body'), payload: m['payload'] == null ? null : decodeString(m['payload'], '$f.payload'));
+  }
+
+  final int id;
+  final String? title;
+  final String? body;
+  final String? payload;
+
+  Map<String, Object?> toJson() => {'id': id, 'title': title, 'body': body, 'payload': payload};
 }
 
 final class DataGetParams {
@@ -290,6 +322,90 @@ final class DataGetManyParams {
   Map<String, Object?> toJson() => {'bucket': bucket, 'keys': keys};
 }
 
+final class NotifyPermissionParams {
+  const NotifyPermissionParams({this.request});
+
+  factory NotifyPermissionParams.fromJson(Object? j, [String f = 'NotifyPermissionParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'request'}, f);
+    return NotifyPermissionParams(request: m['request'] == null ? null : decodeBool(m['request'], '$f.request'));
+  }
+
+  final bool? request;
+
+  Map<String, Object?> toJson() => {'request': request};
+}
+
+final class NotifyScheduleParams {
+  const NotifyScheduleParams({required this.id, required this.title, this.body, required this.at, this.channel, this.exact, this.payload, this.image, this.actions, this.group});
+
+  factory NotifyScheduleParams.fromJson(Object? j, [String f = 'NotifyScheduleParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'id', 'title', 'body', 'at', 'channel', 'exact', 'payload', 'image', 'actions', 'group'}, f);
+    return NotifyScheduleParams(id: decodeInt(m['id'], '$f.id'), title: decodeString(m['title'], '$f.title'), body: m['body'] == null ? null : decodeString(m['body'], '$f.body'), at: decodeInt(m['at'], '$f.at'), channel: m['channel'] == null ? null : decodeString(m['channel'], '$f.channel'), exact: m['exact'] == null ? null : decodeBool(m['exact'], '$f.exact'), payload: m['payload'] == null ? null : decodeString(m['payload'], '$f.payload'), image: m['image'] == null ? null : decodeString(m['image'], '$f.image'), actions: m['actions'] == null ? null : decodeListOf(m['actions'], '$f.actions', (e, p) => decodeString(e, p)), group: m['group'] == null ? null : decodeString(m['group'], '$f.group'));
+  }
+
+  final int id;
+  final String title;
+  final String? body;
+  final int at;
+  final String? channel;
+  final bool? exact;
+  final String? payload;
+  final String? image;
+  final List<String>? actions;
+  final String? group;
+
+  Map<String, Object?> toJson() => {'id': id, 'title': title, 'body': body, 'at': at, 'channel': channel, 'exact': exact, 'payload': payload, 'image': image, 'actions': actions, 'group': group};
+}
+
+final class NotifyCancelParams {
+  const NotifyCancelParams({required this.id});
+
+  factory NotifyCancelParams.fromJson(Object? j, [String f = 'NotifyCancelParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'id'}, f);
+    return NotifyCancelParams(id: decodeInt(m['id'], '$f.id'));
+  }
+
+  final int id;
+
+  Map<String, Object?> toJson() => {'id': id};
+}
+
+final class NotifyChannelsSetParams {
+  const NotifyChannelsSetParams({required this.id, required this.name, this.importance, this.sound, this.group, this.groupName});
+
+  factory NotifyChannelsSetParams.fromJson(Object? j, [String f = 'NotifyChannelsSetParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'id', 'name', 'importance', 'sound', 'group', 'groupName'}, f);
+    return NotifyChannelsSetParams(id: decodeString(m['id'], '$f.id'), name: decodeString(m['name'], '$f.name'), importance: m['importance'] == null ? null : decodeString(m['importance'], '$f.importance'), sound: m['sound'] == null ? null : decodeString(m['sound'], '$f.sound'), group: m['group'] == null ? null : decodeString(m['group'], '$f.group'), groupName: m['groupName'] == null ? null : decodeString(m['groupName'], '$f.groupName'));
+  }
+
+  final String id;
+  final String name;
+  final String? importance;
+  final String? sound;
+  final String? group;
+  final String? groupName;
+
+  Map<String, Object?> toJson() => {'id': id, 'name': name, 'importance': importance, 'sound': sound, 'group': group, 'groupName': groupName};
+}
+
+final class BadgeSetParams {
+  const BadgeSetParams({required this.n});
+
+  factory BadgeSetParams.fromJson(Object? j, [String f = 'BadgeSetParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'n'}, f);
+    return BadgeSetParams(n: decodeInt(m['n'], '$f.n'));
+  }
+
+  final int n;
+
+  Map<String, Object?> toJson() => {'n': n};
+}
+
 abstract interface class BridgeHandlers {
   Future<void> appReady();
   Future<AppInfo> appInfo();
@@ -310,6 +426,14 @@ abstract interface class BridgeHandlers {
   Future<HttpResponse> httpRequest(HttpRequestParams p);
   Future<List<Row>> dataGetMany(DataGetManyParams p);
   Future<SyncStatus> syncStatus();
+  Future<bool> notifyPermission(NotifyPermissionParams p);
+  Future<NotifyScheduled> notifySchedule(NotifyScheduleParams p);
+  Future<void> notifyCancel(NotifyCancelParams p);
+  Future<List<NotifyPending>> notifyPending();
+  Future<Object?> notifyInitial();
+  Future<void> notifyChannelsSet(NotifyChannelsSetParams p);
+  Future<bool> badgeSet(BadgeSetParams p);
+  Future<bool> badgeClear();
 }
 
 /// Opt-in defaults for test doubles or partial hosts. Production hosts extend ValenceBuiltins.
@@ -352,6 +476,22 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<List<Row>> dataGetMany(DataGetManyParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.getMany is not implemented');
   @override
   Future<SyncStatus> syncStatus() async => throw const BridgeError('E_UNSUPPORTED', 'sync.status is not implemented');
+  @override
+  Future<bool> notifyPermission(NotifyPermissionParams p) async => throw const BridgeError('E_UNSUPPORTED', 'notify.permission is not implemented');
+  @override
+  Future<NotifyScheduled> notifySchedule(NotifyScheduleParams p) async => throw const BridgeError('E_UNSUPPORTED', 'notify.schedule is not implemented');
+  @override
+  Future<void> notifyCancel(NotifyCancelParams p) async => throw const BridgeError('E_UNSUPPORTED', 'notify.cancel is not implemented');
+  @override
+  Future<List<NotifyPending>> notifyPending() async => throw const BridgeError('E_UNSUPPORTED', 'notify.pending is not implemented');
+  @override
+  Future<Object?> notifyInitial() async => throw const BridgeError('E_UNSUPPORTED', 'notify.initial is not implemented');
+  @override
+  Future<void> notifyChannelsSet(NotifyChannelsSetParams p) async => throw const BridgeError('E_UNSUPPORTED', 'notify.channels.set is not implemented');
+  @override
+  Future<bool> badgeSet(BadgeSetParams p) async => throw const BridgeError('E_UNSUPPORTED', 'badge.set is not implemented');
+  @override
+  Future<bool> badgeClear() async => throw const BridgeError('E_UNSUPPORTED', 'badge.clear is not implemented');
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
@@ -433,6 +573,33 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.syncStatus();
         return replyOk(id, r.toJson());
+      case 'notify.permission':
+        final r = await h.notifyPermission(NotifyPermissionParams.fromJson(p, 'p'));
+        return replyOk(id, r);
+      case 'notify.schedule':
+        final r = await h.notifySchedule(NotifyScheduleParams.fromJson(p, 'p'));
+        return replyOk(id, r.toJson());
+      case 'notify.cancel':
+        await h.notifyCancel(NotifyCancelParams.fromJson(p, 'p'));
+        return replyOk(id, null);
+      case 'notify.pending':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.notifyPending();
+        return replyOk(id, r.map((e) => e.toJson()).toList());
+      case 'notify.initial':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.notifyInitial();
+        return replyOk(id, r);
+      case 'notify.channels.set':
+        await h.notifyChannelsSet(NotifyChannelsSetParams.fromJson(p, 'p'));
+        return replyOk(id, null);
+      case 'badge.set':
+        final r = await h.badgeSet(BadgeSetParams.fromJson(p, 'p'));
+        return replyOk(id, r);
+      case 'badge.clear':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.badgeClear();
+        return replyOk(id, r);
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
     }
@@ -449,6 +616,8 @@ abstract final class BridgeEvents {
   static String bundleUpdateReady({required int seq}) => eventScript('bundle.updateReady', {'seq': seq});
   static String appResumed() => eventScript('app.resumed', const <String, Object?>{});
   static String authExpired() => eventScript('auth.expired', const <String, Object?>{});
+  static String notifyTapped({required int id, required String? payload, required String? action}) => eventScript('notify.tapped', {'id': id, 'payload': payload, 'action': action});
+  static String notifyAction({required int id, required String? payload, required String? action}) => eventScript('notify.action', {'id': id, 'payload': payload, 'action': action});
 }
 
 /// The built-in bridge methods, implemented against the `valence` runtime.
@@ -565,5 +734,45 @@ abstract class ValenceBuiltins {
   Future<SyncStatus> syncStatus() async {
     final r = await valence.syncStatus();
     return SyncStatus(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline);
+  }
+
+  /// `notify.permission`, from the package.
+  Future<bool> notifyPermission(NotifyPermissionParams p) async {
+    return valence.notifications.permission(request: p.request ?? false);
+  }
+
+  /// `notify.schedule`, from the package.
+  Future<NotifyScheduled> notifySchedule(NotifyScheduleParams p) async {
+    return NotifyScheduled.fromJson(await valence.notifications.schedule(id: p.id, title: p.title, body: p.body, at: p.at, channel: p.channel, exact: p.exact ?? false, payload: p.payload, image: p.image, actionIds: p.actions ?? const [], group: p.group));
+  }
+
+  /// `notify.cancel`, from the package.
+  Future<void> notifyCancel(NotifyCancelParams p) async {
+    await valence.notifications.cancel(p.id);
+  }
+
+  /// `notify.pending`, from the package.
+  Future<List<NotifyPending>> notifyPending() async {
+    return [for (final r in await valence.notifications.pending()) NotifyPending.fromJson(r)];
+  }
+
+  /// `notify.initial`, from the package.
+  Future<Object?> notifyInitial() async {
+    return valence.notifications.initial();
+  }
+
+  /// `notify.channels.set`, from the package.
+  Future<void> notifyChannelsSet(NotifyChannelsSetParams p) async {
+    await valence.notifications.channel(id: p.id, name: p.name, importance: p.importance ?? 'default', sound: p.sound, group: p.group, groupName: p.groupName);
+  }
+
+  /// `badge.set`, from the package.
+  Future<bool> badgeSet(BadgeSetParams p) async {
+    return valence.notifications.badge(p.n);
+  }
+
+  /// `badge.clear`, from the package.
+  Future<bool> badgeClear() async {
+    return valence.notifications.badge(0);
   }
 }

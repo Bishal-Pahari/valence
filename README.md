@@ -151,3 +151,8 @@ node valence/valence.mjs keygen | codegen [--check] | bundle [--builtin|--store]
 Run `node valence/valence.mjs doctor --tests` for mechanical checks and mapped unit tests. WARN means missing or unexecuted evidence; device behavior still needs a device run. [Full guide](https://getvalence.pages.dev/docs/guides/offline-tooling/).
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
+
+
+## Local reminders
+
+Schema 5 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. iOS is experimental and untested. See [the guide](docs/local-notifications.md).

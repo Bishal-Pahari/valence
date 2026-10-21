@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 4;
+export const BRIDGE_VERSION = 5;
 
 export interface AppInfo {
   platform: string;
@@ -42,6 +42,18 @@ export interface SyncStatus {
   pending: number;
   lastSyncedAt?: number | null;
   offline: boolean;
+}
+
+export interface NotifyScheduled {
+  id: number;
+  timing: string;
+}
+
+export interface NotifyPending {
+  id: number;
+  title?: string | null;
+  body?: string | null;
+  payload?: string | null;
 }
 
 export interface Methods {
@@ -101,6 +113,38 @@ export interface Methods {
     keys: string[];
   }; returns: Row[] };
   'sync.status': { params: Record<string, never>; returns: SyncStatus };
+  'notify.permission': { params: {
+    request?: boolean | null;
+  }; returns: boolean };
+  'notify.schedule': { params: {
+    id: number;
+    title: string;
+    body?: string | null;
+    at: number;
+    channel?: string | null;
+    exact?: boolean | null;
+    payload?: string | null;
+    image?: string | null;
+    actions?: string[] | null;
+    group?: string | null;
+  }; returns: NotifyScheduled };
+  'notify.cancel': { params: {
+    id: number;
+  }; returns: void };
+  'notify.pending': { params: Record<string, never>; returns: NotifyPending[] };
+  'notify.initial': { params: Record<string, never>; returns: Json | null };
+  'notify.channels.set': { params: {
+    id: string;
+    name: string;
+    importance?: string | null;
+    sound?: string | null;
+    group?: string | null;
+    groupName?: string | null;
+  }; returns: void };
+  'badge.set': { params: {
+    n: number;
+  }; returns: boolean };
+  'badge.clear': { params: Record<string, never>; returns: boolean };
 }
 
 export interface Events {
@@ -112,6 +156,16 @@ export interface Events {
   };
   'app.resumed': Record<string, never>;
   'auth.expired': Record<string, never>;
+  'notify.tapped': {
+    id: number;
+    payload?: string | null;
+    action?: string | null;
+  };
+  'notify.action': {
+    id: number;
+    payload?: string | null;
+    action?: string | null;
+  };
 }
 
 export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
@@ -134,6 +188,14 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'http.request': 4,
   'data.getMany': 3,
   'sync.status': 3,
+  'notify.permission': 5,
+  'notify.schedule': 5,
+  'notify.cancel': 5,
+  'notify.pending': 5,
+  'notify.initial': 5,
+  'notify.channels.set': 5,
+  'badge.set': 5,
+  'badge.clear': 5,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
@@ -141,6 +203,8 @@ export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
   'bundle.updateReady': 1,
   'app.resumed': 1,
   'auth.expired': 2,
+  'notify.tapped': 5,
+  'notify.action': 5,
 };
 
 /** Browser fallbacks for this app, so the same build also runs as the website. */
