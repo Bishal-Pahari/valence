@@ -473,6 +473,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       MediaQueryData.fromView(View.of(context)));
 
   Future<void> _setTextZoom(WebViewController controller) async {
+    if (!mounted) return;
     final platform = controller.platform;
     if (platform is AndroidWebViewController) {
       await platform.setTextZoom(_systemAppearance().textZoom);
@@ -483,7 +484,11 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     if (!mounted) return;
     final next = _systemAppearance();
     final previous = _appearance;
-    _appearance = next;
+    if (previous == null || !next.samePreferences(previous)) {
+      setState(() => _appearance = next);
+    } else {
+      _appearance = next;
+    }
     final controller = _controller;
     if (controller != null) {
       unawaited(_setTextZoom(controller)
@@ -552,7 +557,18 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
           await SystemNavigator.pop();
         }
       },
-      child: Scaffold(body: WebViewWidget(controller: controller)),
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: ((_appearance ?? _systemAppearance()).darkMode
+                ? SystemUiOverlayStyle.light
+                : SystemUiOverlayStyle.dark)
+            .copyWith(
+              statusBarColor: Colors.transparent,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarIconBrightness: (_appearance ?? _systemAppearance()).darkMode
+                  ? Brightness.light : Brightness.dark,
+            ),
+        child: Scaffold(body: WebViewWidget(controller: controller)),
+      ),
     );
   }
 }

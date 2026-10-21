@@ -1,8 +1,8 @@
 {
   "format": 1,
   "appId": "com.getvalence.example",
-  "seq": 1792603719,
-  "version": "2026-10-21+1792603719",
+  "seq": 1792604523,
+  "version": "2026-10-21+1792604523",
   "floor": 0,
   "requires": {
     "bridge": 5,
@@ -19,10 +19,10 @@
   ],
   "files": {
     "index.html": {
-      "h": "1cd851f13f804d6b6c723f8c9b753c186a6f34daad901275397da35d7a8a3b11",
-      "n": 9597
+      "h": "bf0130ee31520def98f2aa5a1231e4b9fe3242a0dbec6d0d742101666eadd32a",
+      "n": 9663
     }
   },
-  "createdAt": "2026-10-21T17:28:39.113Z",
+  "createdAt": "2026-10-21T17:42:03.523Z",
   "keyId": "k1"
 }

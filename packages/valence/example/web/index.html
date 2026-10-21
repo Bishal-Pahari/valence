@@ -16,6 +16,7 @@
     </style>
   </head>
   <body>
+    <main>
     <h1>Valence example</h1>
     <pre id="appearance" role="status">Waiting for system appearance</pre>
     <p class="sub">The web UI, served from the host's loopback server as a signed bundle.</p>
@@ -43,6 +44,7 @@
         The token goes to the host, not into the page's storage: the host attaches it to every sync of
         <code>shelf</code>, including the ones it runs while this page is not on screen.
       </p>
+      <label for="token">API token</label>
       <input id="token" placeholder="paste any string as a token" size="24" />
       <button id="set-token">auth.setToken</button>
       <button id="clear-token">clear</button>
@@ -58,6 +60,7 @@
       <pre id="http-result"></pre>
     </section>
 
+    </main>
     <!--
       A real app imports @getvalence/bridge through the generated web/lib/bridge.g.ts. This example talks
       to the wire protocol directly, so it needs no bundler and `valence bundle` can sign the folder as is
