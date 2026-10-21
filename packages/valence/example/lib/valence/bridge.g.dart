@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 4;
+const hostBridgeVersion = 5;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale});
@@ -290,6 +290,20 @@ final class DataGetManyParams {
   Map<String, Object?> toJson() => {'bucket': bucket, 'keys': keys};
 }
 
+final class StateSaveParams {
+  const StateSaveParams({this.json});
+
+  factory StateSaveParams.fromJson(Object? j, [String f = 'StateSaveParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'json'}, f);
+    return StateSaveParams(json: m['json']);
+  }
+
+  final Object? json;
+
+  Map<String, Object?> toJson() => {'json': json};
+}
+
 abstract interface class BridgeHandlers {
   Future<void> appReady();
   Future<AppInfo> appInfo();
@@ -310,6 +324,8 @@ abstract interface class BridgeHandlers {
   Future<HttpResponse> httpRequest(HttpRequestParams p);
   Future<List<Row>> dataGetMany(DataGetManyParams p);
   Future<SyncStatus> syncStatus();
+  Future<void> stateSave(StateSaveParams p);
+  Future<Object?> stateRestore();
 }
 
 /// Opt-in defaults for test doubles or partial hosts. Production hosts extend ValenceBuiltins.
@@ -352,6 +368,10 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<List<Row>> dataGetMany(DataGetManyParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.getMany is not implemented');
   @override
   Future<SyncStatus> syncStatus() async => throw const BridgeError('E_UNSUPPORTED', 'sync.status is not implemented');
+  @override
+  Future<void> stateSave(StateSaveParams p) async => throw const BridgeError('E_UNSUPPORTED', 'state.save is not implemented');
+  @override
+  Future<Object?> stateRestore() async => throw const BridgeError('E_UNSUPPORTED', 'state.restore is not implemented');
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
@@ -433,6 +453,13 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.syncStatus();
         return replyOk(id, r.toJson());
+      case 'state.save':
+        await h.stateSave(StateSaveParams.fromJson(p, 'p'));
+        return replyOk(id, null);
+      case 'state.restore':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.stateRestore();
+        return replyOk(id, r);
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
     }
@@ -565,5 +592,15 @@ abstract class ValenceBuiltins {
   Future<SyncStatus> syncStatus() async {
     final r = await valence.syncStatus();
     return SyncStatus(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline);
+  }
+
+  /// `state.save`, from the package.
+  Future<void> stateSave(StateSaveParams p) async {
+    valence.stateSave(p.json);
+  }
+
+  /// `state.restore`, from the package.
+  Future<Object?> stateRestore() async {
+    return valence.stateRestore();
   }
 }

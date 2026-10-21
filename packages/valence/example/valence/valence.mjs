@@ -52,6 +52,8 @@ const RESERVED_TYPES = new Set('Json Methods Events Object String Number Boolean
 // what exists. A field never moves from `fields` to `optional` or back: `fields` is the shape every host
 // has always returned.
 const BUILTINS = {
+  'state.save': { params: { json: 'json?' }, returns: 'void', call: () => 'valence.stateSave(p.json);' },
+  'state.restore': { params: {}, returns: 'json?', call: () => 'return valence.stateRestore();' },
   'app.ready': { params: {}, returns: 'void', call: () => 'await valence.appReady();' },
   'app.info': {
     params: {},

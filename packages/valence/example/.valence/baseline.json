@@ -1,11 +1,11 @@
 {
-  "storeSeq": 1792215625,
+  "storeSeq": 1792605556,
   "storeRoutes": [
     "/",
     "/shelf"
   ],
   "storeSchema": {
-    "version": 1,
+    "version": 5,
     "methods": {
       "app.ready": {
         "since": 1,
@@ -81,6 +81,75 @@
         "since": 1,
         "params": {},
         "returns": "void"
+      },
+      "secure.get": {
+        "since": 2,
+        "params": {
+          "key": "string"
+        },
+        "returns": "string?"
+      },
+      "secure.set": {
+        "since": 2,
+        "params": {
+          "key": "string",
+          "value": "string"
+        },
+        "returns": "void"
+      },
+      "secure.delete": {
+        "since": 2,
+        "params": {
+          "key": "string"
+        },
+        "returns": "void"
+      },
+      "auth.setToken": {
+        "since": 2,
+        "params": {
+          "token": "string?"
+        },
+        "returns": "void"
+      },
+      "auth.hasToken": {
+        "since": 2,
+        "params": {},
+        "returns": "bool"
+      },
+      "http.request": {
+        "since": 4,
+        "params": {
+          "url": "string",
+          "method": "string?",
+          "headers": "json?",
+          "body": "string?"
+        },
+        "returns": "HttpResponse"
+      },
+      "data.getMany": {
+        "since": 3,
+        "params": {
+          "bucket": "string",
+          "keys": "string[]"
+        },
+        "returns": "Row[]"
+      },
+      "sync.status": {
+        "since": 3,
+        "params": {},
+        "returns": "SyncStatus"
+      },
+      "state.save": {
+        "since": 5,
+        "params": {
+          "json": "json?"
+        },
+        "returns": "void"
+      },
+      "state.restore": {
+        "since": 5,
+        "params": {},
+        "returns": "json?"
       }
     },
     "events": {
@@ -98,6 +167,10 @@
       },
       "app.resumed": {
         "since": 1,
+        "payload": {}
+      },
+      "auth.expired": {
+        "since": 2,
         "payload": {}
       }
     },
@@ -117,10 +190,22 @@
       "SyncResult": {
         "buckets": "string[]",
         "changed": "int",
+        "offline": "bool",
+        "reason": "string?",
+        "pending": "int?"
+      },
+      "HttpResponse": {
+        "status": "int",
+        "headers": "json",
+        "body": "string"
+      },
+      "SyncStatus": {
+        "pending": "int",
+        "lastSyncedAt": "int?",
         "offline": "bool"
       }
     }
   },
-  "lastSeq": 1792595214,
+  "lastSeq": 1792605556,
   "floor": 0
 }
