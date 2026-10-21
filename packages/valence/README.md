@@ -115,6 +115,23 @@ MIT. The spec is `contracts.md`, which ships inside the `/valence` Claude Code s
 ## Native HTTP (contracts section 4.5)
 
 Generated `http.request` delegates to `Valence.httpRequest`. Configure exact trusted `http.origins` origins, regenerate, and ship a host; they become `ValenceConfig.httpOrigins` (default deny all). The host reads the R1 token per request, with `authToken` callback precedence, and emits `auth.expired` for an authenticated 401. Redirects are returned without following them. Text bodies: 64 KiB; headers: 16 KiB; total deadline: 20 seconds. Use HTTPS in production and no shared server secrets in an APK. [API and adapter guide](https://getvalence.pages.dev/docs/guides/your-backend/). iOS remains experimental and untested.
+## Lifecycle, connectivity and update status (contracts section 4.6)
+
+`Valence.appState()` returns the current `ValenceLifecycle` and the OS's network-interface state;
+`Valence.bundleStatus()` returns `serving`, `pending`, `trial`, a `ValenceBundleReason`, the offered seq
+and when the last check finished. Neither starts a request. `ValenceApp` maps Flutter's five lifecycle
+states onto four (`hidden` and `paused` are both `background`, because Android delivers both for one
+backgrounding), emits `app.lifecycle` and `app.online` only on a change, reads the current connectivity
+at start-up rather than waiting for one, and emits `sync.done` with the whole `ValenceSyncResult` after
+every completed run — after `sync.changed` for the same run. The generated version-6 built-ins expose
+these as `app.state`, `bundle.status`, `app.lifecycle`, `app.online` and `sync.done`.
+
+`valenceLifecycleFor` and `valenceOnline` are the mapping and the "any interface that is not none" rule
+as pure functions, so a host that builds its own WebView uses the same ones the package does.
+
+A page should persist on `background`: `detached` is reported for completeness and usually never
+delivered, because the engine is tearing down. `app.online` is interface state and never reachability.
+
 ## Batch reads and sync observations
 
 `Valence.dataGetMany(bucket, keys)` returns distinct live rows in requested order (maximum 500 input keys), using the active manifest schema. `Valence.syncStatus()` reads current outbox depth, last successful unscoped sync time and the last attempt's transport failure. It does not probe connectivity. Generated schema-3 built-ins expose these as `data.getMany` and `sync.status`; `ValenceSyncResult.pending` counts remaining operations. The runtime constrains `path_provider_android` to >=2.2.17 <2.3.0 temporarily for pre-JNI compatibility (U-7, checked 2026-10-21); no app override is needed.

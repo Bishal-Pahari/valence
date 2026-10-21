@@ -18,6 +18,9 @@ import { call, connect, has, on, ready } from '$lib/valence/bridge.g';
 await connect();                                  // once at startup, before has()
 const plant = await call('data.get', { bucket: 'plants', key: 'fern' });
 const off = on('sync.changed', ({ buckets }) => refresh(buckets));
+on('sync.done', ({ result }) => setFreshness(result));          // every completed run, changed: 0 included
+on('app.lifecycle', ({ state }) => state === 'background' && saveDraft());
+on('app.online', ({ online }) => setBanner(!online));           // interface state, not reachability
 await ready();                                    // on every path that paints, once per page load
 ```
 

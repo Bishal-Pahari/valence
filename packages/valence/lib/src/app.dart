@@ -427,6 +427,9 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   void _noteLifecycle(AppLifecycleState state) {
     final mapped = valenceLifecycleFor(state);
     if (!_valence.noteLifecycle(mapped)) return;
+    // Logged as well as emitted. The page can only report the events it *received*, so without a host-side
+    // line there is no way to tell "the platform never sent it" from "the script never ran".
+    _log('lifecycle: ${state.name} -> ${mapped.name}');
     runScript(eventScript('app.lifecycle', {'state': mapped.name}));
   }
 

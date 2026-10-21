@@ -152,6 +152,21 @@ Run `node valence/valence.mjs doctor --tests` for mechanical checks and mapped u
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
+### Lifecycle, connectivity and update status
+
+Bridge version 6 answers the three questions a page in a browser tab gets from the platform and a page in
+the host cannot. `app.lifecycle` fires on the way *out* as well as in, with four states —
+`foreground`, `background`, `inactive`, `detached` — mapped from Flutter's five and emitted only on a
+change, because Android delivers `hidden` and then `paused` for one backgrounding. Persist on
+`background`: `detached` usually never arrives. `app.online` reports the OS's network **interfaces**,
+not reachability, so it decides whether to *try* while `SyncResult.reason` says whether the last attempt
+worked. `app.state()` returns both, for a page that mounted after the transition. `sync.done` carries
+the whole `SyncResult` after every run the host made on its own, `changed: 0` included — which
+`sync.changed` never could, and most runs move nothing. `bundle.status()` names why the last update
+check stopped, from a closed set of eleven: `rejected` means a release no device will take, and
+`waitingForData` is the healthy stall four hosts read as "no update".
+[Full guide](https://getvalence.pages.dev/docs/guides/lifecycle/).
+
 ### Reading a bucket bigger than 500 rows
 
 `data.list` clamps `limit` to 500 (an unbounded reply kills the WebView), so `data.list`'s `after` takes

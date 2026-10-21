@@ -2,6 +2,39 @@
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
+## Unreleased: lifecycle, connectivity and update status
+
+Bridge version 6. Three events and two methods for the three questions a page in a browser tab answers
+from the platform and a page in the host cannot.
+
+- **`app.lifecycle`** fires on the way *out* as well as in, with four states — `foreground`,
+  `background`, `inactive`, `detached` — mapped from Flutter's five. Android delivers `hidden` and then
+  `paused` for one backgrounding, so both are `background` and only changes are emitted. Persist on
+  `background`: `detached` usually never arrives, because the engine is tearing down and there may be no
+  WebView left to run the script. `app.resumed` is unchanged.
+- **`app.online`** reports what the OS says about network *interfaces* — the same source as the
+  "connectivity came back" sync trigger — and is explicitly **not** reachability. Use it to decide
+  whether to *try*; use `SyncResult.reason` or `sync.status().offline` to say whether the last attempt
+  worked.
+- **`app.state()`** returns both current values, for a page that mounts after the transition: a cold
+  start from a notification tap, or the reload an applied update does.
+- **`sync.done`** carries the whole `SyncResult` after every completed run the host made on its own,
+  including `changed: 0`, `busy` and `unauthorized`. `sync.changed` is silent when a run moved nothing,
+  and most runs move nothing, so a "last synced" line could previously only be updated by a sync the page
+  asked for itself.
+- **`bundle.status()`** says why an update declined, from a closed set: `idle`, `unconfigured`,
+  `uptodate`, `rollout`, `bad`, `offline`, `rejected`, `toobig`, `waitingForData`, `busy`, `ready`,
+  alongside `serving`, `pending`, `trial`, `offered` and `checkedAt`. It never starts a request.
+  `rejected` means a published release is unservable on every device and is worth an alert of your own;
+  `waitingForData` is a healthy state that can last for days on an offline device, and is the one four
+  hosts mistook for "no update".
+
+**What you have to change in your own host:** nothing, if you leave the schema alone. To take the five,
+add them to `bridge.schema.json` with `since: 6`, raise `version` to 6 and regenerate — the `valence`
+package implements all of it, so no handler is yours to write. A page must treat a `reason` it does not
+recognise as "no update right now" rather than an error, because a newer host can return one that did
+not exist when the bundle was built.
+
 ## Unreleased: offline tooling
 
 - Add schema-3 data.getMany and sync.status, and optional SyncResult.pending. Regenerate an additive schema and guard the new methods on older hosts.

@@ -709,6 +709,13 @@ either OS:
 - `app.resumed` still fires, unchanged, on the way back in. It is `app.lifecycle` with
   `state: "foreground"` plus the host's resume work (port reclaim, update check, sync) having been
   started. New code should listen to one or the other, not both.
+- **Observed on Android** (emulator, API 36, 2026-10-22): leaving the app delivers `inactive` and then
+  `background` **about three seconds later**; returning delivers `inactive` and then `foreground` within
+  the same second. `hidden` arrives and `paused` does not arrive separately, so the dedupe is load-bearing
+  rather than theoretical. The event script does run while the WebView is off screen — the page receives
+  `background` with a timestamp from while it was backgrounded — but **`background` is not a pre-kill
+  hook**: three seconds is long enough for the OS to have moved on, so anything that must survive process
+  death belongs in the host's route save and `state.save`, not in a `background` handler.
 
 **`app.online`** carries `{"online": bool}` and reports what the OS says about network *interfaces* —
 `connectivity_plus`, the same source the "connectivity came back" sync trigger uses. **It is not
