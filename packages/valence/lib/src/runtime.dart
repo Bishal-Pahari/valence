@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'config.dart';
 import 'log.dart';
 import 'manifest.dart';
+import 'secure.dart';
 import 'server.dart';
 import 'state.dart';
 import 'store.dart';
@@ -28,6 +29,7 @@ export 'manifest.dart'
         fnv1a32,
         isReservedBundlePath,
         isSafeBundlePath;
+export 'secure.dart' show ValenceSecure, secureAuthTokenKey;
 export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
 export 'store.dart' show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, maxListLimit;
@@ -101,6 +103,7 @@ final class Valence {
     required this.store,
     required this.sync,
     required this.updater,
+    required this.secure,
     required this.dir,
     required this.hostBuild,
     required ValenceLogger log,
@@ -119,6 +122,7 @@ final class Valence {
     ValenceLogger log = defaultValenceLogger,
     http.Client? client,
     Directory? supportDir,
+    ValenceSecure? secure,
   }) async {
     final support = supportDir ?? await getApplicationSupportDirectory();
     final dir = Directory('${support.path}${Platform.pathSeparator}valence');
@@ -138,7 +142,16 @@ final class Valence {
 
     final stateFile = File('${dir.path}${Platform.pathSeparator}state.json');
     final state = ValenceState.load(stateFile);
-    final sync = ValenceSync(store: store, config: config, client: client, log: log);
+    final keystore = secure ?? ValenceSecure(log: log);
+    // §4.4: the stored token is the *fallback*. An app with its own refresh loop in Dart keeps its
+    // `authToken` callback and nothing here overrides it, which is what makes this additive for a host
+    // that already had one.
+    final sync = ValenceSync(
+      store: store,
+      config: config.authToken == null ? config.copyWith(authToken: keystore.authToken) : config,
+      client: client,
+      log: log,
+    );
     final updater = ValenceUpdater(
       config: config,
       state: state,
@@ -158,12 +171,16 @@ final class Valence {
       store: store,
       sync: sync,
       updater: updater,
+      secure: keystore,
       dir: dir,
       hostBuild: hostBuild,
       log: log,
     );
     // The widget attaches later, so route the urgent-update callback through the runtime.
     updater.onUpdateReady = (seq) => valence.onUpdateReady?.call(seq);
+    // §4.4: a rejected token is the page's problem to fix, so it has to reach the page. Buffered like
+    // every other event, which matters here because a cold start's first sync beats the entry page.
+    sync.onUnauthorized = () => valence.emit(eventScript('auth.expired', const <String, Object?>{}));
     await valence._importSeed();
     return valence;
   }
@@ -182,6 +199,9 @@ final class Valence {
 
   /// The updater and the state machine.
   final ValenceUpdater updater;
+
+  /// Keystore- and Keychain-backed storage for the bearer token and the page's own secrets (§4.4).
+  final ValenceSecure secure;
 
   /// `<appSupport>/valence/`. Excluded from device backups by platform setup.
   final Directory dir;
@@ -346,6 +366,21 @@ final class Valence {
   /// `prefs.set`. The page may not write the host's own keys. See [prefsGet].
   Future<void> prefsSet(String key, String? value) => store.prefSet(key, value);
 
+  /// `secure.get`. The page may not read the host's own keys, the stored token among them (§4.4).
+  Future<String?> secureGet(String key) => secure.get(key);
+
+  /// `secure.set`. A non-null value: [secureDelete] is the only delete.
+  Future<void> secureSet(String key, String value) => secure.set(key, value);
+
+  /// `secure.delete`.
+  Future<void> secureDelete(String key) => secure.delete(key);
+
+  /// `auth.setToken`. A null [token] clears it. The host attaches it to every user-bucket request (§4.4).
+  Future<void> authSetToken(String? token) => secure.setAuthToken(token);
+
+  /// `auth.hasToken`. Whether a token is stored — the only thing the page may learn about it.
+  Future<bool> authHasToken() => secure.hasAuthToken();
+
   /// `open.external`. Only `https:`, `mailto:` and `tel:` leave the app.
   Future<void> openExternal(String url) async {
     final uri = Uri.tryParse(url);
@@ -406,12 +441,21 @@ final class Valence {
     ValenceLogger log = defaultValenceLogger,
     http.Client? client,
     Directory? supportDir,
+    ValenceSecure? secure,
   }) async {
     final support = supportDir ?? await getApplicationSupportDirectory();
     final store = await ValenceStore.open(
       '${support.path}${Platform.pathSeparator}${config.databaseName}',
     );
-    final sync = ValenceSync(store: store, config: config, client: client, log: log);
+    // The same token the UI isolate uses (§4.4). There is no page to tell about a 401 here, so
+    // `onUnauthorized` stays null and the log line is the record.
+    final keystore = secure ?? ValenceSecure(log: log);
+    final sync = ValenceSync(
+      store: store,
+      config: config.authToken == null ? config.copyWith(authToken: keystore.authToken) : config,
+      client: client,
+      log: log,
+    );
     // The active manifest is not loaded in a background isolate, so the configured schemas are what this
     // can follow. They are the schemas the store build reads, which is the conservative choice.
     return sync.run(readSchemas: config.dataSchemas);

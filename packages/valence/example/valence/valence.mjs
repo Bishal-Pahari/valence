@@ -29,6 +29,10 @@ const PRIMS = new Set(['string', 'int', 'num', 'bool', 'json', 'void']);
 const CORE_METHODS = ['app.ready', 'app.info'];
 const SPKI_ED25519 = Buffer.from('302a300506032b6570032100', 'hex');
 const HASH_RE = /^[0-9a-f]{64}$/;
+// A service worker can only take over the page by being registered from it, and every framework's helper
+// ends up calling this. Matching the registration rather than a file name covers Workbox, vite-plugin-pwa
+// and a hand-written one alike.
+const SERVICE_WORKER_RE = /serviceWorker\s*\.\s*register\s*\(/;
 // Names that break the generated Dart (reserved words, built-in identifiers, Object members, generated members).
 const DART_RESERVED = new Set(`abstract as assert await break case catch class const continue covariant default deferred do dynamic else enum export extends extension external factory false final finally for Function get if implements import in interface is late library mixin new null operator part required rethrow return set static super switch this throw true try typedef var void while with yield hashCode runtimeType toString noSuchMethod toJson fromJson`.split(' '));
 // Type names that collide with Dart/TS builtins or with names the generator emits.
@@ -40,6 +44,12 @@ const RESERVED_TYPES = new Set('Json Methods Events Object String Number Boolean
 //
 // `params` is compared literally against the IDL. `returns` is either an IDL type string or
 // {fields, list}, meaning "a named type with exactly these fields" — the app picks the type's name.
+//
+// `returns.optional` holds fields a later runtime added, which rule 5 (the IDL is additive only) requires
+// be possible without breaking every app already on the older shape. An app's type may carry any subset of
+// them, including none, and `call` is handed the names it actually declared so the delegation only passes
+// what exists. A field never moves from `fields` to `optional` or back: `fields` is the shape every host
+// has always returned.
 const BUILTINS = {
   'app.ready': { params: {}, returns: 'void', call: () => 'await valence.appReady();' },
   'app.info': {
@@ -66,9 +76,14 @@ const BUILTINS = {
   },
   'sync.now': {
     params: { buckets: 'string[]?' },
-    returns: { fields: { buckets: 'string[]', changed: 'int', offline: 'bool' } },
-    call: (t) =>
-      `final r = await valence.syncNow(buckets: p.buckets);\n        return ${t}(buckets: r.buckets, changed: r.changed, offline: r.offline);`,
+    returns: {
+      fields: { buckets: 'string[]', changed: 'int', offline: 'bool' },
+      // "nothing was attempted" and "nothing changed" are otherwise the same answer, so an app that shows
+      // freshness reports confident freshness over stale data. `"ok"`, `"busy"` or `"offline"`.
+      optional: { reason: 'string?' },
+    },
+    call: (t, has) =>
+      `final r = await valence.syncNow(buckets: p.buckets);\n        return ${t}(buckets: r.buckets, changed: r.changed, offline: r.offline${has('reason') ? ', reason: r.reason.name' : ''});`,
   },
   'prefs.get': { params: { key: 'string' }, returns: 'string?', call: () => 'return valence.prefsGet(p.key);' },
   'prefs.set': {
@@ -86,6 +101,23 @@ const BUILTINS = {
     returns: 'void',
     call: () => 'await valence.applyUpdate();',
   },
+  // §4.4. secure.set takes a non-null value on purpose: prefs.set(k, null) and data.put(b, k, null) both
+  // delete, so this is the odd one out and secure.delete is the only delete, which says so at the call site.
+  'secure.get': { params: { key: 'string' }, returns: 'string?', call: () => 'return valence.secureGet(p.key);' },
+  'secure.set': {
+    params: { key: 'string', value: 'string' },
+    returns: 'void',
+    call: () => 'await valence.secureSet(p.key, p.value);',
+  },
+  'secure.delete': { params: { key: 'string' }, returns: 'void', call: () => 'await valence.secureDelete(p.key);' },
+  'auth.setToken': {
+    params: { token: 'string?' },
+    returns: 'void',
+    call: () => 'await valence.authSetToken(p.token);',
+  },
+  // There is deliberately no auth.getToken: the token lives under the reserved `valence.` prefix, so the
+  // page can set and clear it and ask whether one is there, and can never read it back (§4.4).
+  'auth.hasToken': { params: {}, returns: 'bool', call: () => 'return valence.authHasToken();' },
 };
 
 const SEED_SQL = `
@@ -341,6 +373,17 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
     const shown = relRefs.slice(0, 3).join(', ') + (relRefs.length > 3 ? ', …' : '');
     warnings.push(
       `${entry} references ${relRefs.length} asset${relRefs.length > 1 ? 's' : ''} by a relative URL (${shown}). The SPA fallback serves the entry page at any depth (contracts §3), so the webview resolves those against the request path and 404s them: a reload or a back gesture on a nested route gives a blank screen with nothing in the log. Build so the output references assets from the origin root — base: '/' in Vite; in SvelteKit it is the setting that controls relative asset paths, not the deployment subpath, so check your version's docs. The host owns the whole origin, so a root-relative URL is always right.`,
+    );
+  }
+
+  // §3: the host makes a bundle file's bytes revalidate by serving them no-cache with the hash as an
+  // ETag. A service worker answering from Cache Storage is never asked, so a precache-first build puts
+  // the stale-bundle hole straight back: the new bundle activates, the old page renders, and it calls
+  // ready() so the trial commits. Only the registration is detectable from the output, so warn on it.
+  const sw = [...blobs.keys()].some((h) => SERVICE_WORKER_RE.test(blobs.get(h).toString('latin1')));
+  if (sw) {
+    warnings.push(
+      `this build registers a service worker. A service worker serves the page from Cache Storage without asking the host's server, which revalidates every bundle file against its hash (contracts §3) — so a precaching worker can answer a new release with the previous one's code, and the trial still commits because the old page calls ready(). Inside the app you do not need one: the bundle is already on the device and served locally. Register it only when inHost() is false, or drop it from the build the bundle is cut from.`,
     );
   }
 
@@ -613,14 +656,46 @@ export function parseSchema(schema) {
   return { version, types: typeList, methods, events };
 }
 
+// Which optional fields each built-in's returned type may gain, keyed by the type name this app gave it.
+// The names and types come from BUILTINS, so this is not a general escape hatch: it is exactly the set of
+// fields the runtime itself added, on exactly the type the built-in returns.
+function builtinOptionalFields(schema) {
+  const byType = {};
+  for (const [name, want] of Object.entries(BUILTINS)) {
+    const optional = typeof want.returns === 'string' ? null : want.returns.optional;
+    const declared = schema.methods?.[name]?.returns;
+    if (!optional || typeof declared !== 'string') continue;
+    byType[declared.replace(/[[\]?]/g, '')] = { ...byType[declared.replace(/[[\]?]/g, '')], ...optional };
+  }
+  return byType;
+}
+
+// True when `now` is `was` plus nothing but fields from `allowed`, each at the type `allowed` names.
+// Every shipped field must still be there, unchanged, at its old type.
+function isBuiltinGrowth(was, now, allowed) {
+  if (!allowed || !now || typeof now !== 'object') return false;
+  for (const [f, t] of Object.entries(was)) if (now[f] !== t) return false;
+  for (const [f, t] of Object.entries(now)) {
+    if (Object.hasOwn(was, f)) continue;
+    if (allowed[f] !== t) return false;
+  }
+  return true;
+}
+
 // The schema is additive only once a store build has shipped it (contracts §4.1).
 export function assertAdditive(shipped, current) {
   if (!shipped) return;
   if (current.version < shipped.version) throw new Error(`schema version went down: ${current.version} < shipped ${shipped.version}`);
+  const grows = builtinOptionalFields(current);
   for (const kind of ['methods', 'events', 'types']) {
     for (const [name, def] of Object.entries(shipped[kind] ?? {})) {
       if (!Object.hasOwn(current[kind] ?? {}, name)) throw new Error(`${kind} "${name}" shipped in a store build and cannot be removed`);
-      if (canonical(def) !== canonical(current[kind][name])) throw new Error(`${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
+      if (canonical(def) === canonical(current[kind][name])) continue;
+      // A built-in's returned type may gain the fields the runtime added to it, and nothing else. Without
+      // this the additive-only guard refuses the very upgrade §4.3 tells an adopter to make, and the only
+      // way through would be --rebaseline, which overwrites the schema the stores reviewed.
+      if (kind === 'types' && isBuiltinGrowth(def, current.types[name], grows[name])) continue;
+      throw new Error(`${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
     }
   }
   // New methods/events must be newer than every shipped host, or has() lies on old hosts and they get E_UNKNOWN.
@@ -830,9 +905,12 @@ function dartBuiltins(s) {
     if (!builtin) continue;
     const typeName = m.returns.base === 'void' || PRIMS.has(m.returns.base) ? '' : m.returns.base;
     const arg = m.params.length ? `${pascal(m.name)}Params p` : '';
+    // Which of the built-in's optional fields this app actually declared, so the delegation passes those
+    // and no others. An app that never regenerated against the newer runtime keeps compiling.
+    const declared = new Set((s.types.find((t) => t.name === m.returns.base)?.fields ?? []).map((f) => f.name));
     o.push(`  /// \`${m.name}\`, from the package.`);
     o.push(`  Future<${dartType(m.returns)}> ${camel(m.name)}(${arg}) async {`);
-    for (const line of builtin.call(typeName).split('\n')) {
+    for (const line of builtin.call(typeName, (f) => declared.has(f)).split('\n')) {
       o.push(line.startsWith('        ') ? `    ${line.trimStart()}` : `    ${line}`);
     }
     o.push('  }', '');
@@ -862,14 +940,23 @@ export function assertBuiltinShapes(s) {
       continue;
     }
     const type = s.types.find((t) => t.name === m.returns.base);
+    // The required fields must be there, exactly. Beyond them only this built-in's own optional fields are
+    // allowed, each at its declared type — that is what makes a runtime able to add one (rule 5) without
+    // every app on the older shape failing codegen.
+    const optional = want.returns.optional ?? {};
+    const fields = Object.fromEntries((type?.fields ?? []).map((f) => [f.name, typeString(f.type)]));
+    const required = Object.fromEntries(Object.entries(fields).filter(([f]) => !(f in optional)));
+    const extras = Object.entries(fields).filter(([f]) => f in optional);
     const bad =
       m.returns.nullable ||
       !!m.returns.list !== !!want.returns.list ||
       !type ||
-      canonical(Object.fromEntries(type.fields.map((f) => [f.name, typeString(f.type)]))) !== canonical(want.returns.fields);
+      canonical(required) !== canonical(want.returns.fields) ||
+      extras.some(([f, t]) => t !== optional[f]);
     if (bad) {
+      const allowed = Object.keys(optional).length ? ` It may also carry ${Object.entries(optional).map(([f, t]) => `"${f}": ${t}`).join(', ')}.` : '';
       throw new Error(
-        `"${m.name}" is implemented by the valence package, so it must return ${show(want.returns)}, not "${typeString(m.returns)}". The type's name is yours; its fields are not.`,
+        `"${m.name}" is implemented by the valence package, so it must return ${show(want.returns)}, not "${typeString(m.returns)}". The type's name is yours; its fields are not.${allowed}`,
       );
     }
   }

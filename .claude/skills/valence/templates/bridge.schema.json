@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "methods": {
     "app.ready":          { "since": 1, "params": {}, "returns": "void" },
     "app.info":           { "since": 1, "params": {}, "returns": "AppInfo" },
@@ -10,12 +10,18 @@
     "prefs.get":          { "since": 1, "params": { "key": "string" }, "returns": "string?" },
     "prefs.set":          { "since": 1, "params": { "key": "string", "value": "string?" }, "returns": "void" },
     "open.external":      { "since": 1, "params": { "url": "string" }, "returns": "void" },
-    "bundle.applyUpdate": { "since": 1, "params": {}, "returns": "void" }
+    "bundle.applyUpdate": { "since": 1, "params": {}, "returns": "void" },
+    "secure.get":         { "since": 2, "params": { "key": "string" }, "returns": "string?" },
+    "secure.set":         { "since": 2, "params": { "key": "string", "value": "string" }, "returns": "void" },
+    "secure.delete":      { "since": 2, "params": { "key": "string" }, "returns": "void" },
+    "auth.setToken":      { "since": 2, "params": { "token": "string?" }, "returns": "void" },
+    "auth.hasToken":      { "since": 2, "params": {}, "returns": "bool" }
   },
   "events": {
     "sync.changed":       { "since": 1, "payload": { "buckets": "string[]" } },
     "bundle.updateReady": { "since": 1, "payload": { "seq": "int" } },
-    "app.resumed":        { "since": 1, "payload": {} }
+    "app.resumed":        { "since": 1, "payload": {} },
+    "auth.expired":       { "since": 2, "payload": {} }
   },
   "types": {
     "AppInfo":    { "platform": "string", "host": "int", "bridge": "int", "bundle": "int", "locale": "string" },

@@ -286,6 +286,95 @@ void main() {
     });
   });
 
+  group('a rejected token (§4.4)', () {
+    ValenceConfig authConfig() => ValenceConfig(
+          appId: 'com.example.app',
+          keyring: {key.keyId: key.publicKeyBase64},
+          bridgeVersion: 1,
+          syncBase: 'https://sync.test',
+          dataSchemas: const {'plants': 1},
+          writableBuckets: const {'shelf'},
+          authToken: () async => 'expired-token',
+        );
+
+    test('a 401 on a user bucket reports unauthorized, tells the page once, and keeps the token', () async {
+      var asked = 0;
+      final log = LogSpy();
+      final sync = syncWith(
+        MockClient((req) async {
+          asked++;
+          // The public bucket is fine; only the authenticated ones are rejected.
+          if (req.url.path.endsWith('/plants')) {
+            return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+          }
+          return http.Response('{"error":"expired"}', 401);
+        }),
+        config: authConfig(),
+        log: log,
+      );
+      var expiries = 0;
+      sync.onUnauthorized = () => expiries++;
+
+      await store.put('shelf', 'mine', {'n': 1}, opId: 'op-1');
+      final result = await sync.run(readSchemas: {'plants': 1});
+
+      // Both the pull and the push of `shelf` were rejected, and the page is told once.
+      expect(expiries, 1, reason: 'one login prompt per run, not one per request');
+      expect(result.reason, ValenceSyncReason.unauthorized);
+      expect(
+        result.offline,
+        isFalse,
+        reason: 'the server answered, so the old offline flag keeps its old meaning',
+      );
+      expect(log.has('HTTP 401'), isTrue);
+      expect(asked, greaterThan(1));
+      // Nothing is lost: the queued write stays queued and pushes once a new token arrives.
+      expect(await store.outboxBuckets(), ['shelf']);
+    });
+
+    test('a 401 outranks offline, because only one of them the page can fix', () async {
+      final sync = syncWith(
+        MockClient((req) async {
+          if (req.url.path.endsWith('/plants')) throw const SocketException('no route');
+          return http.Response('{}', 401);
+        }),
+        config: authConfig(),
+      );
+      final result = await sync.run(readSchemas: {'plants': 1});
+      expect(result.reason, ValenceSyncReason.unauthorized);
+      expect(result.offline, isTrue, reason: 'it really was offline for the public bucket too');
+    });
+
+    test('a 401 on a bucket that carried no token is a server problem, not an expired login', () async {
+      // A misconfigured CDN in front of a public bucket can answer 401. Treating that as an expired
+      // login would show a login screen to an app that has no login at all.
+      final log = LogSpy();
+      final sync = syncWith(
+        MockClient((_) async => http.Response('{}', 401)),
+        config: testConfig(key, dataSchemas: {'plants': 1}),
+        log: log,
+      );
+      var expiries = 0;
+      sync.onUnauthorized = () => expiries++;
+      final result = await sync.run(readSchemas: {'plants': 1});
+      expect(expiries, 0);
+      expect(result.reason, ValenceSyncReason.ok);
+      expect(log.has('HTTP 401'), isTrue, reason: 'still logged, because something is wrong');
+    });
+
+    test('the next run tells the page again, so a failed refresh is not swallowed', () async {
+      final sync = syncWith(
+        MockClient((_) async => http.Response('{}', 401)),
+        config: authConfig(),
+      );
+      var expiries = 0;
+      sync.onUnauthorized = () => expiries++;
+      await sync.run(readSchemas: const {});
+      await sync.run(readSchemas: const {});
+      expect(expiries, 2);
+    });
+  });
+
   group('the static CDN variant (§5.3)', () {
     ValenceConfig staticConfig() => testConfig(
           key,

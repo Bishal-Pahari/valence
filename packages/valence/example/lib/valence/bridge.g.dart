@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 1;
+const hostBridgeVersion = 2;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale});
@@ -48,19 +48,20 @@ final class Row {
 }
 
 final class SyncResult {
-  const SyncResult({required this.buckets, required this.changed, required this.offline});
+  const SyncResult({required this.buckets, required this.changed, required this.offline, required this.reason});
 
   factory SyncResult.fromJson(Object? j, [String f = 'SyncResult']) {
     final m = decodeObject(j, f);
-    decodeKeys(m, const {'buckets', 'changed', 'offline'}, f);
-    return SyncResult(buckets: decodeListOf(m['buckets'], '$f.buckets', (e, p) => decodeString(e, p)), changed: decodeInt(m['changed'], '$f.changed'), offline: decodeBool(m['offline'], '$f.offline'));
+    decodeKeys(m, const {'buckets', 'changed', 'offline', 'reason'}, f);
+    return SyncResult(buckets: decodeListOf(m['buckets'], '$f.buckets', (e, p) => decodeString(e, p)), changed: decodeInt(m['changed'], '$f.changed'), offline: decodeBool(m['offline'], '$f.offline'), reason: m['reason'] == null ? null : decodeString(m['reason'], '$f.reason'));
   }
 
   final List<String> buckets;
   final int changed;
   final bool offline;
+  final String? reason;
 
-  Map<String, Object?> toJson() => {'buckets': buckets, 'changed': changed, 'offline': offline};
+  Map<String, Object?> toJson() => {'buckets': buckets, 'changed': changed, 'offline': offline, 'reason': reason};
 }
 
 final class DataGetParams {
@@ -167,6 +168,63 @@ final class OpenExternalParams {
   Map<String, Object?> toJson() => {'url': url};
 }
 
+final class SecureGetParams {
+  const SecureGetParams({required this.key});
+
+  factory SecureGetParams.fromJson(Object? j, [String f = 'SecureGetParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'key'}, f);
+    return SecureGetParams(key: decodeString(m['key'], '$f.key'));
+  }
+
+  final String key;
+
+  Map<String, Object?> toJson() => {'key': key};
+}
+
+final class SecureSetParams {
+  const SecureSetParams({required this.key, required this.value});
+
+  factory SecureSetParams.fromJson(Object? j, [String f = 'SecureSetParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'key', 'value'}, f);
+    return SecureSetParams(key: decodeString(m['key'], '$f.key'), value: decodeString(m['value'], '$f.value'));
+  }
+
+  final String key;
+  final String value;
+
+  Map<String, Object?> toJson() => {'key': key, 'value': value};
+}
+
+final class SecureDeleteParams {
+  const SecureDeleteParams({required this.key});
+
+  factory SecureDeleteParams.fromJson(Object? j, [String f = 'SecureDeleteParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'key'}, f);
+    return SecureDeleteParams(key: decodeString(m['key'], '$f.key'));
+  }
+
+  final String key;
+
+  Map<String, Object?> toJson() => {'key': key};
+}
+
+final class AuthSetTokenParams {
+  const AuthSetTokenParams({required this.token});
+
+  factory AuthSetTokenParams.fromJson(Object? j, [String f = 'AuthSetTokenParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'token'}, f);
+    return AuthSetTokenParams(token: m['token'] == null ? null : decodeString(m['token'], '$f.token'));
+  }
+
+  final String? token;
+
+  Map<String, Object?> toJson() => {'token': token};
+}
+
 abstract interface class BridgeHandlers {
   Future<void> appReady();
   Future<AppInfo> appInfo();
@@ -179,6 +237,11 @@ abstract interface class BridgeHandlers {
   Future<void> openExternal(OpenExternalParams p);
   Future<void> bundleApplyUpdate();
   Future<void> hapticsTap();
+  Future<String?> secureGet(SecureGetParams p);
+  Future<void> secureSet(SecureSetParams p);
+  Future<void> secureDelete(SecureDeleteParams p);
+  Future<void> authSetToken(AuthSetTokenParams p);
+  Future<bool> authHasToken();
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
@@ -234,6 +297,22 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         await h.hapticsTap();
         return replyOk(id, null);
+      case 'secure.get':
+        final r = await h.secureGet(SecureGetParams.fromJson(p, 'p'));
+        return replyOk(id, r);
+      case 'secure.set':
+        await h.secureSet(SecureSetParams.fromJson(p, 'p'));
+        return replyOk(id, null);
+      case 'secure.delete':
+        await h.secureDelete(SecureDeleteParams.fromJson(p, 'p'));
+        return replyOk(id, null);
+      case 'auth.setToken':
+        await h.authSetToken(AuthSetTokenParams.fromJson(p, 'p'));
+        return replyOk(id, null);
+      case 'auth.hasToken':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.authHasToken();
+        return replyOk(id, r);
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
     }
@@ -249,6 +328,7 @@ abstract final class BridgeEvents {
   static String syncChanged({required List<String> buckets}) => eventScript('sync.changed', {'buckets': buckets});
   static String bundleUpdateReady({required int seq}) => eventScript('bundle.updateReady', {'seq': seq});
   static String appResumed() => eventScript('app.resumed', const <String, Object?>{});
+  static String authExpired() => eventScript('auth.expired', const <String, Object?>{});
 }
 
 /// The built-in bridge methods, implemented against the `valence` runtime.
@@ -301,7 +381,7 @@ abstract class ValenceBuiltins {
   /// `sync.now`, from the package.
   Future<SyncResult> syncNow(SyncNowParams p) async {
     final r = await valence.syncNow(buckets: p.buckets);
-    return SyncResult(buckets: r.buckets, changed: r.changed, offline: r.offline);
+    return SyncResult(buckets: r.buckets, changed: r.changed, offline: r.offline, reason: r.reason.name);
   }
 
   /// `prefs.get`, from the package.
@@ -322,5 +402,30 @@ abstract class ValenceBuiltins {
   /// `bundle.applyUpdate`, from the package.
   Future<void> bundleApplyUpdate() async {
     await valence.applyUpdate();
+  }
+
+  /// `secure.get`, from the package.
+  Future<String?> secureGet(SecureGetParams p) async {
+    return valence.secureGet(p.key);
+  }
+
+  /// `secure.set`, from the package.
+  Future<void> secureSet(SecureSetParams p) async {
+    await valence.secureSet(p.key, p.value);
+  }
+
+  /// `secure.delete`, from the package.
+  Future<void> secureDelete(SecureDeleteParams p) async {
+    await valence.secureDelete(p.key);
+  }
+
+  /// `auth.setToken`, from the package.
+  Future<void> authSetToken(AuthSetTokenParams p) async {
+    await valence.authSetToken(p.token);
+  }
+
+  /// `auth.hasToken`, from the package.
+  Future<bool> authHasToken() async {
+    return valence.authHasToken();
   }
 }

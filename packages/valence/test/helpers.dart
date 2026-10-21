@@ -5,10 +5,12 @@
 // the wrong key, or hand over a valid signature for different bytes.
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform.dart';
+import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:valence/valence.dart';
 
@@ -157,6 +159,46 @@ Future<ValenceStore> openTestStore([String? path]) async {
 Future<String> freshDbPath([String name = 'valence.db']) async {
   final dir = await Directory.systemTemp.createTemp('valence-test');
   return '${dir.path}${Platform.pathSeparator}$name';
+}
+
+/// A [ValenceSecure] over flutter_secure_storage's own in-memory platform (contracts §4.4).
+///
+/// The real class, not a stand-in: the reserved-prefix refusals and the token key are what the tests are
+/// about, and only the Keystore call underneath is replaced. [data] is the storage, so a test can inspect
+/// where a value landed.
+ValenceSecure testSecure(Map<String, String> data, {ValenceLogger log = _silent}) {
+  FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform(data);
+  return ValenceSecure(log: log);
+}
+
+/// A [ValenceSecure] whose platform throws, as a device with a broken Keystore does.
+ValenceSecure brokenSecure({ValenceLogger log = _silent}) {
+  FlutterSecureStoragePlatform.instance = _BrokenSecureStoragePlatform();
+  return ValenceSecure(log: log);
+}
+
+void _silent(String _) {}
+
+final class _BrokenSecureStoragePlatform extends FlutterSecureStoragePlatform {
+  @override
+  Future<bool> containsKey({required String key, required Map<String, String> options}) => _fail();
+
+  @override
+  Future<void> delete({required String key, required Map<String, String> options}) => _fail();
+
+  @override
+  Future<void> deleteAll({required Map<String, String> options}) => _fail();
+
+  @override
+  Future<String?> read({required String key, required Map<String, String> options}) => _fail();
+
+  @override
+  Future<Map<String, String>> readAll({required Map<String, String> options}) => _fail();
+
+  @override
+  Future<void> write({required String key, required String value, required Map<String, String> options}) => _fail();
+
+  Future<Never> _fail() => Future.error(MissingPluginException('no secure storage on this platform'));
 }
 
 /// Collects log lines, so a test can assert that a stop was *reported* and not just taken.

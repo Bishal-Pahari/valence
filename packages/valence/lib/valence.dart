@@ -23,6 +23,7 @@ export 'src/runtime.dart'
         ValenceManifest,
         ValenceOutboxOp,
         ValenceRow,
+        ValenceSecure,
         ValenceState,
         ValenceStore,
         ValenceSync,
@@ -41,4 +42,5 @@ export 'src/runtime.dart'
         isSafeBundlePath,
         maxListLimit,
         normaliseRequestPath,
+        secureAuthTokenKey,
         maxMessageBytes;

@@ -101,6 +101,23 @@ const BUILTINS = {
     returns: 'void',
     call: () => 'await valence.applyUpdate();',
   },
+  // §4.4. secure.set takes a non-null value on purpose: prefs.set(k, null) and data.put(b, k, null) both
+  // delete, so this is the odd one out and secure.delete is the only delete, which says so at the call site.
+  'secure.get': { params: { key: 'string' }, returns: 'string?', call: () => 'return valence.secureGet(p.key);' },
+  'secure.set': {
+    params: { key: 'string', value: 'string' },
+    returns: 'void',
+    call: () => 'await valence.secureSet(p.key, p.value);',
+  },
+  'secure.delete': { params: { key: 'string' }, returns: 'void', call: () => 'await valence.secureDelete(p.key);' },
+  'auth.setToken': {
+    params: { token: 'string?' },
+    returns: 'void',
+    call: () => 'await valence.authSetToken(p.token);',
+  },
+  // There is deliberately no auth.getToken: the token lives under the reserved `valence.` prefix, so the
+  // page can set and clear it and ask whether one is there, and can never read it back (§4.4).
+  'auth.hasToken': { params: {}, returns: 'bool', call: () => 'return valence.authHasToken();' },
 };
 
 const SEED_SQL = `

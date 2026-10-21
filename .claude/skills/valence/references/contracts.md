@@ -397,7 +397,7 @@ If the web app has modal state of its own it wants the gesture for, the host can
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "methods": {
     "app.ready":          { "since": 1, "params": {}, "returns": "void" },
     "app.info":           { "since": 1, "params": {}, "returns": "AppInfo" },
@@ -408,12 +408,18 @@ If the web app has modal state of its own it wants the gesture for, the host can
     "prefs.get":          { "since": 1, "params": { "key": "string" }, "returns": "string?" },
     "prefs.set":          { "since": 1, "params": { "key": "string", "value": "string?" }, "returns": "void" },
     "open.external":      { "since": 1, "params": { "url": "string" }, "returns": "void" },
-    "bundle.applyUpdate": { "since": 1, "params": {}, "returns": "void" }
+    "bundle.applyUpdate": { "since": 1, "params": {}, "returns": "void" },
+    "secure.get":         { "since": 2, "params": { "key": "string" }, "returns": "string?" },
+    "secure.set":         { "since": 2, "params": { "key": "string", "value": "string" }, "returns": "void" },
+    "secure.delete":      { "since": 2, "params": { "key": "string" }, "returns": "void" },
+    "auth.setToken":      { "since": 2, "params": { "token": "string?" }, "returns": "void" },
+    "auth.hasToken":      { "since": 2, "params": {}, "returns": "bool" }
   },
   "events": {
     "sync.changed":       { "since": 1, "payload": { "buckets": "string[]" } },
     "bundle.updateReady": { "since": 1, "payload": { "seq": "int" } },
-    "app.resumed":        { "since": 1, "payload": {} }
+    "app.resumed":        { "since": 1, "payload": {} },
+    "auth.expired":       { "since": 2, "payload": {} }
   },
   "types": {
     "AppInfo":    { "platform": "string", "host": "int", "bridge": "int", "bundle": "int", "locale": "string" },
@@ -514,13 +520,90 @@ When `window.Valence` is absent (a normal browser), `call` routes to `shim.ts`, 
 
 The Dart side is symmetrical: `bridge.g.dart` imports its decoders, its reply builders and the reply cap from `package:valence/codegen.dart`, and `BridgeError` and `ValenceConfig` from `package:valence/valence.dart`. Nothing it needs is emitted inline, so a fix to any of them ships with a package upgrade.
 
-**A built-in method may be omitted from the schema; it may not be redefined.** `app.*`, `data.*`, `prefs.*`, `sync.*`, `open.external` and `bundle.applyUpdate` are implemented by the `valence` package, and the generated `ValenceBuiltins` delegates to it. An app that never syncs can drop `sync.now` entirely. An app that keeps the name and changes the params or the return shape would compile, pass the wrong arguments to the runtime, and be caught only on a device — so `codegen` refuses it and names the shape it must keep. The *name* of a returned type is the app's; its fields are not.
+**A built-in method may be omitted from the schema; it may not be redefined.** `app.*`, `data.*`, `prefs.*`, `sync.*`, `secure.*`, `auth.*`, `open.external` and `bundle.applyUpdate` are implemented by the `valence` package, and the generated `ValenceBuiltins` delegates to it. An app that never syncs can drop `sync.now` entirely. An app that keeps the name and changes the params or the return shape would compile, pass the wrong arguments to the runtime, and be caught only on a device — so `codegen` refuses it and names the shape it must keep. The *name* of a returned type is the app's; its fields are not.
 
 **A built-in can still *grow*, because the rule above is about redefining, not about extending.** When a runtime release adds a field to a built-in's return type — `SyncResult.reason` in 0.4 is the first — that field is **optional in the schema**: an app that declares it gets it, an app that has not regenerated keeps its old shape and keeps generating code that compiles, and nothing else about the method moves. Both guards know about it: `assertBuiltinShapes` accepts the type with or without the field, and §4.1's additive-only check treats adding it to an already-shipped type as additive — otherwise the one upgrade this paragraph describes would be refused for every app that has ever run `bundle --store`, and the only way through would be `--rebaseline`, which overwrites the schema the stores reviewed. `codegen` still refuses the field at a type other than the one the runtime declares, and still refuses any change to the fields that were always there.
 
 **A grown field is always nullable, because nothing else gates it.** A method carries `since` and is gated by `requires.bridge`; a *field* on a type carries neither. The host's `bridge.g.dart` ships in the APK and the page's `bridge.g.ts` ships in a bundle, so an OTA release generated after the field was added lands on hosts built before it, and those hosts simply do not put it in the reply. Typed `string` that would be a lie the type checker endorses; typed `string?` it is the same "ask whether this host has it" that `has()` gives a method. A page that wants the field without the null check waits for its own store release — the same rule as any other newer capability.
 
 `codegen --check` exits non-zero if the generated files are stale. CI runs it.
+
+### 4.4 Secure storage and the bearer token
+
+Every app with private synced data needs two things the bridge did not have: somewhere to keep a
+credential that is not the SQLite file, and a way to make the host's own requests authenticated. Before
+this, four apps invented their own, and none of them got past it cleanly — a token in `prefs` is in a
+plain-text table inside a backed-up database, and a token the page holds cannot reach the sync driver,
+which is the one component that makes the requests.
+
+Valence takes no position on *how* you log a user in. The page does that against your API, by whatever
+means, and hands the host the resulting token. That is the whole model: **bring your own token.**
+
+```json
+"secure.get":     { "since": 2, "params": { "key": "string" }, "returns": "string?" },
+"secure.set":     { "since": 2, "params": { "key": "string", "value": "string" }, "returns": "void" },
+"secure.delete":  { "since": 2, "params": { "key": "string" }, "returns": "void" },
+"auth.setToken":  { "since": 2, "params": { "token": "string?" }, "returns": "void" },
+"auth.hasToken":  { "since": 2, "params": {}, "returns": "bool" }
+```
+
+```json
+"auth.expired":   { "since": 2, "payload": {} }
+```
+
+**Where the bytes go.** Android: the Keystore, through `flutter_secure_storage` — an AES-GCM record in a
+preferences file whose key is wrapped by a hardware-backed RSA key, which is what that plugin now does
+instead of the deprecated `EncryptedSharedPreferences`. It needs `minSdk 23`. iOS: the Keychain, with
+`first_unlock_this_device` accessibility, so a background sync after a reboot-and-no-unlock has no token
+and reports itself offline rather than crashing. **The iOS path is written and unverified**, like every
+other iOS path in this spec.
+
+- **`secure.set` takes a non-null value and `secure.delete` is the only delete.** `prefs.set(key, null)`
+  and `data.put(bucket, key, null)` both delete, so this is deliberately the odd one out: there is one way
+  to remove a credential and it says so at the call site. A reviewer reading `secure.set(k, maybeNull)`
+  cannot tell whether clearing was intended.
+- **The `valence.` prefix is reserved,** exactly as it is for `prefs` (§4.2), and refused with `E_DENIED`.
+- **Secure storage is not a cache.** `resetOnError` is on, so a record the platform can no longer decrypt
+  — a restored backup, a changed lock screen on some devices, a Keystore the OS has invalidated — is
+  dropped rather than thrown. Treat every read as "may be absent": a token that vanishes means the user
+  logs in again, which is correct, and anything the app cannot regenerate does not belong here.
+- **A failure to reach the platform at all is a null, not an exception.** A host running in a unit test, a
+  background isolate without `DartPluginRegistrant.ensureInitialized()`, or a device whose Keystore is
+  broken all read as "no value" with a log line. The alternative is an unhandled `MissingPluginException`
+  inside a sync, which fails the whole run for a bucket that may not even be authenticated.
+
+**The token.** `auth.setToken(token)` writes it at the reserved key `valence.auth.token`; `auth.setToken(null)`
+deletes it. Because the key is reserved, **`secure.get` can never read it back** — the page can set it,
+replace it and clear it, and can ask `auth.hasToken()` whether one is there, which is all a login screen
+needs after a cold start. The host then attaches it itself:
+
+- `Authorization: Bearer <token>` on every pull and push of a **writable** bucket (§5.3, §5.5);
+- and on every request the host performs for the page once `http.request` exists (R11).
+
+**Public read-only buckets stay unauthenticated,** so a CDN can serve them and a cache can keep them. If a
+read-only bucket needs a user's identity it is the wrong shape for this: make it writable, or put the
+identity in the path your publisher writes.
+
+**`ValenceConfig.authToken` still wins when set.** An app with its own refresh loop in Dart keeps that
+callback, and the stored token is only the fallback — so this is additive for a 0.3 host too.
+
+**A 401 means the token is gone, not that the network is.** The host:
+
+- emits `auth.expired` once per sync run, so the page can show a login screen, refresh and call
+  `auth.setToken` again;
+- **keeps** the stored token, because a refresh flow usually needs to present the expired one;
+- reports `SyncResult.reason == "unauthorized"` for that run.
+
+**`reason` is an open set, and an unknown value means "not ok".** `"unauthorized"` is the first value added
+after `ok`/`busy`/`offline`, and a page that compares `reason === 'ok'` keeps working, while one that
+compares `reason === 'offline'` to decide "stale" does not. Values may be added; a page must treat
+anything it does not recognise as a run that did not fully succeed. (A new *value* is not a new field, so
+nothing in §4.3's growth rule gates it — which is exactly why it has to be stated here.)
+
+**What logout does not do.** Clearing the token leaves the local SQLite rows exactly where they are. The
+host has no "wipe user data" operation, because only the app knows which buckets are the user's and
+whether the device is shared. An app that must forget a user deletes those rows itself with
+`data.put(bucket, key, null)` — and should know that the tombstones then push to the server.
 
 ---
 
@@ -574,7 +657,7 @@ The app must be fully usable offline from the seed plus the built-in bundle. Tha
 ### 5.3 Pull (incremental, by update sequence number)
 
 ```
-GET {SYNC_BASE}/{bucket}?since={max_usn}&schema={n}&limit=500     Authorization: Bearer <token> (user buckets only)
+GET {SYNC_BASE}/{bucket}?since={max_usn}&schema={n}&limit=500     Authorization: Bearer <token> (user buckets only, §4.4)
 200 {"bucket":"calendar","schema":2,"rows":[{"k":"2026-01","v":{…},"u":1235,"d":0}],"max":1240,"more":true}
 ```
 
@@ -630,7 +713,7 @@ POST {SYNC_BASE}/{bucket}/push   {"ops":[{"id":"<uuid>","k":"…","v":{…},"d":
   - **A lease recorded by another process is expired too, whatever its timestamp says.** The lease exists to keep the UI isolate and the background isolate apart, and those share one process, so a foreign pid can only be a launch that is gone: a crash, a force-stop, or Android reclaiming the app. Without this the next launch waits out the full two minutes — several launches and resumes on a cold app, each one logging "a sync already holds the lease" and returning an empty result, which a page cannot tell from "up to date". That is worst immediately after a crash, which is exactly when a user is least forgiving. A value with no pid at all, written by an older host, is treated the same way. (Single-process assumption: a host that puts a component in its own `android:process` needs an owner token both processes agree on.)
   - Renew the lease after every applied page, so a long `since = 0` pull doesn't let a second sync start.
   - Release it when the sync finishes.
-- **`SyncResult.reason` says whether the run happened at all:** `"busy"` when the lease blocked it, `"offline"` when it ran and could not reach the server, `"ok"` otherwise — including an app with no `syncBase`, which has no server for its data to be stale against. Without it, "I was not allowed to try" and "you are already up to date" are the same `{changed: 0, offline: false}`, so a freshness indicator reports confident freshness over stale data and a page that retries on an empty result has nothing to retry on. `offline` keeps its old meaning and its old value; `reason` is additive (§4.3).
+- **`SyncResult.reason` says whether the run happened at all:** `"busy"` when the lease blocked it, `"offline"` when it ran and could not reach the server, `"unauthorized"` when the server rejected the bearer token (§4.4), `"ok"` otherwise — including an app with no `syncBase`, which has no server for its data to be stale against. Without it, "I was not allowed to try" and "you are already up to date" are the same `{changed: 0, offline: false}`, so a freshness indicator reports confident freshness over stale data and a page that retries on an empty result has nothing to retry on. `offline` keeps its old meaning and its old value; `reason` is additive (§4.3).
 - **On resume,** compare each bucket's `max_usn` with the last value sent to the UI, and emit `sync.changed` for the ones that moved. Background runs can't reach the WebView.
 - **iOS home widget:** write a small JSON snapshot into the App Group container. **Never put the SQLite file in a shared container**: iOS kills an app that suspends while holding a lock on a shared file (0xdead10cc).
 
@@ -735,11 +818,10 @@ Everything here is silent when it is wrong: the call succeeds, the UI says "Set"
 
 | Layer | Tests |
 |---|---|
-| `valence.mjs` (the skill's `valence.test.mjs`) | key directory inside git, including through a link; keyring entry never overwritten; signing key must match the keyring; sign/verify round trip; tampering, bad signature, unknown key, other `appId` and unsafe paths rejected; native extensions rejected; **a bundle file under the reserved `_host/` prefix is refused by both `bundle` and `verify`, and a relative asset URL in the entry page warns**; **a service-worker registration in the output warns**; `seq` monotonic with the same clock and a slow clock; floor only rises; CSP hashes (CRLF-safe, `wasm-unsafe-eval` only with `.wasm`); additive-only against `storeSchema`, recorded only by `--store`; **a second `--store` build cannot rewrite the recorded schema with a non-additive one, `--rebaseline` lets it through with a warning, and `--store` reports what it recorded**; **`--store` warns when a channel points below the seq it just wrote**; **`requires.bridge` rising above the shipped store build warns, and `--requires-bridge` silences it**; new names need `since` above the shipped version; reserved and colliding names; SvelteKit co-located files aren't routes; `web.declaredRoutes` is validated, feeds the manifest and the baseline, and silences the inactive-check warning a project with no scannable routes gets; atomic and validated seed, with a warning for unseeded buckets; the CLI runs through a link; **a wrong `verify --files` level says the directory is wrong rather than naming the first file as missing**; a built-in may be omitted but not redefined with a different shape; **a built-in's optional field is passed through when the app's type declares it, omitted from the delegation when it does not, still refused at the wrong type, and additive against a type a `--store` build already recorded — while an app's own shipped type may not grow at all**; generated Dart passes `analyze --fatal-infos` against `package:valence` and satisfies the dispatch cases; the generated `bridge.g.ts` binds the package, including `METHOD_SINCE` refusing a method newer than the host |
+| `valence.mjs` (the skill's `valence.test.mjs`) | key directory inside git, including through a link; keyring entry never overwritten; signing key must match the keyring; sign/verify round trip; tampering, bad signature, unknown key, other `appId` and unsafe paths rejected; native extensions rejected; **a bundle file under the reserved `_host/` prefix is refused by both `bundle` and `verify`, and a relative asset URL in the entry page warns**; **a service-worker registration in the output warns**; `seq` monotonic with the same clock and a slow clock; floor only rises; CSP hashes (CRLF-safe, `wasm-unsafe-eval` only with `.wasm`); additive-only against `storeSchema`, recorded only by `--store`; **a second `--store` build cannot rewrite the recorded schema with a non-additive one, `--rebaseline` lets it through with a warning, and `--store` reports what it recorded**; **`--store` warns when a channel points below the seq it just wrote**; **`requires.bridge` rising above the shipped store build warns, and `--requires-bridge` silences it**; new names need `since` above the shipped version; reserved and colliding names; SvelteKit co-located files aren't routes; `web.declaredRoutes` is validated, feeds the manifest and the baseline, and silences the inactive-check warning a project with no scannable routes gets; atomic and validated seed, with a warning for unseeded buckets; the CLI runs through a link; **a wrong `verify --files` level says the directory is wrong rather than naming the first file as missing**; a built-in may be omitted but not redefined with a different shape, including `secure.*` and `auth.*`; **a built-in's optional field is passed through when the app's type declares it, omitted from the delegation when it does not, still refused at the wrong type, and additive against a type a `--store` build already recorded — while an app's own shipped type may not grow at all**; generated Dart passes `analyze --fatal-infos` against `package:valence` and satisfies the dispatch cases; the generated `bridge.g.ts` binds the package, including `METHOD_SINCE` refusing a method newer than the host |
 | updater (dart test) | each check 1–7 rejects; `pointer.seq` below `pending` drops `pending`; the rollout gate is deterministic; size cap; **a bundle requiring exactly `hostBridgeVersion` is accepted**; **check 5 refuses a `requires.data` key that is malformed or writable** (the mirror of "a newer bridge is refused": without it a host can under-report its version and brick itself on first launch after a schema bump); **check 5 compares against the generated constant, not a second literal**; an update isn't pending until its data pairs are synced; **a bundle requiring a pair the device lacks becomes pending only after step 7 pulls that pair, and never on an offline device**; **a device holding v1 and v2 of one bucket satisfies a requirement for either** |
 | state machine | **a mid-session reload runs step 4 only**: `applyUpdate` serves the promoted trial without counting a failure against it, and a ready timeout serves `current` while leaving `trial` set so the next UI start retries it once; **a refused built-in bundle is remembered by manifest bytes and host bridge version, so a host upgrade that fixes check 5 installs it rather than skipping it**, and step 1 reads only the `seq` on an ordinary launch; **a collection that runs between §2.3 steps 6 and 8 keeps the in-flight bundle's CAS files and any `tmp-*`**; **a corrupt file of the *active* bundle is re-fetched by the repair pass before step 1**; trial then ready → committed and floor raised; `ready()` from a `current` page after a timeout never commits the trial; a timeout counts exactly one failure; trial fails once → retried at the next UI start → fails again → marked bad; **a UI start with no trial counts no failure and adds nothing to `bad`** (both `serving` and `trial` are null); **a ready timeout on a `current` page counts no failure**; **a late `ready()` after a trial was given up commits nothing**; **a `pending` below `current` or below `state.floor` is dropped rather than promoted**; **the UI start after two strikes serves `current`, not the bad bundle** (a `pending` in `bad` is dropped, never promoted); **an update check while a seq is on trial does not re-pend it**; **a commit clears a `pending` holding the committed seq**; a crash while `serving == trial` counts one failure; a newer built-in bundle wins and drops older pending and trial; **a built-in bundle that fails its checks promotes nothing, leaves the state untouched, is not added to `bad`, and with no `current` is surfaced rather than served**; GC keeps current, previous, pending, trial and built-in; **GC after a commit leaves writable buckets untouched**; **a supersede collects the pairs that fell out of `previous`, and GC skips the pair step when the sync lease is held**; no transition runs from a background isolate; the ready timer pauses in the background |
 | server | the same port across launches; a bind failure means a new port, a new nonce, a reload and never serving from the old port; rebinding the same port on resume keeps the nonce and the page keeps working; the nonce is in the entry page only; **the back gesture goes back through webview history and closes the app only when there is none left**; CSP header on the entry page; GET and HEAD only, any other method 405; a path with an empty, `.` or `..` segment is 400, so `//_host/<id>` never reaches the fallback; the SPA fallback answers an extensionless path; **a `/_host/` route is matched before the manifest lookup, an unknown id under it is 404 rather than the entry page, and neither a web-supplied path nor a malformed id escapes the host's directory; **a `/_host/` response carries `nosniff` and `default-src 'none'; sandbox`, refuses a scriptable `Content-Type`, and is refused as a main-frame navigation**; **a bundle file is served `no-cache` with its sha256 as a strong `ETag`, a matching `If-None-Match` (weak and `*` included) is 304 with no body, and the same path in the next bundle gets a different `ETag`, so a cached copy can never answer for new code**; the entry page stays `no-store` and carries no `ETag` |
-| store and sync | **a writable bucket is pulled as well as pushed, and a pull never clobbers an unacknowledged local write**; |
-| store and sync | **a writable bucket is pulled as well as pushed, at schema 1, and a pull never clobbers a local write that has not been acknowledged yet**; paged pull is atomic per page; tombstones; outbox rows aren't clobbered by a pull **or by a push echo**; push ack clears only acknowledged ids; seed import per `(bucket, schema)` only moves forward; writable buckets use schema 1; the sync lease blocks concurrent syncs, is renewed per page, and treats a future timestamp as expired; **a lease recorded by another pid, or by an older host with no pid, is taken over rather than waited out, while our own live lease is still respected**; **a blocked run reports `reason: busy` rather than an empty success, a completed run reports `ok`, and an unreachable server reports `offline` with the old `offline` flag unchanged**; **step 7's pull takes the same lease, stops and logs rather than failing when it cannot, and resumes from the pair's own `max_usn` rather than from 0** |
-| bridge | missing or wrong nonce → `E_DENIED`; unknown method → `E_UNKNOWN`; bad params → `E_PARAMS`; a write to a read-only bucket → `E_DENIED`; `prefs.*` on an `valence.` key → `E_DENIED`; `open.external` rejects `javascript:` and `file:`; reply escaping round-trips U+2028 and quotes; **an inbound message over `MAX_MESSAGE_BYTES` of UTF-8 is rejected by `@getvalence/bridge` before `postMessage`, with `E_TOO_LARGE`, rather than killing the webview** (a multi-byte string that is under the cap in UTF-16 code units and over it in bytes is refused); **an over-cap *reply* is replaced by `E_TOO_LARGE` rather than sent**; **`data.list` clamps `limit` to 500 and defaults it to 100** |
+| store and sync | **a writable bucket is pulled as well as pushed, at schema 1, and a pull never clobbers a local write that has not been acknowledged yet**; paged pull is atomic per page; tombstones; outbox rows aren't clobbered by a pull **or by a push echo**; push ack clears only acknowledged ids; seed import per `(bucket, schema)` only moves forward; writable buckets use schema 1; the sync lease blocks concurrent syncs, is renewed per page, and treats a future timestamp as expired; **a lease recorded by another pid, or by an older host with no pid, is taken over rather than waited out, while our own live lease is still respected**; **a blocked run reports `reason: busy` rather than an empty success, a completed run reports `ok`, and an unreachable server reports `offline` with the old `offline` flag unchanged**; **step 7's pull takes the same lease, stops and logs rather than failing when it cannot, and resumes from the pair's own `max_usn` rather than from 0**; **a stored token is attached as `Authorization: Bearer` to a writable bucket's pull and push and to neither for a public read-only bucket, `ValenceConfig.authToken` wins over the stored one, a secure-storage platform that is absent reads as no token rather than throwing, and a 401 emits `auth.expired` once per run and reports `reason: unauthorized` while keeping the token** |
+| bridge | missing or wrong nonce → `E_DENIED`; unknown method → `E_UNKNOWN`; bad params → `E_PARAMS`; a write to a read-only bucket → `E_DENIED`; `prefs.*` and `secure.*` on a `valence.` key → `E_DENIED`, so the stored token is unreadable by the page; `open.external` rejects `javascript:` and `file:`; reply escaping round-trips U+2028 and quotes; **an inbound message over `MAX_MESSAGE_BYTES` of UTF-8 is rejected by `@getvalence/bridge` before `postMessage`, with `E_TOO_LARGE`, rather than killing the webview** (a multi-byte string that is under the cap in UTF-16 code units and over it in bytes is refused); **an over-cap *reply* is replaced by `E_TOO_LARGE` rather than sent**; **`data.list` clamps `limit` to 500 and defaults it to 100** |
 | integration (`integration_test`, device or emulator) | **first launch opens the database and paints** — the store and sync rows above run on `sqflite_common_ffi`, which is more permissive than Android's `SQLiteDatabase` (it accepts `execute` for pragmas), so a green unit suite is not evidence the store opens on a phone; cold start in airplane mode renders the built-in bundle with seed data; a corrupt CAS file is detected the first time the server serves it, deleted, and re-downloaded by the next update check; a background sync followed by a UI bridge call (the database must still be open); background then resume after 10 minutes, the server is rebound and the page still works; **each §6 item the app ships actually works on the device** — a biometric prompt appears rather than throwing `no_fragment_activity`, and a reminder scheduled N seconds out really posts and reports `exact` or `inexact` rather than `ok`; **a scheduled window survives a clock change** (`cmd alarm set-time`, then the alarms are still there) **and a reboot**; **a re-arm does not cancel a notification already on screen**; **a widget snapshot reaches a placed widget**, and the provider resolves under the fully-qualified class name |

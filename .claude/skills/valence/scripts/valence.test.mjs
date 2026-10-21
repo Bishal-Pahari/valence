@@ -94,12 +94,14 @@ test('store build signs, verifies and records the store baseline', () => {
   const m = verifyBundle({ manifestPath: r.manifestPath, filesDir: r.filesDir, keyring, appId: cfg.appId });
   assert.equal(m.seq, NOW / 1000);
   assert.deepEqual(m.routes, ['/', '/calendar', '/settings']);
-  assert.deepEqual(m.requires, { bridge: 1, data: { calendar: 1 } });
+  // The template schema is at version 2 since §4.4 added secure.* and auth.*, and requires.bridge
+  // defaults to it.
+  assert.deepEqual(m.requires, { bridge: 2, data: { calendar: 1 } });
   assert.equal(Object.keys(m.files).length, 2);
   assert.ok(!readFileSync(r.manifestPath + '.sig', 'utf8').includes('\n'), 'sig has no trailing newline');
   const b = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8'));
   assert.deepEqual(b.storeRoutes, m.routes);
-  assert.equal(b.storeSchema.version, 1);
+  assert.equal(b.storeSchema.version, 2);
   assert.equal(b.lastSeq, m.seq);
 });
 
@@ -212,24 +214,24 @@ test('_host/ is reserved for the host, and a relative asset base in the entry pa
 
 test('requires.bridge rising above the shipped store build warns, because it strands those hosts for ever', () => {
   const { root, cfg, key } = fixture();
-  bundle({ root, cfg, key, store: true, now: NOW }); // ships bridge 1 to the stores
+  bundle({ root, cfg, key, store: true, now: NOW }); // ships bridge 2 to the stores
   const bridgeWarn = (r) => r.warnings.filter((w) => w.includes('requires.bridge'));
 
-  // A guarded method added at since: 2 bumps the schema version, and the default silently inherits it.
+  // A guarded method added at since: 3 bumps the schema version, and the default silently inherits it.
   editSchema(root, (s) => {
-    s.version = 2;
-    s.methods['share.image'] = { since: 2, params: { png: 'string' }, returns: 'bool' };
+    s.version = 3;
+    s.methods['share.image'] = { since: 3, params: { png: 'string' }, returns: 'bool' };
   });
   const bumped = bundle({ root, cfg, key, now: NOW });
-  assert.equal(bumped.manifest.requires.bridge, 2);
-  assert.match(bridgeWarn(bumped)[0], /--requires-bridge 1/);
+  assert.equal(bumped.manifest.requires.bridge, 3);
+  assert.match(bridgeWarn(bumped)[0], /--requires-bridge 2/);
 
   // Pinning to the oldest host in the field is the lever, and it is the right move — but it is not silent: an
-  // unguarded call to a since: 2 method would then be dead in the field with no build-time or store signal.
-  const pinned = bundle({ root, cfg, key, requiresBridge: 1, now: NOW });
-  assert.equal(pinned.manifest.requires.bridge, 1);
+  // unguarded call to a since: 3 method would then be dead in the field with no build-time or store signal.
+  const pinned = bundle({ root, cfg, key, requiresBridge: 2, now: NOW });
+  assert.equal(pinned.manifest.requires.bridge, 2);
   assert.ok(!bridgeWarn(pinned).some((w) => w.includes('above the bridge version')));
-  assert.match(bridgeWarn(pinned).join('\n'), /pinned to 1.*share\.image.*has\(\)/s);
+  assert.match(bridgeWarn(pinned).join('\n'), /pinned to 2.*share\.image.*has\(\)/s);
 
   // A store build is allowed to raise it — that build *is* the new floor — and so a fresh project has nothing to say.
   assert.deepEqual(bridgeWarn(bundle({ root, cfg, key, store: true, now: NOW })), []);
@@ -381,12 +383,12 @@ test('a schema shipped in a store build is additive only', () => {
   codegen({ root, cfg }); // a plain --builtin build (init, local testing) does not freeze the schema
   editSchema(root, (s) => (s.methods['haptics.tap'].params.heavy = 'bool?'));
   bundle({ root, cfg, key, store: true, now: NOW });
-  editSchema(root, (s) => (s.methods['share.early'] = { since: 1, params: {}, returns: 'void' }));
-  assert.throws(() => codegen({ root, cfg }), /needs since > 1/);
+  editSchema(root, (s) => (s.methods['share.early'] = { since: 2, params: {}, returns: 'void' }));
+  assert.throws(() => codegen({ root, cfg }), /needs since > 2/);
   editSchema(root, (s) => {
     delete s.methods['share.early'];
-    s.version = 2;
-    s.methods['share.text'] = { since: 2, params: { text: 'string' }, returns: 'void' };
+    s.version = 3;
+    s.methods['share.text'] = { since: 3, params: { text: 'string' }, returns: 'void' };
   });
   codegen({ root, cfg });
   editSchema(root, (s) => (s.methods['haptics.tap'].returns = 'string'));
@@ -413,9 +415,23 @@ test('a built-in may be omitted but not redefined, because the package implement
   bad((s) => (s.methods['data.list'].returns = 'Row'), /a type with \{key, value, usn\}\[\]/);
   // A field the runtime added is still refused at the wrong type.
   bad((s) => (s.types.SyncResult.reason = 'int'), /fields are not/);
+  // §4.4's methods are built-ins like the rest. A nullable `value` would make secure.set a second delete,
+  // silently, on a method whose whole point is that clearing a credential is explicit.
+  bad((s) => (s.methods['secure.set'].params.value = 'string?'), /must stay/);
+  bad((s) => (s.methods['auth.hasToken'].returns = 'string?'), /must return bool/);
+  bad((s) => (s.methods['auth.setToken'].params.token = 'string'), /must stay/);
   // Omitting one is fine: an app that never syncs simply has no sync.now, and ValenceBuiltins drops it.
   writeFileSync(schemaFile(root), pristine);
   editSchema(root, (s) => delete s.methods['sync.now']);
+  assert.ok(codegen({ root, cfg }).written.length);
+  // And an app with no login drops the whole of §4.4 the same way.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => {
+    for (const m of ['secure.get', 'secure.set', 'secure.delete', 'auth.setToken', 'auth.hasToken']) {
+      delete s.methods[m];
+    }
+    delete s.events['auth.expired'];
+  });
   assert.ok(codegen({ root, cfg }).written.length);
 });
 
@@ -477,14 +493,14 @@ test('a second --store build cannot quietly rewrite the schema the stores review
   const { root, cfg, key } = fixture();
   codegen({ root, cfg });
   const first = bundle({ root, cfg, key, store: true, now: NOW });
-  assert.equal(first.recorded.bridge, 1);
+  assert.equal(first.recorded.bridge, 2);
   assert.deepEqual(first.recorded.routes, ['/', '/calendar', '/settings']);
   assert.ok(first.recorded.added.includes('+ method app.ready'), 'the first baseline records the whole schema as new');
   // The exact hole: codegen refuses a method added at the shipped `since`, and re-running --store used to erase
   // the baseline that refusal was made against.
-  editSchema(root, (s) => (s.methods['share.early'] = { since: 1, params: {}, returns: 'void' }));
-  assert.throws(() => codegen({ root, cfg }), /needs since > 1/);
-  assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW + 1000 }), /needs since > 1/);
+  editSchema(root, (s) => (s.methods['share.early'] = { since: 2, params: {}, returns: 'void' }));
+  assert.throws(() => codegen({ root, cfg }), /needs since > 2/);
+  assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW + 1000 }), /needs since > 2/);
   const b = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8'));
   assert.ok(!Object.hasOwn(b.storeSchema.methods, 'share.early'), 'the refused build left the baseline alone');
   // --rebaseline is the deliberate way out, and it says so.
@@ -493,31 +509,31 @@ test('a second --store build cannot quietly rewrite the schema the stores review
   assert.deepEqual(forced.recorded.added, ['+ method share.early']);
   // An additive bump still goes through untouched, and reports what it added.
   editSchema(root, (s) => {
-    s.version = 2;
-    s.methods['share.text'] = { since: 2, params: { text: 'string' }, returns: 'void' };
+    s.version = 3;
+    s.methods['share.text'] = { since: 3, params: { text: 'string' }, returns: 'void' };
   });
   codegen({ root, cfg });
   const bumped = bundle({ root, cfg, key, store: true, now: NOW + 2000 });
   assert.deepEqual(bumped.recorded.added, ['+ method share.text']);
   // A bump is also the moment the OTA pin stops being warned about, so the build names the number while it still can.
-  assert.match(bumped.warnings.join('\n'), /takes the bridge from 1 to 2[\s\S]*--requires-bridge 1/);
+  assert.match(bumped.warnings.join('\n'), /takes the bridge from 2 to 3[\s\S]*--requires-bridge 2/);
 });
 
 test('a built-in build cannot require a bridge its own host does not have', () => {
   const { root, cfg, key } = fixture();
   assert.throws(
-    () => bundle({ root, cfg, key, store: true, requiresBridge: 2, now: NOW }),
+    () => bundle({ root, cfg, key, store: true, requiresBridge: 3, now: NOW }),
     /refuses its own built-in bundle at check 5/,
   );
   // The common way to get here is a schema bumped without a codegen run, so compare against the generated constant.
   codegen({ root, cfg });
   editSchema(root, (s) => {
-    s.version = 2;
-    s.methods['share.text'] = { since: 2, params: { text: 'string' }, returns: 'void' };
+    s.version = 3;
+    s.methods['share.text'] = { since: 3, params: { text: 'string' }, returns: 'void' };
   });
   assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW }), /the generated constant is behind the schema/);
   codegen({ root, cfg });
-  assert.equal(bundle({ root, cfg, key, store: true, now: NOW }).manifest.requires.bridge, 2);
+  assert.equal(bundle({ root, cfg, key, store: true, now: NOW }).manifest.requires.bridge, 3);
   // Pinning an OTA release down is the legitimate use of the flag and stays allowed.
   assert.equal(bundle({ root, cfg, key, requiresBridge: 1, now: NOW }).manifest.requires.bridge, 1);
 });
@@ -802,6 +818,16 @@ final class H implements BridgeHandlers {
   @override
   Future<void> bundleApplyUpdate() async {}
   @override
+  Future<String?> secureGet(SecureGetParams p) async => null;
+  @override
+  Future<void> secureSet(SecureSetParams p) async {}
+  @override
+  Future<void> secureDelete(SecureDeleteParams p) async {}
+  @override
+  Future<void> authSetToken(AuthSetTokenParams p) async {}
+  @override
+  Future<bool> authHasToken() async => true;
+  @override
   Future<List<Row>?> xEdge(XEdgeParams p) async => p.blobs == null ? null : [Row(key: p.type, value: p.blobs, usn: p.rows?.length ?? 0)];
 }
 
@@ -846,6 +872,16 @@ void main() {
   test('a missing p means empty params', () async {
     final r = await call('{"id":7,"n":"n1","m":"sync.now"}');
     expect((r['v']! as Map)['offline'], isTrue);
+  });
+
+  test('the §4.4 built-ins are marshalled like any other', () async {
+    // The delegation itself is the example app's test; here it is the generated params and reply.
+    final has = await call('{"id":11,"n":"n1","m":"auth.hasToken"}');
+    expect(has['v'], isTrue);
+    final cleared = await call('{"id":12,"n":"n1","m":"auth.setToken","p":{"token":null}}');
+    expect(cleared['ok'], isTrue, reason: '\${cleared['e']}');
+    // secure.set takes a non-null value: secure.delete is the only delete (§4.4).
+    expect(code(await call('{"id":13,"n":"n1","m":"secure.set","p":{"key":"k","value":null}}')), BridgeErrorCode.params);
   });
 
   test('nullable lists, nullable list returns and an empty type decode', () async {

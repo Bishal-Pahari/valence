@@ -25,6 +25,14 @@ enum ValenceSyncReason {
 
   /// The run was attempted and at least one request could not reach the server.
   offline,
+
+  /// The server rejected the bearer token with 401, so an authenticated bucket was not read or written
+  /// (§4.4). The data is stale, and no amount of retrying fixes it until the page sets a new token.
+  ///
+  /// The values here are an open set, and a page must treat one it does not recognise as a run that did
+  /// not fully succeed (§4.4). On the host side a `switch` over this enum stops compiling when a value is
+  /// added, which is the intended way to find the places that assumed three.
+  unauthorized,
 }
 
 /// What one sync run did, as `sync.now` returns it.
@@ -78,6 +86,15 @@ final class ValenceSync {
   final http.Client _client;
   final ValenceLogger _log;
   final DateTime Function() _now;
+
+  /// Called the first time a request carrying the bearer token comes back 401 (§4.4).
+  ///
+  /// [Valence] wires this to the `auth.expired` event. A background isolate has no page to tell, so it
+  /// leaves this null and the log line is the only record.
+  void Function()? onUnauthorized;
+
+  /// Whether this run has already seen a 401. Reset per [run], so the event fires at most once a run.
+  bool _unauthorized = false;
 
   /// Bytes of row payload this driver has applied. Used to budget §2.3 step 7.
   int bytesApplied = 0;
@@ -166,6 +183,7 @@ final class ValenceSync {
       _log('sync: another sync holds the lease; skipping this run');
       return const ValenceSyncResult([], 0, false, ValenceSyncReason.busy);
     }
+    _unauthorized = false;
     final touched = <String>[];
     var changed = 0;
     var offline = false;
@@ -224,7 +242,14 @@ final class ValenceSync {
     } finally {
       await releaseLease();
     }
-    return ValenceSyncResult(touched, changed, offline, offline ? ValenceSyncReason.offline : ValenceSyncReason.ok);
+    // A 401 outranks offline. Both mean the data is stale, but only one of them is fixed by the page
+    // setting a new token, and "offline" would have a page wait for connectivity it already has.
+    final reason = _unauthorized
+        ? ValenceSyncReason.unauthorized
+        : offline
+            ? ValenceSyncReason.offline
+            : ValenceSyncReason.ok;
+    return ValenceSyncResult(touched, changed, offline, reason);
   }
 
   // ---------------------------------------------------------------------------
@@ -251,7 +276,14 @@ final class ValenceSync {
         'schema': '$schema',
         'limit': '${config.pullPageLimit}',
       });
-      final res = await _client.get(uri, headers: await _headers(bucket));
+      final headers = await _headers(bucket);
+      final res = await _client.get(uri, headers: headers);
+      // Only a request that actually carried the token can be an auth failure. A public bucket behind a
+      // misconfigured CDN can answer 401 too, and that is a server problem, not an expired login.
+      if (res.statusCode == 401 && headers.containsKey('authorization')) {
+        _rejected('pull $bucket v$schema');
+        return applied;
+      }
       if (res.statusCode != 200) {
         _log('sync: pull $bucket v$schema since $since returned HTTP ${res.statusCode}');
         return applied;
@@ -360,9 +392,10 @@ final class ValenceSync {
   Future<int> pushBucket(String bucket) async {
     final ops = await store.outbox(bucket);
     if (ops.isEmpty) return 0;
+    final authHeaders = await _headers(bucket);
     final res = await _client.post(
       Uri.parse('${config.syncBase}/$bucket/push'),
-      headers: {'content-type': 'application/json', ...await _headers(bucket)},
+      headers: {'content-type': 'application/json', ...authHeaders},
       body: jsonEncode({
         'ops': [
           for (final op in ops)
@@ -375,6 +408,11 @@ final class ValenceSync {
         ],
       }),
     );
+    if (res.statusCode == 401 && authHeaders.containsKey('authorization')) {
+      // The ops stay queued: a rejected token loses nothing, and they push once the page sets a new one.
+      _rejected('push $bucket');
+      return 0;
+    }
     if (res.statusCode != 200) {
       _log('sync: push $bucket returned HTTP ${res.statusCode}; keeping ${ops.length} ops queued');
       return 0;
@@ -403,6 +441,17 @@ final class ValenceSync {
   }
 
   // ---------------------------------------------------------------------------
+
+  /// Records a rejected token and tells the page once (§4.4).
+  ///
+  /// The token is **kept**: a refresh flow usually has to present the expired one, and clearing it here
+  /// would also throw away a token that a clock-skewed or briefly misconfigured server rejected.
+  void _rejected(String what) {
+    _log('sync: $what returned HTTP 401; the bearer token was rejected');
+    if (_unauthorized) return;
+    _unauthorized = true;
+    onUnauthorized?.call();
+  }
 
   Future<Map<String, String>> _headers(String bucket) async {
     // §5.3: the bearer token is for user buckets. A public read-only bucket is fetched unauthenticated,

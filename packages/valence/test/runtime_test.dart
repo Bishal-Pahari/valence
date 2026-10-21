@@ -34,13 +34,16 @@ void main() {
     Map<String, int> dataSchemas = const {},
     http.Client? client,
     LogSpy? log,
+    ValenceConfig? config,
+    ValenceSecure? secure,
   }) =>
       Valence.open(
-        testConfig(key, writableBuckets: writableBuckets, dataSchemas: dataSchemas),
+        config ?? testConfig(key, writableBuckets: writableBuckets, dataSchemas: dataSchemas),
         hostBuild: 42,
         log: (log ?? LogSpy()).call,
         client: client ?? MockClient((_) async => http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200)),
         supportDir: support,
+        secure: secure ?? testSecure({}),
       );
 
   Matcher throwsDenied(String fragment) => throwsA(
@@ -263,4 +266,99 @@ void main() {
       expect(v.store.journalMode, isNotEmpty);
     });
   });
+
+  group('secure.* and auth.* reach the keystore (§4.4)', () {
+    test('the page can set, read and delete its own keys but not the host’s', () async {
+      final data = <String, String>{};
+      final v = await open(secure: testSecure(data));
+      await v.secureSet('refresh', 'r-1');
+      expect(await v.secureGet('refresh'), 'r-1');
+      await v.secureDelete('refresh');
+      expect(await v.secureGet('refresh'), isNull);
+      expect(() => v.secureGet(secureAuthTokenKey), throwsDenied('reserved'));
+      expect(() => v.secureSet('valence.x', 'y'), throwsDenied('reserved'));
+      expect(() => v.secureDelete('valence.x'), throwsDenied('reserved'));
+    });
+
+    test('auth.setToken stores a token only auth.hasToken can see', () async {
+      final data = <String, String>{};
+      final v = await open(secure: testSecure(data));
+      expect(await v.authHasToken(), isFalse);
+      await v.authSetToken('jwt-1');
+      expect(await v.authHasToken(), isTrue);
+      expect(data[secureAuthTokenKey], 'jwt-1');
+      await v.authSetToken(null);
+      expect(await v.authHasToken(), isFalse);
+    });
+
+    test('the stored token is what sync attaches to a user bucket', () async {
+      final seen = <Map<String, String>>[];
+      final v = await open(
+        writableBuckets: {'shelf'},
+        secure: testSecure({}),
+        client: MockClient((req) async {
+          seen.add(req.headers);
+          return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+        }),
+      );
+      // This is the wiring R1 is about: the page sets a token through the bridge and the *host's own*
+      // requests carry it, which is the one thing a token the page holds cannot do.
+      await v.authSetToken('jwt-1');
+      await v.syncNow();
+      expect(seen, isNotEmpty);
+      expect(seen.every((h) => h['authorization'] == 'Bearer jwt-1'), isTrue);
+    });
+
+    test('an app’s own authToken callback still wins over the stored one', () async {
+      final seen = <Map<String, String>>[];
+      final v = await open(
+        config: ValenceConfig(
+          appId: 'com.example.app',
+          keyring: {key.keyId: key.publicKeyBase64},
+          bridgeVersion: 1,
+          syncBase: 'https://sync.test',
+          writableBuckets: const {'shelf'},
+          authToken: () async => 'from-dart',
+        ),
+        secure: testSecure({secureAuthTokenKey: 'from-the-page'}),
+        client: MockClient((req) async {
+          seen.add(req.headers);
+          return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+        }),
+      );
+      await v.syncNow();
+      expect(seen.single['authorization'], 'Bearer from-dart');
+    });
+
+    test('a 401 is emitted to the page as auth.expired', () async {
+      final v = await open(
+        writableBuckets: {'shelf'},
+        secure: testSecure({secureAuthTokenKey: 'expired'}),
+        client: MockClient((_) async => http.Response('{}', 401)),
+      );
+      final view = _ScriptSpy();
+      v.attach(view);
+      final result = await v.syncNow();
+      expect(result.reason, ValenceSyncReason.unauthorized);
+      expect(
+        view.scripts.single,
+        'window.__valence&&window.__valence.e("auth.expired",{})',
+        reason: 'built through jsonEncode by the same helper as every other event',
+      );
+    });
+  });
+}
+
+/// A host view that records the event scripts the runtime emits.
+final class _ScriptSpy implements ValenceHostView {
+  final List<String> scripts = [];
+
+  @override
+  void runScript(String script) => scripts.add(script);
+
+  @override
+  Future<void> reloadPage() async {}
+
+  @override
+  Future<void> handleReady() async {}
 }

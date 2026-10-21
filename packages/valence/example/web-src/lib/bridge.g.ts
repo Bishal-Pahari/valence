@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 1;
+export const BRIDGE_VERSION = 2;
 
 export interface AppInfo {
   platform: string;
@@ -28,6 +28,7 @@ export interface SyncResult {
   buckets: string[];
   changed: number;
   offline: boolean;
+  reason?: string | null;
 }
 
 export interface Methods {
@@ -62,6 +63,20 @@ export interface Methods {
   }; returns: void };
   'bundle.applyUpdate': { params: Record<string, never>; returns: void };
   'haptics.tap': { params: Record<string, never>; returns: void };
+  'secure.get': { params: {
+    key: string;
+  }; returns: string | null };
+  'secure.set': { params: {
+    key: string;
+    value: string;
+  }; returns: void };
+  'secure.delete': { params: {
+    key: string;
+  }; returns: void };
+  'auth.setToken': { params: {
+    token?: string | null;
+  }; returns: void };
+  'auth.hasToken': { params: Record<string, never>; returns: boolean };
 }
 
 export interface Events {
@@ -72,6 +87,7 @@ export interface Events {
     seq: number;
   };
   'app.resumed': Record<string, never>;
+  'auth.expired': Record<string, never>;
 }
 
 export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
@@ -86,12 +102,18 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'open.external': 1,
   'bundle.applyUpdate': 1,
   'haptics.tap': 1,
+  'secure.get': 2,
+  'secure.set': 2,
+  'secure.delete': 2,
+  'auth.setToken': 2,
+  'auth.hasToken': 2,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
   'sync.changed': 1,
   'bundle.updateReady': 1,
   'app.resumed': 1,
+  'auth.expired': 2,
 };
 
 /** Browser fallbacks for this app, so the same build also runs as the website. */

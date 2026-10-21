@@ -143,6 +143,18 @@ void main() {
     expect((scheme['e']! as Map)['code'], BridgeErrorCode.denied);
   });
 
+  test('the generated secure.* and auth.* delegations reach the package (§4.4)', () async {
+    final h = await handlers();
+    // The reserved key is refused before any platform call, so this runs without a Keystore.
+    final token = await dispatch(h, 'secure.get', params: {'key': secureAuthTokenKey});
+    expect((token['e']! as Map)['code'], BridgeErrorCode.denied);
+    // And a host with no secure-storage platform at all — a plain `flutter test` — reads as "no token"
+    // rather than throwing out of the bridge. The Keystore behaviour is tested in the package.
+    final has = await dispatch(h, 'auth.hasToken');
+    expect(has['ok'], isTrue, reason: '${has['e']}');
+    expect(has['v'], isFalse);
+  });
+
   test('the seed is imported on first launch, so the app works offline', () async {
     final h = await handlers();
     final reply = await dispatch(h, 'data.get', params: {'bucket': 'plants', 'key': 'fern'});
