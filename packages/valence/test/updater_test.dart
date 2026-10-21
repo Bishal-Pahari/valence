@@ -1,6 +1,7 @@
 // Contracts §2.3 (the host update algorithm) and §2.4 (the activation state machine).
 //
 // The invariant under test throughout: *no path promotes, re-downloads or serves a seq in `bad`.*
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -1112,6 +1113,7 @@ void main() {
       final b = await signBundle(key, seq: 20, requiresData: {'plants': 1}, floor: 0);
       b.writeTo(manifestsDir: manifestsDir, casDir: casDir);
       await store.applyPullPage(bucket: 'plants', schema: 1, rows: [dataRow('a', 1, 1)], maxUsnAfter: 1);
+      await store.applyPullPage(bucket: 'shelf', schema: 1, rows: [], maxUsnAfter: 0);
       await store.put('shelf', 'mine', {'precious': true}, opId: 'op-1');
       await store.applyPushAck(bucket: 'shelf', acked: ['op-1'], rows: [dataRow('mine', {'precious': true}, 7)]);
 
@@ -1472,4 +1474,177 @@ void main() {
       expect(read.pending, isNull);
     });
   });
+  test('concurrent checks share one pointer fetch and pending publication', () async {
+    final b = await signBundle(key, seq: 20);
+    final entered = Completer<void>(), resume = Completer<void>();
+    var pointers = 0, publications = 0;
+    final ota = otaHost(bundles: {20: b}, pointerSeq: 20);
+    final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        client: MockClient((req) async {
+          if (req.url.path.contains('/channels/')) {
+            pointers++;
+            if (!entered.isCompleted) entered.complete();
+            await resume.future;
+          }
+          return ota.get(req.url);
+        }),
+        onUpdateReady: (_) => publications++);
+    final first = u.checkForUpdate();
+    await entered.future;
+    final second = u.checkForUpdate();
+    resume.complete();
+    expect(await Future.wait([first, second]), [20, 20]);
+    expect(pointers, 1);
+    expect(publications, 0, reason: 'non-urgent candidates do not notify');
+    expect(u.state.pending, 20);
+  });
+
+  test('CR-4 GC refreshes a kept snapshot after publication during asset verification', () async {
+    final b = await signBundle(key, seq: 20);
+    final entered = Completer<void>(), resume = Completer<void>();
+    final cfg = testConfig(key);
+    final client = otaHost(bundles: {20: b}, pointerSeq: 20);
+    var blocked = false;
+    final u = ValenceUpdater(
+        config: cfg,
+        state: ValenceState(installId: 'i', current: 10),
+        stateFile: stateFile,
+        casDir: casDir,
+        manifestsDir: manifestsDir,
+        store: store,
+        sync: ValenceSync(store: store, config: cfg, client: client),
+        client: client,
+        afterFrame: frames.add,
+        readAsset: (_) async {
+          if (!blocked) {
+            blocked = true;
+            entered.complete();
+            await resume.future;
+          }
+          throw StateError('no builtin');
+        });
+    final gc = u.garbageCollect();
+    await entered.future;
+    expect(await u.checkForUpdate(), 20);
+    resume.complete();
+    await gc;
+    expect(File('${manifestsDir.path}/20.json').existsSync(), isTrue);
+    for (final hash in b.blobs.keys) {
+      expect(File('${casDir.path}/$hash').existsSync(), isTrue);
+    }
+  });
+
+  test('CR-4 data lease protects step 7 through durable pending publication', () async {
+    final b = await signBundle(key, seq: 20, requiresData: {'plants': 2});
+    final cfg = testConfig(key);
+    final client = otaHost(
+        bundles: {20: b},
+        pointerSeq: 20,
+        syncBodies: {
+          'plants': jsonEncode({
+            'rows': [dataRow('a', 1, 1)],
+            'max': 1,
+            'more': false
+          })
+        });
+    late ValenceUpdater u;
+    final directory = _BeforeCreateDirectory(manifestsDir, () => u.garbageCollect());
+    u = ValenceUpdater(
+        config: cfg,
+        state: ValenceState(installId: 'i', current: 10),
+        stateFile: stateFile,
+        casDir: casDir,
+        manifestsDir: directory,
+        store: store,
+        sync: ValenceSync(store: store, config: cfg, client: client),
+        client: client,
+        afterFrame: frames.add,
+        readAsset: (_) async => throw StateError('no builtin'));
+    expect(await u.checkForUpdate(), 20);
+    expect(await store.get('plants', 2, 'a'), 1);
+    expect((await store.syncedPairs())['plants'], {2});
+  });
+
+  test('F-30 same check waits for ordinary sync release and stages required data', () async {
+    final b = await signBundle(key, seq: 20, requiresData: {'plants': 2});
+    final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        client: otaHost(
+            bundles: {20: b},
+            pointerSeq: 20,
+            syncBodies: {
+              'plants': jsonEncode({
+                'rows': [dataRow('a', 1, 1)],
+                'max': 1,
+                'more': false
+              })
+            }));
+    final holder = ValenceSync(store: store, config: testConfig(key));
+    expect(await holder.acquireLease(), isTrue);
+    final check = u.checkForUpdate();
+    final release = Future<void>.delayed(const Duration(milliseconds: 100), holder.releaseLease);
+    expect(await check, 20);
+    await release;
+  });
+
+  for (final budget in [false, true]) {
+    test('CR-3 activation waits for all pull pages after a partial failure budget=$budget', () async {
+      final b = await signBundle(key, seq: 20, requiresData: {'plants': 2});
+      var recovered = false;
+      final ota = otaHost(bundles: {20: b}, pointerSeq: 20);
+      final client = MockClient((req) async {
+        if (req.url.host != 'sync.test') return ota.get(req.url);
+        final since = int.parse(req.url.queryParameters['since']!);
+        if (since == 0) {
+          return http.Response(
+              jsonEncode({
+                'rows': [dataRow('a', 1, 1)],
+                'max': 2,
+                'more': true
+              }),
+              200);
+        }
+        if (!recovered) return http.Response('down', 500);
+        return http.Response(
+            jsonEncode({
+              'rows': [dataRow('b', 2, 2)],
+              'max': 2,
+              'more': false
+            }),
+            200);
+      });
+      final u = makeUpdater(
+          state: ValenceState(installId: 'i', current: 10),
+          client: client,
+          config: testConfig(key, dataSizeCap: budget ? 1 : 50000));
+      expect(await u.checkForUpdate(), isNull);
+      expect(u.state.pending, isNull);
+      recovered = true;
+      expect(await u.checkForUpdate(), 20);
+      expect(await store.get('plants', 2, 'b'), 2);
+    });
+  }
+}
+
+// Pauses at the real filesystem boundary between the data gate and manifest publication.
+final class _BeforeCreateDirectory implements Directory {
+  _BeforeCreateDirectory(this.inner, this.before);
+  final Directory inner;
+  final Future<void> Function() before;
+  @override
+  String get path => inner.path;
+  @override
+  Future<Directory> create({bool recursive = false}) async {
+    await before();
+    return inner.create(recursive: recursive);
+  }
+
+  @override
+  bool existsSync() => inner.existsSync();
+  @override
+  List<FileSystemEntity> listSync({bool recursive = false, bool followLinks = true}) =>
+      inner.listSync(recursive: recursive, followLinks: followLinks);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

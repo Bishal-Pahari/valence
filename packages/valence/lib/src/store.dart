@@ -59,7 +59,7 @@ const _schemaSql = [
   'CREATE INDEX kv_bucket_usn ON kv (bucket, schema, usn)',
   'CREATE TABLE bucket (name TEXT NOT NULL, schema INTEGER NOT NULL, max_usn INTEGER NOT NULL, '
       'synced_at INTEGER, PRIMARY KEY (name, schema))',
-  'CREATE TABLE outbox (id TEXT PRIMARY KEY, bucket TEXT NOT NULL, key TEXT NOT NULL, value TEXT, '
+  'CREATE TABLE outbox (ordinal INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, bucket TEXT NOT NULL, key TEXT NOT NULL, value TEXT, '
       'deleted INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)',
   'CREATE TABLE prefs (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
 ];
@@ -88,7 +88,7 @@ final class ValenceStore {
     final db = await factory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2,
         onConfigure: (db) async {
           // Both pragmas return a row, and Android's SQLiteDatabase refuses a row-returning statement
           // through execSQL — so `execute` throws "Queries can be performed using SQLiteDatabase query or
@@ -105,8 +105,16 @@ final class ValenceStore {
             await db.execute(sql);
           }
         },
-        // Migrations use user_version and are append-only. There is nothing to migrate from yet.
-        onUpgrade: (db, from, to) async {},
+        // Preserve queued payloads and their original insertion order during the v1 upgrade.
+        onUpgrade: (db, from, to) async {
+          if (from < 2) {
+            await db.execute('ALTER TABLE outbox RENAME TO outbox_v1');
+            await db.execute(_schemaSql[3]);
+            await db.execute('INSERT INTO outbox (id, bucket, key, value, deleted, created_at) '
+                'SELECT id, bucket, key, value, deleted, created_at FROM outbox_v1 ORDER BY rowid');
+            await db.execute('DROP TABLE outbox_v1');
+          }
+        },
       ),
     );
     return ValenceStore._(db, path, mode);
@@ -279,7 +287,7 @@ final class ValenceStore {
       'outbox',
       where: 'bucket = ?',
       whereArgs: [bucket],
-      orderBy: 'created_at, id',
+      orderBy: 'ordinal',
       limit: limit,
     );
     return [
@@ -315,13 +323,14 @@ final class ValenceStore {
   /// Applies one pull page in a single transaction and moves `max_usn` to [maxUsnAfter].
   ///
   /// Rows whose key still has an outbox entry are **skipped**: the local write wins until the server
-  /// acknowledges it. `max_usn` only moves forward, and `synced_at` is set, which is what makes the pair
+  /// acknowledges it. `max_usn` only moves forward; only [complete] sets `synced_at`, making the pair
   /// count as synced for §2.3 step 7.
   Future<int> applyPullPage({
     required String bucket,
     required int schema,
     required List<Map<String, Object?>> rows,
     required int maxUsnAfter,
+    bool complete = true,
   }) async {
     var applied = 0;
     await db.transaction((txn) async {
@@ -349,10 +358,14 @@ final class ValenceStore {
         );
         applied++;
       }
-      await _bumpBucket(txn, bucket, schema, maxUsnAfter, synced: true);
+      await _bumpBucket(txn, bucket, schema, maxUsnAfter, synced: complete);
     });
     return applied;
   }
+
+  /// Marks an empty/final static pull complete without moving its cursor.
+  Future<void> completePull(String bucket, int schema) =>
+      db.transaction((txn) => _bumpBucket(txn, bucket, schema, 0, synced: true));
 
   /// Clears the acknowledged ops and applies the echoed rows, in one transaction.
   ///
@@ -372,12 +385,10 @@ final class ValenceStore {
         for (final r in await txn.query('outbox', columns: ['key'], where: 'bucket = ?', whereArgs: [bucket]))
           r['key']! as String,
       };
-      var max = 0;
       for (final r in rows) {
         final key = r['k'];
         final usn = r['u'];
         if (key is! String || usn is! int) continue;
-        if (usn > max) max = usn;
         if (blocked.contains(key)) continue;
         await txn.insert(
           'kv',
@@ -392,7 +403,6 @@ final class ValenceStore {
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
-      if (max > 0) await _bumpBucket(txn, bucket, 1, max, synced: true);
     });
   }
 

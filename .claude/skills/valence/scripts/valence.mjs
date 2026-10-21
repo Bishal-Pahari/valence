@@ -145,10 +145,10 @@ CREATE TABLE kv (bucket TEXT NOT NULL, schema INTEGER NOT NULL, key TEXT NOT NUL
 CREATE INDEX kv_bucket_usn ON kv (bucket, schema, usn);
 CREATE TABLE bucket (name TEXT NOT NULL, schema INTEGER NOT NULL, max_usn INTEGER NOT NULL, synced_at INTEGER,
                      PRIMARY KEY (name, schema));
-CREATE TABLE outbox (id TEXT PRIMARY KEY, bucket TEXT NOT NULL, key TEXT NOT NULL, value TEXT,
+CREATE TABLE outbox (ordinal INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, bucket TEXT NOT NULL, key TEXT NOT NULL, value TEXT,
                      deleted INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
 CREATE TABLE prefs (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-PRAGMA user_version = 1;`;
+PRAGMA user_version = 2;`;
 
 // ---------- small helpers ----------
 
