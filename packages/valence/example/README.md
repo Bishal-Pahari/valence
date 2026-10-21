@@ -39,6 +39,11 @@ The contracts §8 matrix is the package's suite, one directory up. An app does n
 
 ## Not a device test
 
+The R12 tooling check on 2026-10-21 separately ran this example on Android: seeded batch reads,
+two queued writes and a queued delete showed the same pending count in the page and SQLite.
+See [the validation record](../../../docs/r12-validation.md). The pre-JNI dependency range resolved
+`path_provider_android` 2.2.23. Its prior local override is removed; the runtime carries the constraint.
+
 A green `flutter test` is **not** evidence that the store opens on a phone: it runs on
 `sqflite_common_ffi`, which accepts pragmas that Android's `SQLiteDatabase` rejects. Android is the tested
 platform for Valence; **iOS is experimental and untested**.
