@@ -27,9 +27,10 @@ Its stale example CLI and documentation references were corrected; example-local
 Fresh gates: 60 CLI tests (zero skipped, generated Dart and strict generated TS
 ran), 399 runtime tests, clean Dart analysis, 18 bridge tests and strict TypeScript,
 bridge pack dry run, 17 example tests, signed built-in verification (seq 1792646661,
-bridge 10), and 27-page website/SEO build. Final APK and clean-tree pub dry run
-are pending at this writing; the earlier pub dry run warned only about uncommitted
-merge files and is being rerun after the commits.
+bridge 10), final 27-page website/SEO build, Android x64 debug APK, and a clean-tree
+pub dry run with zero warnings. The first pub dry run warned about uncommitted
+merge files; after committing, its rerun passed warning-free. All required gates
+passed. The shared package base was rechecked unchanged before marking ready.
 
 No new emulator run: this refresh merges shared behavior and renumbers the schema;
 the original Android evidence below remains historical. iOS remains experimental
