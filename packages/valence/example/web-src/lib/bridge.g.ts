@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 2;
+export const BRIDGE_VERSION = 6;
 
 export interface AppInfo {
   platform: string;
@@ -29,6 +29,33 @@ export interface SyncResult {
   changed: number;
   offline: boolean;
   reason?: string | null;
+  pending?: number | null;
+}
+
+export interface HttpResponse {
+  status: number;
+  headers: Json;
+  body: string;
+}
+
+export interface SyncStatus {
+  pending: number;
+  lastSyncedAt?: number | null;
+  offline: boolean;
+}
+
+export interface AppState {
+  lifecycle: string;
+  online: boolean;
+}
+
+export interface BundleStatus {
+  serving: number;
+  pending?: number | null;
+  trial?: number | null;
+  reason: string;
+  offered?: number | null;
+  checkedAt?: number | null;
 }
 
 export interface Methods {
@@ -42,6 +69,7 @@ export interface Methods {
     bucket: string;
     prefix?: string | null;
     limit?: number | null;
+    after?: string | null;
   }; returns: Row[] };
   'data.put': { params: {
     bucket: string;
@@ -76,6 +104,23 @@ export interface Methods {
     token?: string | null;
   }; returns: void };
   'auth.hasToken': { params: Record<string, never>; returns: boolean };
+  'http.request': { params: {
+    url: string;
+    method?: string | null;
+    headers?: Json | null;
+    body?: string | null;
+  }; returns: HttpResponse };
+  'data.getMany': { params: {
+    bucket: string;
+    keys: string[];
+  }; returns: Row[] };
+  'sync.status': { params: Record<string, never>; returns: SyncStatus };
+  'app.state': { params: Record<string, never>; returns: AppState };
+  'bundle.status': { params: Record<string, never>; returns: BundleStatus };
+  'data.count': { params: {
+    bucket: string;
+    prefix?: string | null;
+  }; returns: number };
   'haptics.tap': { params: Record<string, never>; returns: void };
 }
 
@@ -88,6 +133,15 @@ export interface Events {
   };
   'app.resumed': Record<string, never>;
   'auth.expired': Record<string, never>;
+  'sync.done': {
+    result: SyncResult;
+  };
+  'app.lifecycle': {
+    state: string;
+  };
+  'app.online': {
+    online: boolean;
+  };
 }
 
 export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
@@ -106,6 +160,12 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'secure.delete': 2,
   'auth.setToken': 2,
   'auth.hasToken': 2,
+  'http.request': 4,
+  'data.getMany': 3,
+  'sync.status': 3,
+  'app.state': 6,
+  'bundle.status': 6,
+  'data.count': 5,
   'haptics.tap': 1,
 };
 
@@ -114,6 +174,9 @@ export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
   'bundle.updateReady': 1,
   'app.resumed': 1,
   'auth.expired': 2,
+  'sync.done': 6,
+  'app.lifecycle': 6,
+  'app.online': 6,
 };
 
 /** Browser fallbacks for this app, so the same build also runs as the website. */

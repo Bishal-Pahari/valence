@@ -1,6 +1,6 @@
 # Writing a Valence plugin
 
-The contract is [§4.5](../.claude/skills/valence/references/contracts.md#45-native-plugins).
+The contract is [§4.7](../.claude/skills/valence/references/contracts.md#47-native-plugins).
 The complete [guide](https://getvalence.pages.dev/docs/guides/plugins/) covers
 fragments, handlers, events, web types and platform setup. A runnable local
 [Dart plugin and matching npm types package](../packages/valence/example/plugins/haptics/)

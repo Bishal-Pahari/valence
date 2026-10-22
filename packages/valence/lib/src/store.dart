@@ -52,6 +52,24 @@ const defaultListLimit = 100;
 /// The hard cap `data.list` clamps `limit` to, host-side, rather than trusting the page.
 const maxListLimit = 500;
 
+/// Whether [e] is SQLite refusing because something else holds the file: `SQLITE_BUSY` or `SQLITE_LOCKED`.
+///
+/// The open that takes `BEGIN EXCLUSIVE` for a schema upgrade is the one that collides, and an app update
+/// is when it happens: WorkManager fires the registered periodic job as the UI isolate comes up (§5.6).
+bool isDatabaseLocked(Object e) {
+  if (e is! DatabaseException) return false;
+  // Extended result codes are `code | (n << 8)`, so mask to the primary code. `getResultCode` is null on
+  // some platforms, which is why the rendered exception — the one Android actually prints — is the
+  // fallback. It is **anchored**, not a `contains`: `toString()` appends the failing SQL and its
+  // arguments, and those can be page-supplied, so a loose match would let `data.put(b, 'database is
+  // locked', v)` failing for any unrelated reason read as a lock and be retried instead of surfaced.
+  final code = (e.getResultCode() ?? 0) & 0xff;
+  return code == 5 || code == 6 || _lockedMessage.hasMatch(e.toString());
+}
+
+/// `DatabaseException(…)` wraps the message first, so anchoring here cannot reach the SQL or its args.
+final _lockedMessage = RegExp(r'^DatabaseException\((?:database is locked|database table is locked)', caseSensitive: false);
+
 /// The schema from contracts §5.1. `user_version` is carried by sqflite's own `version` argument.
 const _schemaSql = [
   'CREATE TABLE kv (bucket TEXT NOT NULL, schema INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, '
@@ -59,7 +77,7 @@ const _schemaSql = [
   'CREATE INDEX kv_bucket_usn ON kv (bucket, schema, usn)',
   'CREATE TABLE bucket (name TEXT NOT NULL, schema INTEGER NOT NULL, max_usn INTEGER NOT NULL, '
       'synced_at INTEGER, PRIMARY KEY (name, schema))',
-  'CREATE TABLE outbox (id TEXT PRIMARY KEY, bucket TEXT NOT NULL, key TEXT NOT NULL, value TEXT, '
+  'CREATE TABLE outbox (ordinal INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, bucket TEXT NOT NULL, key TEXT NOT NULL, value TEXT, '
       'deleted INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)',
   'CREATE TABLE prefs (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
 ];
@@ -80,15 +98,28 @@ final class ValenceStore {
   /// Each isolate calls this on the same path and gets the same plugin-side connection back. A background
   /// isolate must call `DartPluginRegistrant.ensureInitialized()` before its first call, or the plugin is
   /// not registered in that isolate at all.
-  static Future<ValenceStore> open(String path, {DatabaseFactory? factory}) =>
-      _open.putIfAbsent(path, () => _openAt(path, factory ?? databaseFactory));
+  ///
+  /// A failed open is **not** cached. The schema upgrade takes `BEGIN EXCLUSIVE`, so a background isolate
+  /// opening while the UI isolate upgrades gets `SQLITE_BUSY` — and caching that rejection would make every
+  /// later call in the isolate fail against a database that is now perfectly fine.
+  static Future<ValenceStore> open(String path, {DatabaseFactory? factory}) {
+    final existing = _open[path];
+    if (existing != null) return existing;
+    final opening = _openAt(path, factory ?? databaseFactory);
+    _open[path] = opening;
+    return opening.catchError((Object e, StackTrace st) {
+      if (_open[path] == opening) _open.remove(path);
+      // Rethrown with the original trace, so the retry's final failure still points at the open.
+      Error.throwWithStackTrace(e, st);
+    });
+  }
 
   static Future<ValenceStore> _openAt(String path, DatabaseFactory factory) async {
     var mode = 'unknown';
     final db = await factory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2,
         onConfigure: (db) async {
           // Both pragmas return a row, and Android's SQLiteDatabase refuses a row-returning statement
           // through execSQL — so `execute` throws "Queries can be performed using SQLiteDatabase query or
@@ -105,8 +136,16 @@ final class ValenceStore {
             await db.execute(sql);
           }
         },
-        // Migrations use user_version and are append-only. There is nothing to migrate from yet.
-        onUpgrade: (db, from, to) async {},
+        // Preserve queued payloads and their original insertion order during the v1 upgrade.
+        onUpgrade: (db, from, to) async {
+          if (from < 2) {
+            await db.execute('ALTER TABLE outbox RENAME TO outbox_v1');
+            await db.execute(_schemaSql[3]);
+            await db.execute('INSERT INTO outbox (id, bucket, key, value, deleted, created_at) '
+                'SELECT id, bucket, key, value, deleted, created_at FROM outbox_v1 ORDER BY rowid');
+            await db.execute('DROP TABLE outbox_v1');
+          }
+        },
       ),
     );
     return ValenceStore._(db, path, mode);
@@ -144,24 +183,52 @@ final class ValenceStore {
     return jsonDecode(rows.first['value']! as String);
   }
 
+  /// Reads at most 500 requested keys in one query, omitting missing and deleted rows.
+  /// Results follow first-requested-key order; duplicate keys appear once (§7.1).
+  Future<List<ValenceRow>> getMany(String bucket, int schema, List<String> keys) async {
+    if (keys.length > 500) {
+      throw const BridgeError(BridgeErrorCode.params, 'data.getMany accepts at most 500 keys');
+    }
+    if (keys.isEmpty) return [];
+    final unique = keys.toSet();
+    final marks = List.filled(unique.length, '?').join(',');
+    final rows = await db.query(
+      'kv',
+      columns: ['key', 'value', 'usn'],
+      where: 'bucket = ? AND schema = ? AND deleted = 0 AND key IN ($marks)',
+      whereArgs: [bucket, schema, ...unique],
+    );
+    final byKey = {for (final r in rows) r['key']! as String: r};
+    return [
+      for (final key in unique)
+        if (byKey[key] case final r?) ValenceRow(key, jsonDecode(r['value']! as String), r['usn']! as int),
+    ];
+  }
+
   /// Lists live rows in key order, clamping [limit] to [maxListLimit] and defaulting it to
   /// [defaultListLimit].
   ///
   /// The clamp is host-side on purpose: the page is untrusted, and an unbounded list is the reply that
   /// kills the WebView.
+  ///
+  /// [after] is the key cursor that makes the clamp survivable: pass the last key of the previous page and
+  /// the scan resumes strictly after it, so a bucket of any size has a complete read. Without it a bucket
+  /// past [maxListLimit] has none at all, and a prefix is not a general answer — real key spaces are not
+  /// evenly distributed, and a truncated list is indistinguishable from a short one. `key` is the leading
+  /// column of the primary key, so this stays an index range scan. Paging by key rather than by offset
+  /// also means a concurrent sync cannot shift rows across a page boundary.
   Future<List<ValenceRow>> list(
     String bucket,
     int schema, {
     String? prefix,
     int? limit,
+    String? after,
   }) async {
     final n = (limit == null || limit <= 0) ? defaultListLimit : (limit > maxListLimit ? maxListLimit : limit);
-    final where = StringBuffer('bucket = ? AND schema = ? AND deleted = 0');
-    final args = <Object?>[bucket, schema];
-    if (prefix != null && prefix.isNotEmpty) {
-      // ESCAPE, so a key prefix containing % or _ matches literally.
-      where.write(r" AND key LIKE ? ESCAPE '\'");
-      args.add('${prefix.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_')}%');
+    final (where, args) = _liveRowsWhere(bucket, schema, prefix);
+    if (after != null && after.isNotEmpty) {
+      where.write(' AND key > ?');
+      args.add(after);
     }
     final rows = await db.query(
       'kv',
@@ -172,9 +239,28 @@ final class ValenceStore {
       limit: n,
     );
     return [
-      for (final r in rows)
-        ValenceRow(r['key']! as String, jsonDecode(r['value']! as String), r['usn']! as int),
+      for (final r in rows) ValenceRow(r['key']! as String, jsonDecode(r['value']! as String), r['usn']! as int),
     ];
+  }
+
+  /// Counts live rows, so "how much does this device hold?" and "is this key space empty?" cost one
+  /// indexed count rather than every row's JSON.
+  Future<int> count(String bucket, int schema, {String? prefix}) async {
+    final (where, args) = _liveRowsWhere(bucket, schema, prefix);
+    final rows = await db.rawQuery('SELECT COUNT(*) AS n FROM kv WHERE $where', args);
+    return rows.first['n']! as int;
+  }
+
+  /// The `(bucket, schema)` filter [list] and [count] share, with an optional key prefix.
+  (StringBuffer, List<Object?>) _liveRowsWhere(String bucket, int schema, String? prefix) {
+    final where = StringBuffer('bucket = ? AND schema = ? AND deleted = 0');
+    final args = <Object?>[bucket, schema];
+    if (prefix != null && prefix.isNotEmpty) {
+      // ESCAPE, so a key prefix containing % or _ matches literally.
+      where.write(r" AND key LIKE ? ESCAPE '\'");
+      args.add('${prefix.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_')}%');
+    }
+    return (where, args);
   }
 
   /// The highest applied `usn` for one `(bucket, schema)` pair, or 0 when the pair is unknown.
@@ -258,7 +344,7 @@ final class ValenceStore {
       'outbox',
       where: 'bucket = ?',
       whereArgs: [bucket],
-      orderBy: 'created_at, id',
+      orderBy: 'ordinal',
       limit: limit,
     );
     return [
@@ -294,13 +380,14 @@ final class ValenceStore {
   /// Applies one pull page in a single transaction and moves `max_usn` to [maxUsnAfter].
   ///
   /// Rows whose key still has an outbox entry are **skipped**: the local write wins until the server
-  /// acknowledges it. `max_usn` only moves forward, and `synced_at` is set, which is what makes the pair
+  /// acknowledges it. `max_usn` only moves forward; only [complete] sets `synced_at`, making the pair
   /// count as synced for §2.3 step 7.
   Future<int> applyPullPage({
     required String bucket,
     required int schema,
     required List<Map<String, Object?>> rows,
     required int maxUsnAfter,
+    bool complete = true,
   }) async {
     var applied = 0;
     await db.transaction((txn) async {
@@ -328,10 +415,14 @@ final class ValenceStore {
         );
         applied++;
       }
-      await _bumpBucket(txn, bucket, schema, maxUsnAfter, synced: true);
+      await _bumpBucket(txn, bucket, schema, maxUsnAfter, synced: complete);
     });
     return applied;
   }
+
+  /// Marks an empty/final static pull complete without moving its cursor.
+  Future<void> completePull(String bucket, int schema) =>
+      db.transaction((txn) => _bumpBucket(txn, bucket, schema, 0, synced: true));
 
   /// Clears the acknowledged ops and applies the echoed rows, in one transaction.
   ///
@@ -351,12 +442,10 @@ final class ValenceStore {
         for (final r in await txn.query('outbox', columns: ['key'], where: 'bucket = ?', whereArgs: [bucket]))
           r['key']! as String,
       };
-      var max = 0;
       for (final r in rows) {
         final key = r['k'];
         final usn = r['u'];
         if (key is! String || usn is! int) continue;
-        if (usn > max) max = usn;
         if (blocked.contains(key)) continue;
         await txn.insert(
           'kv',
@@ -371,7 +460,6 @@ final class ValenceStore {
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
-      if (max > 0) await _bumpBucket(txn, bucket, 1, max, synced: true);
     });
   }
 
@@ -420,13 +508,17 @@ final class ValenceStore {
   ///
   /// Returns the rows copied per bucket. A seeded pair deliberately does **not** get `synced_at`, because
   /// §2.3 step 7 is about the server having rows at that schema and a seed proves nothing about that.
-  Future<Map<String, int>> importSeed(String seedPath, Map<String, int> schemas) async {
+  Future<Map<String, int>> importSeed(String seedPath, Map<String, int> schemas,
+      {Map<String, List<int>> additionalSchemas = const {}}) async {
     if (schemas.isEmpty) return const {};
     final counts = <String, int>{};
     // ATTACH outside a transaction: SQLite refuses it inside one.
     await db.execute('ATTACH DATABASE ? AS valence_seed', [seedPath]);
     try {
-      for (final e in schemas.entries) {
+      final pairs = {
+        for (final e in schemas.entries) e.key: {e.value, ...?additionalSchemas[e.key]},
+      };
+      for (final e in [for (final b in pairs.entries) for (final n in b.value) MapEntry(b.key, n)]) {
         final from = await maxUsn(e.key, e.value);
         await db.transaction((txn) async {
           await txn.rawInsert(
@@ -438,7 +530,7 @@ final class ValenceStore {
           // rawInsert returns a last-insert-rowid, which is meaningless on a WITHOUT ROWID table: it reads
           // as 1 for a seed of thousands and looks like a failed import. changes() is the row count.
           final changed = await txn.rawQuery('SELECT changes() AS n');
-          counts[e.key] = changed.first['n']! as int;
+          counts[e.key] = (counts[e.key] ?? 0) + (changed.first['n']! as int);
           final seedMax = await txn.rawQuery(
             'SELECT MAX(usn) AS m FROM valence_seed.kv WHERE bucket = ? AND schema = ?',
             [e.key, e.value],

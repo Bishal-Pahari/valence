@@ -5,12 +5,23 @@
     "out": "web/build",
     "lib": "web/src/lib/valence",
     "routes": "web/src/routes",
-    "entry": "index.html"
+    "entry": "index.html",
+    "connect": []
   },
-  "host": { "dir": "mobile" },
-  "ota": { "base": "https://ota.example.com" },
-  "sync": { "base": "https://api.example.com/sync" },
+  "host": {
+    "dir": "mobile"
+  },
+  "ota": {
+    "base": "https://ota.example.com",
+    "channel": "production"
+  },
+  "sync": {
+    "base": "https://api.example.com/sync"
+  },
   "data": {},
   "writable": [],
-  "plugins": []
+  "plugins": [],
+  "http": {
+    "origins": []
+  }
 }

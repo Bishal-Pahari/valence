@@ -36,14 +36,6 @@ dependencies:
   valence_example_haptics:
     path: plugins/haptics
 
-dependency_overrides:
-  # path_provider_android 2.3.1 routes through jni/jni_flutter, whose libdartjni.so is a Dart native
-  # asset. Flutter 3.44 does not bundle native assets into the APK, so getApplicationSupportDirectory
-  # throws "Failed to load dynamic library ... libdartjni.so" on every launch, before any UI. 2.2.17 is
-  # the last release that uses a plain platform channel. Drop this once the local Flutter bundles native
-  # assets, and check it with a real launch rather than with `flutter test`.
-  path_provider_android: 2.2.17
-
 dev_dependencies:
   flutter_test:
     sdk: flutter

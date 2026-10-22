@@ -19,6 +19,10 @@ class _Handlers extends AppHandlers {
   _Handlers(super.valence);
 }
 
+// Widget tests normally replace HttpClient with an unconditional HTTP 400.
+// This scoped override allows only this integration test to use its local server.
+class _LocalHttpOverrides extends HttpOverrides {}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -44,10 +48,10 @@ void main() {
 
   /// A real runtime on a temp directory, with the network mocked: the built-in handlers under test here
   /// are the generated delegations, so they have to reach the package for real.
-  Future<_Handlers> handlers() async => _Handlers(
+  Future<_Handlers> handlers({ValenceConfig? config}) async => _Handlers(
     await Valence.open(
       // The OTA and sync hosts in the example config are .invalid, so nothing can leave the machine.
-      valenceConfig,
+      config ?? valenceConfig,
       hostBuild: 1,
       log: (_) {},
       client: MockClient(
@@ -227,6 +231,124 @@ void main() {
       expect((reply['v']! as Map)['name'], 'Boston fern');
     },
   );
+
+  test(
+    'native HTTP delegates to the runtime and enforces policy through strict decoding',
+    () => HttpOverrides.runWithHttpOverrides(() async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      var calls = 0;
+      server.listen((r) {
+        calls++;
+        expect(r.headers.value('authorization'), 'Bearer callback-token');
+        r.response.headers.contentType = ContentType.json;
+        r.response.write('{"native":true}');
+        r.response.close();
+      });
+      final origin = 'http://127.0.0.1:${server.port}';
+      final h = await handlers(
+        config: valenceConfig.copyWith(
+          httpOrigins: {origin},
+          authToken: () async => 'callback-token',
+        ),
+      );
+      final ok = await dispatch(
+        h,
+        'http.request',
+        params: {'url': '$origin/rpc'},
+      );
+      expect(ok['ok'], isTrue, reason: '${ok['e']}');
+      expect((ok['v']! as Map)['status'], 200);
+      expect((ok['v']! as Map)['body'], '{"native":true}');
+      for (final params in [
+        {'url': 'https://unlisted.invalid'},
+        {
+          'url': origin,
+          'headers': {'Authorization': 'page-token'},
+        },
+      ]) {
+        expect(
+          ((await dispatch(h, 'http.request', params: params))['e']!
+              as Map)['code'],
+          BridgeErrorCode.denied,
+        );
+      }
+      for (final params in [
+        {'url': 1},
+        {'url': origin, 'unexpected': true},
+        {'url': origin, 'body': {}},
+        {
+          'url': origin,
+          'headers': ['not-a-map'],
+        },
+      ]) {
+        expect(
+          ((await dispatch(h, 'http.request', params: params))['e']!
+              as Map)['code'],
+          BridgeErrorCode.params,
+        );
+      }
+      final wrongNonce = await dispatch(
+        h,
+        'http.request',
+        params: {'url': origin},
+        withNonce: 'wrong',
+      );
+      expect((wrongNonce['e']! as Map)['code'], BridgeErrorCode.denied);
+      expect(calls, 1, reason: 'refused calls never reach the network');
+    }, _LocalHttpOverrides()),
+  );
+  test('schema-3 reads and status delegate to the runtime and enforce strict input', () async {
+    final h = await handlers();
+    final batch = await dispatch(h, 'data.getMany', params: {'bucket': 'plants', 'keys': ['fern', 'missing', 'fern']});
+    expect(batch['ok'], isTrue);
+    expect((batch['v']! as List).map((r) => (r as Map)['key']), ['fern']);
+    await h.valence.store.put('shelf', 'a', 1, opId: 'one');
+    await h.valence.store.put('shelf', 'a', null, opId: 'two');
+    final status = await dispatch(h, 'sync.status');
+    expect((status['v']! as Map)['pending'], 2);
+    expect((status['v']! as Map)['lastSyncedAt'], isNull);
+    final invalid = await dispatch(h, 'data.getMany', params: {'bucket': 'plants', 'keys': [3]});
+    expect((invalid['e']! as Map)['code'], 'E_PARAMS');
+    final oversized = await dispatch(h, 'data.getMany', params: {'bucket': 'plants', 'keys': List.filled(501, 'fern')});
+    expect((oversized['e']! as Map)['code'], 'E_PARAMS');
+  });
+
+
+  test('schema-6 lifecycle and update status delegate to the runtime', () async {
+    final h = await handlers();
+    final state = await dispatch(h, 'app.state');
+    // The wire values are the Dart enum names, and a page only ever runs in the foreground.
+    expect((state['v']! as Map)['lifecycle'], 'foreground');
+    expect((state['v']! as Map)['online'], isTrue);
+
+    h.valence.state.pending = 77;
+    final status = await dispatch(h, 'bundle.status');
+    final v = status['v']! as Map;
+    expect(v['pending'], 77);
+    expect(v['serving'], 0, reason: 'no host widget has bound a manifest in a unit test');
+    expect(v['trial'], isNull);
+    // Nothing has checked, so the honest answer is "idle" rather than a claim about freshness.
+    expect(v['reason'], 'idle');
+    expect(v['checkedAt'], isNull);
+    expect(v['offered'], isNull);
+
+    // Neither takes params, so the strict decoders refuse one rather than ignoring it.
+    final extra = await dispatch(h, 'app.state', params: {'verbose': true});
+    expect((extra['e']! as Map)['code'], 'E_PARAMS');
+  });
+
+  test('sync.done carries the whole SyncResult the reply would carry', () {
+    // One type for the reply and the event, so a page renders a freshness line from either.
+    const result = ValenceSyncResult(['shelf'], 2, false, ValenceSyncReason.ok, 0);
+    expect(
+      BridgeEvents.syncDone(result: SyncResult.fromJson(result.toJson())),
+      'window.__valence&&window.__valence.e("sync.done",{"result":{"buckets":["shelf"],"changed":2,'
+          '"offline":false,"reason":"ok","pending":0}})',
+    );
+    expect(BridgeEvents.appLifecycle(state: 'background'), contains('{"state":"background"}'));
+    expect(BridgeEvents.appOnline(online: false), contains('{"online":false}'));
+  });
 
   test('the generated event builders go through jsonEncode', () {
     expect(

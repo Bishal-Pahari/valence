@@ -38,7 +38,7 @@ They are transient local evidence, not required source files.
 ## Security review
 
 An independent read-only review followed `.claude/agents/valence-reviewer.md` and
-contracts §4.5. It reported no confirmed findings. It independently ran four
+contracts §4.7. It reported no confirmed findings. It independently ran four
 fragment tests, two generated TypeScript/Dart exercises (zero skips), three
 runtime plugin tests, twelve example tests, example codegen freshness and fatal-info
 Dart analysis. The later absolute-fragment-path rejection has its own regression.

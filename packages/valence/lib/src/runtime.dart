@@ -5,11 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'config.dart';
 import 'log.dart';
 import 'manifest.dart';
+import 'native_http.dart';
 import 'secure.dart';
 import 'server.dart';
 import 'state.dart';
@@ -30,12 +32,13 @@ export 'manifest.dart'
         fnv1a32,
         isReservedBundlePath,
         isSafeBundlePath;
+export 'native_http.dart' show ValenceHttp, ValenceHttpResponse;
 export 'secure.dart' show ValenceSecure, secureAuthTokenKey;
 export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
-export 'store.dart' show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, maxListLimit;
-export 'sync.dart' show ValenceSync, ValenceSyncReason, ValenceSyncResult;
-export 'updater.dart' show ValenceUpdater;
+export 'store.dart' show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, isDatabaseLocked, maxListLimit;
+export 'sync.dart' show ValenceSync, ValenceSyncReason, ValenceSyncResult, ValenceSyncStatus;
+export 'updater.dart' show ValenceBundleReason, ValenceBundleStatus, ValenceUpdater;
 export 'wire.dart' show BridgeError, BridgeErrorCode, maxMessageBytes;
 
 /// What `app.info` reports.
@@ -65,12 +68,54 @@ final class ValenceAppInfo {
   final String locale;
 }
 
+/// The host's four lifecycle states (§4.6).
+///
+/// Four, not Flutter's five: `hidden` and `paused` are one transition to [background] as far as a page is
+/// concerned, and emitting both would make a page that counts transitions count two for one backgrounding.
+/// The names are the wire values, through `.name`.
+enum ValenceLifecycle {
+  /// On screen and interactive. Flutter's `resumed`.
+  foreground,
+
+  /// Not visible. Flutter's `hidden` and `paused`. The last state with a live page: persist here.
+  background,
+
+  /// Visible but not interactive — a notification shade, a permission dialog, an incoming call.
+  ///
+  /// **Not** backgrounded. A page that pauses a video on this flickers.
+  inactive,
+
+  /// The engine is detached from any view. Flutter's `detached`.
+  ///
+  /// Reported for completeness and usually never delivered: there may be no WebView left to run the
+  /// script. Never persist from here.
+  detached,
+}
+
+/// The current lifecycle and connectivity, for `app.state` (§4.6).
+final class ValenceAppState {
+  /// Creates a state snapshot.
+  const ValenceAppState({required this.lifecycle, required this.online});
+
+  /// Where the app is in its lifecycle.
+  final ValenceLifecycle lifecycle;
+
+  /// What the OS says about network *interfaces* — not reachability. See §4.6.
+  final bool online;
+}
+
 /// What the runtime needs from the widget that owns the WebView.
 ///
 /// [ValenceApp] implements it. An app that builds its own WebView can too.
 abstract interface class ValenceHostView {
   /// Runs one script in the WebView, or buffers it until the entry page has loaded.
   void runScript(String script);
+
+  /// Whether a page is loaded and can receive a script *now*.
+  ///
+  /// The §4.6 state events are dropped rather than buffered when this is false, so the runtime has to be
+  /// able to ask. Everything else goes through [runScript] and is flushed when the page finishes.
+  bool get pageLoaded;
 
   /// Reloads the WebView from the server's origin.
   Future<void> reloadPage();
@@ -123,7 +168,9 @@ final class Valence {
     ValenceLogger log = defaultValenceLogger,
     http.Client? client,
     Directory? supportDir,
+    Directory? documentsDir,
     ValenceSecure? secure,
+    DatabaseFactory? databaseFactory,
   }) async {
     // `open` is awaited in `main()` **before** `runApp`, and `runApp` is what would otherwise create the
     // binding — but the store's directory (path_provider), the seed (rootBundle) and secure storage all
@@ -141,9 +188,7 @@ final class Valence {
     // dataExtractionRules/fullBackupContent. See the package README; a plugin would be the upgrade path.
 
     // The database lives *outside* valence/, because it holds user data and should be backed up.
-    final store = await ValenceStore.open(
-      '${support.path}${Platform.pathSeparator}${config.databaseName}',
-    );
+    final store = await _openStore(config, support, documentsDir, log, databaseFactory);
     if (!store.isWal) {
       log('store: journal_mode is "${store.journalMode}", not wal; the concurrency the data layer '
           'assumes is not available on this filesystem');
@@ -279,7 +324,10 @@ final class Valence {
       }
     }
     try {
-      final counts = await store.importSeed(seedPath, config.dataSchemas);
+      final counts = await store.importSeed(seedPath, config.dataSchemas, additionalSchemas: {
+        for (final e in config.seedSchemas.entries)
+          if (config.dataSchemas.containsKey(e.key) && !config.writableBuckets.contains(e.key)) e.key: e.value,
+      });
       final moved = counts.values.fold<int>(0, (a, b) => a + b);
       if (moved > 0) _log('seed: imported $counts');
       // Stamped only after a clean import, so a crash mid-import retries on the next launch.
@@ -303,6 +351,56 @@ final class Valence {
     }
     await view.handleReady();
   }
+
+  /// The current lifecycle and connectivity. [ValenceApp] keeps them up to date; see [noteLifecycle].
+  ///
+  /// The optimistic defaults are deliberate. A page only ever runs while the app is on screen, and a host
+  /// whose connectivity plugin has not answered yet must not tell the page it is offline — the cost of
+  /// being wrong the other way is a UI that refuses to try on a working network.
+  ValenceLifecycle _lifecycle = ValenceLifecycle.foreground;
+  bool _online = true;
+
+  /// `app.state`. The current values of the `app.lifecycle` and `app.online` events (§4.6).
+  ValenceAppState appState() => ValenceAppState(lifecycle: _lifecycle, online: _online);
+
+  /// Records a lifecycle transition and emits `app.lifecycle` if it is a change. Called by [ValenceApp].
+  void noteLifecycle(ValenceLifecycle lifecycle) {
+    if (_lifecycle == lifecycle) return;
+    _lifecycle = lifecycle;
+    _emitState(eventScript('app.lifecycle', {'state': lifecycle.name}));
+  }
+
+  /// Records connectivity and emits `app.online` if it is a change. Called by [ValenceApp].
+  void noteOnline(bool online) {
+    if (_online == online) return;
+    _online = online;
+    _emitState(eventScript('app.online', {'online': online}));
+  }
+
+  /// Emits a **state** event, or drops it when no page can receive it (§4.6).
+  ///
+  /// `app.lifecycle` and `app.online` are state, and §4.2's rule for state is to re-derive rather than
+  /// replay: a page that was not loaded calls [appState] on mount and gets the current pair, which is the
+  /// answer it wanted. Buffering them would be an unbounded queue — a host whose entry page never loads,
+  /// on a device moving between networks, has no bound on how many it collects — holding transitions that
+  /// are stale by the time anything reads them. The state is recorded either way, so nothing is lost.
+  void _emitState(String script) {
+    final view = _view;
+    if (view == null || !view.pageLoaded) return;
+    view.runScript(script);
+  }
+
+  /// `bundle.status`. Why the last update check ended as it did, and what is waiting (§4.6).
+  ///
+  /// Reads state the host already keeps, so a page may poll it: it never starts a network request.
+  ValenceBundleStatus bundleStatus() => ValenceBundleStatus(
+        serving: _manifest?.seq ?? 0,
+        pending: state.pending,
+        trial: state.trial,
+        reason: updater.lastReason,
+        offered: updater.lastOffered,
+        checkedAt: updater.lastCheckedAt,
+      );
 
   /// `app.info`.
   ValenceAppInfo appInfo() => ValenceAppInfo(
@@ -333,9 +431,21 @@ final class Valence {
   /// `data.get`.
   Future<Object?> dataGet(String bucket, String key) => store.get(bucket, schemaFor(bucket), key);
 
+  /// `data.getMany`, using the active bundle's schema just like [dataGet].
+  Future<List<ValenceRow>> dataGetMany(String bucket, List<String> keys) =>
+      store.getMany(bucket, schemaFor(bucket), keys);
+
+  /// `sync.status`. A local snapshot; never starts a network request.
+  Future<ValenceSyncStatus> syncStatus() => sync.status();
+
   /// `data.list`. The host clamps `limit`, rather than trusting the page (§4.2).
-  Future<List<ValenceRow>> dataList(String bucket, {String? prefix, int? limit}) =>
-      store.list(bucket, schemaFor(bucket), prefix: prefix, limit: limit);
+  ///
+  /// [after] resumes strictly after that key, which is how a page reads a bucket larger than the clamp.
+  Future<List<ValenceRow>> dataList(String bucket, {String? prefix, int? limit, String? after}) =>
+      store.list(bucket, schemaFor(bucket), prefix: prefix, limit: limit, after: after);
+
+  /// `data.count`. Live rows only, resolved against the same schema as [dataList].
+  Future<int> dataCount(String bucket, {String? prefix}) => store.count(bucket, schemaFor(bucket), prefix: prefix);
 
   /// `data.put`. A null [value] is the delete. Refuses a bucket that is not writable.
   Future<void> dataPut(String bucket, String key, Object? value) async {
@@ -344,6 +454,15 @@ final class Valence {
         BridgeErrorCode.denied,
         '"$bucket" is not a writable bucket; add it to "writable" in valence.config.json',
       );
+    }
+    // Refused here, at the trust boundary, and not only by a server. A key that a server maps into a URL
+    // path cannot be pushed: `.` and `..` are the two values `encodeURIComponent` leaves alone, so they
+    // resolve away as dot segments and the write lands on the collection or the root. A server that
+    // rejects the batch for it — as the reference adapter does — then rejects the *same* queued write on
+    // every later run, because push is replayed from the outbox: one bad key and no write in that bucket
+    // ever reaches the server again, with no method the page could use to clear it (§5.5).
+    if (key == '.' || key == '..') {
+      throw BridgeError(BridgeErrorCode.params, '"$key" is not a usable key; a server cannot address it');
     }
     await store.put(bucket, key, value, opId: ValenceState.newInstallId());
     // Fire and forget: a local write is durable the moment the transaction commits, and the page must not
@@ -356,11 +475,51 @@ final class Valence {
     );
   }
 
-  /// `sync.now`.
-  Future<ValenceSyncResult> syncNow({List<String>? buckets}) => sync.run(
-        readSchemas: _manifest?.requiresData ?? config.dataSchemas,
-        only: buckets,
-      );
+  /// The last `max_usn` each pair was reported to the page with, so a run can re-derive `sync.changed`.
+  final Map<String, int> _lastSeenUsn = {};
+
+  /// `sync.now`, and every run the host makes on its own.
+  ///
+  /// The reporting lives here rather than in the host widget because `data.put`'s push goes straight
+  /// through this method: a run reported only by the widget's own triggers would leave the page's
+  /// freshness line untouched by the writes the page itself made, which is most of what moves an outbox.
+  /// The background isolate is the one run that cannot be reported — [backgroundSync] is static and has
+  /// no page to reach (§4.6).
+  Future<ValenceSyncResult> syncNow({List<String>? buckets}) async {
+    final result = await sync.run(
+      readSchemas: _manifest?.requiresData ?? config.dataSchemas,
+      only: buckets,
+    );
+    await _reportSync(result);
+    return result;
+  }
+
+  /// Emits `sync.changed` and then `sync.done` for one completed run (§4.6).
+  ///
+  /// The order is the contract: the page refetches what moved before it is told the run finished.
+  /// `sync.changed` is re-derived rather than replayed — each pair's `max_usn` against the last value the
+  /// page was told — because a background run cannot reach the WebView at all (§4.2, §5.6).
+  Future<void> _reportSync(ValenceSyncResult result) async {
+    try {
+      final moved = <String>[];
+      final schemas = _manifest?.requiresData ?? config.dataSchemas;
+      for (final bucket in {...result.buckets, ...schemas.keys, ...config.writableBuckets}) {
+        final schema = config.writableBuckets.contains(bucket) ? 1 : schemas[bucket] ?? 1;
+        final usn = await store.maxUsn(bucket, schema);
+        if (_lastSeenUsn[bucket] != usn) {
+          _lastSeenUsn[bucket] = usn;
+          moved.add(bucket);
+        }
+      }
+      if (moved.isNotEmpty) emit(eventScript('sync.changed', {'buckets': moved}));
+      // Every completed run, `changed: 0`, `busy` and `unauthorized` included — that is the whole point:
+      // "nothing moved" is the answer a freshness line needs and the one `sync.changed` never sends.
+      emit(eventScript('sync.done', {'result': result.toJson()}));
+    } on Object catch (e) {
+      // Reporting a run must never fail the run: the data is already committed.
+      _log('sync: could not report the run: $e');
+    }
+  }
 
   /// The pref recording which seed has already been imported (§5.2).
   static const _seedStamp = 'valence.seed.imported';
@@ -389,6 +548,20 @@ final class Valence {
 
   /// `auth.hasToken`. Whether a token is stored — the only thing the page may learn about it.
   Future<bool> authHasToken() => secure.hasAuthToken();
+
+  /// `http.request`: online text RPC restricted to the host's compiled origins (§4.5).
+  Future<ValenceHttpResponse> httpRequest({
+    required String url,
+    String? method,
+    Object? headers,
+    String? body,
+  }) =>
+      ValenceHttp(
+        origins: config.httpOrigins,
+        token: config.authToken ?? secure.authToken,
+        onUnauthorized: () =>
+            emit(eventScript('auth.expired', const <String, Object?>{})),
+      ).request(url: url, method: method, headers: headers, body: body);
 
   /// `open.external`. Only `https:`, `mailto:` and `tel:` leave the app.
   Future<void> openExternal(String url) async {
@@ -450,12 +623,22 @@ final class Valence {
     ValenceLogger log = defaultValenceLogger,
     http.Client? client,
     Directory? supportDir,
+    Directory? documentsDir,
     ValenceSecure? secure,
+    DatabaseFactory? databaseFactory,
   }) async {
     final support = supportDir ?? await getApplicationSupportDirectory();
-    final store = await ValenceStore.open(
-      '${support.path}${Platform.pathSeparator}${config.databaseName}',
-    );
+    final ValenceStore store;
+    try {
+      store = await _openStore(config, support, documentsDir, log, databaseFactory);
+    } on Object catch (e) {
+      // A background run that cannot even open the store has not observed anything, and the UI isolate
+      // holding the file is itself about to sync. `busy` is the honest answer and the one the page's
+      // freshness line already knows how to not lie about; a throw would be a WorkManager FAILURE instead.
+      if (!isDatabaseLocked(e)) rethrow;
+      log('sync: the UI isolate holds the database, so this background run did not start');
+      return const ValenceSyncResult([], 0, false, ValenceSyncReason.busy);
+    }
     // The same token the UI isolate uses (§4.4). There is no page to tell about a 401 here, so
     // `onUnauthorized` stays null and the log line is the record.
     final keystore = secure ?? ValenceSecure(log: log);
@@ -470,7 +653,103 @@ final class Valence {
     return sync.run(readSchemas: config.dataSchemas);
   }
 
+  /// Opens the store at `<appSupport>/<databaseName>`, adopting a 0.3 database left in the application
+  /// *documents* directory first.
+  ///
+  /// 0.3's contract never named a directory — §5.1 said only that the database lives outside `valence/` —
+  /// so a conforming 0.3 host could have used either `path_provider` directory, and on Android those are
+  /// different places (`files` and `app_flutter`). 0.4 fixes the choice to appSupport, which would
+  /// otherwise create an empty database beside a full one and present a fresh install to a user whose
+  /// data is still on disk. `host.database` cannot fix it: it names the file, not the directory.
+  ///
+  /// The package does this rather than the app because it is the only component that knows nothing else
+  /// holds the file open yet.
+  static Future<ValenceStore> _openStore(
+    ValenceConfig config,
+    Directory support,
+    Directory? documentsDir,
+    ValenceLogger log,
+    DatabaseFactory? factory,
+  ) async {
+    final path = '${support.path}${Platform.pathSeparator}${config.databaseName}';
+    if (!File(path).existsSync()) {
+      await _adoptLegacyDatabase(path, config.databaseName, documentsDir, log);
+    }
+    // A locked open is retried rather than thrown. The schema upgrade takes `BEGIN EXCLUSIVE`, and the
+    // launch that runs it is exactly the launch WorkManager fires the registered periodic job on, so the
+    // UI isolate and the background isolate race for the file (§5.6). `busy_timeout` does not cover it:
+    // the lock is refused before the connection that would wait on it exists. The budget matches the sync
+    // lease's own five seconds, after which the caller decides — `backgroundSync` reports `busy`, and
+    // `open` rethrows, because an app with no store cannot start.
+    for (var attempt = 0;; attempt++) {
+      try {
+        return await ValenceStore.open(path, factory: factory);
+      } on Object catch (e) {
+        if (attempt >= 4 || !isDatabaseLocked(e)) rethrow;
+        log('store: the database is locked by another isolate; retrying in one second');
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+    }
+  }
+
+  /// Moves a 0.3 database and its write-ahead-log sidecars from the documents directory. See [_openStore].
+  static Future<void> _adoptLegacyDatabase(
+    String path,
+    String name,
+    Directory? documentsDir,
+    ValenceLogger log,
+  ) async {
+    final Directory documents;
+    try {
+      documents = documentsDir ?? await getApplicationDocumentsDirectory();
+    } on Object catch (e) {
+      // A platform without the plugin, or a test binding without it. Nothing to adopt; never fatal.
+      log('store: could not look for a 0.3 database: $e');
+      return;
+    }
+    if (documents.path == File(path).parent.path) return;
+    final legacy = '${documents.path}${Platform.pathSeparator}$name';
+    if (!File(legacy).existsSync()) return;
+    final moved = <String>[];
+    try {
+      // `-wal` first and the `.db` last. Until the `.db` lands the destination is still "no database", so a
+      // crash midway leaves the 0.3 copy readable and the next launch retries the whole move. Moving the
+      // `.db` alone would discard every commit still in the write-ahead log — for a syncing app, the last
+      // sync.
+      for (final suffix in const ['-wal', '-shm', '']) {
+        final from = File('$legacy$suffix');
+        if (!from.existsSync()) continue;
+        // ponytail: rename, not copy. Both path_provider directories live in the app's private data on
+        // every platform it supports, so they share a filesystem. A cross-device move would throw here and
+        // be logged; copy-then-delete is the upgrade path if one ever does.
+        from.renameSync('$path$suffix');
+        moved.add('$name$suffix');
+      }
+    } on FileSystemException catch (e) {
+      // The UI isolate and a background sync can reach this at the same moment on the launch that migrates
+      // (§5.6), and whoever renames first wins. The loser's *source* is what has gone, so that is what to
+      // test: the winner moves the `.db` last, so the destination may legitimately not be there yet.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (File(path).existsSync() || !File(legacy).existsSync()) {
+        log('store: another isolate moved the 0.3 database first');
+        return;
+      }
+      // We failed with the 0.3 database still in place, so this is a real failure and **falling through
+      // would be the data loss this whole method exists to prevent**: opening would create an empty
+      // database at the destination, and the next launch would find it there and never adopt again. The
+      // rows would be invisible for ever, silently. So fail the launch instead. Nothing has been lost —
+      // the 0.3 copy is intact, any sidecar already moved is waiting at the destination, and the next
+      // launch resumes the move from wherever it stopped.
+      throw FileSystemException(
+        'could not move the 0.3 database out of ${documents.path}, and starting without it would hide '
+        'rows that are still on disk; the next launch will retry',
+        legacy,
+        e.osError,
+      );
+    }
+    if (moved.isNotEmpty) log('store: moved the 0.3 database to ${File(path).parent.path} (${moved.join(', ')})');
+  }
+
   /// Reads one asset as bytes. Used for the built-in bundle and the seed.
-  static Future<Uint8List> readAsset(String key) async =>
-      (await rootBundle.load(key)).buffer.asUint8List();
+  static Future<Uint8List> readAsset(String key) async => (await rootBundle.load(key)).buffer.asUint8List();
 }

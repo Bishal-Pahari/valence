@@ -27,6 +27,79 @@ const _manifestSizeCap = 1024 * 1024;
 /// How long the pointer fetch may take before the check gives up for this run.
 const _pointerTimeout = Duration(seconds: 5);
 
+/// Why the last completed update check ended as it did (§4.6).
+///
+/// A closed set, like §4.2's error codes: the page turns each value into a sentence, so add a value here
+/// rather than inventing one per app. The names are the wire values, through `.name`.
+enum ValenceBundleReason {
+  /// No check has finished yet.
+  idle,
+
+  /// The app has no `otaBase`, so it never checks. Not a fault.
+  unconfigured,
+
+  /// The pointer offers nothing above `current`, `pending` or `trial`.
+  uptodate,
+
+  /// A newer release exists and this install is outside its rollout percentage (§2.3 step 2).
+  rollout,
+
+  /// The offered seq is on this install's `bad` list, so it will never be served (§2.4).
+  bad,
+
+  /// The pointer, the manifest, the signature or a file could not be fetched.
+  offline,
+
+  /// The manifest or a file failed its checks (§2.3 checks 1–7).
+  ///
+  /// The one value that deserves an alert in an app's own telemetry: a published release is unservable,
+  /// or the bytes were tampered with, and **no** device will take it.
+  rejected,
+
+  /// Over `bundleSizeCap`, or the step 7 pull hit `dataSizeCap`.
+  toobig,
+
+  /// Step 7 has not finished pulling the `requires.data` pairs, so the bundle exists but is not usable.
+  waitingForData,
+
+  /// Step 7 could not take the sync lease within its bounded wait. The next check retries.
+  busy,
+
+  /// The check produced a `pending`, waiting for `bundle.applyUpdate`.
+  ready,
+}
+
+/// What the page can learn about updates (§4.6). Read from state the host already keeps; never a request.
+final class ValenceBundleStatus {
+  /// Creates a status snapshot.
+  const ValenceBundleStatus({
+    required this.serving,
+    required this.pending,
+    required this.trial,
+    required this.reason,
+    required this.offered,
+    required this.checkedAt,
+  });
+
+  /// The seq of the bundle on screen; 0 before one is served.
+  final int serving;
+
+  /// A verified bundle waiting for `bundle.applyUpdate`, or null.
+  final int? pending;
+
+  /// The seq on probation, or null. Equal to [serving] while a trial is on screen.
+  final int? trial;
+
+  /// Why the last completed check ended as it did.
+  final ValenceBundleReason reason;
+
+  /// The seq the pointer offered on that check, when it got that far.
+  final int? offered;
+
+  /// When that check finished, epoch milliseconds, or null before the first one.
+  final int? checkedAt;
+}
+
 /// The canonical check order (§2.3) and the activation state machine (§2.4).
 ///
 /// The whole of §2.4 rests on one invariant: *no path promotes, re-downloads or serves a seq in
@@ -103,6 +176,36 @@ final class ValenceUpdater {
   /// after which §2.3 step 1 stops on `pointer.seq <= pending` for ever and nothing re-fetches them. The
   /// bundle then fails its trial twice and a healthy release lands in `bad` (§2.4).
   final _inFlight = <String>{};
+  final _publishing = <int, ValenceManifest>{};
+  int _publicationRevision = 0;
+  Future<int?>? _checking;
+
+  /// The last completed check, published as one value (§4.6).
+  ///
+  /// One field rather than three, because a page may poll `bundle.status` and the three only make sense
+  /// together: a reader that caught `reason` from the finished check and `offered` from the one now
+  /// running would render "release null is held back by the rollout". The fields below are the
+  /// *in-progress* check and are never read by [bundleStatus].
+  ({ValenceBundleReason reason, int? offered, int? checkedAt}) _lastCheck =
+      (reason: ValenceBundleReason.idle, offered: null, checkedAt: null);
+
+  ValenceBundleReason _reason = ValenceBundleReason.idle;
+  int? _offered;
+
+  /// Why the last completed check ended as it did, for `bundle.status` (§4.6).
+  ValenceBundleReason get lastReason => _lastCheck.reason;
+
+  /// The seq that check's pointer offered, when it got that far.
+  int? get lastOffered => _lastCheck.offered;
+
+  /// When that check finished, epoch milliseconds, or null before the first one.
+  int? get lastCheckedAt => _lastCheck.checkedAt;
+
+  /// Records why the in-progress check stopped and returns the null every stop site returns anyway.
+  int? _stop(ValenceBundleReason reason) {
+    _reason = reason;
+    return null;
+  }
 
   /// Persists [state] atomically.
   void save() => state.save(stateFile);
@@ -118,10 +221,26 @@ final class ValenceUpdater {
   /// null. Steps 2, 5 and 7 stop on a perfectly healthy system, and step 7 can stay stopped for days.
   ///
   /// Returns the seq that became pending, or null.
-  Future<int?> checkForUpdate() async {
+  Future<int?> checkForUpdate() => _checking ??= _checkOnce().then(_recordCheck).whenComplete(() => _checking = null);
+
+  /// Publishes the outcome for `bundle.status` (§4.6).
+  ///
+  /// On the success path only, because every stop site already recorded its own reason into the
+  /// in-progress fields. Nothing is published when `_checkOnce` *throws* — that check did not complete,
+  /// so neither `checkedAt` nor a half-written reason may claim it did, and the previous complete answer
+  /// stays the answer.
+  int? _recordCheck(int? seq) {
+    if (seq != null) _reason = ValenceBundleReason.ready;
+    _lastCheck = (reason: _reason, offered: _offered, checkedAt: DateTime.now().millisecondsSinceEpoch);
+    return seq;
+  }
+
+  Future<int?> _checkOnce() async {
+    // Describes *this* check, so a seq offered by the last one does not survive into it.
+    _offered = null;
     if (config.otaBase.isEmpty) {
       _log('update: no otaBase configured, nothing to check');
-      return null;
+      return _stop(ValenceBundleReason.unconfigured);
     }
 
     // Before step 1, because step 1 is where a repair would otherwise be unreachable.
@@ -135,17 +254,19 @@ final class ValenceUpdater {
           .timeout(_pointerTimeout);
       if (res.statusCode != 200) {
         _log('update: step 1 stopped, pointer returned HTTP ${res.statusCode}');
-        return null;
+        return _stop(ValenceBundleReason.offline);
       }
       pointer = decodePointer(res.body);
     } on Object catch (e) {
       _log('update: step 1 stopped, pointer fetch failed: $e');
-      return null;
+      return _stop(ValenceBundleReason.offline);
     }
     if (pointer == null) {
       _log('update: step 1 stopped, the pointer did not decode as {seq, rollout}');
-      return null;
+      return _stop(ValenceBundleReason.offline);
     }
+
+    _offered = pointer.seq;
 
     // A pointer below `pending` means the team pulled that release.
     if (state.pending != null && pointer.seq < state.pending!) {
@@ -156,15 +277,15 @@ final class ValenceUpdater {
     final current = state.current ?? 0;
     if (pointer.seq <= current) {
       _log('update: step 1 stopped, pointer ${pointer.seq} is not above current $current');
-      return null;
+      return _stop(ValenceBundleReason.uptodate);
     }
     if (state.bad.contains(pointer.seq)) {
       _log('update: step 1 stopped, seq ${pointer.seq} is in bad for this install');
-      return null;
+      return _stop(ValenceBundleReason.bad);
     }
     if (state.pending != null && pointer.seq <= state.pending!) {
       _log('update: step 1 stopped, seq ${pointer.seq} is not above pending ${state.pending}');
-      return null;
+      return _stop(ValenceBundleReason.uptodate);
     }
     // `trial` belongs in this list. A trial is above `current` and has not committed, so without this
     // guard the periodic check re-downloads the bundle that is on screen right now and sets `pending` to
@@ -172,7 +293,7 @@ final class ValenceUpdater {
     // the two-strike `bad` marking and resurrects a bundle this install has already rejected.
     if (state.trial != null && pointer.seq <= state.trial!) {
       _log('update: step 1 stopped, seq ${pointer.seq} is not above the trial ${state.trial}');
-      return null;
+      return _stop(ValenceBundleReason.uptodate);
     }
 
     // --- Step 2: the rollout gate. ------------------------------------------
@@ -180,7 +301,7 @@ final class ValenceUpdater {
     if (bucket >= pointer.rollout) {
       _log('update: step 2 stopped, this install is outside the ${pointer.rollout}% rollout '
           'for seq ${pointer.seq} (cohort $bucket)');
-      return null;
+      return _stop(ValenceBundleReason.rollout);
     }
 
     // --- Step 3: the manifest and its signature. ----------------------------
@@ -191,23 +312,23 @@ final class ValenceUpdater {
       final mRes = await _client.get(Uri.parse('$base.json'));
       if (mRes.statusCode != 200) {
         _log('update: step 3 stopped, manifest returned HTTP ${mRes.statusCode}');
-        return null;
+        return _stop(ValenceBundleReason.offline);
       }
       if (mRes.bodyBytes.length > _manifestSizeCap) {
         _log('update: step 3 stopped, manifest is ${mRes.bodyBytes.length} bytes, over the '
             '$_manifestSizeCap byte cap');
-        return null;
+        return _stop(ValenceBundleReason.toobig);
       }
       final sRes = await _client.get(Uri.parse('$base.json.sig'));
       if (sRes.statusCode != 200) {
         _log('update: step 3 stopped, signature returned HTTP ${sRes.statusCode}');
-        return null;
+        return _stop(ValenceBundleReason.offline);
       }
       bytes = mRes.bodyBytes;
       signature = sRes.body;
     } on Object catch (e) {
       _log('update: step 3 stopped, manifest fetch failed: $e');
-      return null;
+      return _stop(ValenceBundleReason.offline);
     }
 
     // --- Step 4: checks 1 to 6. ---------------------------------------------
@@ -222,7 +343,7 @@ final class ValenceUpdater {
       );
     } on ValenceCheckFailure catch (f) {
       _log('update: step 4 stopped, $f');
-      return null;
+      return _stop(ValenceBundleReason.rejected);
     }
 
     // --- Step 5: the total size of what is not already in CAS. --------------
@@ -237,13 +358,16 @@ final class ValenceUpdater {
     if (needed > config.bundleSizeCap) {
       _log('update: step 5 stopped, seq ${m.seq} needs $needed new bytes, over the '
           '${config.bundleSizeCap} byte cap');
-      return null;
+      return _stop(ValenceBundleReason.toobig);
     }
 
     // --- Step 6: download each missing file, verify it (check 7), rename. ---
     // Every hash of this manifest is in flight until step 8 records it, not just the ones being
     // downloaded: a file already in CAS may be shared only with a bundle this collection is dropping.
     _inFlight.addAll(m.files.values.map((f) => f.hash));
+    _publishing[m.seq] = m;
+    _publicationRevision++;
+    var dataLeaseHeld = false;
     try {
       try {
         await casDir.create(recursive: true);
@@ -252,11 +376,11 @@ final class ValenceUpdater {
         }
       } on Object catch (e) {
         _log('update: step 6 stopped, download failed: $e');
-        return null;
+        return _stop(ValenceBundleReason.offline);
       }
 
       // --- Step 7: the data requirements. The updater *pulls* here. ---------
-      if (!await _satisfyDataRequirements(m)) return null;
+      if (!await _satisfyDataRequirements(m, onLeaseAcquired: () => dataLeaseHeld = true)) return null;
 
       // --- Step 8: make it pending. -----------------------------------------
       await manifestsDir.create(recursive: true);
@@ -270,7 +394,10 @@ final class ValenceUpdater {
     } finally {
       // Cleared whether or not the check completed. A run that stopped at step 6 or 7 leaves orphan files
       // that the next collection is then free to take.
+      if (dataLeaseHeld) await sync.releaseLease();
       _inFlight.removeAll(m.files.values.map((f) => f.hash));
+      _publishing.remove(m.seq);
+      _publicationRevision++;
     }
   }
 
@@ -308,17 +435,21 @@ final class ValenceUpdater {
     final res = await _client.get(Uri.parse('${config.otaBase}/${config.appId}/files/$hash'));
     if (res.statusCode != 200) {
       _log('update: step 6 stopped, file $hash returned HTTP ${res.statusCode}');
+      _reason = ValenceBundleReason.offline;
       return false;
     }
     final bytes = res.bodyBytes;
     // Check 7: each downloaded file's sha256 and size, before it is given its content-addressed name.
+    // A mismatch here is `rejected`, not `offline`: the bytes arrived and are not the published bytes.
     if (bytes.length != entry.size) {
       _log('update: step 6 stopped, file $hash is ${bytes.length} bytes, manifest says ${entry.size}');
+      _reason = ValenceBundleReason.rejected;
       return false;
     }
     final actual = sha256.convert(bytes).toString();
     if (actual != hash) {
       _log('update: step 6 stopped, file $hash hashes to $actual');
+      _reason = ValenceBundleReason.rejected;
       return false;
     }
     final tmp = File('${casDir.path}${Platform.pathSeparator}tmp-$hash');
@@ -333,8 +464,23 @@ final class ValenceUpdater {
   /// during a bump are the old schemas, so a newly required pair has no other route onto the device.
   /// A step 7 written as "make sure the pairs are synced" can never pass: `pending` stays null for ever
   /// and the app silently stops updating, with no user-visible symptom.
-  Future<bool> _satisfyDataRequirements(ValenceManifest m) async {
+  Future<bool> _satisfyDataRequirements(ValenceManifest m, {required void Function() onLeaseAcquired}) async {
     if (m.requiresData.isEmpty) return true;
+    // Take the §5.6 lease first. This is a second sync path on the same triggers as the ordinary one, so
+    // without the lease a host runs two concurrent syncs over the same pair. Failing to acquire is not a
+    // failure: the sync holding it was very likely fired by the same trigger.
+    final wait = Stopwatch()..start();
+    var acquired = await sync.acquireLease();
+    while (!acquired && wait.elapsed < const Duration(seconds: 5)) {
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+      acquired = await sync.acquireLease();
+    }
+    if (!acquired) {
+      _log('update: step 7 stopped, another sync holds the lease after a 5-second wait; the next check retries');
+      _reason = ValenceBundleReason.busy;
+      return false;
+    }
+    onLeaseAcquired();
     // Held is a set of schemas per bucket, not a bucket-to-schema map: during a bump a device legitimately
     // holds plants v1 *and* v2 at once, and a map lets the v1 entry hide the v2 entry.
     final held = await store.syncedPairs();
@@ -345,49 +491,42 @@ final class ValenceUpdater {
     if (wanted.isEmpty) return true;
     if (config.syncBase.isEmpty) {
       _log('update: step 7 stopped, seq ${m.seq} needs ${_pairs(wanted)} but no syncBase is configured');
+      _reason = ValenceBundleReason.waitingForData;
       return false;
     }
 
-    // Take the §5.6 lease first. This is a second sync path on the same triggers as the ordinary one, so
-    // without the lease a host runs two concurrent syncs over the same pair. Failing to acquire is not a
-    // failure: the sync holding it was very likely fired by the same trigger.
-    if (!await sync.acquireLease()) {
-      _log('update: step 7 stopped, another sync holds the lease; the next check retries');
-      return false;
-    }
     final before = sync.bytesApplied;
-    try {
-      for (final e in wanted.entries) {
-        final budget = config.dataSizeCap - (sync.bytesApplied - before);
-        if (budget <= 0) {
-          _log('update: step 7 stopped, seq ${m.seq} hit the ${config.dataSizeCap} byte data cap '
-              'before ${e.key} v${e.value}; backing off');
-          return false;
-        }
-        try {
-          // From this pair's own max_usn, which is 0 the first time. Never a hard-coded since = 0.
-          final rows = await sync.pullPair(e.key, e.value, byteBudget: budget);
-          _log('update: step 7 pulled $rows rows for ${e.key} v${e.value}');
-        } on Object catch (err) {
-          _log('update: step 7 stopped, seq ${m.seq} is waiting for ${e.key} v${e.value}: $err');
-          return false;
-        }
-      }
-      // Re-read rather than assume: a pull that applied no rows has still set synced_at, but a server that
-      // serves nothing at that schema has not, and that pair is genuinely not satisfied.
-      final after = await store.syncedPairs();
-      final short = <String, int>{
-        for (final e in m.requiresData.entries)
-          if (!(after[e.key]?.contains(e.value) ?? false)) e.key: e.value,
-      };
-      if (short.isNotEmpty) {
-        _log('update: step 7 stopped, seq ${m.seq} is still waiting for ${_pairs(short)}');
+    for (final e in wanted.entries) {
+      final budget = config.dataSizeCap - (sync.bytesApplied - before);
+      if (budget <= 0) {
+        _log('update: step 7 stopped, seq ${m.seq} hit the ${config.dataSizeCap} byte data cap '
+            'before ${e.key} v${e.value}; backing off');
+        _reason = ValenceBundleReason.toobig;
         return false;
       }
-      return true;
-    } finally {
-      await sync.releaseLease();
+      try {
+        // From this pair's own max_usn, which is 0 the first time. Never a hard-coded since = 0.
+        final rows = await sync.pullPair(e.key, e.value, byteBudget: budget);
+        _log('update: step 7 pulled $rows rows for ${e.key} v${e.value}');
+      } on Object catch (err) {
+        _log('update: step 7 stopped, seq ${m.seq} is waiting for ${e.key} v${e.value}: $err');
+        _reason = ValenceBundleReason.waitingForData;
+        return false;
+      }
     }
+    // Re-read rather than assume: only a valid final page or complete static index sets synced_at.
+    // Partial pages retain their cursor without satisfying activation.
+    final after = await store.syncedPairs();
+    final short = <String, int>{
+      for (final e in m.requiresData.entries)
+        if (!(after[e.key]?.contains(e.value) ?? false)) e.key: e.value,
+    };
+    if (short.isNotEmpty) {
+      _log('update: step 7 stopped, seq ${m.seq} is still waiting for ${_pairs(short)}');
+      _reason = ValenceBundleReason.waitingForData;
+      return false;
+    }
+    return true;
   }
 
   static String _pairs(Map<String, int> pairs) =>
@@ -722,17 +861,24 @@ final class ValenceUpdater {
   /// Keeps `current`, `previous`, `pending`, `trial` and the built-in bundle. Prefer
   /// [scheduleGarbageCollect]; this is the body, and a test's entry point.
   Future<void> garbageCollect() async {
+    final revision = _publicationRevision;
+    final publishing = Map<int, ValenceManifest>.of(_publishing);
     final keptSeqs = <int>{
       ...[state.current, state.previous, state.pending, state.trial].whereType<int>(),
+      ...publishing.keys,
     };
     final builtin = await _loadBuiltinManifest();
     if (builtin != null) keptSeqs.add(builtin.seq);
 
     final keptManifests = <ValenceManifest>[];
     for (final seq in keptSeqs) {
-      final m = (builtin != null && seq == builtin.seq) ? builtin : await _loadManifest(seq);
+      final m = publishing[seq] ?? ((builtin != null && seq == builtin.seq) ? builtin : await _loadManifest(seq));
       if (m != null) keptManifests.add(m);
     }
+
+    // Publication may have completed while signature or asset verification yielded.
+    // Retry before deleting anything using a stale kept set.
+    if (revision != _publicationRevision) return garbageCollect();
 
     final keptHashes = <String>{
       ..._inFlight,
@@ -784,16 +930,19 @@ final class ValenceUpdater {
     // bundle's manifest is not on disk until step 8 — so a collection that walks the kept set in the middle
     // of step 7 sees a freshly pulled pair that no *kept* manifest requires yet, deletes it, and leaves a
     // `pending` whose data is gone. Nothing re-pulls it either: step 1 of §2.3 stops once
-    // `pointer.seq <= pending`. Manifests and CAS files have no such hazard (§2.4).
+    // `pointer.seq <= pending`. Publication retains the same lease through durable pending state.
     if (!await sync.acquireLease()) {
       _log('gc: another sync holds the lease; leaving read-only pairs to the next collection');
       return;
     }
     try {
-      for (final e in (await store.allPairs()).entries) {
+      final pairs = await store.allPairs();
+      if (revision != _publicationRevision) return;
+      for (final e in pairs.entries) {
         if (config.writableBuckets.contains(e.key)) continue;
         for (final schema in e.value) {
           if (required[e.key]?.contains(schema) ?? false) continue;
+          if (revision != _publicationRevision) return;
           _log('gc: dropping unrequired read-only pair ${e.key} v$schema');
           try {
             await store.dropPair(e.key, schema, writableBuckets: config.writableBuckets);

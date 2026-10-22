@@ -9,17 +9,23 @@
 library;
 
 export 'src/plugin.dart' show ValencePlugin, ValencePluginRegistry, ValenceOpenPlugin;
-export 'src/app.dart' show ValenceApp, ValenceDispatch;
+export 'src/app.dart' show ValenceApp, ValenceDispatch, valenceLifecycleFor, valenceOnline;
 export 'src/runtime.dart'
     show
         BridgeError,
         BridgeErrorCode,
         Valence,
         ValenceAppInfo,
+        ValenceAppState,
+        ValenceBundleReason,
+        ValenceBundleStatus,
         ValenceCheckFailure,
         ValenceConfig,
         ValenceFileEntry,
         ValenceHostView,
+        ValenceHttp,
+        ValenceHttpResponse,
+        ValenceLifecycle,
         ValenceLogger,
         ValenceManifest,
         ValenceOutboxOp,
@@ -32,6 +38,7 @@ export 'src/runtime.dart'
         ValenceServer,
         ValenceSyncReason,
         ValenceSyncResult,
+        ValenceSyncStatus,
         ValenceUpdater,
         checkManifest,
         decodePointer,
@@ -39,6 +46,7 @@ export 'src/runtime.dart'
         defaultValenceLogger,
         fnv1a32,
         hostFileContentTypes,
+        isDatabaseLocked,
         isReservedBundlePath,
         isSafeBundlePath,
         maxListLimit,

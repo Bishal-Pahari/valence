@@ -22,12 +22,15 @@
     <section>
       <h2>Host</h2>
       <pre id="info">reading app.info…</pre>
+      <pre id="batch">reading data.getMany…</pre>
+      <pre id="status">reading sync.status…</pre>
     </section>
 
     <section>
       <h2>Your own data</h2>
       <p>Written to native SQLite through the bridge, and queued for sync.</p>
       <button id="add">Add a note</button>
+      <button id="delete">Delete latest note</button>
       <button id="haptics">Haptic tap</button>
       <ul id="rows"></ul>
       <pre id="error"></pre>
@@ -44,6 +47,26 @@
       <button id="clear-token">clear</button>
       <button id="probe">secure.* round trip</button>
       <pre id="auth">reading auth.hasToken…</pre>
+    </section>
+
+    <section>
+      <h2>Lifecycle, connectivity and updates</h2>
+      <p>
+        Four lifecycle states rather than Flutter's five, connectivity as the OS reports
+        <em>interfaces</em> (never reachability), and the reason the last update check ended as it did.
+      </p>
+      <button id="refresh-state">app.state + bundle.status</button>
+      <pre id="state">reading app.state…</pre>
+      <pre id="bundle">reading bundle.status…</pre>
+      <pre id="events">no lifecycle, connectivity or sync event yet</pre>
+    </section>
+
+    <section>
+      <h2>Your API</h2>
+      <p>Native HTTP to the local reference adapter. Set its bearer token above first.</p>
+      <button id="http">http.request</button>
+      <button id="http-denied">Try an unlisted origin</button>
+      <pre id="http-result"></pre>
     </section>
 
     <!--
@@ -64,6 +87,14 @@
         },
         e(name, payload) {
           if (name === 'sync.changed') void refresh();
+          // §4.6. Logged rather than acted on, because the point of the three is that they *arrive*:
+          // app.lifecycle on the way out as well as in, app.online without asking, and sync.done after
+          // every run the host made on its own — including the ones with nothing to report.
+          if (name === 'app.lifecycle' || name === 'app.online' || name === 'sync.done') {
+            seen.unshift(new Date().toISOString().slice(11, 19) + ' ' + name + ' ' + JSON.stringify(payload));
+            document.getElementById('events').textContent = seen.slice(0, 8).join('\n');
+            if (name === 'app.lifecycle' || name === 'app.online') void showState();
+          }
           // The host fires this when a sync request carrying the token came back 401 (§4.4). A real app
           // refreshes the token here, or shows a login screen.
           if (name === 'auth.expired') document.getElementById('auth').textContent = 'auth.expired: the server rejected the token';
@@ -77,16 +108,35 @@
           window.Valence.postMessage(JSON.stringify({ id, n: nonce, m, p }));
         });
 
+      const seen = [];
+
+      async function showState() {
+        document.getElementById('state').textContent = 'app.state: ' + JSON.stringify(await call('app.state'));
+        // Never a request, so it is safe to read on every event: the host is reporting what it already knows.
+        document.getElementById('bundle').textContent = 'bundle.status: ' + JSON.stringify(await call('bundle.status'));
+      }
+
       const show = (err) => {
         document.getElementById('error').textContent = err ? String(err) : '';
       };
 
       async function refresh() {
+        document.getElementById('status').textContent = 'sync.status: ' + JSON.stringify(await call('sync.status'));
+        document.getElementById('batch').textContent = 'data.getMany: ' + JSON.stringify(await call('data.getMany', { bucket: 'plants', keys: ['fern', 'missing', 'fern'] }));
         const rows = await call('data.list', { bucket: 'shelf', limit: 20 });
         document.getElementById('rows').innerHTML = rows
           .map((r) => `<li>${r.key} — ${JSON.stringify(r.value)} ${r.usn === -1 ? '(not yet synced)' : ''}</li>`)
           .join('');
       }
+
+      document.getElementById('refresh-state').addEventListener('click', async () => {
+        show(null);
+        try {
+          await showState();
+        } catch (e) {
+          show(e);
+        }
+      });
 
       document.getElementById('add').addEventListener('click', async () => {
         show(null);
@@ -107,6 +157,17 @@
         }
       });
 
+      document.getElementById('delete').addEventListener('click', async () => {
+        show(null);
+        try {
+          const rows = await call('data.list', { bucket: 'shelf', limit: 500 });
+          if (rows.length) await call('data.put', { bucket: 'shelf', key: rows.at(-1).key, value: null });
+          await refresh();
+        } catch (e) {
+          show(e);
+        }
+      });
+
       async function showAuth(extra = '') {
         const has = await call('auth.hasToken');
         document.getElementById('auth').textContent = `auth.hasToken: ${has}${extra ? '\n' + extra : ''}`;
@@ -117,6 +178,7 @@
         try {
           await call('auth.setToken', { token: document.getElementById('token').value || 'demo-token' });
           await showAuth('stored in the Keystore; every shelf sync now sends Authorization: Bearer');
+
         } catch (e) {
           show(e);
         }
@@ -154,12 +216,24 @@
         await showAuth(lines.join('\n'));
       });
 
+      for (const [id, url] of [['http', 'http://10.0.2.2:8787/rpc'], ['http-denied', 'https://unlisted.invalid/']]) {
+        document.getElementById(id).addEventListener('click', async () => {
+          try {
+            const response = await call('http.request', { url });
+            document.getElementById('http-result').textContent = JSON.stringify(response, null, 2);
+          } catch (e) {
+            document.getElementById('http-result').textContent = String(e);
+          }
+        });
+      }
+
       (async () => {
         try {
           const info = await call('app.info');
           document.getElementById('info').textContent = JSON.stringify(info, null, 2);
           await refresh();
           await showAuth();
+          await showState();
         } catch (e) {
           show(e);
         }

@@ -1,8 +1,12 @@
 // The built-in bridge methods' policy: the trust boundary that lives in the package rather than in the
-// generated marshalling. Contracts Ã‚Â§4.2, Ã‚Â§5.4, Ã‚Â§5.5.
+// generated marshalling. Contracts §4.2, §5.4, §5.5.
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -38,14 +42,11 @@ void main() {
     ValenceSecure? secure,
   }) =>
       Valence.open(
-        config ??
-            testConfig(key,
-                writableBuckets: writableBuckets, dataSchemas: dataSchemas),
+        config ?? testConfig(key, writableBuckets: writableBuckets, dataSchemas: dataSchemas),
         hostBuild: 42,
         log: (log ?? LogSpy()).call,
-        client: client ??
-            MockClient((_) async => http.Response(
-                jsonEncode({'rows': [], 'max': 0, 'more': false}), 200)),
+        client:
+            client ?? MockClient((_) async => http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200)),
         supportDir: support,
         secure: secure ?? testSecure({}),
       );
@@ -57,9 +58,7 @@ void main() {
       );
 
   group('app.info', () {
-    test(
-        'it reports the platform, the host build, the bridge version and the locale',
-        () async {
+    test('it reports the platform, the host build, the bridge version and the locale', () async {
       final v = await open();
       final info = v.appInfo();
       expect(info.platform, Platform.operatingSystem);
@@ -71,7 +70,88 @@ void main() {
     });
   });
 
-  group('native plugins (Ã‚Â§4.5)', () {
+  test('sync status counts deletes, persists observations and leaves busy/scoped timestamps alone', () async {
+    var requests = 0;
+    var unreachable = false;
+    final client = MockClient((_) async {
+      requests++;
+      if (unreachable) throw const SocketException('offline');
+      return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+    });
+    final v = await open(dataSchemas: {'plants': 1}, writableBuckets: {'shelf'}, client: client);
+    final fresh = await v.syncStatus();
+    expect(fresh.lastSyncedAt, isNull);
+    expect(fresh.offline, isFalse);
+    expect(requests, 0, reason: 'status never starts sync');
+    await v.store.put('shelf', 'a', 1, opId: 'a');
+    await v.store.put('shelf', 'a', null, opId: 'b');
+    expect((await v.syncStatus()).pending, 2);
+    expect(await v.sync.acquireLease(), isTrue);
+    final busy = await v.syncNow();
+    expect(busy.pending, 2);
+    expect(busy.reason, ValenceSyncReason.busy);
+    expect((await v.syncStatus()).lastSyncedAt, isNull);
+    await v.sync.releaseLease();
+    unreachable = true;
+    final failed = await v.syncNow();
+    expect(failed.pending, 2);
+    expect((await v.syncStatus()).offline, isTrue);
+    expect((await v.syncStatus()).lastSyncedAt, isNull);
+    // Clear only the synthetic queued ops so this mock does not need a push protocol.
+    await v.store.db.delete('outbox');
+    unreachable = false;
+    await v.syncNow(buckets: ['plants']);
+    expect((await v.syncStatus()).lastSyncedAt, isNull);
+    await v.syncNow();
+    final successful = await v.syncStatus();
+    expect(successful.lastSyncedAt, isNotNull);
+    expect(successful.offline, isFalse);
+    final reopened = await open(dataSchemas: {'plants': 1}, writableBuckets: {'shelf'}, client: client);
+    expect((await reopened.syncStatus()).lastSyncedAt, successful.lastSyncedAt);
+    expect((await reopened.syncStatus()).pending, 0);
+  });
+
+  test('HTTP and protocol failures cannot advance last successful sync', () async {
+    var response = http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+    final v = await open(dataSchemas: {'plants': 1}, client: MockClient((_) async => response));
+    await v.syncNow();
+    const previous = '123';
+    await v.store.hostPrefSet('valence.sync.lastSyncedAt', previous);
+    for (final bad in [http.Response('', 500), http.Response('not JSON', 200),
+      http.Response('{"rows":[]}', 200), http.Response('{"rows":[3],"max":1,"more":false}', 200)]) {
+      response = bad;
+      await v.syncNow();
+      expect((await v.syncStatus()).lastSyncedAt, 123);
+    }
+    final push = await open(writableBuckets: {'shelf'}, client: MockClient((req) async =>
+      http.Response(req.method == 'POST' ? '{}' : '{"rows":[],"max":0,"more":false}', 200)));
+    await push.store.put('shelf', 'a', 1, opId: 'malformed-push');
+    await push.store.hostPrefSet('valence.sync.lastSyncedAt', previous);
+    await push.syncNow();
+    expect((await push.syncStatus()).lastSyncedAt, 123);
+    expect((await push.syncStatus()).pending, 1);
+  });
+
+  test('fresh runtime imports current and additional declared seed schemas', () async {
+    final seed = await openTestStore();
+    await seed.applyPullPage(bucket: 'plants', schema: 1,
+      rows: [{'k': 'fern', 'v': 'old', 'u': 1, 'd': 0}], maxUsnAfter: 1);
+    await seed.applyPullPage(bucket: 'plants', schema: 2,
+      rows: [{'k': 'fern', 'v': 'new', 'u': 1, 'd': 0}], maxUsnAfter: 1);
+    await seed.db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+    final bytes = File(seed.path).readAsBytesSync();
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMessageHandler('flutter/assets', (_) async => ByteData.sublistView(Uint8List.fromList(bytes)));
+    addTearDown(() => messenger.setMockMessageHandler('flutter/assets', null));
+    final base = testConfig(key, dataSchemas: {'plants': 2});
+    final v = await open(config: ValenceConfig(appId: base.appId, keyring: base.keyring,
+      bridgeVersion: base.bridgeVersion, dataSchemas: {'plants': 2}, seedSchemas: {'plants': [1]}));
+    expect(await v.store.get('plants', 1, 'fern'), 'old');
+    expect(await v.store.get('plants', 2, 'fern'), 'new');
+    expect(await v.dataGet('plants', 'fern'), 'new');
+  });
+
+  group('native plugins (section 4.7)', () {
     test(
         'reserved owners, duplicate owners and cross-namespace methods fail at registration',
         () {
@@ -141,18 +221,16 @@ void main() {
     });
   });
 
-  group('data.put is only for writable buckets (Ã‚Â§5.5)', () {
+  group('data.put is only for writable buckets (§5.5)', () {
     test('a read-only bucket is refused with E_DENIED', () async {
       final v = await open(dataSchemas: {'plants': 1});
-      expect(() => v.dataPut('plants', 'fern', {'x': 1}),
-          throwsDenied('not a writable bucket'));
+      expect(() => v.dataPut('plants', 'fern', {'x': 1}), throwsDenied('not a writable bucket'));
       expect(await v.dataGet('plants', 'fern'), isNull);
     });
 
     test('an unknown bucket is refused too', () async {
       final v = await open();
-      expect(() => v.dataPut('nope', 'k', {'x': 1}),
-          throwsDenied('not a writable bucket'));
+      expect(() => v.dataPut('nope', 'k', {'x': 1}), throwsDenied('not a writable bucket'));
     });
 
     test('a writable bucket is written at schema 1, with usn -1', () async {
@@ -172,15 +250,13 @@ void main() {
     });
   });
 
-  group('schemaFor (Ã‚Â§5.4)', () {
+  group('schemaFor (§5.4)', () {
     test('a writable bucket is always schema 1', () async {
       final v = await open(writableBuckets: {'shelf'});
       expect(v.schemaFor('shelf'), 1);
     });
 
-    test(
-        'a read-only bucket falls back to the configured schema with no manifest',
-        () async {
+    test('a read-only bucket falls back to the configured schema with no manifest', () async {
       final v = await open(dataSchemas: {'plants': 3});
       expect(v.schemaFor('plants'), 3);
     });
@@ -208,38 +284,93 @@ void main() {
       expect(v.schemaFor('plants'), 2);
     });
 
-    test(
-        'an undeclared bucket is E_PARAMS with advice, not a silent empty read',
-        () async {
+    test('an undeclared bucket is E_PARAMS with advice, not a silent empty read', () async {
       final v = await open();
       expect(
         () => v.schemaFor('mystery'),
         throwsA(
           isA<BridgeError>()
               .having((e) => e.code, 'code', BridgeErrorCode.params)
-              .having(
-                  (e) => e.message, 'message', contains('valence.config.json')),
+              .having((e) => e.message, 'message', contains('valence.config.json')),
         ),
       );
     });
   });
 
-  group('data.list clamps host-side (Ã‚Â§4.2)', () {
-    test(
-        'the default and the maximum are applied by the host, not trusted from the page',
-        () async {
-      final v = await open(writableBuckets: {'shelf'});
-      for (var i = 0; i < 600; i++) {
-        await v.store
-            .put('shelf', 'k${i.toString().padLeft(4, '0')}', i, opId: 'op-$i');
-      }
-      expect((await v.dataList('shelf')).length, defaultListLimit);
-      expect((await v.dataList('shelf', limit: 1000000)).length, maxListLimit);
+  group('data.list clamps host-side (§4.2)', () {
+    test('the default and the maximum are applied by the host, not trusted from the page', () async {
+      // Seeded through one pull page, not 600 `put`s: a put fires an unawaited sync each time, and 600 of
+      // those against the shared lease timed this test out under full-suite load.
+      final v = await open(dataSchemas: {'places': 1});
+      await v.store.applyPullPage(
+        bucket: 'places',
+        schema: 1,
+        rows: [
+          for (var i = 0; i < 600; i++) {'k': 'k${i.toString().padLeft(4, '0')}', 'v': i, 'u': i + 1, 'd': 0},
+        ],
+        maxUsnAfter: 600,
+      );
+      expect((await v.dataList('places')).length, defaultListLimit);
+      expect((await v.dataList('places', limit: 1000000)).length, maxListLimit);
+    });
+
+    test('after pages past the clamp, and data.count answers the size question for free', () async {
+      // Seeded through one pull page rather than 600 `put`s: a put fires a background sync each time, and
+      // the catalogue this models is read-only anyway.
+      final v = await open(dataSchemas: {'places': 1});
+      await v.store.applyPullPage(
+        bucket: 'places',
+        schema: 1,
+        rows: [
+          for (var i = 0; i < 600; i++) {'k': 'k${i.toString().padLeft(4, '0')}', 'v': i, 'u': i + 1, 'd': 0},
+        ],
+        maxUsnAfter: 600,
+      );
+      expect(await v.dataCount('places'), 600, reason: 'a number the clamped list could never report');
+      expect(await v.dataCount('places', prefix: 'k05'), 100);
+
+      final first = await v.dataList('places', limit: maxListLimit);
+      final rest = await v.dataList('places', limit: maxListLimit, after: first.last.key);
+      expect(first.length + rest.length, 600);
+      expect({...first.map((r) => r.key), ...rest.map((r) => r.key)}.length, 600);
+      // The presence question the clamp used to answer wrongly: a key in the tail is found, not absent.
+      expect(rest.map((r) => r.key), contains('k0599'));
+    });
+
+    test('data.count resolves the bucket the same way every other read does', () async {
+      final v = await open(dataSchemas: {'plants': 1});
+      expect(await v.dataCount('plants'), 0);
+      expect(() => v.dataCount('nope'), throwsA(isA<BridgeError>()), reason: 'an undeclared bucket, as data.get');
     });
   });
 
-  group('prefs reserve the valence. prefix (Ã‚Â§4.2)', () {
-    test('the page cannot read or write the hostÃ¢â‚¬â„¢s own keys', () async {
+  group('data.put refuses a key no server can address (§4.2, §5.5)', () {
+    test('"." and ".." never reach the outbox, so push cannot be wedged by one bad write', () async {
+      // These are the two keys `encodeURIComponent` leaves alone, so a server mapping a key into a URL
+      // path sees them resolve away as dot segments. A server that then rejects the batch — as the
+      // reference adapter does — rejects the *same* queued write on every later run, because push replays
+      // the outbox: one bad key and nothing in that bucket ever syncs again, with no way for the page to
+      // clear it. So it is refused where it enters.
+      final v = await open(writableBuckets: {'shelf'});
+      for (final key in ['.', '..']) {
+        await expectLater(
+          v.dataPut('shelf', key, {'x': 1}),
+          throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.params)),
+          reason: key,
+        );
+      }
+      expect(await v.pendingWrites(), 0, reason: 'nothing was queued');
+      // Keys that merely contain dots are fine: only the two that address a parent are refused.
+      await v.dataPut('shelf', '...', {'x': 1});
+      await v.dataPut('shelf', 'a.b', {'x': 1});
+      await v.dataPut('shelf', '.hidden', {'x': 1});
+      expect(await v.dataGet('shelf', '...'), {'x': 1});
+      expect(await v.dataGet('shelf', '.hidden'), {'x': 1});
+    });
+  });
+
+  group('prefs reserve the valence. prefix (§4.2)', () {
+    test('the page cannot read or write the host’s own keys', () async {
       final v = await open();
       for (final k in ['valence', 'valence.sync.lease', 'valence.anything']) {
         expect(() => v.prefsGet(k), throwsDenied('reserved'), reason: k);
@@ -261,19 +392,16 @@ void main() {
       expect(await v.prefsGet('valenceish'), 'ok');
     });
 
-    test(
-        'the store refuses the prefix too, so an appÃ¢â‚¬â„¢s own settings method cannot be a way round it',
-        () async {
+    test('the store refuses the prefix too, so an app’s own settings method cannot be a way round it', () async {
       final v = await open();
-      await expectLater(v.store.prefSet('valence.sync.lease', '1'),
-          throwsA(isA<BridgeError>()));
+      await expectLater(v.store.prefSet('valence.sync.lease', '1'), throwsA(isA<BridgeError>()));
       // The runtime writes its own keys through the unchecked entry point.
       await v.store.hostPrefSet('valence.sync.lease', '1');
       expect(await v.store.hostPrefGet('valence.sync.lease'), '1');
     });
   });
 
-  group('open.external allows three schemes (Ã‚Â§4.2)', () {
+  group('open.external allows three schemes (§4.2)', () {
     test('anything else is E_DENIED and never reaches the launcher', () async {
       final v = await open();
       for (final url in [
@@ -286,8 +414,7 @@ void main() {
         'not a url at all',
         '',
       ]) {
-        expect(() => v.openExternal(url), throwsDenied('https, mailto and tel'),
-            reason: url);
+        expect(() => v.openExternal(url), throwsDenied('https, mailto and tel'), reason: url);
       }
     });
 
@@ -295,15 +422,10 @@ void main() {
       // They then reach url_launcher, which has no platform implementation under flutter_test, so the
       // assertion is that the *scheme check* passed rather than that the OS opened anything.
       final v = await open();
-      for (final url in [
-        'https://example.com',
-        'mailto:a@b.c',
-        'tel:+15551234'
-      ]) {
+      for (final url in ['https://example.com', 'mailto:a@b.c', 'tel:+15551234']) {
         await expectLater(
           v.openExternal(url),
-          throwsA(isNot(isA<BridgeError>()
-              .having((e) => e.code, 'code', BridgeErrorCode.denied))),
+          throwsA(isNot(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.denied))),
           reason: url,
         );
       }
@@ -311,32 +433,28 @@ void main() {
 
     test('the scheme check is case-insensitive', () async {
       final v = await open();
-      expect(() => v.openExternal('JAVASCRIPT:alert(1)'),
-          throwsDenied('https, mailto and tel'));
+      expect(() => v.openExternal('JAVASCRIPT:alert(1)'), throwsDenied('https, mailto and tel'));
     });
   });
 
-  group('publishHostFile (Ã‚Â§3, Ã‚Â§4.2)', () {
+  group('publishHostFile (§3, §4.2)', () {
     test('it fails clearly before the server is bound', () async {
       final v = await open();
       expect(
         () => v.publishHostFile([1, 2, 3], contentType: 'image/png'),
-        throwsA(isA<BridgeError>()
-            .having((e) => e.code, 'code', BridgeErrorCode.internal)),
+        throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.internal)),
       );
     });
   });
 
   group('sync.now', () {
-    test('it follows the configured schemas when nothing is being served',
-        () async {
+    test('it follows the configured schemas when nothing is being served', () async {
       final seen = <String>[];
       final v = await open(
         dataSchemas: {'plants': 2},
         client: MockClient((req) async {
           seen.add(req.url.toString());
-          return http.Response(
-              jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+          return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
         }),
       );
       final result = await v.syncNow();
@@ -345,17 +463,13 @@ void main() {
     });
   });
 
-  group('open (Ã‚Â§5.1, Ã‚Â§5.2)', () {
-    test('it creates the valence directory and leaves the database outside it',
-        () async {
+  group('open (§5.1, §5.2)', () {
+    test('it creates the valence directory and leaves the database outside it', () async {
       final v = await open();
       expect(v.dir.path, endsWith('valence'));
       expect(v.dir.existsSync(), isTrue);
       // The database holds user data and should be backed up, so it lives outside the excluded directory.
-      expect(
-          File('${support.path}${Platform.pathSeparator}valence.db')
-              .existsSync(),
-          isTrue);
+      expect(File('${support.path}${Platform.pathSeparator}valence.db').existsSync(), isTrue);
     });
 
     test('a missing seed asset is logged, not fatal', () async {
@@ -370,10 +484,8 @@ void main() {
     });
   });
 
-  group('secure.* and auth.* reach the keystore (Ã‚Â§4.4)', () {
-    test(
-        'the page can set, read and delete its own keys but not the hostÃ¢â‚¬â„¢s',
-        () async {
+  group('secure.* and auth.* reach the keystore (§4.4)', () {
+    test('the page can set, read and delete its own keys but not the host’s', () async {
       final data = <String, String>{};
       final v = await open(secure: testSecure(data));
       await v.secureSet('refresh', 'r-1');
@@ -403,8 +515,7 @@ void main() {
         secure: testSecure({}),
         client: MockClient((req) async {
           seen.add(req.headers);
-          return http.Response(
-              jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+          return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
         }),
       );
       // This is the wiring R1 is about: the page sets a token through the bridge and the *host's own*
@@ -415,9 +526,7 @@ void main() {
       expect(seen.every((h) => h['authorization'] == 'Bearer jwt-1'), isTrue);
     });
 
-    test(
-        'an appÃ¢â‚¬â„¢s own authToken callback still wins over the stored one',
-        () async {
+    test('an app’s own authToken callback still wins over the stored one', () async {
       final seen = <Map<String, String>>[];
       final v = await open(
         config: ValenceConfig(
@@ -431,8 +540,7 @@ void main() {
         secure: testSecure({secureAuthTokenKey: 'from-the-page'}),
         client: MockClient((req) async {
           seen.add(req.headers);
-          return http.Response(
-              jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+          return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
         }),
       );
       await v.syncNow();
@@ -450,16 +558,265 @@ void main() {
       final result = await v.syncNow();
       expect(result.reason, ValenceSyncReason.unauthorized);
       expect(
-        view.scripts.single,
+        view.scripts.first,
         'window.__valence&&window.__valence.e("auth.expired",{})',
-        reason:
-            'built through jsonEncode by the same helper as every other event',
+        reason: 'built through jsonEncode by the same helper as every other event',
       );
+      // And the run still reports itself: "the token was rejected" is exactly the outcome a freshness
+      // line has to show, and sync.changed alone has no way to say it (§4.6).
+      expect(view.events, ['auth.expired', 'sync.changed', 'sync.done']);
+      expect(view.scripts.last, contains('"reason":"unauthorized"'));
+    });
+  });
+
+  group('a database locked by another isolate', () {
+    // §5.6. An app update is the launch that collides: WorkManager fires the already-registered periodic
+    // job while the UI isolate holds `BEGIN EXCLUSIVE` for the schema upgrade. `busy_timeout` does not
+    // cover it, because the lock is refused before the connection that would wait on it exists.
+
+    test('open retries until the lock clears rather than failing the launch', () async {
+      final locking = LockingDatabaseFactory(databaseFactoryFfi, locks: 2);
+      final log = LogSpy();
+
+      final v = await Valence.open(
+        testConfig(key),
+        log: log.call,
+        client: MockClient((_) async => http.Response('{}', 200)),
+        supportDir: support,
+        documentsDir: support,
+        secure: testSecure({}),
+        databaseFactory: locking,
+      );
+
+      expect(locking.attempts, 3, reason: 'two refusals, then the open that worked');
+      expect(await v.syncStatus(), isNotNull, reason: 'a usable store, not a half-open one');
+      expect(log.has('the database is locked by another isolate'), isTrue);
+    });
+
+    test('open gives up and rethrows once the budget is spent, because an app with no store cannot start',
+        () async {
+      await expectLater(
+        Valence.open(
+          testConfig(key),
+          log: LogSpy().call,
+          client: MockClient((_) async => http.Response('{}', 200)),
+          supportDir: support,
+          documentsDir: support,
+          secure: testSecure({}),
+          databaseFactory: LockingDatabaseFactory(databaseFactoryFfi, locks: 99),
+        ),
+        throwsA(isA<DatabaseException>()),
+      );
+    });
+
+    test('a failed open is not cached, so the next call sees a database that is now fine', () async {
+      // Caching the rejection would leave every later call in the isolate failing against a healthy file.
+      final locking = LockingDatabaseFactory(databaseFactoryFfi, locks: 1);
+      final path = '${support.path}${Platform.pathSeparator}valence.db';
+      await expectLater(ValenceStore.open(path, factory: locking), throwsA(isA<DatabaseException>()));
+
+      final store = await ValenceStore.open(path, factory: locking);
+      expect(await store.prefGet('anything'), isNull);
+    });
+
+    test('backgroundSync reports busy instead of throwing, so WorkManager does not record a failure',
+        () async {
+      final log = LogSpy();
+
+      final result = await Valence.backgroundSync(
+        testConfig(key),
+        log: log.call,
+        client: MockClient((_) async => http.Response('{}', 200)),
+        supportDir: support,
+        documentsDir: support,
+        secure: testSecure({}),
+        databaseFactory: LockingDatabaseFactory(databaseFactoryFfi, locks: 99),
+      );
+
+      expect(result.reason, ValenceSyncReason.busy);
+      expect(result.changed, 0);
+      expect(result.offline, isFalse, reason: 'nothing was attempted, so nothing observed the network');
+      expect(log.has('the UI isolate holds the database'), isTrue);
+    });
+
+    test('isDatabaseLocked matches what Android prints, and nothing else', () {
+      expect(isDatabaseLocked(LockedDatabaseException()), isTrue);
+      expect(isDatabaseLocked(const SocketException('offline')), isFalse);
+      expect(isDatabaseLocked(StateError('no such table')), isFalse);
+      // The message match is anchored, because `toString()` appends the failing SQL and its arguments —
+      // and those can come from the page. A loose `contains` would read an unrelated failure of
+      // `data.put(bucket, 'database is locked', v)` as a lock, and retry instead of surfacing it.
+      expect(isDatabaseLocked(NotLockedDatabaseException("UNIQUE constraint failed", "database is locked")), isFalse,
+          reason: 'the phrase appears only in a page-supplied argument');
+    });
+  });
+
+  // ===========================================================================
+  group('§4.6 lifecycle, connectivity and update status', () {
+    test('the five platform states are the four the page sees', () {
+      // The mapping is the contract, not an implementation detail: a page switching on the value has to
+      // be able to cover it, and "hidden" and "paused" are one backgrounding, not two.
+      expect(valenceLifecycleFor(AppLifecycleState.resumed), ValenceLifecycle.foreground);
+      expect(valenceLifecycleFor(AppLifecycleState.inactive), ValenceLifecycle.inactive);
+      expect(valenceLifecycleFor(AppLifecycleState.hidden), ValenceLifecycle.background);
+      expect(valenceLifecycleFor(AppLifecycleState.paused), ValenceLifecycle.background);
+      expect(valenceLifecycleFor(AppLifecycleState.detached), ValenceLifecycle.detached);
+    });
+
+    test('online means any interface that is not none', () {
+      // A device on Wi-Fi and VPN at once reports two, and a check written against the first entry calls
+      // it offline whenever the VPN sorts first.
+      expect(valenceOnline([ConnectivityResult.wifi]), isTrue);
+      expect(valenceOnline([ConnectivityResult.none, ConnectivityResult.vpn]), isTrue);
+      expect(valenceOnline([ConnectivityResult.none]), isFalse);
+      expect(valenceOnline([]), isFalse, reason: 'no interfaces at all is not online');
+    });
+
+    test('app.state answers before any event has been emitted, and optimistically', () async {
+      // A page only ever runs while the app is on screen, and a host whose connectivity plugin has not
+      // answered yet must not claim the device is offline: the cost of that error is a UI that refuses
+      // to try on a working network.
+      final v = await open();
+      expect(v.appState().lifecycle, ValenceLifecycle.foreground);
+      expect(v.appState().online, isTrue);
+    });
+
+    test('only a change emits, which is what makes the two events countable', () async {
+      final v = await open();
+      final spy = _ScriptSpy();
+      v.attach(spy);
+      // Android delivers hidden then paused for one backgrounding: both map to background, and the
+      // second one must not produce an event a page would count.
+      v.noteLifecycle(ValenceLifecycle.background);
+      v.noteLifecycle(ValenceLifecycle.background);
+      expect(v.appState().lifecycle, ValenceLifecycle.background);
+      v.noteLifecycle(ValenceLifecycle.foreground);
+
+      v.noteOnline(true); // already the optimistic default
+      v.noteOnline(false);
+      v.noteOnline(false);
+      expect(v.appState().online, isFalse);
+
+      expect(spy.events, ['app.lifecycle', 'app.lifecycle', 'app.online']);
+      expect(spy.scripts[0], contains('"state":"background"'));
+      expect(spy.scripts[1], contains('"state":"foreground"'));
+      expect(spy.scripts[2], contains('"online":false'));
+    });
+
+    test('a state event with no page is dropped, not queued, and app.state keeps the truth', () async {
+      // The §4.2 buffer is for one-shot events. These two are state: queueing them would be an unbounded
+      // list — a host whose entry page never loads, on a device moving between networks — holding
+      // transitions that are stale by the time anything reads them.
+      final v = await open();
+      final spy = _ScriptSpy()..pageLoaded = false;
+      v.attach(spy);
+      v.noteLifecycle(ValenceLifecycle.background);
+      v.noteOnline(false);
+      expect(spy.scripts, isEmpty);
+      // Recorded all the same, so the page that loads next reads the truth from app.state().
+      expect(v.appState().lifecycle, ValenceLifecycle.background);
+      expect(v.appState().online, isFalse);
+
+      // And nothing is replayed when a page does arrive.
+      spy.pageLoaded = true;
+      expect(spy.scripts, isEmpty);
+      v.noteLifecycle(ValenceLifecycle.foreground);
+      expect(spy.events, ['app.lifecycle']);
+    });
+
+    test('every completed run reports itself, sync.changed before sync.done', () async {
+      final v = await open(dataSchemas: {'plants': 1});
+      final spy = _ScriptSpy();
+      v.attach(spy);
+      final result = await v.syncNow();
+      // The mock server has nothing, so this is the run sync.changed alone could never report.
+      expect(result.changed, 0);
+      expect(spy.events, ['sync.changed', 'sync.done'], reason: 'refetch first, then the freshness line');
+      expect(spy.scripts.last, contains('"changed":0'));
+      expect(spy.scripts.last, contains('"reason":"ok"'));
+
+      // A second run moves nothing, so there is no sync.changed — and still a sync.done.
+      spy.scripts.clear();
+      await v.syncNow();
+      expect(spy.events, ['sync.done']);
+    });
+
+    test("data.put's own push reports itself, because the page's writes are most of an outbox", () async {
+      // The push goes straight through Valence.syncNow and never passes a host-widget trigger, so a host
+      // that reported only its own triggers would leave the freshness line untouched by the page's writes.
+      final v = await open(writableBuckets: {'notes'});
+      final spy = _ScriptSpy();
+      v.attach(spy);
+      await v.dataPut('notes', 'a', {'t': 1});
+      // The push is deliberately not awaited by data.put: a local write is durable at commit.
+      for (var i = 0; i < 100 && !spy.events.contains('sync.done'); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(spy.events, contains('sync.done'));
+    });
+
+    test('bundle.status before any check says idle rather than "up to date"', () async {
+      // The distinction the page needs: nothing has been asked yet, so claiming freshness would be a
+      // guess. serving is 0 because the host widget has not bound a manifest in a unit test.
+      final v = await open();
+      final s = v.bundleStatus();
+      expect(s.reason, ValenceBundleReason.idle);
+      expect(s.checkedAt, isNull);
+      expect(s.offered, isNull);
+      expect(s.serving, 0);
+      expect(s.pending, isNull);
+      expect(s.trial, isNull);
+    });
+
+    test('bundle.status reports the live activation state and the last check', () async {
+      final v = await open(config: testConfig(key, otaBase: ''));
+      v.state.pending = 31;
+      v.state.trial = 30;
+      // No otaBase, so the check is honest about never having run rather than guessing freshness.
+      await v.updater.checkForUpdate();
+      final s = v.bundleStatus();
+      expect(s.pending, 31);
+      expect(s.trial, 30);
+      expect(s.reason, ValenceBundleReason.unconfigured);
+      expect(s.checkedAt, isNotNull);
+    });
+
+    test('a SyncResult crosses the bridge the same way in a reply and in sync.done', () async {
+      // sync.done carries the whole record, including the two fields a schema may not declare: an app's
+      // handler reads what it knows about and an older host simply never sends them (§4.3).
+      const result = ValenceSyncResult(['notes'], 3, false, ValenceSyncReason.busy, 7);
+      expect(result.toJson(), {
+        'buckets': ['notes'],
+        'changed': 3,
+        'offline': false,
+        'reason': 'busy',
+        'pending': 7,
+      });
     });
   });
 }
 
 /// A host view that records the event scripts the runtime emits.
+final class _ScriptSpy implements ValenceHostView {
+  final List<String> scripts = [];
+
+  /// Whether a page is loaded. Settable, because §4.6's state events are dropped when it is false.
+  @override
+  bool pageLoaded = true;
+
+  /// The names of the events emitted, in order. The shape is fixed by §4.2's wire table.
+  List<String> get events => [for (final s in scripts) s.split('.e("')[1].split('"')[0]];
+
+  @override
+  void runScript(String script) => scripts.add(script);
+
+  @override
+  Future<void> reloadPage() async {}
+
+  @override
+  Future<void> handleReady() async {}
+}
+
 final class _Plugin implements ValencePlugin {
   _Plugin(this.namespace, this.methods);
   @override
@@ -470,17 +827,4 @@ final class _Plugin implements ValencePlugin {
   Future<Object?> invoke(
           Valence valence, String method, Map<String, Object?> params) async =>
       params;
-}
-
-final class _ScriptSpy implements ValenceHostView {
-  final List<String> scripts = [];
-
-  @override
-  void runScript(String script) => scripts.add(script);
-
-  @override
-  Future<void> reloadPage() async {}
-
-  @override
-  Future<void> handleReady() async {}
 }

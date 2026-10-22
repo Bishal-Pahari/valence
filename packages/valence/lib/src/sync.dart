@@ -38,7 +38,8 @@ enum ValenceSyncReason {
 /// What one sync run did, as `sync.now` returns it.
 final class ValenceSyncResult {
   /// Creates a result.
-  const ValenceSyncResult(this.buckets, this.changed, this.offline, [this.reason = ValenceSyncReason.ok]);
+  const ValenceSyncResult(this.buckets, this.changed, this.offline,
+      [this.reason = ValenceSyncReason.ok, this.pending = 0]);
 
   /// The buckets this run touched.
   final List<String> buckets;
@@ -51,6 +52,37 @@ final class ValenceSyncResult {
 
   /// Why the run ended as it did. `busy` means the run never started.
   final ValenceSyncReason reason;
+
+  /// Remaining outbox operations, including deletes.
+  final int pending;
+
+  /// The `SyncResult` wire shape, for the `sync.done` event (§4.6).
+  ///
+  /// Every field, including the two the generated `SyncResult` type may not declare: an app's `on()`
+  /// handler reads what it knows about and the rest costs nothing, while a page generated against the
+  /// newer schema on an older host is the case §4.3's "a grown field is always nullable" covers.
+  Map<String, Object?> toJson() => {
+        'buckets': buckets,
+        'changed': changed,
+        'offline': offline,
+        'reason': reason.name,
+        'pending': pending,
+      };
+}
+
+/// Local sync observations. [offline] is the last attempt, not current connectivity (§7.1).
+final class ValenceSyncStatus {
+  /// Creates a local status snapshot.
+  const ValenceSyncStatus({required this.pending, required this.lastSyncedAt, required this.offline});
+
+  /// Remaining operations, including deletes and repeated edits.
+  final int pending;
+
+  /// Last successful unscoped sync, in epoch milliseconds; null before one.
+  final int? lastSyncedAt;
+
+  /// Whether the last attempted run had a transport failure; false before an attempt.
+  final bool offline;
 }
 
 /// The prefs key holding the sync lease. Reserved: the bridge refuses `valence.*` from the page (§4.2).
@@ -95,6 +127,14 @@ final class ValenceSync {
 
   /// Whether this run has already seen a 401. Reset per [run], so the event fires at most once a run.
   bool _unauthorized = false;
+  bool _incomplete = false;
+
+  /// Reads persisted observations and current outbox depth without taking the sync lease.
+  Future<ValenceSyncStatus> status() async => ValenceSyncStatus(
+        pending: await store.pendingWrites(),
+        lastSyncedAt: int.tryParse(await store.hostPrefGet('valence.sync.lastSyncedAt') ?? ''),
+        offline: await store.hostPrefGet('valence.sync.offline') == 'true',
+      );
 
   /// Bytes of row payload this driver has applied. Used to budget §2.3 step 7.
   int bytesApplied = 0;
@@ -177,13 +217,14 @@ final class ValenceSync {
   }) async {
     if (config.syncBase.isEmpty) {
       _log('sync: no syncBase configured, nothing to do');
-      return const ValenceSyncResult([], 0, false);
+      return ValenceSyncResult([], 0, false, ValenceSyncReason.ok, await store.pendingWrites());
     }
     if (!await acquireLease()) {
       _log('sync: another sync holds the lease; skipping this run');
-      return const ValenceSyncResult([], 0, false, ValenceSyncReason.busy);
+      return ValenceSyncResult([], 0, false, ValenceSyncReason.busy, await store.pendingWrites());
     }
     _unauthorized = false;
+    _incomplete = false;
     final touched = <String>[];
     var changed = 0;
     var offline = false;
@@ -225,6 +266,7 @@ final class ValenceSync {
         if (wanted != null && !wanted.contains(bucket)) continue;
         if (!config.writableBuckets.contains(bucket)) {
           // Only a writable bucket can have an outbox row, so this means the config changed under us.
+          _incomplete = true;
           _log('sync: outbox holds ops for "$bucket", which is not writable; leaving them alone');
           continue;
         }
@@ -239,6 +281,10 @@ final class ValenceSync {
           _log('sync: offline pushing $bucket: $err');
         }
       }
+      await store.hostPrefSet('valence.sync.offline', offline.toString());
+      if (!offline && !_unauthorized && !_incomplete && only == null) {
+        await store.hostPrefSet('valence.sync.lastSyncedAt', _now().millisecondsSinceEpoch.toString());
+      }
     } finally {
       await releaseLease();
     }
@@ -249,7 +295,7 @@ final class ValenceSync {
         : offline
             ? ValenceSyncReason.offline
             : ValenceSyncReason.ok;
-    return ValenceSyncResult(touched, changed, offline, reason);
+    return ValenceSyncResult(touched, changed, offline, reason, await store.pendingWrites());
   }
 
   // ---------------------------------------------------------------------------
@@ -285,6 +331,7 @@ final class ValenceSync {
         return applied;
       }
       if (res.statusCode != 200) {
+        _incomplete = true;
         _log('sync: pull $bucket v$schema since $since returned HTTP ${res.statusCode}');
         return applied;
       }
@@ -292,24 +339,37 @@ final class ValenceSync {
       bytesApplied += res.bodyBytes.length;
       final page = _decodePage(res.body);
       if (page == null) {
+        _incomplete = true;
         _log('sync: pull $bucket v$schema returned a body this host cannot decode');
+        return applied;
+      }
+      var cursor = since;
+      for (final row in page.rows) {
+        final usn = row['u']! as int;
+        if (usn <= cursor) {
+          _incomplete = true;
+          _log('sync: pull $bucket v$schema did not advance in strict USN order');
+          return applied;
+        }
+        cursor = usn;
+      }
+      if (page.more && page.rows.isEmpty) {
+        _incomplete = true;
+        _log('sync: pull $bucket v$schema claimed more rows but sent none; stopping');
         return applied;
       }
       applied += await store.applyPullPage(
         bucket: bucket,
         schema: schema,
         rows: page.rows,
-        maxUsnAfter: page.max > since ? page.max : since,
+        maxUsnAfter: cursor,
+        complete: !page.more,
       );
       // §5.6: renew after every applied page, so a long pull cannot let a second sync start.
       await renewLease();
       if (!page.more) return applied;
-      if (page.rows.isEmpty) {
-        // `more: true` with no rows would spin for ever against a server that is wrong about itself.
-        _log('sync: pull $bucket v$schema claimed more rows but sent none; stopping');
-        return applied;
-      }
       if (byteBudget != null && spent >= byteBudget) {
+        _incomplete = true;
         _log('sync: pull $bucket v$schema hit the $byteBudget byte budget after $applied rows; backing off');
         return applied;
       }
@@ -321,6 +381,7 @@ final class ValenceSync {
     final base = '${config.syncBase}/$bucket/v$schema';
     final indexRes = await _client.get(Uri.parse('$base/index.json'));
     if (indexRes.statusCode != 200) {
+      _incomplete = true;
       _log('sync: static index for $bucket v$schema returned HTTP ${indexRes.statusCode}');
       return 0;
     }
@@ -328,20 +389,28 @@ final class ValenceSync {
     try {
       rawIndex = jsonDecode(indexRes.body);
     } on Object catch (e) {
+      _incomplete = true;
       _log('sync: static index for $bucket v$schema is not JSON: $e');
       return 0;
     }
     if (rawIndex is! List) {
+      _incomplete = true;
       _log('sync: static index for $bucket v$schema is not a list');
       return 0;
     }
     final chunks = <({int to, String file})>[];
     for (final c in rawIndex) {
-      if (c is! Map) continue;
+      if (c is! Map) {
+        _incomplete = true;
+        return 0;
+      }
       final to = c['to'];
       final file = c['file'];
       if (to is int && file is String && file.isNotEmpty && !file.contains('/') && !file.contains('..')) {
         chunks.add((to: to, file: file));
+      } else {
+        _incomplete = true;
+        return 0;
       }
     }
     chunks.sort((a, b) => a.to.compareTo(b.to));
@@ -352,6 +421,7 @@ final class ValenceSync {
       if (chunk.to <= since) continue;
       final res = await _client.get(Uri.parse('$base/${chunk.file}'));
       if (res.statusCode != 200) {
+        _incomplete = true;
         _log('sync: static chunk ${chunk.file} returned HTTP ${res.statusCode}');
         return applied;
       }
@@ -362,8 +432,9 @@ final class ValenceSync {
       final body = res.bodyBytes.length > 2 && res.bodyBytes[0] == 0x1f && res.bodyBytes[1] == 0x8b
           ? utf8.decode(gzip.decode(res.bodyBytes))
           : res.body;
-      final page = _decodePage(body);
+      final page = _decodePage(body, requireMore: false);
       if (page == null) {
+        _incomplete = true;
         _log('sync: static chunk ${chunk.file} has a body this host cannot decode');
         return applied;
       }
@@ -371,14 +442,17 @@ final class ValenceSync {
         bucket: bucket,
         schema: schema,
         rows: page.rows,
-        maxUsnAfter: page.max > chunk.to ? page.max : chunk.to,
+        maxUsnAfter: chunk.to,
+        complete: false,
       );
       await renewLease();
-      if (byteBudget != null && spent >= byteBudget) {
+      if (byteBudget != null && spent >= byteBudget && chunks.any((c) => c.to > chunk.to)) {
+        _incomplete = true;
         _log('sync: static pull $bucket v$schema hit the $byteBudget byte budget; backing off');
         return applied;
       }
     }
+    await store.completePull(bucket, schema);
     return applied;
   }
 
@@ -414,6 +488,7 @@ final class ValenceSync {
       return 0;
     }
     if (res.statusCode != 200) {
+      _incomplete = true;
       _log('sync: push $bucket returned HTTP ${res.statusCode}; keeping ${ops.length} ops queued');
       return 0;
     }
@@ -421,12 +496,19 @@ final class ValenceSync {
     try {
       raw = jsonDecode(res.body);
     } on Object catch (e) {
+      _incomplete = true;
       _log('sync: push $bucket returned a body that is not JSON: $e');
       return 0;
     }
     if (raw is! Map<String, Object?>) {
+      _incomplete = true;
       _log('sync: push $bucket returned a body that is not an object');
       return 0;
+    }
+    if (raw['acked'] is! List || raw['rows'] is! List ||
+        (raw['acked'] as List).any((a) => a is! String) ||
+        (raw['rows'] as List).any((r) => !_validRow(r))) {
+      _incomplete = true;
     }
     final acked = <String>[
       for (final a in (raw['acked'] is List ? raw['acked']! as List : const []))
@@ -447,6 +529,7 @@ final class ValenceSync {
   /// The token is **kept**: a refresh flow usually has to present the expired one, and clearing it here
   /// would also throw away a token that a clock-skewed or briefly misconfigured server rejected.
   void _rejected(String what) {
+    _incomplete = true;
     _log('sync: $what returned HTTP 401; the bearer token was rejected');
     if (_unauthorized) return;
     _unauthorized = true;
@@ -461,7 +544,9 @@ final class ValenceSync {
     return token == null || token.isEmpty ? const {} : {'authorization': 'Bearer $token'};
   }
 
-  ({List<Map<String, Object?>> rows, int max, bool more})? _decodePage(String body) {
+  bool _validRow(Object? r) => r is Map<String, Object?> && r['k'] is String && r['u'] is int;
+
+  ({List<Map<String, Object?>> rows, int max, bool more})? _decodePage(String body, {bool requireMore = true}) {
     final Object? raw;
     try {
       raw = jsonDecode(body);
@@ -471,6 +556,10 @@ final class ValenceSync {
     if (raw is! Map<String, Object?>) return null;
     final rows = raw['rows'];
     if (rows is! List) return null;
+    if (raw['max'] is! int || (requireMore && raw['more'] is! bool) || rows.any((r) => !_validRow(r))) {
+      _incomplete = true;
+      return null;
+    }
     return (
       rows: [
         for (final r in rows)

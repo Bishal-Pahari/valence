@@ -70,7 +70,7 @@ test('init sets up config, CLI, skill, agents, keys and generated code, and is i
 
   const cfg = JSON.parse(readFileSync(join(root, 'valence', 'valence.config.json'), 'utf8'));
   assert.equal(cfg.appId, 'com.acme.trail');
-  assert.deepEqual(cfg.web, { out: 'web/build', lib: 'web/src/lib/valence', routes: 'web/src/routes', entry: 'index.html' });
+  assert.deepEqual(cfg.web, { out: 'web/build', lib: 'web/src/lib/valence', routes: 'web/src/routes', entry: 'index.html', connect: [] });
   assert.equal(cfg.host.dir, 'mobile');
   assert.ok(readFileSync(join(root, 'valence', 'valence.mjs')).equals(readFileSync(join(PKG, '.claude', 'skills', 'valence', 'scripts', 'valence.mjs'))));
   for (const f of [

@@ -21,12 +21,14 @@ import {
 import { homedir } from 'node:os';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { dirname, extname, join, relative, resolve, sep } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 export const VALENCE_VERSION = '0.3.0'; // keep equal to package.json "version" (tested)
 const NATIVE = new Set(['.so', '.dex', '.jar', '.apk', '.aab', '.ipa', '.dylib', '.framework', '.a', '.o', '.class', '.exe', '.dll']);
 const PRIMS = new Set(['string', 'int', 'num', 'bool', 'json', 'void']);
 const CORE_METHODS = ['app.ready', 'app.info'];
+const PLUGIN_RESERVED = new Set('app data prefs sync open bundle secure auth permissions notify badge push link state http'.split(' '));
 const SPKI_ED25519 = Buffer.from('302a300506032b6570032100', 'hex');
 const HASH_RE = /^[0-9a-f]{64}$/;
 // A service worker can only take over the page by being registered from it, and every framework's helper
@@ -36,7 +38,7 @@ const SERVICE_WORKER_RE = /serviceWorker\s*\.\s*register\s*\(/;
 // Names that break the generated Dart (reserved words, built-in identifiers, Object members, generated members).
 const DART_RESERVED = new Set(`abstract as assert await break case catch class const continue covariant default deferred do dynamic else enum export extends extension external factory false final finally for Function get if implements import in interface is late library mixin new null operator part required rethrow return set static super switch this throw true try typedef var void while with yield hashCode runtimeType toString noSuchMethod toJson fromJson`.split(' '));
 // Type names that collide with Dart/TS builtins or with names the generator emits.
-const RESERVED_TYPES = new Set('Json Methods Events Object String Number Boolean Array Record Promise Map Set List Future Function Iterable Never Null Symbol BigInt Error Date Type Enum BridgeError BridgeHandlers BridgeEvents'.split(' '));
+const RESERVED_TYPES = new Set('Json Methods Events Object String Number Boolean Array Record Promise Map Set List Future Function Iterable Never Null Symbol BigInt Error Date Type Enum BridgeError BridgeHandlers BridgeHandlersDefaults BridgeEvents ValencePlugin ValencePluginRegistry ValenceOpenPlugin'.split(' '));
 // The methods the `valence` pub package implements. codegen emits a `ValenceBuiltins` base class whose
 // bodies delegate to the runtime, so the logic ships in the package and only the schema-shaped
 // marshalling is generated. A schema may leave any of them out; it may not redefine one with a different
@@ -58,6 +60,22 @@ const BUILTINS = {
     call: (t) =>
       `final i = valence.appInfo();\n        return ${t}(platform: i.platform, host: i.host, bridge: i.bridge, bundle: i.bundle, locale: i.locale);`,
   },
+  // §4.6. Both read state the host already keeps, so neither starts a request and a page may poll them.
+  'app.state': {
+    params: {},
+    returns: { fields: { lifecycle: 'string', online: 'bool' } },
+    call: (t) => `final s = valence.appState();
+        return ${t}(lifecycle: s.lifecycle.name, online: s.online);`,
+  },
+  'bundle.status': {
+    params: {},
+    returns: {
+      fields: { serving: 'int', pending: 'int?', trial: 'int?', reason: 'string', offered: 'int?', checkedAt: 'int?' },
+    },
+    call: (t) =>
+      `final s = valence.bundleStatus();
+        return ${t}(serving: s.serving, pending: s.pending, trial: s.trial, reason: s.reason.name, offered: s.offered, checkedAt: s.checkedAt);`,
+  },
   'data.get': {
     params: { bucket: 'string', key: 'string' },
     returns: 'json?',
@@ -65,9 +83,29 @@ const BUILTINS = {
   },
   'data.list': {
     params: { bucket: 'string', prefix: 'string?', limit: 'int?' },
+    // `after` is the key cursor that makes a bucket past `maxListLimit` readable at all. Optional, because
+    // the returns are a plain `Row[]` and an app on the older shape must keep compiling (rule 5).
+    optionalParams: { after: 'string?' },
+    returns: { list: true, fields: { key: 'string', value: 'json', usn: 'int' } },
+    call: (t, _has, hasParam) =>
+      `final rows = await valence.dataList(p.bucket, prefix: p.prefix, limit: p.limit${hasParam('after') ? ', after: p.after' : ''});\n        return [for (final r in rows) ${t}(key: r.key, value: r.value, usn: r.usn)];`,
+  },
+  'data.count': {
+    params: { bucket: 'string', prefix: 'string?' },
+    returns: 'int',
+    call: () => 'return valence.dataCount(p.bucket, prefix: p.prefix);',
+  },
+  'data.getMany': {
+    params: { bucket: 'string', keys: 'string[]' },
     returns: { list: true, fields: { key: 'string', value: 'json', usn: 'int' } },
     call: (t) =>
-      `final rows = await valence.dataList(p.bucket, prefix: p.prefix, limit: p.limit);\n        return [for (final r in rows) ${t}(key: r.key, value: r.value, usn: r.usn)];`,
+      `final rows = await valence.dataGetMany(p.bucket, p.keys);\n        return [for (final r in rows) ${t}(key: r.key, value: r.value, usn: r.usn)];`,
+  },
+  'sync.status': {
+    params: {},
+    returns: { fields: { pending: 'int', lastSyncedAt: 'int?', offline: 'bool' } },
+    call: (t) =>
+      `final r = await valence.syncStatus();\n        return ${t}(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline);`,
   },
   'data.put': {
     params: { bucket: 'string', key: 'string', value: 'json?' },
@@ -80,10 +118,10 @@ const BUILTINS = {
       fields: { buckets: 'string[]', changed: 'int', offline: 'bool' },
       // "nothing was attempted" and "nothing changed" are otherwise the same answer, so an app that shows
       // freshness reports confident freshness over stale data. `"ok"`, `"busy"` or `"offline"`.
-      optional: { reason: 'string?' },
+      optional: { reason: 'string?', pending: 'int?' },
     },
     call: (t, has) =>
-      `final r = await valence.syncNow(buckets: p.buckets);\n        return ${t}(buckets: r.buckets, changed: r.changed, offline: r.offline${has('reason') ? ', reason: r.reason.name' : ''});`,
+      `final r = await valence.syncNow(buckets: p.buckets);\n        return ${t}(buckets: r.buckets, changed: r.changed, offline: r.offline${has('reason') ? ', reason: r.reason.name' : ''}${has('pending') ? ', pending: r.pending' : ''});`,
   },
   'prefs.get': { params: { key: 'string' }, returns: 'string?', call: () => 'return valence.prefsGet(p.key);' },
   'prefs.set': {
@@ -94,7 +132,7 @@ const BUILTINS = {
   'open.external': {
     params: { url: 'string' },
     returns: 'void',
-    call: () => 'await valence.openExternal(p.url);',
+    call: () => "await plugins.invoke(valence, 'open.external', {'url': p.url});",
   },
   'bundle.applyUpdate': {
     params: {},
@@ -118,6 +156,12 @@ const BUILTINS = {
   // There is deliberately no auth.getToken: the token lives under the reserved `valence.` prefix, so the
   // page can set and clear it and ask whether one is there, and can never read it back (§4.4).
   'auth.hasToken': { params: {}, returns: 'bool', call: () => 'return valence.authHasToken();' },
+  'http.request': {
+    params: { url: 'string', method: 'string?', headers: 'json?', body: 'string?' },
+    returns: { fields: { status: 'int', headers: 'json', body: 'string' } },
+    call: (t) =>
+      `final r = await valence.httpRequest(url: p.url, method: p.method, headers: p.headers, body: p.body);\n        return ${t}(status: r.status, headers: r.headers, body: r.body);`,
+  },
 };
 
 const SEED_SQL = `
@@ -126,10 +170,10 @@ CREATE TABLE kv (bucket TEXT NOT NULL, schema INTEGER NOT NULL, key TEXT NOT NUL
 CREATE INDEX kv_bucket_usn ON kv (bucket, schema, usn);
 CREATE TABLE bucket (name TEXT NOT NULL, schema INTEGER NOT NULL, max_usn INTEGER NOT NULL, synced_at INTEGER,
                      PRIMARY KEY (name, schema));
-CREATE TABLE outbox (id TEXT PRIMARY KEY, bucket TEXT NOT NULL, key TEXT NOT NULL, value TEXT,
+CREATE TABLE outbox (ordinal INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, bucket TEXT NOT NULL, key TEXT NOT NULL, value TEXT,
                      deleted INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
 CREATE TABLE prefs (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-PRAGMA user_version = 1;`;
+PRAGMA user_version = 2;`;
 
 // ---------- small helpers ----------
 
@@ -182,6 +226,15 @@ export function loadConfig(root) {
   if (typeof cfg.web?.out !== 'string' || typeof cfg.web?.lib !== 'string') throw new Error('valence.config.json: web.out and web.lib are required');
   if (typeof cfg.host?.dir !== 'string') throw new Error('valence.config.json: host.dir is required');
   for (const [b, n] of Object.entries(cfg.data ?? {})) int(n, `valence.config.json: data.${b}`, 1);
+  if (cfg.ota?.channel !== undefined && (typeof cfg.ota.channel !== 'string' || !/^[A-Za-z0-9_-]+$/.test(cfg.ota.channel))) {
+    throw new Error('ota.channel must match [A-Za-z0-9_-]+');
+  }
+  for (const [b, schemas] of Object.entries(cfg.seedSchemas ?? {})) {
+    if (!Array.isArray(schemas) || !schemas.length || cfg.data?.[b] === undefined) {
+      throw new Error(`seedSchemas.${b} must be a nonempty array for a declared read-only bucket`);
+    }
+    for (const n of schemas) int(n, `seedSchemas.${b}`, 1);
+  }
   for (const b of cfg.writable ?? []) {
     if (cfg.data?.[b] !== undefined) throw new Error(`valence.config.json: writable bucket "${b}" must not be in data (writable buckets never change schema, contracts §5.4)`);
   }
@@ -327,7 +380,8 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
   if (!existsSync(src)) throw new Error(`web build output not found: ${src}. Build the web app first.`);
   const entry = cfg.web.entry ?? 'index.html';
   const baseline = readBaseline(p);
-  const schema = readJson(p.schema);
+  const { schema } = loadPluginSchema(root, cfg);
+  if (!store) assertAdditive(baseline.storeSchema, schema);
   const keyring = readJson(p.keyring);
   const warnings = [];
   // `--store` is the only thing that writes `storeSchema`, and `storeSchema` is the only thing `codegen`'s
@@ -403,10 +457,38 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
   }
 
   if (floor !== undefined && floor < (baseline.floor ?? 0)) throw new Error(`--floor ${floor} is below the current floor ${baseline.floor}; the floor only goes up`);
+  // The floor applies to the built-in bundle too (§2.2), and the built-in bundle is the one artifact every
+  // device is guaranteed to have — a wiped or offline phone's last resort, and the only code a store review
+  // ever saw. A floor above it therefore retires it *from the client side*, with no store release: §2.4's
+  // ladder is left with `current` and nothing underneath, so if the floor-raising bundle itself later fails
+  // a check, recovery is a full store review — exactly what OTA exists to avoid. One unreviewed OTA should
+  // not be able to do that silently, and `baseline.storeSeq` is in the file the CLI is already writing.
+  // A `--store` build is its own fallback, so its own seq is the ceiling, which §2.3's check below enforces.
+  const storeSeq = baseline.storeSeq ?? 0;
+  const effectiveFloor = floor ?? baseline.floor ?? 0;
+  // `--builtin` is exempt with `--store`: that bundle *is* the fallback being produced, and the
+  // `floor > seq` check below already keeps it runnable. Only an OTA can retire a fallback it is not.
+  if (!store && !builtin && storeSeq > 0 && effectiveFloor > storeSeq) {
+    const how = `Raise it to at most ${storeSeq} to keep the store build runnable, or ship a store build above ${effectiveFloor} first and raise the floor after it is live.`;
+    // Refuse only an actual *raise*. Restating a floor that is already above `storeSeq` — which a pipeline
+    // passing `--floor $FLOOR` every time does — changes nothing, and refusing it deadlocked against the
+    // "the floor only goes up" check above: every value at or below the carried floor was refused there,
+    // and every value above it refused here, with no buildable number in between.
+    if (floor !== undefined && floor > (baseline.floor ?? 0)) {
+      throw new Error(
+        `--floor ${floor} is above the store build's seq ${storeSeq}, so every device would refuse its own built-in bundle at check 4 and have no fallback below this release. ${how}`,
+      );
+    }
+    // Carried forward from a project that raised the floor before this check existed. Not refused, because
+    // that would make every later release unbuildable, but it is the same device state and must be said.
+    warnings.push(
+      `the floor carried forward (${effectiveFloor}) is above the store build's seq ${storeSeq}, so devices refuse their own built-in bundle and have no fallback below "current". ${how}`,
+    );
+  }
   // requires.bridge is a one-way door like floor: check 5 makes every host below it refuse this bundle *and* every
   // later release, because they inherit the same default. has() exists so one bundle can serve old and new hosts, so
   // say so when the default would undo it.
-  const bridge = requiresBridge ?? schema.version;
+  const bridge = requiresBridge ?? (builtin ? schema.version : baseline.storeSchema?.version ?? schema.version);
   // A built-in bundle is the one bundle its own host cannot decline: check 5 refuses it on first launch and a fresh
   // install has no `current` to fall back to, so the app has nothing to paint (§2.4 step 1). Compare against the
   // *generated* constant, not the schema file: a schema bumped without a codegen run is the common way to get here.
@@ -568,6 +650,7 @@ export async function seed({ root, cfg, from }) {
   rmSync(tmp, { force: true });
   const db = new DatabaseSync(tmp);
   const counts = {};
+  const seeded = new Set();
   let ok = false;
   try {
     db.exec(SEED_SQL);
@@ -575,10 +658,17 @@ export async function seed({ root, cfg, from }) {
     const setBucket = db.prepare('INSERT INTO bucket (name, schema, max_usn) VALUES (?, ?, ?)');
     db.exec('BEGIN');
     for (const f of readdirSync(from).filter((f) => f.endsWith('.json')).sort()) {
-      const bucket = f.slice(0, -5);
+      const versioned = /^(.*)\.v([1-9][0-9]*)\.json$/.exec(f);
+      const bucket = versioned ? versioned[1] : f.slice(0, -5);
       const { schema, rows } = readJson(join(from, f));
       int(schema, `${f}: schema`, 1);
-      if (cfg.data?.[bucket] !== schema) throw new Error(`${f}: schema ${schema} does not match valence.config.json data.${bucket} (${cfg.data?.[bucket]})`);
+      if (versioned && Number(versioned[2]) !== schema) throw new Error(`${f}: filename schema does not match payload`);
+      if (cfg.data?.[bucket] !== schema && !(cfg.seedSchemas?.[bucket] ?? []).includes(schema)) {
+        throw new Error(`${f}: schema ${schema} does not match a declared schema for data.${bucket}`);
+      }
+      const pair = `${bucket}:${schema}`;
+      if (seeded.has(pair)) throw new Error(`${f}: duplicate seed pair ${pair}`);
+      seeded.add(pair);
       if (!Array.isArray(rows)) throw new Error(`${f}: rows must be an array`);
       let max = 0;
       for (const r of rows) {
@@ -588,7 +678,7 @@ export async function seed({ root, cfg, from }) {
         max = Math.max(max, u);
       }
       setBucket.run(bucket, schema, max);
-      counts[bucket] = rows.length;
+      counts[bucket] = (counts[bucket] ?? 0) + rows.length;
     }
     db.exec('COMMIT');
     ok = true;
@@ -598,14 +688,63 @@ export async function seed({ root, cfg, from }) {
   }
   rmSync(out, { force: true });
   renameSync(tmp, out);
-  const unseeded = Object.keys(cfg.data ?? {}).filter((b) => !Object.hasOwn(counts, b));
+  const unseeded = Object.keys(cfg.data ?? {}).filter((b) => !seeded.has(`${b}:${cfg.data[b]}`));
   const warnings = unseeded.map((b) => `data bucket "${b}" has no seed file; it is empty until the first online sync (offline first launch, contracts §5.2)`);
   return { out, counts, warnings };
 }
 
 // ---------- codegen ----------
 
-export function parseSchema(schema) {
+// Resolve fragments once, before either codegen or a store baseline is written. No package code runs.
+export function loadPluginSchema(root, cfg) {
+  const schema = readJson(paths(root, cfg).schema);
+  const owners = new Set();
+  const namespaces = new Set();
+  if (cfg.plugins !== undefined && !Array.isArray(cfg.plugins)) throw new Error('plugins must be an array of fragment paths');
+  const object = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  for (const path of cfg.plugins ?? []) {
+    if (typeof path !== 'string' || !path || isAbsolute(path)) throw new Error('plugin path must be a nonempty project-relative string');
+    const fragment = readJson(resolve(root, path));
+    const { namespace } = fragment;
+    if (typeof namespace !== 'string' || !/^[a-z][a-zA-Z0-9]*$/.test(namespace) || PLUGIN_RESERVED.has(namespace)) {
+      throw new Error(`plugin ${path}: invalid or reserved namespace "${namespace}"`);
+    }
+    if (namespaces.has(namespace)) throw new Error(`duplicate plugin namespace "${namespace}"`);
+    namespaces.add(namespace);
+    for (const key of Object.keys(fragment)) {
+      if (!['namespace', 'dartPackage', 'npmPackage', 'setup', 'types', 'methods', 'events'].includes(key)) throw new Error(`plugin ${path}: unknown field "${key}"`);
+    }
+    for (const key of ['dartPackage', 'npmPackage', 'setup']) {
+      if (typeof fragment[key] !== 'string' || !fragment[key].trim()) throw new Error(`plugin ${path}: ${key} is required`);
+    }
+    const prefix = namespace[0].toUpperCase() + namespace.slice(1);
+    for (const kind of ['types', 'methods', 'events']) {
+      if (fragment[kind] !== undefined && !object(fragment[kind])) throw new Error(`plugin ${path}: ${kind} must be an object`);
+      schema[kind] ??= {};
+      for (const [name, definition] of Object.entries(fragment[kind] ?? {})) {
+        const scoped = kind === 'types' ? name.startsWith(prefix) && /^[A-Z]/.test(name.slice(prefix.length)) : name.startsWith(namespace + '.');
+        if (!scoped) throw new Error(`plugin ${path}: ${kind} "${name}" must use namespace ${namespace} (types: ${prefix}...)`);
+        if (Object.hasOwn(schema[kind], name)) throw new Error(`plugin ${path}: ${kind} "${name}" conflicts with the app`);
+        if (!object(definition)) throw new Error(`plugin ${path}: invalid ${kind} "${name}"`);
+        // A fragment may reference its own named types only, never depend silently on an app type.
+        const fields = kind === 'types' ? definition : kind === 'methods' ? definition.params ?? {} : definition.payload ?? {};
+        const references = [...Object.values(fields), ...(kind === 'methods' ? [definition.returns] : [])];
+        for (const type of references) {
+          const base = typeof type === 'string' ? type.replace(/\?$/, '').replace(/\[\]$/, '') : '';
+          if (!PRIMS.has(base) && !Object.hasOwn(fragment.types ?? {}, base)) throw new Error(`plugin ${path}: unknown local type "${type}"`);
+        }
+        // defineProperty handles JSON keys such as __proto__ without mutating object prototypes.
+        Object.defineProperty(schema[kind], name, { value: definition, enumerable: true, configurable: true, writable: true });
+        if (kind === 'methods') owners.add(name);
+      }
+    }
+  }
+  // Validate the combined IDL too: camel-case collisions and since bounds span fragments and app.
+  assertBuiltinShapes(parseSchema(schema));
+  return { schema, owners };
+}
+
+export function parseSchema(schema, pluginMethods = new Set()) {
   const version = int(schema.version, 'schema.version', 1);
   const types = schema.types ?? {};
   const parseType = (t, where, allowVoid = false) => {
@@ -633,7 +772,7 @@ export function parseSchema(schema) {
   }
   const methods = Object.entries(schema.methods ?? {}).map(([name, m]) => {
     named(name, 'method');
-    return { name, since: int(m.since, `${name}.since`, 1, version), params: fields(m.params, name), returns: parseType(m.returns, `${name}.returns`, true) };
+    return { name, plugin: pluginMethods.has(name), since: int(m.since, `${name}.since`, 1, version), params: fields(m.params, name), returns: parseType(m.returns, `${name}.returns`, true) };
   });
   const events = Object.entries(schema.events ?? {}).map(([name, e]) => {
     named(name, 'event');
@@ -682,6 +821,16 @@ function isBuiltinGrowth(was, now, allowed) {
   return true;
 }
 
+// True when a built-in method's definition is its shipped one plus nothing but optional params from
+// `allowed`. Everything other than `params` must be identical — compared wholesale rather than by naming
+// `since` and `returns`, so a method-level key the IDL gains later is not silently exempt from the guard.
+function isBuiltinParamGrowth(was, now, allowed) {
+  if (!allowed || !now || typeof now !== 'object') return false;
+  const withoutParams = (d) => Object.fromEntries(Object.entries(d).filter(([k]) => k !== 'params'));
+  if (canonical(withoutParams(was)) !== canonical(withoutParams(now))) return false;
+  return isBuiltinGrowth(was.params ?? {}, now.params ?? {}, allowed);
+}
+
 // The schema is additive only once a store build has shipped it (contracts §4.1).
 export function assertAdditive(shipped, current) {
   if (!shipped) return;
@@ -695,6 +844,20 @@ export function assertAdditive(shipped, current) {
       // this the additive-only guard refuses the very upgrade §4.3 tells an adopter to make, and the only
       // way through would be --rebaseline, which overwrites the schema the stores reviewed.
       if (kind === 'types' && isBuiltinGrowth(def, current.types[name], grows[name])) continue;
+      // The same allowance for a built-in's *params*. `since` and `returns` must be untouched; only the
+      // optional params the runtime declared may appear. Without it the additive guard refuses the upgrade
+      // §4.3 tells an adopter to make, and --rebaseline — which overwrites the schema the stores reviewed —
+      // would be the only way through.
+      // A grown param must come with a version bump, because a param has no `since` of its own: the schema
+      // version is the only thing that tells a page whether this host understands it. Without this, an app
+      // could add `data.list.after` at the shipped version, leaving `app.info().bridge` and `has()` — the
+      // two gates §4.2 names — unable to distinguish it from the store build that answers `E_PARAMS`.
+      if (kind === 'methods' && isBuiltinParamGrowth(def, current.methods[name], BUILTINS[name]?.optionalParams)) {
+        if (current.version > shipped.version) continue;
+        throw new Error(
+          `"${name}" gained the param ${Object.keys(current.methods[name].params ?? {}).filter((p) => !Object.hasOwn(def.params ?? {}, p)).map((p) => `"${p}"`).join(', ')}, which needs "version" above the shipped ${shipped.version}. A param has no "since", so the schema version is the only thing has() and app.info().bridge can gate on.`,
+        );
+      }
       throw new Error(`${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
     }
   }
@@ -785,7 +948,7 @@ function dartEncode(t, x) {
 
 function dartClass(name, fs) {
   const o = [`final class ${name} {`];
-  o.push(fs.length ? `  const ${name}({${fs.map((f) => `required this.${f.name}`).join(', ')}});` : `  const ${name}();`, '');
+  o.push(fs.length ? `  const ${name}({${fs.map((f) => `${f.type.nullable ? '' : 'required '}this.${f.name}`).join(', ')}});` : `  const ${name}();`, '');
   o.push(`  factory ${name}.fromJson(Object? j, [String f = '${name}']) {`);
   o.push(`    final m = decodeObject(j, f);`);
   o.push(`    decodeKeys(m, const {${fs.map((x) => `'${x.name}'`).join(', ')}}, f);`);
@@ -827,6 +990,15 @@ export function genDart(s) {
   for (const m of s.methods) {
     const arg = m.params.length ? `${pascal(m.name)}Params p` : '';
     o.push(`  Future<${dartType(m.returns)}> ${camel(m.name)}(${arg});`);
+  }
+  o.push('}', '');
+
+  o.push('/// Opt-in defaults for test doubles or partial hosts. Production hosts extend ValenceBuiltins.');
+  o.push('mixin BridgeHandlersDefaults implements BridgeHandlers {');
+  for (const m of s.methods) {
+    const arg = m.params.length ? `${pascal(m.name)}Params p` : '';
+    o.push('  @override');
+    o.push(`  Future<${dartType(m.returns)}> ${camel(m.name)}(${arg}) async => throw const BridgeError('E_UNSUPPORTED', '${m.name} is not implemented');`);
   }
   o.push('}', '');
 
@@ -894,7 +1066,11 @@ function dartBuiltins(s) {
     '/// ```',
     'abstract class ValenceBuiltins {',
     '  /// Wraps an open runtime.',
-    '  ValenceBuiltins(this.valence);',
+    '  ValenceBuiltins(this.valence, {List<ValencePlugin> plugins = const []})',
+    '      : plugins = ValencePluginRegistry(plugins);',
+    '',
+    '  /// Store-compiled native handlers. Dispatch still uses the generated strict decoders.',
+    '  final ValencePluginRegistry plugins;',
     '',
     '  /// The runtime every built-in delegates to.',
     '  final Valence valence;',
@@ -902,15 +1078,21 @@ function dartBuiltins(s) {
   ];
   for (const m of s.methods) {
     const builtin = BUILTINS[m.name];
-    if (!builtin) continue;
+    if (!builtin && !m.plugin) continue;
     const typeName = m.returns.base === 'void' || PRIMS.has(m.returns.base) ? '' : m.returns.base;
     const arg = m.params.length ? `${pascal(m.name)}Params p` : '';
     // Which of the built-in's optional fields this app actually declared, so the delegation passes those
     // and no others. An app that never regenerated against the newer runtime keeps compiling.
     const declared = new Set((s.types.find((t) => t.name === m.returns.base)?.fields ?? []).map((f) => f.name));
+    // Same question for the optional *params*: an app that never regenerated against the newer runtime has
+    // not declared them, so the delegation must not pass them.
+    const declaredParams = new Set(m.params.map((f) => f.name));
     o.push(`  /// \`${m.name}\`, from the package.`);
     o.push(`  Future<${dartType(m.returns)}> ${camel(m.name)}(${arg}) async {`);
-    for (const line of builtin.call(typeName, (f) => declared.has(f)).split('\n')) {
+    const params = m.params.length ? 'p.toJson()' : 'const <String, Object?>{}';
+    const invoke = `plugins.invoke(valence, '${m.name}', ${params})`;
+    const pluginCall = m.returns.base === 'void' ? `await ${invoke};` : `final r = await ${invoke};\nreturn ${dartDecode(m.returns, 'r', "'plugin result'")};`;
+    for (const line of (builtin ? builtin.call(typeName, (f) => declared.has(f), (p) => declaredParams.has(p)) : pluginCall).split('\n')) {
       o.push(line.startsWith('        ') ? `    ${line.trimStart()}` : `    ${line}`);
     }
     o.push('  }', '');
@@ -928,9 +1110,18 @@ export function assertBuiltinShapes(s) {
     const want = BUILTINS[m.name];
     if (!want) continue;
     const got = Object.fromEntries(m.params.map((f) => [f.name, typeString(f.type)]));
-    if (canonical(got) !== canonical(want.params)) {
+    // Required params, exactly. Beyond them only this built-in's own optional params, each at its declared
+    // type — the same rule as the return type's optional fields, and what lets the runtime add a param
+    // (rule 5) without every app on the older shape failing codegen.
+    const optionalParams = want.optionalParams ?? {};
+    const requiredParams = Object.fromEntries(Object.entries(got).filter(([f]) => !(f in optionalParams)));
+    const extraParams = Object.entries(got).filter(([f]) => f in optionalParams);
+    if (canonical(requiredParams) !== canonical(want.params) || extraParams.some(([f, t]) => t !== optionalParams[f])) {
+      const allowed = Object.keys(optionalParams).length
+        ? ` It may also take ${Object.entries(optionalParams).map(([f, t]) => `"${f}": ${t}`).join(', ')}.`
+        : '';
       throw new Error(
-        `"${m.name}" is implemented by the valence package, so its params must stay ${JSON.stringify(want.params)}, not ${JSON.stringify(got)}. Add a new method under a different name instead.`,
+        `"${m.name}" is implemented by the valence package, so its params must stay ${JSON.stringify(want.params)}, not ${JSON.stringify(got)}. Add a new method under a different name instead.${allowed}`,
       );
     }
     if (typeof want.returns === 'string') {
@@ -972,6 +1163,17 @@ const dartStr = (s) =>
     .replace(/[\x00-\x1f\x7f]/g, (c) => `\\u{${c.charCodeAt(0).toString(16)}}`)}'`;
 
 export function genDartConfig(cfg, keyring) {
+  const connect = cfg.http?.origins ?? [];
+  if (!Array.isArray(connect)) throw new Error('http.origins must be an array of exact HTTP(S) origins');
+  for (const origin of connect) {
+    let u;
+    try { u = new URL(origin); } catch { /* rejected below */ }
+    if (typeof origin !== 'string' || !u || !['http:', 'https:'].includes(u.protocol) ||
+        u.username || u.password || u.search || u.hash || (u.pathname !== '/' && u.pathname !== '') ||
+        origin.includes('*') || !/^https?:\/\/[^/?#]+\/?$/.test(origin)) {
+      throw new Error('http.origins entries must be exact HTTP(S) origins without credentials, paths, query or fragment');
+    }
+  }
   const ring = Object.entries(keyring).map(([k, v]) => `${dartStr(k)}: ${dartStr(v)}`).join(', ');
   const data = Object.entries(cfg.data ?? {}).map(([k, v]) => `${dartStr(k)}: ${v}`).join(', ');
   const writable = (cfg.writable ?? []).map(dartStr).join(', ');
@@ -981,12 +1183,14 @@ export function genDartConfig(cfg, keyring) {
     // bridgeVersion is the generated constant, never a second literal: check 5 compares against it, and a
     // host that under-reports its version refuses its own built-in bundle on first launch.
     '  bridgeVersion: hostBridgeVersion,',
+    '  channel: valenceOtaChannel,',
     `  otaBase: ${dartStr(cfg.ota?.base ?? '')},`,
     `  syncBase: ${dartStr(cfg.sync?.base ?? '')},`,
     `  writableBuckets: {${writable}},`,
     `  dataSchemas: {${data}},`,
+    `  httpOrigins: {${connect.map((o) => dartStr(new URL(o).origin)).join(', ')}},`,
+    `  seedSchemas: {${Object.entries(cfg.seedSchemas ?? {}).map(([b, ns]) => `${dartStr(b)}: [${ns.join(', ')}]`).join(', ')}},`,
   ];
-  if (cfg.ota?.channel) lines.push(`  channel: ${dartStr(cfg.ota.channel)},`);
   if (cfg.sync?.mode === 'static') lines.push('  syncMode: ValenceSyncMode.staticChunks,');
   // Only emitted when the project asks for it: a 0.3 app whose generated host chose its own SQLite file
   // name sets host.database so the package keeps reading the user's existing rows.
@@ -998,6 +1202,8 @@ export function genDartConfig(cfg, keyring) {
     "import 'package:valence/valence.dart';",
     '',
     "import 'bridge.g.dart';",
+    '',
+    `const valenceOtaChannel = ${dartStr(cfg.ota?.channel ?? 'production')};`,
     '',
     '/// Everything the runtime needs about this app. Pass it to `Valence.open`.',
     'const valenceConfig = ValenceConfig(',
@@ -1012,8 +1218,8 @@ const normalize = (t) => t.replace(/\s+/g, '').replace(/,([)\]}])/g, '$1');
 
 export function codegen({ root, cfg, check = false }) {
   const p = paths(root, cfg);
-  const raw = readJson(p.schema);
-  const s = parseSchema(raw);
+  const { schema: raw, owners } = loadPluginSchema(root, cfg);
+  const s = parseSchema(raw, owners);
   assertBuiltinShapes(s);
   assertAdditive(readBaseline(p).storeSchema, raw);
   const keyring = existsSync(p.keyring) ? readJson(p.keyring) : {};
@@ -1034,6 +1240,111 @@ export function codegen({ root, cfg, check = false }) {
 
 // ---------- CLI ----------
 
+// Mechanical evidence only. A declaration or a passing unit test cannot establish device behavior.
+function runFlutter(args, cwd) {
+  // Windows Flutter is a .bat entry point. Only fixed flags and the validated relative test paths reach
+  // this command string; reject shell syntax here too, so adding another caller cannot widen it.
+  if (args.some((arg) => !/^[A-Za-z0-9_./-]+$/.test(arg))) throw new Error('unsafe Flutter argument');
+  const options = { cwd, encoding: 'utf8', timeout: 180_000 };
+  if (process.platform !== 'win32') return spawnSync('flutter', args, options);
+  if (spawnSync('where.exe', ['flutter.bat'], { encoding: 'utf8' }).status !== 0) {
+    return { error: { code: 'ENOENT' } };
+  }
+  return spawnSync('cmd.exe', ['/d', '/c', `flutter ${args.join(' ')}`], options);
+}
+
+export async function diagnose({ root, cfg, tests = false, run = runFlutter }) {
+  const rows = [];
+  const check = async (name, fn) => {
+    try {
+      const warning = await fn();
+      rows.push([warning ? 'WARN' : 'PASS', name, warning ?? 'verified']);
+    } catch (e) {
+      rows.push(['FAIL', name, e.message.split('\n')[0]]);
+    }
+  };
+  const p = paths(root, cfg);
+  const host = resolve(root, cfg.host.dir);
+  await check('generated code', () => { codegen({ root, cfg, check: true }); });
+  await check('store baseline', () => {
+    if (!existsSync(p.baseline)) return 'no recorded store build; additive guard has no shipped baseline';
+    if (!readJson(p.baseline).storeSchema) return 'no recorded store schema';
+  });
+  await check('stack report', () => {
+    if (!existsSync(join(root, '.valence', 'stack-check.md'))) return 'missing .valence/stack-check.md; run the docs-scout phase';
+    return 'report present; freshness and policy wording require review';
+  });
+  await check('native value', () => {
+    const allowed = new Set(['offline', 'notifications', 'widget', 'share', 'haptics', 'biometric']);
+    if (cfg.nativeValue === undefined) return 'declare nativeValue using at least two §6 capabilities';
+    if (!Array.isArray(cfg.nativeValue) || cfg.nativeValue.some((x) => !allowed.has(x))) throw new Error('invalid nativeValue capability');
+    if (new Set(cfg.nativeValue).size < 2) throw new Error('nativeValue needs at least two distinct §6 capabilities');
+    return `declared ${cfg.nativeValue.join(', ')}; native setup and device evidence still need review`;
+  });
+  await check('built-in compatibility', () => {
+    const manifestPath = join(host, 'assets', 'valence', 'builtin', 'manifest.json');
+    if (!existsSync(manifestPath)) return 'built-in not built';
+    const m = verifyBundle({ manifestPath, filesDir: join(dirname(manifestPath), 'files'), keyring: readJson(p.keyring), appId: cfg.appId });
+    const generated = /\bconst hostBridgeVersion = (\d+);/.exec(readFileSync(p.dart, 'utf8'));
+    if (!generated || m.requires.bridge > Number(generated[1])) throw new Error('built-in requires a bridge newer than generated hostBridgeVersion');
+    for (const [b, n] of Object.entries(m.requires.data)) {
+      if (cfg.data?.[b] !== n) throw new Error(`built-in requires ${b} v${n}, config requires ${cfg.data?.[b]}`);
+    }
+  });
+  await check('seed coverage', async () => {
+    if (!Object.keys(cfg.data ?? {}).length) return;
+    if (!existsSync(p.seed)) return 'seed missing; offline cold start is unverified';
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(p.seed, { readOnly: true });
+    try {
+      for (const [b, n] of Object.entries(cfg.data)) {
+        if (!db.prepare('SELECT 1 FROM bucket WHERE name = ? AND schema = ?').get(b, n)) {
+          throw new Error(`seed missing current pair ${b} v${n}`);
+        }
+      }
+    } finally { db.close(); }
+  });
+  await check('Flutter dependencies', () => {
+    if (!existsSync(join(host, 'pubspec.yaml'))) return 'host pubspec missing; dependency resolution not run';
+    if (!existsSync(join(host, 'pubspec.lock'))) return 'pubspec.lock missing; run flutter pub get before checking resolved dependencies';
+    const r = run(['pub', 'deps', '--json'], host);
+    if (r.error?.code === 'ENOENT') return 'Flutter unavailable; dependency resolution not checked';
+    if (r.error || r.status !== 0) throw new Error('flutter pub deps --json failed; run flutter pub get in the host');
+    const deps = JSON.parse(r.stdout).packages;
+    if (!Array.isArray(deps) || !deps.some((d) => d.name === 'valence')) throw new Error('resolved host does not depend on valence');
+    const android = deps.find((d) => d.name === 'path_provider_android');
+    if (android?.version !== '2.2.23') return `path_provider_android ${android?.version ?? 'absent'} differs from tested compatibility range >=2.2.17 <2.3.0 (expected 2.2.23) (U-7)`;
+  });
+  const matrixPath = join(root, '.valence', 'test-matrix.json');
+  let matrix = {};
+  await check('test matrix', () => {
+    if (!existsSync(matrixPath)) return 'missing .valence/test-matrix.json; §8 coverage unverified';
+    const candidate = readJson(matrixPath);
+    if (!candidate || Array.isArray(candidate) || typeof candidate !== 'object') throw new Error('test matrix must be an object');
+    if (Object.keys(candidate).some((id) => !['bridge', 'loopback', 'updater', 'store-sync', 'integration'].includes(id))) throw new Error('unknown test matrix ID');
+    matrix = candidate;
+  });
+  for (const id of ['bridge', 'loopback', 'updater', 'store-sync', 'integration']) {
+    await check(`§8 ${id}`, () => {
+      const files = matrix[id];
+      if (files === undefined) return 'no mapped app wiring/device evidence; package invariants belong to package tests';
+      if (!Array.isArray(files) || !files.length) throw new Error('mapping must be a nonempty test-file array');
+      for (const file of files) {
+        if (typeof file !== 'string' || !/^(test|integration_test)\/[A-Za-z0-9_./-]+_test\.dart$/.test(file) || file.split('/').includes('..')) throw new Error('mapping must name host-relative test files');
+        const target = realpathSync(join(host, file));
+        const rel = relative(realpathSync(host), target);
+        if (rel.startsWith('..') || resolve(host, rel) !== target) throw new Error('test mapping leaves host directory');
+      }
+      if (id === 'integration' || files.some((f) => f.startsWith('integration_test/'))) return 'mapped; requires a separate emulator/device run';
+      if (!tests) return 'mapped but not executed; pass --tests';
+      const r = run(['test', ...files], host);
+      if (r.error?.code === 'ENOENT') return 'Flutter unavailable; tests not run';
+      if (r.error || r.status !== 0) throw new Error(`flutter test failed for ${id}`);
+    });
+  }
+  return rows;
+}
+
 const HELP = `Valence CLI ${VALENCE_VERSION} (spec: references/contracts.md)
 
   valence version                        print the CLI version (doctor compares it with the skill copy)
@@ -1047,7 +1358,7 @@ const HELP = `Valence CLI ${VALENCE_VERSION} (spec: references/contracts.md)
   valence verify --manifest file --files dir
                                     --files is the content-addressed files/ directory inside the bundle, not the bundle directory
   valence seed --from dir                <bucket>.json files {schema, rows:[{k,v,u,d}]} -> host assets/valence/seed.db
-  valence doctor                         not in this CLI: run "npx create-valence@latest doctor" from the project root
+  valence doctor [--tests]               mechanical diagnostics; execute mapped unit tests with --tests
 
 Options: --root <project root> (default .)`;
 
@@ -1058,6 +1369,7 @@ export async function main(argv) {
     options: {
       root: { type: 'string', default: '.' },
       check: { type: 'boolean', default: false },
+      tests: { type: 'boolean', default: false },
       builtin: { type: 'boolean', default: false },
       store: { type: 'boolean', default: false },
       rebaseline: { type: 'boolean', default: false },
@@ -1117,7 +1429,10 @@ export async function main(argv) {
     return log({ out: r.out, counts: r.counts });
   }
   if (cmd === 'doctor') {
-    throw new Error('doctor is not in this CLI. Run "npx create-valence@latest doctor" from the project root for the static checks, or the /valence skill\'s doctor workflow for the full audit.');
+    const rows = await diagnose({ root, cfg, tests: v.tests });
+    log(rows);
+    if (rows.some(([s]) => s === 'FAIL')) process.exitCode = 1;
+    return rows;
   }
   throw new Error(`unknown command "${cmd}"\n\n${HELP}`);
 }

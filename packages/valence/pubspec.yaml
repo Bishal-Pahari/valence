@@ -31,6 +31,8 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   http: ^1.6.0
   path_provider: ^2.1.6
+  # Temporary tested compatibility pin (U-7, scout 2026-10-21). Overrides do not propagate to apps.
+  path_provider_android: ">=2.2.17 <2.3.0"
   sqflite: ^2.4.4+2
   url_launcher: ^6.3.3
   webview_flutter: ^4.14.1

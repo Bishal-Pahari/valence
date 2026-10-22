@@ -19,6 +19,7 @@ void main() {
 
   late TestKey key;
   late Directory support;
+  late Directory documents;
 
   setUpAll(() async {
     key = await TestKey.create();
@@ -28,6 +29,8 @@ void main() {
 
   setUp(() async {
     support = await Directory.systemTemp.createTemp('valence-migration');
+    // On Android these two are `files` and `app_flutter`, and 0.3's §5.1 allowed either.
+    documents = await Directory.systemTemp.createTemp('valence-migration-docs');
     ValenceStore.resetCacheForTests();
   });
 
@@ -35,8 +38,8 @@ void main() {
   ///
   /// The §5.1 schema has not changed, so this is written with raw SQL rather than through the package, to
   /// prove the package reads a file it did not create.
-  Future<void> writeLegacyDatabase(String fileName) async {
-    final db = await databaseFactoryFfi.openDatabase('${support.path}${Platform.pathSeparator}$fileName');
+  Future<void> writeLegacyDatabase(String fileName, {Directory? dir}) async {
+    final db = await databaseFactoryFfi.openDatabase('${(dir ?? support).path}${Platform.pathSeparator}$fileName');
     await db.execute(
       'CREATE TABLE kv (bucket TEXT NOT NULL, schema INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, '
       'usn INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (bucket, schema, key)) WITHOUT ROWID',
@@ -124,7 +127,7 @@ void main() {
     File('${dir.path}${Platform.pathSeparator}state.json').writeAsStringSync(jsonEncode(state));
   }
 
-  Future<Valence> openPackage({String databaseName = 'valence.db'}) => Valence.open(
+  Future<Valence> openPackage({String databaseName = 'valence.db', Directory? documentsDir}) => Valence.open(
         ValenceConfig(
           appId: 'com.example.app',
           keyring: {key.keyId: key.publicKeyBase64},
@@ -140,6 +143,7 @@ void main() {
           (_) async => http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200),
         ),
         supportDir: support,
+        documentsDir: documentsDir ?? documents,
       );
 
   group('the database carries over unchanged', () {
@@ -231,14 +235,38 @@ void main() {
     test('both schemas still count as synced, so a schema bump is not re-gated', () async {
       await writeLegacyDatabase('valence.db');
       final v = await openPackage();
-      expect(await v.store.syncedPairs(), {'plants': {1, 2}, 'shelf': {1}});
+      expect(await v.store.syncedPairs(), {
+        'plants': {1, 2},
+        'shelf': {1}
+      });
     });
 
-    test('user_version stays 1, so the package runs no migration over a 0.3 file', () async {
+    test('v1 outbox migration preserves insertion order, ids, values and deletes', () async {
+      await writeLegacyDatabase('valence.db');
+      final db = await databaseFactoryFfi.openDatabase('${support.path}/valence.db');
+      await db.update('outbox', {'id': 'z-first', 'created_at': 100}, where: 'id = ?', whereArgs: ['legacy-op-1']);
+      await db.update('outbox', {'id': 'a-second', 'created_at': 0}, where: 'id = ?', whereArgs: ['legacy-op-2']);
+      await db.close();
+      final v = await openPackage();
+      var ops = await v.store.outbox('shelf');
+      expect(ops.map((o) => o.id), ['z-first', 'a-second']);
+      expect(jsonDecode(ops.first.value!), {'note': 'mine, not yet pushed'});
+      expect(ops.last.deleted, isTrue);
+      expect(ops.last.value, isNull);
+      await v.store.put('shelf', 'p-4', 'new', opId: '0-new');
+      await v.store.db.execute('VACUUM');
+      ValenceStore.resetCacheForTests();
+      final reopened = await openPackage();
+      ops = await reopened.store.outbox('shelf');
+      expect(ops.map((o) => o.id), ['z-first', 'a-second', '0-new']);
+      expect(await reopened.store.maxUsn('plants', 2), 1500);
+    });
+
+    test('user_version upgrades to 2 without losing old outbox data', () async {
       await writeLegacyDatabase('valence.db');
       final v = await openPackage();
       final version = await v.store.db.rawQuery('PRAGMA user_version');
-      expect(version.first.values.first, 1);
+      expect(version.first.values.first, 2);
     });
   });
 
@@ -311,6 +339,128 @@ void main() {
       expect(onDisk['current'], 100);
       expect(onDisk['pending'], 150);
       expect(onDisk['installId'], 'i');
+    });
+  });
+
+  group('a 0.3 database in the documents directory is adopted', () {
+    // The failure this rules out is total, silent, user-visible data loss on upgrade: 0.3's §5.1 named no
+    // directory, so a conforming host could have used documents, and 0.4 opens appSupport. Without the
+    // move the user sees a fresh install with their rows still on disk, and `host.database` — a file name,
+    // not a path — cannot reach them.
+    String docPath(String name) => '${documents.path}${Platform.pathSeparator}$name';
+    String supportPath(String name) => '${support.path}${Platform.pathSeparator}$name';
+
+    test('every row arrives, and the write-ahead-log sidecars move with the database', () async {
+      await writeLegacyDatabase('valence.db', dir: documents);
+      // Stand-ins for a real WAL and shared-memory file. Moving the `.db` alone would discard every commit
+      // still in the log, which for a syncing app is the last sync.
+      File(docPath('valence.db-wal')).writeAsStringSync('wal-bytes');
+      File(docPath('valence.db-shm')).writeAsStringSync('shm-bytes');
+      final log = LogSpy();
+
+      final v = await Valence.open(
+        ValenceConfig(
+          appId: 'com.example.app',
+          keyring: {key.keyId: key.publicKeyBase64},
+          bridgeVersion: 1,
+          otaBase: 'https://ota.test',
+          writableBuckets: const {'shelf'},
+          dataSchemas: const {'plants': 2},
+        ),
+        log: log.call,
+        client: MockClient((_) async => http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200)),
+        supportDir: support,
+        documentsDir: documents,
+      );
+
+      expect(await v.dataGet('shelf', 'p-1'), {'note': 'synced'});
+      expect(await v.dataGet('plants', 'fern'), {'name': 'Fern', 'gen': 'new'});
+      expect(await v.pendingWrites(), 2, reason: 'the outbox came too, so unsent writes are not lost');
+      expect(await v.store.maxUsn('plants', 2), 1500, reason: 'the cursor came too, so nothing re-pulls from zero');
+      expect(File(supportPath('valence.db-wal')).existsSync(), isTrue);
+      expect(File(supportPath('valence.db-shm')).existsSync(), isTrue);
+      expect(File(docPath('valence.db')).existsSync(), isFalse, reason: 'moved, not copied');
+      expect(log.lines.join('\n'), contains('moved the 0.3 database'),
+          reason: 'an operator reading the log can tell this happened');
+    });
+
+    test('it respects the configured file name', () async {
+      await writeLegacyDatabase('fieldnote.db', dir: documents);
+      final v = await openPackage(databaseName: 'fieldnote.db');
+      expect(await v.dataGet('shelf', 'p-1'), {'note': 'synced'});
+      expect(File(supportPath('fieldnote.db')).existsSync(), isTrue);
+    });
+
+    test('an existing appSupport database wins, and the legacy file is left untouched', () async {
+      // Two databases means the app has already run on 0.4. Overwriting the live one with a stale copy
+      // would be the same data loss in the other direction, so the move does not happen at all.
+      await writeLegacyDatabase('valence.db');
+      await writeLegacyDatabase('valence.db', dir: documents);
+      final stale = File(docPath('valence.db')).lengthSync();
+
+      final v = await openPackage();
+      expect(await v.dataGet('shelf', 'p-1'), {'note': 'synced'});
+      expect(File(docPath('valence.db')).existsSync(), isTrue, reason: 'nothing was moved or deleted');
+      expect(File(docPath('valence.db')).lengthSync(), stale);
+    });
+
+    test('the second launch is a no-op and logs nothing about moving', () async {
+      await writeLegacyDatabase('valence.db', dir: documents);
+      await openPackage();
+      ValenceStore.resetCacheForTests();
+      final log = LogSpy();
+      final again = await Valence.open(
+        ValenceConfig(
+          appId: 'com.example.app',
+          keyring: {key.keyId: key.publicKeyBase64},
+          bridgeVersion: 1,
+          otaBase: 'https://ota.test',
+          writableBuckets: const {'shelf'},
+          dataSchemas: const {'plants': 2},
+        ),
+        log: log.call,
+        client: MockClient((_) async => http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200)),
+        supportDir: support,
+        documentsDir: documents,
+      );
+      expect(await again.dataGet('shelf', 'p-1'), {'note': 'synced'});
+      expect(log.lines.join('\n'), isNot(contains('moved the 0.3 database')));
+    });
+
+    test('a fresh install with no legacy database anywhere just starts empty', () async {
+      final v = await openPackage();
+      expect(await v.dataGet('shelf', 'p-1'), isNull);
+      expect(await v.pendingWrites(), 0);
+    });
+
+    test('a move that cannot finish fails the launch instead of starting empty', () async {
+      // The trap this rules out, and it is the data loss the whole adoption exists to prevent: if a
+      // part-way failure fell through to the open, an **empty** database would be created at the
+      // destination — and the next launch would find it there, skip the adoption, and never see the
+      // user's rows again. Silently, for ever. The 0.3 copy is intact, so failing loudly is recoverable.
+      await writeLegacyDatabase('valence.db', dir: documents);
+      // A directory where the `.db` has to go makes its rename fail while the sidecars succeed.
+      File(docPath('valence.db-wal')).writeAsStringSync('wal-bytes');
+      Directory(supportPath('valence.db')).createSync(recursive: true);
+      File('${supportPath('valence.db')}${Platform.pathSeparator}in-the-way').writeAsStringSync('x');
+
+      await expectLater(openPackage(), throwsA(isA<FileSystemException>()));
+      expect(File(docPath('valence.db')).existsSync(), isTrue, reason: 'the 0.3 database is still readable');
+
+      // And the next launch resumes the move from where it stopped, rather than being stuck.
+      Directory(supportPath('valence.db')).deleteSync(recursive: true);
+      ValenceStore.resetCacheForTests();
+      final v = await openPackage();
+      expect(await v.dataGet('shelf', 'p-1'), {'note': 'synced'});
+      expect(File(supportPath('valence.db-wal')).existsSync(), isTrue, reason: 'the sidecar moved in the first attempt');
+    });
+
+    test('nothing is moved when both directories are the same place', () async {
+      // path_provider can return one directory for both on some platforms. The guard keeps the adoption
+      // from renaming the live database onto itself.
+      await writeLegacyDatabase('valence.db');
+      final v = await openPackage(documentsDir: support);
+      expect(await v.dataGet('shelf', 'p-1'), {'note': 'synced'});
     });
   });
 
