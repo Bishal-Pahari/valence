@@ -34,6 +34,16 @@ from the platform and a page in the host cannot.
   `rejected` means a published release is unservable on every device and is worth an alert of your own;
   `waitingForData` is a healthy state that can last for days on an offline device, and is the one four
   hosts mistook for "no update".
+- **`has()` now answers for events too, not only methods.** `on()` for an event an older host has never
+  heard of subscribes happily and then never fires: nothing throws, nothing logs, and the feature behind
+  the listener quietly stops happening. Gate the *feature*, not the subscription. On the web `has()` is
+  false for every event, since there is no host to emit one, so one branch covers both an old host and
+  the website build. **What you must do:** regenerate — `bridge.g.ts` now passes `EVENT_SINCE` to
+  `createBridge` alongside `METHOD_SINCE`. If you call `createBridge` by hand, its second argument is
+  the event table and defaults to empty.
+- **`data.list`'s `after` cursor advances past an empty first key.** `''` is a valid key — `data.put`
+  refuses only `.` and `..` — and the host was reading `after: ''` as "no cursor", so a bucket whose
+  first key was empty returned that same row on every page and could never be read completely.
 
 **What you have to change in your own host:** nothing, if you leave the schema alone. To take the five,
 add them to `bridge.schema.json` with `since: 6`, raise `version` to 6 and regenerate — the `valence`
@@ -233,8 +243,12 @@ store release, because `lib/` changed.
   an explicit `limit`. **`has('data.list')` cannot gate `after`** — it is a new
   *parameter* on a method that has existed since version 1, so it is true on a
   host that will reject the unknown field with `E_PARAMS`. Gate on
-  `has('data.count')`, which ships in the same version, or on
-  `app.info().bridge >= 5`.
+  `has('data.count')`, the sibling method that ships in the same version.
+  **Not on `app.info().bridge >= 5`:** that field is your app's *own* schema
+  `version`, which you number yourself, so it is already above 5 in any app
+  that has added five methods of its own — and the comparison is then true on
+  exactly the hosts that reject the param. A grown param's only honest gate is
+  a sibling method or event at the same version.
 - **A built-in can now grow an optional *param*,** not just an optional returned
   field. Before this, a built-in's params were compared literally, so adding one
   would have failed the next `codegen` in every existing app — and `--rebaseline`,

@@ -168,7 +168,9 @@ worked. `app.state()` returns both, for a page that mounted after the transition
 the whole `SyncResult` after every run the host made on its own, `changed: 0` included — which
 `sync.changed` never could, and most runs move nothing. `bundle.status()` names why the last update
 check stopped, from a closed set of eleven: `rejected` means a release no device will take, and
-`waitingForData` is the healthy stall four hosts read as "no update".
+`waitingForData` is the healthy stall four hosts read as "no update". Drive it from
+`bundle.updateReady`, which fires for **every** pending bundle rather than only an `--urgent` one —
+polling on resume races the check, so a page otherwise hears about an update one resume late.
 [Full guide](https://getvalence.pages.dev/docs/guides/lifecycle/).
 
 ### Reading a bucket bigger than 500 rows
@@ -178,8 +180,10 @@ the last key of the previous page and resumes strictly after it — a complete r
 it a bucket past the clamp had none, and a truncated list is indistinguishable from a short one: a stored
 key outside the first page reads as a key the device has never held. `data.count` reports how many live
 rows a bucket holds without reading any of them. Both are version 5; `after` is a new *param* on a
-since-1 method, so gate it on `has("data.count")` or `app.info().bridge >= 5` rather than
-`has("data.list")`. A built-in may now grow an optional param the same way it may grow an optional
+since-1 method, so gate it on `has("data.count")`, the sibling that ships with it, rather than on
+`has("data.list")`. Not on `app.info().bridge >= 5` either: that is the app's **own** schema version,
+so it is already above 5 in any app that has added five methods of its own, and the comparison is true
+on the very hosts that reject the param. A built-in may now grow an optional param the same way it may grow an optional
 returned field, additive against a recorded store baseline.
 
 The database lives at `<applicationSupportDirectory>/<databaseName>`; `host.database` names the file and

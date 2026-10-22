@@ -51,7 +51,12 @@ function browser(): void {
 
 const reply = (r: unknown) => (globalThis as any).window.__valence.r(r);
 const emit = (name: string, payload: unknown) => (globalThis as any).window.__valence.e(name, payload);
-const bridge = () => createBridge<Methods, Events>(SINCE);
+const EVENT_SINCE = {
+  'sync.changed': 1,
+  'app.resumed': 4,
+} as const;
+
+const bridge = () => createBridge<Methods, Events>(SINCE, EVENT_SINCE);
 
 test('appearance snapshots reach typed listeners and can be unsubscribed', () => {
   host();
@@ -170,6 +175,31 @@ test('connect reads the host bridge version and has() gates newer methods', asyn
     assert.equal(e.code, 'E_UNSUPPORTED');
     return true;
   });
+});
+
+test('has() gates events as well as methods, so a feature behind one can be gated', async () => {
+  // `on()` for an event the host never emits subscribes and then silently never fires. That is fine for
+  // the listener and not fine for the feature behind it — a page writing a home-screen widget on the way
+  // out needs to know the host cannot tell it when that is, so it can keep doing something else.
+  const { sent } = host();
+  const v = bridge();
+  assert.equal(v.has('sync.changed'), false, 'false before connect(), like a method');
+  const c = v.connect();
+  reply({ id: sent[0]!.id, ok: true, v: { bridge: 3 } });
+  await c;
+  assert.equal(v.has('sync.changed'), true);
+  assert.equal(v.has('app.resumed'), false, 'since 4 on a bridge-3 host');
+  // An unknown name is false, not a throw: has() is the thing you ask about names you may not have.
+  assert.equal(v.has('nope.nothing' as 'sync.changed'), false);
+});
+
+test('on the web has() is false for every event, because no host is there to emit one', async () => {
+  browser();
+  const v = bridge();
+  v.installShim({ 'data.get': async () => null });
+  await v.connect();
+  assert.equal(v.has('data.get'), true, 'the shim implements it');
+  assert.equal(v.has('sync.changed'), false);
 });
 
 test('a method at exactly the host bridge version is allowed', async () => {

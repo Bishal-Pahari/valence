@@ -24,8 +24,18 @@ on('app.online', ({ online }) => setBanner(!online));           // interface sta
 await ready();                                    // on every path that paints, once per page load
 ```
 
-`connect()` asks the host which bridge version it has, so `has()` can tell you whether a method added in a
-later release is available on *this* install. That is what lets one OTA bundle serve old and new hosts.
+`connect()` asks the host which bridge version it has, so `has()` can tell you whether a method **or an
+event** added in a later release is available on *this* install. That is what lets one OTA bundle serve old
+and new hosts.
+
+Gate the *feature* behind an event rather than the subscription: `on()` for an event an older host has
+never heard of subscribes and then never fires, so the feature quietly stops happening with nothing to
+say so.
+
+```ts
+if (has('app.lifecycle')) on('app.lifecycle', ({ state }) => state === 'background' && saveDraft());
+else window.addEventListener('beforeunload', saveDraft);
+```
 
 ## Running as a website
 
@@ -52,7 +62,7 @@ if (!inHost()) {
 | Export | What it does |
 |---|---|
 | `call(method, params?)` | Sends one message and resolves its reply. `params` is required whenever any field is required. Rejects with `BridgeError`. |
-| `has(method)` | True when this host (or, on the web, your shim) can serve the method. Call `connect()` first. |
+| `has(name)` | True when this host can serve that method **or emit that event**. Call `connect()` first. On the web: true for a method your shim implements, false for every event, since no host is there to emit one. Unknown names are `false`, not a throw. |
 | `on(event, fn)` | Subscribes. Returns an unsubscribe that returns **void**, so it is a valid React `useEffect` cleanup. |
 | `ready()` | Tells the host this page is on screen. This is what commits a trial bundle — without it every OTA release rolls back. Call it once per page load, from **every path that paints**: a first-run gate, an empty state and an error screen all paint without a data load finishing. |
 | `connect()` | Reads the host's bridge version. Call once at startup. |
@@ -60,7 +70,7 @@ if (!inHost()) {
 | `inHost()` | True inside the Valence host, false in a normal browser. |
 | `BridgeError` | `code` is one of `E_UNKNOWN`, `E_PARAMS`, `E_UNSUPPORTED`, `E_DENIED`, `E_CANCELLED`, `E_TOO_LARGE`, `E_INTERNAL`. |
 | `MAX_MESSAGE_BYTES` | 262144. The per-message cap, in UTF-8 bytes. |
-| `createBridge(methodSince)` | Binds a generated method table to the runtime. `valence codegen` emits the only call you need. |
+| `createBridge(methodSince, eventSince?)` | Binds the generated tables to the runtime. `valence codegen` emits the only call you need. |
 
 ## Two things that bite
 

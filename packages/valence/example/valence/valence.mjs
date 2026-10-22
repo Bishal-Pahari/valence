@@ -800,14 +800,15 @@ export function assertAdditive(shipped, current) {
       // optional params the runtime declared may appear. Without it the additive guard refuses the upgrade
       // §4.3 tells an adopter to make, and --rebaseline — which overwrites the schema the stores reviewed —
       // would be the only way through.
-      // A grown param must come with a version bump, because a param has no `since` of its own: the schema
-      // version is the only thing that tells a page whether this host understands it. Without this, an app
-      // could add `data.list.after` at the shipped version, leaving `app.info().bridge` and `has()` — the
-      // two gates §4.2 names — unable to distinguish it from the store build that answers `E_PARAMS`.
+      // A grown param must come with a version bump, because a param has no `since` of its own: the only
+      // signal a page can read is a *sibling* method or event that arrived in the same version, and a
+      // sibling needs a version to arrive at. Without this, an app could add `data.list.after` at the
+      // shipped version, leaving has() unable to distinguish this host from the store build that answers
+      // `E_PARAMS`. Note app.info().bridge is no help: it is this app's own schema version (§4.2).
       if (kind === 'methods' && isBuiltinParamGrowth(def, current.methods[name], BUILTINS[name]?.optionalParams)) {
         if (current.version > shipped.version) continue;
         throw new Error(
-          `"${name}" gained the param ${Object.keys(current.methods[name].params ?? {}).filter((p) => !Object.hasOwn(def.params ?? {}, p)).map((p) => `"${p}"`).join(', ')}, which needs "version" above the shipped ${shipped.version}. A param has no "since", so the schema version is the only thing has() and app.info().bridge can gate on.`,
+          `"${name}" gained the param ${Object.keys(current.methods[name].params ?? {}).filter((p) => !Object.hasOwn(def.params ?? {}, p)).map((p) => `"${p}"`).join(', ')}, which needs "version" above the shipped ${shipped.version}. A param has no "since", so a page can only gate it on a sibling method or event at the new version — has("data.count") for data.list's "after".`,
         );
       }
       throw new Error(`${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
@@ -864,11 +865,12 @@ export function genTs(s) {
   o.push('/**');
   o.push(' * This app\'s typed bridge.');
   o.push(' *');
-  o.push(' * `connect()` once at startup, then `has()` tells you whether a method added in a later release');
-  o.push(' * exists on *this* host. `ready()` after the first meaningful paint is what commits an OTA bundle.');
+  o.push(' * `connect()` once at startup, then `has()` tells you whether a method or event added in a later');
+  o.push(' * release exists on *this* host. `ready()` after the first meaningful paint commits an OTA bundle.');
   o.push(' */');
   o.push('export const { call, has, on, ready, connect, installShim } = createBridge<Methods, Events>(');
   o.push('  METHOD_SINCE,');
+  o.push('  EVENT_SINCE,');
   o.push(');', '');
   return o.join('\n');
 }

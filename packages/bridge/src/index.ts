@@ -119,8 +119,19 @@ function rawCall(m: string, params: object, since: number | undefined): Promise<
 /** The typed surface `valence codegen` re-exports from bridge.g.ts. */
 export interface Bridge<M, E> {
   call<K extends keyof M & string>(m: K, ...args: Args<M, K>): Promise<Returns<M, K>>;
-  /** True when the host (or, on the web, the shim) can serve this method. Call connect() first. */
-  has(m: keyof M & string): boolean;
+  /**
+   * True when the host can serve this method, or emit this event. Call connect() first.
+   *
+   * **Events are gateable too.** `on()` for an event the host has never heard of subscribes happily and
+   * then never fires, which is harmless for a listener and not harmless for the feature behind it — so
+   * gate the feature, not the subscription. On the web `has()` is true for a method the shim implements
+   * and false for every event, because no host is there to emit one.
+   *
+   * It gates *names*. A param added to a method that already existed has no `since` of its own, so
+   * `has('data.list')` cannot tell you whether this host accepts `after`; gate that on the sibling name
+   * that shipped in the same version (`has('data.count')`).
+   */
+  has(m: (keyof M | keyof E) & string): boolean;
   /** Subscribe to a host event. The returned unsubscribe is void, so it is a valid React effect cleanup. */
   on<K extends keyof E & string>(e: K, fn: (payload: E[K]) => void): () => void;
   /**
@@ -140,14 +151,26 @@ export interface Bridge<M, E> {
  * Binds the generated method table to the runtime. `valence codegen` emits the one call an app needs;
  * app code imports the result from bridge.g.ts and never calls this itself.
  */
-export function createBridge<M, E>(methodSince: { readonly [K in keyof M]: number }): Bridge<M, E> {
+export function createBridge<M, E>(
+  methodSince: { readonly [K in keyof M]: number },
+  eventSince: { readonly [K in keyof E]: number } = {} as { readonly [K in keyof E]: number },
+): Bridge<M, E> {
   installTransport();
   return {
     call: ((m: string, params: object = {}) => rawCall(m, params, methodSince[m as keyof M])) as Bridge<
       M,
       E
     >['call'],
-    has: (m) => (inHost() ? hostBridge !== undefined && methodSince[m] <= hostBridge : m in shim),
+    // Methods and events in one table, because `has()` answers one question — can this host do this
+    // name — and a caller should not have to know which kind a name is to ask it. An unknown name is
+    // false rather than a throw: `has()` exists to be asked about names this host may not have.
+    // On the web, a method is whatever the shim implements and an event is nothing: no host, no events.
+    has: (m) => {
+      if (!inHost()) return m in shim;
+      const since = (methodSince as Record<string, number | undefined>)[m] ??
+        (eventSince as Record<string, number | undefined>)[m];
+      return hostBridge !== undefined && since !== undefined && since <= hostBridge;
+    },
     on(e, fn) {
       const set = listeners.get(e) ?? new Set();
       set.add(fn as (payload: never) => void);
