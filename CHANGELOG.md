@@ -22,6 +22,10 @@ replaced far more often than a user changes and the host could not tell the two 
 - **Nothing changes for an app that does not pass `account`.** Sign-out keeps the 0.3 behaviour exactly
   (the token goes, the rows stay), and the first call that names an id when none is recorded *adopts* it
   and clears nothing — otherwise upgrading would wipe the data of the user holding the phone.
+- **`null` is the sign-out; an empty string is not.** `auth.setToken('')` clears the token and no data,
+  exactly as before. And check your `auth.expired` handler before you adopt `account`: if it signs the
+  user out, that call becomes a wipe of the user who is about to log straight back in. Refresh the
+  token instead, which is what the 401 rule has always asked for.
 - **Gate the params on `has('auth.account')`,** never on `app.info().bridge`. They are params, so they
   have no `since` of their own, and an older host rejects them with `E_PARAMS`. `valence codegen` refuses
   to emit them without `auth.account` declared beside them.

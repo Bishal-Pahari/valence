@@ -60,7 +60,24 @@ final class ValenceSecure {
       write(secureAuthTokenKey, token == null || token.isEmpty ? null : token);
 
   /// The account id recorded beside the token, or null when the app has never named one (§4.4).
-  Future<String?> authAccount() => read(secureAuthAccountKey);
+  ///
+  /// This one read is **not** allowed to fail open. Everywhere else an unreachable platform reads as
+  /// absent, because the alternative is failing a sync over a bucket that was never authenticated. Here
+  /// "absent" is the answer that means *no account has ever been recorded*, and that answer turns the
+  /// next sign-in into an adoption: user B's token stored over user A's rows and A's outbox, silently,
+  /// on exactly the devices whose Keystore is in a bad state. So a failure is an error.
+  Future<String?> authAccount() async {
+    try {
+      return await _storage.read(key: secureAuthAccountKey);
+    } on Object catch (e) {
+      _log('secure: could not read the recorded account ($e); refusing to treat it as absent');
+      throw BridgeError(
+        BridgeErrorCode.internal,
+        'secure storage could not be read, so the host cannot tell whether this is the same account; '
+        'nothing was changed',
+      );
+    }
+  }
 
   /// Records the account id, or clears it. Host-side only; the page reaches it through `auth.setToken`.
   Future<void> setAuthAccount(String? account) =>
