@@ -1,3 +1,63 @@
+# R8 account-switch security refresh - 2026-10-23
+
+## In plain terms
+
+R8 now includes packages at 2716d462aaa2187150b31fcd70daeaff52813a05 and
+site packages at f59fbc1568c895d4cd35d385733175397beeef6a. Both worktrees
+remain on codex/r8. The account-switch clear and token write stay under the
+same sync lease, failed account reads refuse the change, empty-string token
+refreshes preserve rows, and sync observations reset with the writable rows.
+R8's owning-view appearance and text scaling remain intact.
+
+Decision: security and users' data take precedence over lowering the combined
+schema to the queue's reserved 7. Keep upstream schema version 13 and
+auth.account since 13; keep R8 app.appearance since 7. A version-7 schema
+cannot contain a since-13 method. Do not remove or renumber that upstream
+surface. This explicitly departs from the queue's requested schema number.
+As before, these are integration candidates: do not publish a schema-13 host
+until all reserved surfaces are integrated, and do not send appearance
+metadata to an older internal schema-13 host that lacks it.
+
+Conflicts: retain the appearance-test imports alongside incoming tests;
+remove dart:typed_data after analysis identifies it as redundant with the
+new flutter/services.dart import. Rebuild the signed example from the merged
+web page, preserving the shared storeSchema version 1, storeSeq 1792215625,
+storeRoutes and floor. Only lastSeq advances to 1792706013. No store baseline
+or package version was changed. The example includes the corrected auth
+pane's has() gate and R8's layout probe.
+
+Input evidence: both apps' VALENCE_FINDINGS.md; Kundalini iteration 11
+(2026-10-23) and app-a iteration 8 (2026-10-22). Findings about paging,
+capability gates, update notifications, insets and retained auth warnings
+inform review; app reports are not fresh framework device verification.
+Both test-app repositories were read only.
+
+## Fresh gates
+
+- Root npm test: 67 passed, zero failed/skipped; generated Dart was analyzed
+  and exercised against Flutter, and generated TypeScript passed strict
+  checking with verbatimModuleSyntax.
+- Runtime flutter test: 404 passed; final dart analyze --fatal-infos .:
+  no issues. The initial analyzer run caught the redundant import above.
+- Bridge: 22 passed; strict TypeScript, build and npm pack --dry-run passed.
+- Example: 17 passed; codegen --check wrote nothing; built-in verification
+  passed at seq 1792706013, one file; debug APK built successfully.
+- Flutter pub publish --dry-run: zero warnings.
+- Site npm run build: 29 pages; SEO/link/anchor checks passed.
+- Independent security review: no remaining confirmed findings after the
+  import correction; 167 focused appearance/runtime/updater tests and 10
+  CLI shape/additive/account/fontScale tests passed, plus clean analysis,
+  zero-write codegen, signed verification and git diff --check.
+
+Implementation commits: 84b9fc6 (merge and rebuilt signed example), ab16280
+(import correction); site merge dfc65a6. Earlier records below are historical.
+No new emulator run; TalkBack and true split-screen remain unverified, and
+iOS remains experimental and untested. Exactly one queue item refreshed.
+No test-app writes, package-version changes, pushes, publications or merges
+into shared branches.
+
+---
+
 # R8 account-switch queue refresh - 2026-10-23
 
 ## In plain terms
