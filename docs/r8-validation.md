@@ -1,3 +1,48 @@
+# R8 merge refresh - 2026-10-22
+
+## In plain terms
+
+The R8 branch now includes the latest lifecycle, update-status, paging and database-safety
+changes from packages at c55446f3d73afec7672c2615b0ffe70f1a6a074d. Appearance is reserved at
+bridge schema 7 (event since 7); version-5 paging and version-6 lifecycle remain intact.
+The site branch includes its packages base 5a23a4eaf3dc1fdacfb1f961dadbd33b5ed1d390;
+its refreshed docs commit is 75c3971. Package merge commit: 2b77b9c.
+
+Decision: retain the startup guard before resume update/sync work while allowing a scheduled
+appearance refresh. Security/state-transition ordering takes priority over appearance delivery.
+Keep optional AppInfo.fontScale for source compatibility with old generated schemas. Preserve
+example custom methods; regenerate both clients and sign a new built-in rather than resolving
+conflicting generated output by choosing one side. The new built-in is seq 1792638425,
+requires bridge 7, and signature/file verification passes. Adaptive layout now occupies
+contracts section 4.7; lifecycle remains section 4.6.
+
+Fresh input: both apps' VALENCE_FINDINGS.md, Kundalini ITERATION_10_REPORT.md and app-a
+ITERATION_7_REPORT.md. App-a's system-bar overlap informs this feature; delayed label painting
+is not established as an inset bug. Test-app repositories were read only.
+
+## Fresh gates
+
+- Root npm test: 60 passed, 0 failed, 0 skipped; generated Dart compiled/analyzed/executed
+  against a real Flutter toolchain and generated TypeScript passed strict checking.
+- Runtime flutter test: 384 passed; dart analyze --fatal-infos .: no issues.
+- Bridge: 19 tests passed, strict TypeScript passed, npm pack --dry-run passed.
+- Example: 17 tests passed; codegen --check wrote nothing; built-in verification passed.
+- Site final npm run build: 27 pages, SEO/link checks passed.
+- Example flutter build apk --debug: passed (assembleDebug 249.4 seconds).
+- Flutter pub publish --dry-run: 0 warnings.
+
+Independent valence-reviewer pass found no confirmed security/specification defects. It checked
+schema/delegations, owning-view metrics, JSON-only publication, nonce/navigation/CSP retention,
+resume startup integration, example and docs. It independently passed the optional-field
+regression and the example codegen check.
+
+No new emulator run was attempted for this merge refresh (optional for the rebase queue).
+The device observations below are historical 2026-10-21 evidence on bridge 5, not a claim
+that the combined schema-7 build was device-tested. TalkBack and true split-screen remain
+unverified; iOS remains experimental and untested. No package versions changed.
+
+---
+
 # R8 validation — 2026-10-21
 
 ## In plain terms
