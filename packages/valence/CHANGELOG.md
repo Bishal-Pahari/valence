@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased: image sharing
+
+`Valence.shareImage` backs schema-14 `share.image` with capped base64 input or a
+re-verified active signed bundle image, filename and caption validation, and native
+PNG/JPEG sharing through `share_plus`. Selection is not proof of delivery.
+iOS remains experimental and untested. Add the method through codegen and a store
+build; existing custom pre-14 declarations retain their own handlers.
+
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
 ## Unreleased - native HTTP and REST adapter

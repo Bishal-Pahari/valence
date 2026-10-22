@@ -1,17 +1,17 @@
 {
   "format": 1,
   "appId": "com.getvalence.example",
-  "seq": 1792621793,
-  "version": "2026-10-21+1792621793",
+  "seq": 1792678089,
+  "version": "2026-10-22+1792678089",
   "floor": 0,
   "requires": {
-    "bridge": 6,
+    "bridge": 14,
     "data": {
       "plants": 1
     }
   },
   "entry": "index.html",
-  "csp": "default-src 'self'; script-src 'self' 'sha256-PKvupV62Zlvzmx5w7Gk6T70jME6MU9SmrO7HXQqR1fM='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://sync.example.invalid; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
+  "csp": "default-src 'self'; script-src 'self' 'sha256-gJpSmiv7NwXBmt3LkrAPUq7uJXg4MbhW2GQ6wsYZnGc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://sync.example.invalid; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
   "urgent": false,
   "routes": [
     "/",
@@ -19,10 +19,14 @@
   ],
   "files": {
     "index.html": {
-      "h": "28a5426a6b22c306a67a46a484ddfde31914888418df46c9d752d173410a0ea5",
-      "n": 10086
+      "h": "ec209c3314e8932e7d6f42e325c0a4a8102fd93287792acb2554643e20f83efd",
+      "n": 11071
+    },
+    "share.png": {
+      "h": "dae77b1f264e572c86c9714db5bc07f2002afd4f5d54b8e1f4d43239d2d6aff3",
+      "n": 1152
     }
   },
-  "createdAt": "2026-10-21T22:29:53.141Z",
+  "createdAt": "2026-10-22T14:08:09.195Z",
   "keyId": "k1"
 }

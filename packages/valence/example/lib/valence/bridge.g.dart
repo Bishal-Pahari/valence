@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 6;
+const hostBridgeVersion = 14;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale});
@@ -340,6 +340,23 @@ final class DataCountParams {
   Map<String, Object?> toJson() => {'bucket': bucket, 'prefix': prefix};
 }
 
+final class ShareImageParams {
+  const ShareImageParams({this.bytes, this.path, this.fileName, this.caption});
+
+  factory ShareImageParams.fromJson(Object? j, [String f = 'ShareImageParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'bytes', 'path', 'fileName', 'caption'}, f);
+    return ShareImageParams(bytes: m['bytes'] == null ? null : decodeString(m['bytes'], '$f.bytes'), path: m['path'] == null ? null : decodeString(m['path'], '$f.path'), fileName: m['fileName'] == null ? null : decodeString(m['fileName'], '$f.fileName'), caption: m['caption'] == null ? null : decodeString(m['caption'], '$f.caption'));
+  }
+
+  final String? bytes;
+  final String? path;
+  final String? fileName;
+  final String? caption;
+
+  Map<String, Object?> toJson() => {'bytes': bytes, 'path': path, 'fileName': fileName, 'caption': caption};
+}
+
 abstract interface class BridgeHandlers {
   Future<void> appReady();
   Future<AppInfo> appInfo();
@@ -363,6 +380,7 @@ abstract interface class BridgeHandlers {
   Future<AppState> appState();
   Future<BundleStatus> bundleStatus();
   Future<int> dataCount(DataCountParams p);
+  Future<String> shareImage(ShareImageParams p);
 }
 
 /// Opt-in defaults for test doubles or partial hosts. Production hosts extend ValenceBuiltins.
@@ -411,6 +429,8 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<BundleStatus> bundleStatus() async => throw const BridgeError('E_UNSUPPORTED', 'bundle.status is not implemented');
   @override
   Future<int> dataCount(DataCountParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.count is not implemented');
+  @override
+  Future<String> shareImage(ShareImageParams p) async => throw const BridgeError('E_UNSUPPORTED', 'share.image is not implemented');
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
@@ -502,6 +522,9 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         return replyOk(id, r.toJson());
       case 'data.count':
         final r = await h.dataCount(DataCountParams.fromJson(p, 'p'));
+        return replyOk(id, r);
+      case 'share.image':
+        final r = await h.shareImage(ShareImageParams.fromJson(p, 'p'));
         return replyOk(id, r);
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
@@ -655,5 +678,10 @@ abstract class ValenceBuiltins {
   /// `data.count`, from the package.
   Future<int> dataCount(DataCountParams p) async {
     return valence.dataCount(p.bucket, prefix: p.prefix);
+  }
+
+  /// `share.image`, from the package.
+  Future<String> shareImage(ShareImageParams p) async {
+    return valence.shareImage(bytes: p.bytes, path: p.path, fileName: p.fileName, caption: p.caption);
   }
 }

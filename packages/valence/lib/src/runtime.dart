@@ -9,6 +9,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'config.dart';
+import 'image_share.dart';
 import 'log.dart';
 import 'manifest.dart';
 import 'native_http.dart';
@@ -562,6 +563,12 @@ final class Valence {
         onUnauthorized: () =>
             emit(eventScript('auth.expired', const <String, Object?>{})),
       ).request(url: url, method: method, headers: headers, body: body);
+
+  late final _imageShare = ValenceImageShare(manifest: () => manifest, casDir: updater.casDir);
+
+  /// `share.image`: bounded PNG/JPEG bytes or an active signed bundle path (§4.7).
+  Future<String> shareImage({String? bytes, String? path, String? fileName, String? caption}) =>
+      _imageShare.share(bytes: bytes, path: path, fileName: fileName, caption: caption);
 
   /// `open.external`. Only `https:`, `mailto:` and `tel:` leave the app.
   Future<void> openExternal(String url) async {

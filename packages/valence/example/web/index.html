@@ -69,6 +69,14 @@
       <pre id="http-result"></pre>
     </section>
 
+    <section>
+      <h2>Share an image</h2>
+      <p>Share a PNG from the signed bundle or a small inline image, with a caption.</p>
+      <button id="share-bundle">Share bundle image</button>
+      <button id="share-inline">Share inline image</button>
+      <pre id="share-result"></pre>
+    </section>
+
     <!--
       A real app imports @getvalence/bridge through the generated web/lib/bridge.g.ts. This example talks
       to the wire protocol directly, so it needs no bundler and `valence bundle` can sign the folder as is
@@ -224,6 +232,16 @@
           } catch (e) {
             document.getElementById('http-result').textContent = String(e);
           }
+        });
+      }
+
+      for (const id of ['share-bundle', 'share-inline']) {
+        document.getElementById(id).addEventListener('click', async () => {
+          try {
+            const source = id === 'share-bundle' ? { path: 'share.png' } : { bytes: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=' };
+            const result = await call('share.image', { ...source, fileName: 'valence.png', caption: 'Valence image sharing' });
+            document.getElementById('share-result').textContent = result + ' (selection is not delivery)';
+          } catch (e) { document.getElementById('share-result').textContent = String(e); }
         });
       }
 

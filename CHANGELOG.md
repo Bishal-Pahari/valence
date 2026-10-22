@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased: image sharing
+
+Schema-14 `share.image` shares a PNG/JPEG with a caption from capped inline bytes
+or the active signed bundle. Regenerate and ship a store build to add it; use
+`has()` on older hosts. Existing custom methods declared before schema 14 keep
+their signature and handlers. Results describe native selection, not delivery.
+The iOS path is experimental and untested. Package versions are unchanged.
+
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
 ## Unreleased: lifecycle, connectivity and update status

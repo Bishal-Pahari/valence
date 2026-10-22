@@ -284,7 +284,7 @@ For batch reads, use `data.getMany` (since 3, max 500 keys). Read outbox depth f
 | flutter_secure_storage | 11.2.0 (2026-09-16) | The bearer token and `secure.*` (§4.4), inside the `valence` package. **v11 wraps an AES-GCM record with a Keystore key instead of the deprecated `EncryptedSharedPreferences`**, and needs `minSdk 23`. `resetOnError` is on, so an undecryptable record is dropped rather than thrown — treat every read as "may be absent" (resolved 2026-10-21) |
 | workmanager | 0.10.10 (2026-09-07) | Background sync; best effort on iOS. **The app's dependency, not the package's** — `valence` gives you `Valence.backgroundSync(config)` and deliberately does not depend on `workmanager`. **Applies the Kotlin Gradle Plugin, and every Android build warns that future Flutter versions will refuse to build plugins that do** (observed 2026-10-17). Still current; re-check by 2026-12. If it becomes unbuildable, drive `WorkManager` and `BGTaskScheduler` through a platform channel — §5.6 specifies the triggers, not the package |
 | home_widget | 0.10.0 (2026-09-17) | Optional native value (§6) |
-| the other §6 packages | **not pinned here** | `share_plus`, `flutter_local_notifications` and `local_auth` are named in contracts §6 with the native setup each needs, but no version in this table has been verified against a primary source. Resolve them with the docs-scout before relying on an API. Observed 2026-10-17: `connectivity_plus 7.3.2` and `flutter_local_notifications 19.x` **cannot resolve together** (`dbus ^0.8.0` vs `^0.7.8`, both through Linux-only transitive deps); pin `connectivity_plus: ^7.3.1` in a host that has both. Resolve the §6 packages as a set, not one at a time |
+| the other §6 packages | **not pinned here** | `flutter_local_notifications` and `local_auth` are named in contracts §6 with the native setup each needs, but no version in this table has been verified against a primary source. Resolve them with the docs-scout before relying on an API. Observed 2026-10-17: `connectivity_plus 7.3.2` and `flutter_local_notifications 19.x` **cannot resolve together** (`dbus ^0.8.0` vs `^0.7.8`, both through Linux-only transitive deps); pin `connectivity_plus: ^7.3.1` in a host that has both. Resolve the §6 packages as a set, not one at a time |
 | path_provider_android | >=2.2.17 <2.3.0 (temporary compatibility range, checked 2026-10-21) | Ordinary dependency inside `valence`, propagates to adopters. App-b device-tested this pin. Latest 2.3.1 (2026-04-08) switched to JNI in 2.3.0; 2.2.23 is the last pre-JNI release. Flutter 3.44.2 does support native assets; the missing-library cause remains unverified. Re-check before removing the pin. Sources: https://pub.dev/api/packages/path_provider_android and https://raw.githubusercontent.com/flutter/packages/main/packages/path_provider/path_provider_android/CHANGELOG.md; scout checked Flutter revision c9a6c48423. |
 | path_provider / url_launcher / connectivity_plus / http | 2.1.6 / 6.3.3 / 7.3.2 / 1.6.0 | |
 | @sveltejs/kit / adapter-static | 3.1.0 / 4.0.0 | Kit 3 needs Node 22+ and TypeScript 6+, and always emits `modulepreload` (one reason we don't use `file://`) |
@@ -293,6 +293,15 @@ For batch reads, use `data.getMany` (since 3, max 500 keys). Read outbox depth f
 | Google Play Device and Network Abuse policy | retrieved 2026-10-14 | JS in a webview is exempt; no JS interface on untrusted content |
 
 ## Gotchas (each has cost someone a day)
+
+- **Image sharing (§4.7, schema 14).** `share.image` accepts exactly one of padded
+  standard base64 `bytes` (128 KiB decoded maximum) or active signed bundle `path`
+  (5 MiB), optional plain `fileName` and a caption up to 4096 UTF-8 bytes. PNG/JPEG
+  only. Use `has()`; adding it needs codegen and a store build. The runtime validates
+  and copies bytes into the native sharing plugin; never write a path-reading app
+  handler. `selected` means target selection, not delivery; `dismissed` and
+  `unavailable` stay distinct. Pre-14 custom declarations keep their handlers and
+  cannot be rewritten to the new signature. iOS is experimental and untested.
 
 - **A random loopback port wipes web storage on every launch**, because the origin includes the port. Use a fixed port per install, derived from `appId` and `installId` and kept below 30000 (§3).
 - **Never serve from a port you failed to bind.** Another process may own it, so move to a new port. The nonce is what keeps a stranger's page off the bridge.

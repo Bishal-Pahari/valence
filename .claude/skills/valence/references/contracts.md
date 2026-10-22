@@ -802,6 +802,48 @@ All five are `since: 6`, and `bundle.status` reads state the host already keeps 
 network request, so a page may poll it.
 
 
+### 4.7 Sharing an image (R14, schema 14)
+
+`share.image` is `since: 14`, with optional string params `bytes`, `path`, `fileName`,
+`caption`, returning a string. Exactly one of `bytes` (canonical standard padded base64,
+no data URL) or `path` (relative POSIX key in the **active verified manifest**) is required.
+Inline bytes are capped at 128 KiB decoded; encoded length is checked before decoding.
+The entire JSON envelope still obeys §4.2's 256 KiB cap. A bundle image is capped at 5 MiB,
+including the actual bounded CAS read, and its size and SHA-256 are checked again before use.
+The page's path is never joined to a directory: the host looks up the manifest entry and
+uses only its lowercase 64-character hash. Missing, unsafe, reserved and off-bundle paths
+are `E_DENIED`; missing or corrupt CAS data is `E_INTERNAL` without exposing paths.
+
+PNG signature or JPEG SOI magic is required; SVG and other formats are refused with
+`E_PARAMS`. This identifies the format, not image validity: the native recipient decodes it.
+`fileName`, if present, must match `^[A-Za-z0-9][A-Za-z0-9_-]{0,79}\.(png|jpg|jpeg)$`
+and its extension must match the detected format. Otherwise the host supplies `image.png`
+or `image.jpg`. Caption is at most 4096 UTF-8 bytes; no caller-controlled MIME or native path.
+Bad argument combinations, base64 and names return `E_PARAMS`; size violations return
+`E_TOO_LARGE`. Concurrent sharing is refused with `E_DENIED`, and the guard resets on errors.
+
+The package uses `share_plus` to open the Android share sheet (`ACTION_SEND`, temporary
+content URI permission), sharing a **copy** rather than the CAS file. Its temporary copy
+lives in the app cache, which the OS can evict; it must not contain credentials. Empty captions
+are omitted. The receiving app may ignore the caption. The string result is `selected`
+(target chosen, **not proof of delivery**), `dismissed`, or `unavailable` (no reliable outcome).
+Do not retry `unavailable` automatically. Native failures return a generic `E_INTERNAL`.
+The iOS activity-controller path uses a host-owned popover anchor and remains experimental
+and untested. No storage permission is needed and no native code arrives in an OTA.
+
+Earlier apps used `share.image` as a custom method. A declaration with `since < 14` keeps
+its custom signature and handler, even after a schema version bump. Never rewrite a shipped
+method to adopt the new signature: keep it or use a separate app-specific method name.
+Only `since >= 14` selects and enforces the new package built-in.
+
+The regression matrix for this capability is: runtime tests for both byte caps,
+canonical base64, format/name/caption checks, exactly one source, busy/reset,
+active-manifest-only lookup, traversal/reserved/URL denial, bounded CAS reads,
+missing files and changed size/hash; generated-dispatch tests for strict params,
+nonce denial and actual native-plugin marshalling; codegen tests for frozen schema-14
+shape and preserved custom pre-14 handlers; Android example checks for inline and
+bundle sharing with a caption, without claiming delivery. iOS remains untested.
+
 ## 5. Data layer
 
 ### 5.1 SQLite schema (host, sqflite)

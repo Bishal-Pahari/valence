@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 14,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -146,6 +146,16 @@
       "since": 6,
       "params": {},
       "returns": "BundleStatus"
+    },
+    "share.image": {
+      "since": 14,
+      "params": {
+        "bytes": "string?",
+        "path": "string?",
+        "fileName": "string?",
+        "caption": "string?"
+      },
+      "returns": "string"
     }
   },
   "events": {

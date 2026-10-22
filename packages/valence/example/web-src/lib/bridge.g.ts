@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 6;
+export const BRIDGE_VERSION = 14;
 
 export interface AppInfo {
   platform: string;
@@ -122,6 +122,12 @@ export interface Methods {
     bucket: string;
     prefix?: string | null;
   }; returns: number };
+  'share.image': { params: {
+    bytes?: string | null;
+    path?: string | null;
+    fileName?: string | null;
+    caption?: string | null;
+  }; returns: string };
 }
 
 export interface Events {
@@ -167,6 +173,7 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'app.state': 6,
   'bundle.status': 6,
   'data.count': 5,
+  'share.image': 14,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {

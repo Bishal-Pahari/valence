@@ -5,6 +5,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -94,6 +95,73 @@ void main() {
     expect(reply['ok'], isTrue);
     expect(h.taps, 1);
   });
+
+  test(
+    'image sharing enforces strict generated decoding, nonce and package validation',
+    () async {
+      final h = await handlers();
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      Map<Object?, Object?>? sent;
+      messenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        (_) async => support.path,
+      );
+      messenger.setMockMethodCallHandler(
+        const MethodChannel('dev.fluttercommunity.plus/share'),
+        (call) async {
+          sent = call.arguments as Map<Object?, Object?>;
+          expect(call.method, 'share');
+          return 'dev.test.target';
+        },
+      );
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          null,
+        );
+        messenger.setMockMethodCallHandler(
+          const MethodChannel('dev.fluttercommunity.plus/share'),
+          null,
+        );
+      });
+      const image =
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
+      for (final p in [
+        <String, Object?>{'bytes': 42},
+        {'bytes': image, 'mime': 'image/png'},
+      ]) {
+        final reply = await dispatch(h, 'share.image', params: p);
+        expect((reply['e'] as Map)['code'], 'E_PARAMS');
+      }
+      final badNonce = await dispatch(
+        h,
+        'share.image',
+        params: {'bytes': image},
+        withNonce: 'wrong',
+      );
+      expect((badNonce['e'] as Map)['code'], 'E_DENIED');
+      final badPath = await dispatch(
+        h,
+        'share.image',
+        params: {'path': '../secret.png'},
+      );
+      expect((badPath['e'] as Map)['code'], 'E_DENIED');
+      expect(sent, isNull);
+      final reply = await dispatch(
+        h,
+        'share.image',
+        params: {'bytes': image, 'caption': 'Example'},
+      );
+      expect(reply['ok'], isTrue, reason: '$reply');
+      expect(reply['v'], 'selected');
+      expect(sent!['mimeTypes'], ['image/png']);
+      expect(sent!['text'], 'Example');
+      final file = File((sent!['paths'] as List).single as String);
+      expect(await file.readAsBytes(), base64Decode(image));
+      expect(file.uri.pathSegments.last, 'image.png');
+    },
+  );
 
   test(
     'the built-ins are inherited from ValenceBuiltins, not written here',

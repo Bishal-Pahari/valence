@@ -155,6 +155,13 @@ const BUILTINS = {
   // There is deliberately no auth.getToken: the token lives under the reserved `valence.` prefix, so the
   // page can set and clear it and ask whether one is there, and can never read it back (§4.4).
   'auth.hasToken': { params: {}, returns: 'bool', call: () => 'return valence.authHasToken();' },
+  'share.image': {
+    // Earlier apps used this name for custom sharing; preserve their shipped handlers.
+    minSince: 14,
+    params: { bytes: 'string?', path: 'string?', fileName: 'string?', caption: 'string?' },
+    returns: 'string',
+    call: () => 'return valence.shareImage(bytes: p.bytes, path: p.path, fileName: p.fileName, caption: p.caption);',
+  },
   'http.request': {
     params: { url: 'string', method: 'string?', headers: 'json?', body: 'string?' },
     returns: { fields: { status: 'int', headers: 'json', body: 'string' } },
@@ -1023,7 +1030,7 @@ function dartBuiltins(s) {
   ];
   for (const m of s.methods) {
     const builtin = BUILTINS[m.name];
-    if (!builtin) continue;
+    if (!builtin || m.since < (builtin.minSince ?? 1)) continue;
     const typeName = m.returns.base === 'void' || PRIMS.has(m.returns.base) ? '' : m.returns.base;
     const arg = m.params.length ? `${pascal(m.name)}Params p` : '';
     // Which of the built-in's optional fields this app actually declared, so the delegation passes those
@@ -1050,7 +1057,7 @@ export function assertBuiltinShapes(s) {
   const show = (t) => (typeof t === 'string' ? t : `a type with {${Object.keys(t.fields).join(', ')}}${t.list ? '[]' : ''}`);
   for (const m of s.methods) {
     const want = BUILTINS[m.name];
-    if (!want) continue;
+    if (!want || m.since < (want.minSince ?? 1)) continue;
     const got = Object.fromEntries(m.params.map((f) => [f.name, typeString(f.type)]));
     // Required params, exactly. Beyond them only this built-in's own optional params, each at its declared
     // type — the same rule as the return type's optional fields, and what lets the runtime add a param

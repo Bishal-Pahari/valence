@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 14,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -151,6 +151,16 @@
         "prefix": "string?"
       },
       "returns": "int"
+    },
+    "share.image": {
+      "since": 14,
+      "params": {
+        "bytes": "string?",
+        "path": "string?",
+        "fileName": "string?",
+        "caption": "string?"
+      },
+      "returns": "string"
     }
   },
   "events": {
