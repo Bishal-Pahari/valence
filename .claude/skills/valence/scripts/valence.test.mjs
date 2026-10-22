@@ -37,7 +37,7 @@ const TEMPLATES = join(import.meta.dirname, '..', 'templates');
 // Listed here rather than per test, because every new runtime capability has to land in exactly one place
 // for the "an older app still codegens" cases to keep meaning what they say.
 const SINCE_ABOVE_4 = {
-  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status'],
+  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'auth.account'],
   events: ['sync.done', 'app.lifecycle', 'app.online'],
   types: ['SyncStatus', 'AppState', 'BundleStatus'],
 };
@@ -57,6 +57,8 @@ function fixture({ data = { calendar: 1 }, latest = false } = {}) {
     for (const e of SINCE_ABOVE_4.events) delete s.events[e];
     for (const t of SINCE_ABOVE_4.types) delete s.types[t];
     delete s.methods['data.list'].params.after;
+    delete s.methods['auth.setToken'].params.account;
+    delete s.methods['auth.setToken'].params.discardPending;
     delete s.types.SyncResult.pending;
     writeFileSync(p, JSON.stringify(s));
   }
@@ -818,6 +820,38 @@ test('a grown param needs its sibling even in a brand-new schema, with no store 
   assert.ok(codegen({ root, cfg }).written.length);
 });
 
+test('the account-switch params are gated by auth.account, and the old shape still codegens', () => {
+  // §4.4, R13. `account` and `discardPending` are params on a `since: 2` method, so `has('auth.setToken')`
+  // cannot gate them and `app.info().bridge` is the app's own version. The sibling is the whole gate, and
+  // getting it wrong here is not an error the page can see: an older host rejects the params, a page that
+  // stopped sending them gets no switch at all, and user B reads user A's rows.
+  const { root, cfg } = fixture();
+  assert.ok(codegen({ root, cfg }).written.length, 'an app that has not regenerated keeps compiling');
+  const old = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(old, /await valence\.authSetToken\(p\.token\);/);
+  assert.ok(!old.includes('authAccount'), 'and gets none of the switch');
+
+  editSchema(root, (s) => {
+    s.methods['auth.setToken'].params.account = 'string?';
+    s.version = 13;
+  });
+  assert.throws(() => codegen({ root, cfg }), /the only thing a page can gate it on is "auth\.account"/);
+  editSchema(root, (s) => {
+    s.methods['auth.setToken'].params.discardPending = 'bool?';
+    s.methods['auth.account'] = { since: 13, params: {}, returns: 'string?' };
+  });
+  assert.ok(codegen({ root, cfg }).written.length);
+  const now = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(now, /authSetToken\(p\.token, account: p\.account, discardPending: p\.discardPending \?\? false\)/);
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  assert.match(ts, /'auth\.account': 13,/, 'METHOD_SINCE carries the gate the page reads');
+  assert.match(ts, /account\?: string \| null;/);
+  // Half of it is still a trap: `discardPending` without the sibling is the call that deletes a user's
+  // queued writes, so it is gated by the same name.
+  editSchema(root, (s) => delete s.methods['auth.account']);
+  assert.throws(() => codegen({ root, cfg }), /the only thing a page can gate it on is "auth\.account"/);
+});
+
 test('one name cannot be both a method and an event, because has() resolves it to one answer', () => {
   // has() takes either kind and reads one merged table (§4.3). A name declared as both answers for
   // whichever wins, so `has('x')` could report false for an event the host really does emit.
@@ -937,7 +971,7 @@ test('schema validation catches names that would break the generated code', () =
     assert.throws(() => parseSchema(s), re);
   };
   bad((s) => (s.methods['data.get'].returns = 'Nope'), /unknown type/);
-  bad((s) => (s.methods['data.get'].since = 9), /since/);
+  bad((s) => (s.methods['data.get'].since = base.version + 1), /since/);
   bad((s) => delete s.methods['app.info'], /must define app.info/);
   bad((s) => (s.methods['data.get'].params.key = 'void'), /void/);
   bad((s) => (s.methods['data.get'].params.default = 'string'), /reserved field/);

@@ -68,7 +68,7 @@ if (!inHost()) {
 | `connect()` | Reads the host's bridge version. Call once at startup. |
 | `installShim(shim)` | Browser fallbacks for running the same build as a website. |
 | `inHost()` | True inside the Valence host, false in a normal browser. |
-| `BridgeError` | `code` is one of `E_UNKNOWN`, `E_PARAMS`, `E_UNSUPPORTED`, `E_DENIED`, `E_CANCELLED`, `E_TOO_LARGE`, `E_INTERNAL`. |
+| `BridgeError` | `code` is one of `E_UNKNOWN`, `E_PARAMS`, `E_UNSUPPORTED`, `E_DENIED`, `E_CANCELLED`, `E_TOO_LARGE`, `E_PENDING`, `E_INTERNAL`. |
 | `MAX_MESSAGE_BYTES` | 262144. The per-message cap, in UTF-8 bytes. |
 | `createBridge(methodSince, eventSince)` | Binds the generated tables to the runtime. `valence codegen` emits the only call you need. Both arguments are required, so upgrading this package without regenerating is a build error rather than `has()` silently answering `false` for every event. |
 

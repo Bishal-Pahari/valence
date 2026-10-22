@@ -9,6 +9,14 @@ import 'wire.dart';
 /// set, replace and clear the token, and can ask whether one exists, but can never read it back.
 const secureAuthTokenKey = 'valence.auth.token';
 
+/// The reserved key the opaque account id is stored at (contracts §4.4).
+///
+/// Also inside the reserved `valence.` namespace. It is written only by `auth.setToken` and read back
+/// only by `auth.account`, which is deliberate: the page chose the value, so reading it back tells it
+/// nothing it did not already know, and it is what makes "is this the same user?" answerable after a
+/// cold start.
+const secureAuthAccountKey = 'valence.auth.account';
+
 /// Keystore-backed storage for the few strings that must not sit in the SQLite file (contracts §4.4).
 ///
 /// Android: an AES-GCM record whose key is wrapped by a hardware-backed Keystore key (`minSdk 23`).
@@ -50,6 +58,13 @@ final class ValenceSecure {
   /// `auth.setToken`. A null [token] clears it.
   Future<void> setAuthToken(String? token) =>
       write(secureAuthTokenKey, token == null || token.isEmpty ? null : token);
+
+  /// The account id recorded beside the token, or null when the app has never named one (§4.4).
+  Future<String?> authAccount() => read(secureAuthAccountKey);
+
+  /// Records the account id, or clears it. Host-side only; the page reaches it through `auth.setToken`.
+  Future<void> setAuthAccount(String? account) =>
+      write(secureAuthAccountKey, account == null || account.isEmpty ? null : account);
 
   /// `auth.hasToken`. The only thing the page may learn about the stored token.
   Future<bool> hasAuthToken() async => (await read(secureAuthTokenKey)) != null;

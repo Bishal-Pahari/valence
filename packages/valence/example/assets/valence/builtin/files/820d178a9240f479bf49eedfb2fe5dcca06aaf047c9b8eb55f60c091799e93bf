@@ -43,10 +43,17 @@
         <code>shelf</code>, including the ones it runs while this page is not on screen.
       </p>
       <input id="token" placeholder="paste any string as a token" size="24" />
+      <input id="account" placeholder="account id (try a, then b)" size="18" />
       <button id="set-token">auth.setToken</button>
-      <button id="clear-token">clear</button>
+      <button id="clear-token">sign out</button>
       <button id="probe">secure.* round trip</button>
       <pre id="auth">reading auth.hasToken…</pre>
+      <p>
+        Naming a <em>different</em> account clears every writable bucket and the outbox, so the next
+        person on this phone does not read the last one's notes. It refuses while a note is still
+        queued; tick the box to drop those notes unsent.
+      </p>
+      <label><input type="checkbox" id="discard" /> discardPending</label>
     </section>
 
     <section>
@@ -110,6 +117,13 @@
 
       const seen = [];
 
+      // What the generated client's has() does, written out: this bundle's own schema says when a name
+      // arrived, and the host reports the version it was compiled with. Both halves are needed, and
+      // app.info().bridge alone is not the gate — it is the *app's* schema version (§4.2, §4.4).
+      const SINCE = { 'auth.account': 13 };
+      let hostBridge = 0;
+      const has = (m) => (SINCE[m] ?? 1) <= hostBridge;
+
       async function showState() {
         document.getElementById('state').textContent = 'app.state: ' + JSON.stringify(await call('app.state'));
         // Never a request, so it is safe to read on every event: the host is reporting what it already knows.
@@ -170,15 +184,30 @@
 
       async function showAuth(extra = '') {
         const has = await call('auth.hasToken');
-        document.getElementById('auth').textContent = `auth.hasToken: ${has}${extra ? '\n' + extra : ''}`;
+        // has('auth.account') is the gate for the account params too: they have no `since` of their own,
+        // and an older host answers E_PARAMS for them (§4.4).
+        const who = has('auth.account') ? await call('auth.account') : '(host has no auth.account)';
+        document.getElementById('auth').textContent =
+          `auth.hasToken: ${has}\nauth.account: ${who}${extra ? '\n' + extra : ''}`;
+      }
+
+      // The account id is whatever the app's own identity for the user is. It is sent only when the host
+      // has auth.account; an older one would reject the unknown params and the sign-in would fail.
+      function authParams(token) {
+        const params = { token };
+        if (!has('auth.account')) return params;
+        const account = document.getElementById('account').value.trim();
+        if (account) params.account = account;
+        if (document.getElementById('discard').checked) params.discardPending = true;
+        return params;
       }
 
       document.getElementById('set-token').addEventListener('click', async () => {
         show(null);
         try {
-          await call('auth.setToken', { token: document.getElementById('token').value || 'demo-token' });
+          await call('auth.setToken', authParams(document.getElementById('token').value || 'demo-token'));
           await showAuth('stored in the Keystore; every shelf sync now sends Authorization: Bearer');
-
+          await refresh();
         } catch (e) {
           show(e);
         }
@@ -187,8 +216,9 @@
       document.getElementById('clear-token').addEventListener('click', async () => {
         show(null);
         try {
-          await call('auth.setToken', { token: null });
-          await showAuth('cleared');
+          await call('auth.setToken', authParams(null));
+          await showAuth('signed out');
+          await refresh();
         } catch (e) {
           show(e);
         }
@@ -230,6 +260,7 @@
       (async () => {
         try {
           const info = await call('app.info');
+          hostBridge = info.bridge;
           document.getElementById('info').textContent = JSON.stringify(info, null, 2);
           await refresh();
           await showAuth();

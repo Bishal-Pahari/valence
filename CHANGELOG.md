@@ -2,6 +2,34 @@
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
+## Unreleased: account switching is safe
+
+Schema version 13. `auth.setToken` takes two more params and `auth.account()` is new, because a token is
+replaced far more often than a user changes and the host could not tell the two apart.
+
+- **`auth.setToken(token, {account})`** records your own opaque id for the user beside the token. The
+  same id again is a refresh and does nothing else. A **different** id, or `auth.setToken(null)` with an
+  id recorded, is an account switch.
+- **A switch refuses to run over queued writes.** It throws the new **`E_PENDING`** and changes nothing —
+  not the token, not the id, not a row. The host attaches whatever token is stored at the moment it makes
+  the request, so a switch over a full outbox would have pushed user A's rows under user B's credentials
+  from a background sync minutes later. `{discardPending: true}` is the only way past, and it deletes
+  those writes unsent.
+- **A switch clears every writable bucket** — rows, `max_usn` cursor and the whole outbox, in one
+  transaction, under the sync lease, *before* the new token is stored — and emits `sync.changed` for
+  them. Read-only buckets, prefs and your own `secure.*` keys are untouched. The wipe is local: no
+  tombstone is pushed, so user A's rows stay on your server.
+- **Nothing changes for an app that does not pass `account`.** Sign-out keeps the 0.3 behaviour exactly
+  (the token goes, the rows stay), and the first call that names an id when none is recorded *adopts* it
+  and clears nothing — otherwise upgrading would wipe the data of the user holding the phone.
+- **Gate the params on `has('auth.account')`,** never on `app.info().bridge`. They are params, so they
+  have no `since` of their own, and an older host rejects them with `E_PARAMS`. `valence codegen` refuses
+  to emit them without `auth.account` declared beside them.
+
+**What you must do:** nothing, unless your app can be used by more than one person on one device. Then
+add the two params and `auth.account` to `valence/bridge.schema.json` at your next version, regenerate,
+and pass `account` on sign-in.
+
 ## Unreleased: lifecycle, connectivity and update status
 
 Bridge version 6. Three events and two methods for the three questions a page in a browser tab answers

@@ -477,6 +477,114 @@ void main() {
       expect(seen.single['authorization'], 'Bearer from-dart');
     });
 
+    test('an account switch clears the user data, and a refresh does not (§4.4)', () async {
+      final data = <String, String>{};
+      final v = await open(writableBuckets: {'shelf'}, dataSchemas: {'plants': 1}, secure: testSecure(data));
+      // A read-only bucket and a writable one, both with rows and a cursor.
+      await v.store.applyPullPage(
+          bucket: 'plants', schema: 1, rows: [{'k': 'fern', 'v': 1, 'u': 7, 'd': 0}], maxUsnAfter: 7);
+      await v.store.applyPullPage(
+          bucket: 'shelf', schema: 1, rows: [{'k': 'a', 'v': 1, 'u': 4, 'd': 0}], maxUsnAfter: 4);
+
+      // Nothing recorded yet, so the first id is an adoption: an app upgrading with its user signed in.
+      await v.authSetToken('jwt-a', account: 'user-a');
+      expect(await v.authAccount(), 'user-a');
+      expect(await v.dataGet('shelf', 'a'), 1, reason: 'adoption clears nothing');
+
+      // A refresh of the same account is a new token and nothing else.
+      await v.authSetToken('jwt-a2', account: 'user-a');
+      expect(data[secureAuthTokenKey], 'jwt-a2');
+      expect(await v.dataGet('shelf', 'a'), 1);
+      expect(await v.store.maxUsn('shelf', 1), 4);
+
+      final view = _ScriptSpy();
+      v.attach(view);
+      await v.authSetToken('jwt-b', account: 'user-b');
+      expect(await v.authAccount(), 'user-b');
+      expect(data[secureAuthTokenKey], 'jwt-b');
+      expect(await v.dataGet('shelf', 'a'), isNull, reason: 'B must not see A rows on a shared phone');
+      expect(await v.store.maxUsn('shelf', 1), 0, reason: "A's cursor says nothing about B's history");
+      expect(await v.dataGet('plants', 'fern'), 1, reason: 'the public bucket is the same for everyone');
+      expect(await v.store.maxUsn('plants', 1), 7);
+      expect(view.events, ['sync.changed'], reason: 'the page is showing rows that are gone');
+      expect(view.scripts.single, contains('"shelf"'));
+    });
+
+    test('a switch over queued writes is refused, and discardPending is the only way past (§4.4)', () async {
+      final data = <String, String>{};
+      final v = await open(writableBuckets: {'shelf'}, secure: testSecure(data));
+      await v.authSetToken('jwt-a', account: 'user-a');
+      await v.store.put('shelf', 'note', {'t': 'mine'}, opId: 'op-1');
+      expect(await v.store.pendingWrites(), 1);
+
+      // The host attaches whatever token is stored when the request is made, so letting this through
+      // pushes A's row under B's credentials. Nothing changes: not the token, not the id, not a row.
+      await expectLater(
+        v.authSetToken('jwt-b', account: 'user-b'),
+        throwsA(isA<BridgeError>()
+            .having((e) => e.code, 'code', BridgeErrorCode.pending)
+            .having((e) => e.message, 'message', contains('1 local write'))),
+      );
+      expect(data[secureAuthTokenKey], 'jwt-a');
+      expect(await v.authAccount(), 'user-a');
+      expect(await v.dataGet('shelf', 'note'), {'t': 'mine'});
+      expect(await v.sync.acquireLease(), isTrue, reason: 'the refusal released the lease it took');
+      await v.sync.releaseLease();
+
+      await v.authSetToken('jwt-b', account: 'user-b', discardPending: true);
+      expect(await v.store.pendingWrites(), 0, reason: 'deleted unsent, which is what the flag means');
+      expect(await v.dataGet('shelf', 'note'), isNull);
+      expect(await v.authAccount(), 'user-b');
+    });
+
+    test('signing out clears the same, but only for an app that records an account (§4.4)', () async {
+      final v = await open(writableBuckets: {'shelf'}, secure: testSecure({}));
+      await v.store.applyPullPage(
+          bucket: 'shelf', schema: 1, rows: [{'k': 'a', 'v': 1, 'u': 4, 'd': 0}], maxUsnAfter: 4);
+
+      // The 0.3 shape: no account anywhere, so logout keeps the rows exactly where they are.
+      await v.authSetToken('jwt-x');
+      await v.authSetToken(null);
+      expect(await v.authHasToken(), isFalse);
+      expect(await v.dataGet('shelf', 'a'), 1, reason: 'no app gets a wipe it did not ask for');
+
+      await v.authSetToken('jwt-a', account: 'user-a');
+      await v.store.put('shelf', 'note', {'t': 'mine'}, opId: 'op-1');
+      await expectLater(
+        v.authSetToken(null),
+        throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.pending)),
+      );
+      expect(await v.authHasToken(), isTrue, reason: 'a refused sign-out changed nothing');
+
+      await v.authSetToken(null, discardPending: true);
+      expect(await v.authHasToken(), isFalse);
+      expect(await v.authAccount(), isNull, reason: 'the next sign-in is an adoption, not a second wipe');
+      expect(await v.dataGet('shelf', 'a'), isNull);
+      expect(await v.store.pendingWrites(), 0);
+    });
+
+    test('a switch will not clear underneath a sync that holds the lease (§5.6)', () async {
+      final v = await open(writableBuckets: {'shelf'}, secure: testSecure({}));
+      await v.store.applyPullPage(
+          bucket: 'shelf', schema: 1, rows: [{'k': 'a', 'v': 1, 'u': 4, 'd': 0}], maxUsnAfter: 4);
+      await v.authSetToken('jwt-a', account: 'user-a');
+      // A push in flight has already read the old token and its acknowledgements would land after the
+      // wipe, re-creating the rows of the account that just left.
+      expect(await v.sync.acquireLease(), isTrue);
+      await expectLater(
+        v.authSetToken('jwt-b', account: 'user-b'),
+        throwsA(isA<BridgeError>()
+            .having((e) => e.code, 'code', BridgeErrorCode.internal)
+            .having((e) => e.message, 'message', contains('a sync is running'))),
+      );
+      expect(await v.dataGet('shelf', 'a'), 1);
+      expect(await v.authAccount(), 'user-a');
+      await v.sync.releaseLease();
+      await v.authSetToken('jwt-b', account: 'user-b');
+      expect(await v.dataGet('shelf', 'a'), isNull);
+      expect(await v.sync.acquireLease(), isTrue, reason: 'and the switch released what it took');
+    });
+
     test('a 401 is emitted to the page as auth.expired', () async {
       final v = await open(
         writableBuckets: {'shelf'},
