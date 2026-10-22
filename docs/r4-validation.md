@@ -1,5 +1,41 @@
 # R4 local reminders: validation
 
+## Queue refresh - 2026-10-22
+
+**In plain terms.** The reminder branch now includes `packages` at
+`c55446f3d73afec7672c2615b0ffe70f1a6a074d` and uses reserved bridge schema 11.
+The site branch includes `packages` at `5a23a4eaf3dc1fdacfb1f961dadbd33b5ed1d390`.
+Merge commits: package `87aa4ee`, site `81d81a2`, both on `codex/r4`.
+
+Security and data decisions: retain the shared database adoption, busy-open retry, cursor paging,
+lifecycle and update-status behavior; combine both example demos and regenerate/re-sign their
+artifacts. Preserve app-owned notification and badge signatures with `since < 11`, because taking
+over those names would break existing apps. Only schema-11+ declarations delegate to the runtime.
+Package versions remain unchanged. R8, R7, R6 and R3 must merge before R4 in the fixed queue.
+
+The template and example schemas, generated Dart/TypeScript, example store baseline and signed
+built-in now agree. The built-in is seq `1792648556`, bridge 11. Source and website docs use schema 11.
+An old schema-validation test used literal `since: 9`; it now tests `version + 1`. Compatibility tests
+cover app-owned handlers at both schema 1 and schema 10, and the bridge-10 host denial boundary.
+
+Fresh gates: root `npm test` 62 passed, zero failed/skipped (including real generated-Dart analysis
+and dispatch); runtime `flutter test` 389 passed; `dart analyze --fatal-infos .` clean; bridge tests
+19 passed, strict TypeScript, build and pack dry run passed; example tests 17 passed; site build and
+SEO checks passed for 27 pages. Independent read-only security review found no remaining confirmed
+findings after the schema fixture and stale documentation fixes; its targeted CLI rerun passed 16 tests.
+The example debug APK built successfully. The build still reports the known `app_badge_plus`
+future Kotlin-plugin compatibility warning. `flutter pub publish --dry-run` passed with zero warnings
+after committing the merge; the earlier dirty-tree warning was resolved by that commit.
+
+No new emulator run was attempted for this queue refresh. The Android results below are historical
+evidence from the original implementation, not a fresh device verification. iOS remains experimental
+and untested. Neither test app was edited. Both apps' current findings and newest reports were read:
+Kundalini iteration 10 and app-a/Fernwise iteration 7. Fernwise's report now records its 0.4 migration,
+safe-area workaround, anonymous-401 observation, and refused unsafe identity switching; the original
+note below about its missing iteration report describes the earlier checkout only.
+
+## Original implementation and Android evidence (historical)
+
 2026-10-22. Branch `codex/r4` in the package and site worktrees. Started from package
 `4080862` and the then-current site `packages` branch. Versions are unchanged.
 
