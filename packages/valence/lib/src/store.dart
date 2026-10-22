@@ -601,7 +601,7 @@ final class ValenceStore {
         if (queued > 0) {
           throw BridgeError(
             BridgeErrorCode.pending,
-            '$queued local write${queued == 1 ? '' : 's'} have not reached the server, and they belong '
+            '$queued local write${queued == 1 ? ' has' : 's have'} not reached the server, and ${queued == 1 ? 'it belongs' : 'they belong'} '
             'to the account being signed out. Sync them first, or pass {"discardPending": true} to '
             'delete them unsent (contracts §4.4).',
           );
