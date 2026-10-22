@@ -42,13 +42,13 @@ Add fontScale: "num?" to your schema's AppInfo type and regenerate. Existing fie
 signature stay unchanged. Older hosts omit it; use (await call('app.info')).fontScale ?? 1.
 Old app schemas can leave the field out. A host update needs a store build.
 
-Add app.appearance at since above your shipped bridge version (the default template uses schema 7),
+Add app.appearance at since above your shipped bridge version (the combined template is version 13; appearance remains since 7),
 with payload {darkMode: "bool", highContrast: "bool", reducedMotion: "bool"}. Subscribe during
 bootstrap before ready().
 
 Gate appearance-dependent features with `has('app.appearance')`. On an older host or in a browser,
 keep CSS media-query fallbacks active. `app.info().bridge` is your app's own schema number;
-comparing it with the default template's 7 does not prove appearance support.
+comparing it with appearance's reserved version 7 does not prove appearance support.
 
 ```ts
 import { on, ready } from './lib/bridge.g';
