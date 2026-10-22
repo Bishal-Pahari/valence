@@ -1,84 +1,81 @@
-# R5 validation — 2026-10-22
+# R5 queue refresh validation - 2026-10-22
 
-R5 is implemented on `codex/r5` in both designated worktrees. It remains
-**blocked: needs Firebase project for the device test**. No live delivery,
-notification image display, or OS background execution is claimed. iOS/APNs and
-the Notification Service Extension are experimental and untested.
+R5 is refreshed on `codex/r5` in both designated worktrees, merged from
+package base `c55446f3d73afec7672c2615b0ffe70f1a6a074d` and site base
+`5a23a4eaf3dc1fdacfb1f961dadbd33b5ed1d390`. Remote push uses reserved
+schema **12**. Device acceptance remains **blocked: needs Firebase project**.
+No live delivery, image display, or OS background execution is claimed.
+iOS/APNs and its Notification Service Extension remain experimental and untested.
 
-## Implementation
+## What changed and why
 
-- Schema-5 `push.token`, `push.permission`, consuming `push.initial`, plus
-  `push.received`, `push.tapped`, and `push.tokenChanged`.
-- Opt-in Firebase adapter; passive bridge startup never requests permission or
-  fetches a registration token. Native Firebase auto-init is a separate host
-  setting. The ordinary example works without a Firebase project.
-- Only exact data-only `{"valence":"sync"}` messages request normal sync. The
-  native config/token, sync lease and store rules apply. No payload can select a
-  server, activate a bundle, consume a trial or close the database.
-- Foreground notification metadata is delivered to the page; FCM handles Android
-  background notification images. iOS rich-image templates and setup are supplied.
-- Cold/warm tap race handling, bounded JSON events, HTTPS image metadata, and
-  escaped Unicode line separators in scripts. Codegen rejects changed built-in
-  shapes and still compiles older schemas.
-- The signed example bundle includes the push controls and verifies successfully
-  at seq 1792611216. Its native push opt-in is `--dart-define=VALENCE_PUSH=true`
-  after the maintainer adds the matching Firebase project configuration.
+- Merged the shared database adoption, locked-open retry, paging, lifecycle,
+  connectivity and update-status fixes. They remain identical to the package base.
+- Template and example schema versions are 12; every push method and event has
+  `since: 12`. Generated Dart and TypeScript, recorded example store baseline,
+  contracts, skill, guides, READMEs, changelogs and site all agree.
+- Preserved app-owned `push.*` shapes and handlers declared before 12. Only
+  since-12-or-later declarations opt into the runtime. This additive compatibility
+  decision protects existing apps from having their custom methods reinterpreted.
+  A regression verifies schema numbers, method availability tables, custom method
+  preservation and built-in shape validation.
+- Regenerated and re-signed the combined example from source, at seq 1792652121,
+  requiring bridge 12. Signature and per-file checks pass; codegen reports no drift.
+- Retained exact data-only sync hints, compiled configuration/native token use,
+  nonce and strict decoding, bounded escaped replies/events, and canonical OTA
+  verification. Foreground hints call `syncNow()`, retaining `sync.done`.
+  Background hints never close SQLite or consume an OTA trial.
+
+Security comes first, then stored data and developer compatibility. Accordingly,
+this refresh retains the shared fixes and custom handlers rather than overriding
+an older app's declarations. No release versions changed.
 
 ## Gates
 
 | Check | Result |
 |---|---|
-| `npm test` | 56 passed, zero skipped; includes real generated Dart/strict generated TypeScript gates |
-| `packages/valence`: `flutter test` | 355 passed |
-| `packages/valence`: `dart analyze --fatal-infos .` | No issues |
-| Firebase adapter/integration tests, separately | 2 passed; native channel mapping and token-authenticated foreground/background sync leave bundle state unchanged |
-| `packages/valence/example`: `flutter test` | 16 passed; generated dispatch denials include disabled push, bad nonce and malformed params |
-| `packages/bridge`: `node --test test/*.test.ts` | 18 passed |
-| `packages/bridge`: `npx -y -p typescript tsc --strict -p tsconfig.json` | Passed |
-| `packages/bridge`: `npm pack --dry-run` | Passed |
-| Site `npm run build` | 26 pages; SEO/link checks passed |
-| Example `codegen --check` and signed built-in `verify --files` | Passed; no generated drift |
-| `flutter pub publish --dry-run` | Zero warnings |
-| Example `flutter build apk --debug` | Passed; final incremental build 26.7 seconds |
-| Package/site `git diff --check refs/heads/packages` | Passed |
+| Root `npm test` | 61 passed, zero failed/skipped; real generated Dart and strict generated TS ran |
+| Runtime `flutter test` | 396 passed, including push wire/Firebase and background sync cases |
+| Runtime `dart analyze --fatal-infos .` | No issues, includes example |
+| Example `flutter test` | 18 passed |
+| Bridge `node --test test/*.test.ts` | 18 passed |
+| Bridge `npx -y -p typescript tsc --strict -p tsconfig.json` | Passed |
+| Bridge `npm pack --dry-run` | Passed |
+| Site `npm run build` | 27 pages; SEO/link checks passed |
+| Example `codegen --check` and `verify --manifest ... --files ...` | Passed; no generated drift |
+| Runtime `flutter pub publish --dry-run` | Zero warnings |
+| Example `flutter build apk --debug` | Passed; 695.3 seconds, existing Firebase Core Kotlin warning |
+| Both `git diff --check refs/heads/packages` | Passed |
 
-The first CLI run exposed a schema-4 literal in the doctor compatibility test;
-it now replaces the generated version regardless of its number. The first pub
-dry run rejected exact Firebase dependency pins; caret ranges now stay on
-Core 4/Messaging 16 while allowing compatible fixes. Early integration fixtures
-were corrected to the actual `k/v/u/d`, `max`, `more` sync wire format. A late review also found that separator expansion could enlarge an error reply
-with a hostile correlation id. Both reply paths now count escaped bytes; oversized
-errors use a bounded numeric/null-id fallback, verified through generated dispatch.
-One overlapping test attempt hit Windows SQLite DLL contention; final checks ran
-after serializing package tests. Final results above replace those earlier runs.
+The first CLI run exposed a fixture that assumed schema 9 was invalid. It now
+checks `since > schema.version`, keeping the validation meaningful as versions
+grow. The full suite passed after that correction.
 
-Firebase dependencies require iOS 15.0 even when push is disabled. The example's
-Runner target and upgrade docs reflect that. Core 4.14 emits Flutter's warning
-about plugins applying Kotlin Gradle Plugin; this needs rechecking before a
-future Flutter upgrade. Messaging 17 changes the registration API to FIDs and
-is intentionally outside the dependency range. Primary metadata and shipped
-package source were checked on 2026-10-22; links are in the remote-push guide.
+## Security review
 
-## Independent review
+Read-only review used the repository's full `valence-reviewer` checklist.
+No confirmed security findings remain. It checked generated nonce/strict dispatch,
+disabled-host behavior, legacy custom declarations, exact sync hints, native
+configuration and authentication, tap startup races, disposal, payload caps,
+Unicode escaping, image metadata, unchanged OTA/state/data paths and site docs.
+Two focused CLI regressions and codegen/whitespace checks passed independently.
+The sole documentation finding (the old schema number in this note) is corrected.
 
-The read-only reviewer applied `.claude/agents/valence-reviewer.md` to the final
-implementation and matching site docs. No confirmed security or compatibility
-findings remain. Independently run: 34 combined push/wire/Firebase tests, 16 example tests,
-18 bridge tests, 11 CLI compatibility tests, Dart analysis, strict TypeScript,
-codegen check and whitespace checks. The reviewer correctly kept device
-acceptance blocked rather than counting platform-channel mocks as delivery.
+## Intake and limits
 
-## Intake and scope
+Read both apps' `VALENCE_FINDINGS.md` and newest reports:
+Kundalini `ITERATION_10_REPORT.md` and app-a `ITERATION_8_REPORT.md`.
+Kundalini's database/paging migration failures reinforce preserving the merged
+upstream fixes; app-a's authenticated rejection and queued-write evidence remains
+app-owned historical evidence, not a new device test of this branch.
 
-Read both apps' `VALENCE_FINDINGS.md`, Kundalini's latest `ITERATION_9_REPORT.md`,
-and app-a's latest available handoff (`NEXT.md`, cycle 5) plus its later findings.
-The newest app-a harness log (cycle 38) contains only a usage-limit response,
-not a newer implementation report. The findings informed strict bridge payloads,
-native background sync and honest device claims; unrelated findings were not
-silently folded into R5.
+No emulator was acquired: without a Firebase project there is no end-to-end push
+check to run. The maintainer must supply matching Firebase configuration before
+delivery, tap/image and OS background acceptance can run. The normal example
+remains usable with push disabled. Firebase dependencies still require iOS 15+;
+iOS and its service extension are untested. The existing Firebase Core Kotlin
+Gradle Plugin compatibility warning is a future-toolchain limitation.
 
-No test-app or other builder worktree was written. No emulator was acquired:
-without a Firebase project there is no end-to-end push check to run. No release version
-numbers were changed, and nothing was pushed, published or merged into `packages`.
-
-Implementation tip: `453d2b5`; site tip: `ffab4fe`, both `codex/r5`. All required gates and the additional APK/pub/pack checks passed. Device acceptance is the only R5 blocker.
+Implementation merge: `c15fcd7`; site tip: `e679e86`, both `codex/r5`.
+The earlier queued branches must merge first. No test app or other builder's
+worktree was written. Nothing was pushed, published or merged into a shared branch.
