@@ -1,3 +1,70 @@
+# R7 queue refresh - 2026-10-22
+
+In plain terms: the state-restoration branch now includes the current shared runtime
+and advertises its two methods at reserved bridge schema 8. Package merge commit
+`d089b3a`, site merge commit `00df785`, both on `codex/r7`.
+
+## Base and decisions
+
+- Package base: `c55446f3d73afec7672c2615b0ffe70f1a6a074d`.
+- Site base: `5a23a4eaf3dc1fdacfb1f961dadbd33b5ed1d390`.
+- The shared queue requires R8 before R7. Schema 8 is reserved here; this branch
+  does not import the still-unmerged R8 feature or change its schema reservation.
+- Kept the newer runtime-owned `sync.changed` then `sync.done` emission,
+  startup resume-work guard, lifecycle state recording and bounded one-shot buffer.
+  Reintroducing the old widget-level sync emitter would duplicate events and miss
+  native writes. The restoration model remains task-local and tied to the signed
+  serving bundle seq; a new bundle clears it before navigation. User records stay
+  in SQLite. No security verification or nonce/navigation check was weakened.
+- Both schemas and generated example bindings use version 8 and `since: 8` for
+  `state.save`/`state.restore`. The old-app fixture still excludes these methods.
+  The regression checks the schema and emitted method gates together.
+- Lifecycle retains contract section 4.6; restoration moves to 4.7 to remove the
+  duplicate heading. Updated the skill, builder reference, package docs and site.
+- Regenerated the merged example from source and signed built-in seq `1792639455`
+  at bridge 8. Signature/file verification and codegen freshness passed.
+
+## Current verification
+
+All current gates passed:
+
+| Gate | Result |
+|---|---|
+| `npm test` | 60 passed, zero skipped; generated Dart compiled with Flutter |
+| Package `flutter test` | 385 passed |
+| Package `dart analyze --fatal-infos .` | No issues |
+| Bridge tests / `tsc -p tsconfig.json --strict` | 18 passed / clean |
+| Generated example TS strict + verbatimModuleSyntax | Clean |
+| Example `flutter test --no-pub` | 17 passed |
+| Example `flutter build apk --debug --no-pub` | Passed |
+| Codegen freshness / signed built-in verification | Current / valid seq 1792639455, bridge 8 |
+| Site `npm run build` | 27 pages; SEO checks passed |
+| `flutter pub publish --dry-run` | 0 warnings |
+| Bridge `npm pack --dry-run` | Passed |
+| Package and site `git diff --check` | Clean |
+
+Earlier device results below remain historical: no new emulator check was performed
+for this merge.
+iOS remains experimental and untested.
+
+The read-only security review followed `.claude/agents/valence-reviewer.md` and
+found stale docs, now corrected; no confirmed findings remain. It checked route
+validation and size limits, blob bounds, signed-bundle isolation, startup sequencing,
+R2 lifecycle and sync ordering, schema mapping, generated delegations and site docs.
+Its targeted restoration tests (5) and lifecycle/runtime tests (10) passed.
+
+## Current app context
+
+Read both apps' `VALENCE_FINDINGS.md`, Kundalini's `ITERATION_10_REPORT.md` and
+Fernwise's `ITERATION_7_REPORT.md`. These reports describe migration, retained data,
+read limits, sync status, startup and layout findings. They provide context for the
+merge; this refresh claims no test-app fixes or fresh reproduction of their results.
+Neither app repository was changed.
+
+---
+
+## Historical implementation validation
+
 # R7 validation — 2026-10-21
 
 In plain terms: Android can reclaim a background process without losing the page's
