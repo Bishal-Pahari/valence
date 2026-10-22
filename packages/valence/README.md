@@ -121,6 +121,18 @@ MIT. The spec is `contracts.md`, which ships inside the `/valence` Claude Code s
 ## Native HTTP (contracts section 4.5)
 
 Generated `http.request` delegates to `Valence.httpRequest`. Configure exact trusted `http.origins` origins, regenerate, and ship a host; they become `ValenceConfig.httpOrigins` (default deny all). The host reads the R1 token per request, with `authToken` callback precedence, and emits `auth.expired` for an authenticated 401. Redirects are returned without following them. Text bodies: 64 KiB; headers: 16 KiB; total deadline: 20 seconds. Use HTTPS in production and no shared server secrets in an APK. [API and adapter guide](https://getvalence.pages.dev/docs/guides/your-backend/). iOS remains experimental and untested.
+## Account switching (contracts section 4.4)
+
+`Valence.authSetToken(token, {account, discardPending})` records your own opaque account id beside the
+token. The same id is a refresh. A different id, or `authSetToken(null)` with an id recorded, clears
+every writable bucket's rows, `max_usn` cursor and the whole outbox in one transaction, under the sync
+lease, *before* the new token is stored, and emits `sync.changed` for those buckets. It throws
+`E_PENDING` and changes nothing while the outbox is not empty — the host reads the stored token when it
+makes a request, so the alternative is pushing one account's writes under another's credentials — unless
+`discardPending` is set. A first id with none recorded is an adoption that clears nothing, and an app
+that never passes one keeps the 0.3 behaviour. `Valence.authAccount()` reads the id back and is the gate
+the page must check: the params have no `since` of their own.
+
 ## Lifecycle, connectivity and update status (contracts section 4.6)
 
 `Valence.appState()` returns the current `ValenceLifecycle` and the OS's network-interface state;

@@ -1,5 +1,5 @@
 {
-  "version": 7,
+  "version": 13,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -97,7 +97,9 @@
     "auth.setToken": {
       "since": 2,
       "params": {
-        "token": "string?"
+        "token": "string?",
+        "account": "string?",
+        "discardPending": "bool?"
       },
       "returns": "void"
     },
@@ -105,6 +107,11 @@
       "since": 2,
       "params": {},
       "returns": "bool"
+    },
+    "auth.account": {
+      "since": 13,
+      "params": {},
+      "returns": "string?"
     },
     "http.request": {
       "since": 4,

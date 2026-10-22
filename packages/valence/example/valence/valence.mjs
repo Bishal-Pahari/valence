@@ -157,12 +157,25 @@ const BUILTINS = {
   'secure.delete': { params: { key: 'string' }, returns: 'void', call: () => 'await valence.secureDelete(p.key);' },
   'auth.setToken': {
     params: { token: 'string?' },
+    // §4.4. The opaque account id is what tells a refresh from a different person, and `discardPending`
+    // is the only way past the refusal to drop one account's queued writes. Optional, because every app
+    // on the older shape must keep compiling (rule 5).
+    optionalParams: { account: 'string?', discardPending: 'bool?' },
+    // Neither param has a `since`, so the only gate is the sibling name that shipped with them. Without
+    // `auth.account` declared, a page following the docs reads a false gate on every host — including
+    // the ones that enforce the switch — and therefore never passes the id at all, which is the silent
+    // half of this feature: no error, no switch, user B looking at user A's rows.
+    paramSiblings: { account: 'auth.account', discardPending: 'auth.account' },
     returns: 'void',
-    call: () => 'await valence.authSetToken(p.token);',
+    call: (_t, _has, hasParam) =>
+      `await valence.authSetToken(p.token${hasParam('account') ? ', account: p.account' : ''}${hasParam('discardPending') ? ', discardPending: p.discardPending ?? false' : ''});`,
   },
   // There is deliberately no auth.getToken: the token lives under the reserved `valence.` prefix, so the
   // page can set and clear it and ask whether one is there, and can never read it back (§4.4).
   'auth.hasToken': { params: {}, returns: 'bool', call: () => 'return valence.authHasToken();' },
+  // The account id *is* readable back: the page chose it, so it learns nothing new, and it is what makes
+  // "is the host still holding the user I signed in?" answerable after a cold start.
+  'auth.account': { params: {}, returns: 'string?', call: () => 'return valence.authAccount();' },
   'http.request': {
     params: { url: 'string', method: 'string?', headers: 'json?', body: 'string?' },
     returns: { fields: { status: 'int', headers: 'json', body: 'string' } },

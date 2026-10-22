@@ -5,6 +5,17 @@ Sync correctness: pull cursors advance only through returned rows, never push ec
 ## Unreleased - native HTTP and REST adapter
 
 Call your API with `http.request` (schema 4): the host enforces compiled `http.origins` origins, attaches the stored token, and never follows redirects. Existing hosts need codegen and a store build to add the capability or origins. A reference Node REST-to-sync adapter demonstrates durable pagination, tombstones and idempotent pushes. iOS remains experimental and untested.
+## Unreleased - account switching is safe
+
+Schema version 13. `Valence.authSetToken` takes `account` and `discardPending`, and `Valence.authAccount()`
+is new. Recording a different opaque account id, or signing out with one recorded, clears every writable
+bucket's rows, `max_usn` cursor and the whole outbox in one transaction under the sync lease, before the
+new token is stored, and emits `sync.changed` for those buckets. It throws the new `E_PENDING`
+(`BridgeErrorCode.pending`) and changes nothing while the outbox is not empty, unless `discardPending` is
+set; it fails with `E_INTERNAL` rather than clearing underneath a sync that holds the lease. A refresh of
+the recorded id, a first id with none recorded, and an app that never passes one all clear nothing, so a
+host upgrade cannot wipe an existing user's data. iOS remains experimental and untested.
+
 ## Unreleased - lifecycle, connectivity and update status
 
 Bridge version 6. `ValenceApp` maps Flutter's five lifecycle states onto four and emits `app.lifecycle`

@@ -574,6 +574,46 @@ final class ValenceStore {
     });
   }
 
+  /// Deletes every row, cursor and queued write of the given writable [buckets] (contracts §4.4).
+  ///
+  /// This is the account switch, and nothing else may call it: the rows belong to the account that is
+  /// being replaced, and keeping them would show user A's data to user B on a shared phone while a
+  /// `max_usn` from A's server numbering silently skipped the start of B's history.
+  ///
+  /// One transaction, so a crash halfway cannot leave rows without their outbox or a cursor without its
+  /// rows. The outbox is cleared **whole**: every op in it belongs to a writable bucket by construction
+  /// (`data.put` refuses anything else), and an op left behind would be pushed under the next account's
+  /// token. Returns the number of `kv` rows and outbox ops deleted, for the log line.
+  ///
+  /// The "are there unsent writes?" question is answered **inside** the same transaction, and throws
+  /// `E_PENDING` unless [discardPending] is set. Asking first and deleting afterwards leaves a window in
+  /// which a `data.put` lands between the two — and that write would then be deleted unsent by a call
+  /// whose whole contract is that it refuses to do exactly that.
+  Future<(int, int)> clearWritable(Set<String> buckets, {required bool discardPending}) async {
+    if (buckets.isEmpty) return (0, 0);
+    var rows = 0;
+    var ops = 0;
+    final marks = List.filled(buckets.length, '?').join(', ');
+    final names = buckets.toList();
+    await db.transaction((txn) async {
+      if (!discardPending) {
+        final queued = (await txn.rawQuery('SELECT COUNT(*) AS n FROM outbox')).first['n']! as int;
+        if (queued > 0) {
+          throw BridgeError(
+            BridgeErrorCode.pending,
+            '$queued local write${queued == 1 ? '' : 's'} have not reached the server, and they belong '
+            'to the account being signed out. Sync them first, or pass {"discardPending": true} to '
+            'delete them unsent (contracts §4.4).',
+          );
+        }
+      }
+      rows = await txn.delete('kv', where: 'bucket IN ($marks)', whereArgs: names);
+      await txn.delete('bucket', where: 'name IN ($marks)', whereArgs: names);
+      ops = await txn.delete('outbox');
+    });
+    return (rows, ops);
+  }
+
   // ---------------------------------------------------------------------------
   // prefs (§5.6)
   // ---------------------------------------------------------------------------

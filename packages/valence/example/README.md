@@ -50,7 +50,7 @@ platform for Valence; **iOS is experimental and untested**.
 
 ## Native HTTP demo
 
-The schema is now 7 and `http.origins` compiles `http://10.0.2.2:8787` for emulator tests. Run the reference adapter in `examples/rest-sync-adapter/`, set its `ADAPTER_TOKEN` through the Login form, and tap `http.request`. `GET /rpc` returns authenticated status without echoing the token; the other button proves an unlisted origin is denied. No CORS headers are needed. This local HTTP endpoint is for tests; production uses HTTPS. The offline bundle and seed still work without that server.
+The combined schema is now 13 (appearance remains since 7) and `http.origins` compiles `http://10.0.2.2:8787` for emulator tests. Run the reference adapter in `examples/rest-sync-adapter/`, set its `ADAPTER_TOKEN` through the Login form, and tap `http.request`. `GET /rpc` returns authenticated status without echoing the token; the other button proves an unlisted origin is denied. No CORS headers are needed. This local HTTP endpoint is for tests; production uses HTTPS. The offline bundle and seed still work without that server.
 
 ## R8 layout probe
 

@@ -26,6 +26,11 @@ abstract final class BridgeErrorCode {
   /// The message is over [maxMessageBytes].
   static const tooLarge = 'E_TOO_LARGE';
 
+  /// The call would have discarded local writes the server has not acknowledged (contracts §4.2, §4.4).
+  ///
+  /// A refusal, not a fault: nothing changed. The caller syncs the outbox or asks for the discard.
+  static const pending = 'E_PENDING';
+
   /// Anything else.
   static const internal = 'E_INTERNAL';
 }

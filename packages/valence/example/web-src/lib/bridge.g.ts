@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 7;
+export const BRIDGE_VERSION = 13;
 
 export interface AppInfo {
   platform: string;
@@ -104,8 +104,11 @@ export interface Methods {
   }; returns: void };
   'auth.setToken': { params: {
     token?: string | null;
+    account?: string | null;
+    discardPending?: boolean | null;
   }; returns: void };
   'auth.hasToken': { params: Record<string, never>; returns: boolean };
+  'auth.account': { params: Record<string, never>; returns: string | null };
   'http.request': { params: {
     url: string;
     method?: string | null;
@@ -167,6 +170,7 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'secure.delete': 2,
   'auth.setToken': 2,
   'auth.hasToken': 2,
+  'auth.account': 13,
   'http.request': 4,
   'data.getMany': 3,
   'sync.status': 3,

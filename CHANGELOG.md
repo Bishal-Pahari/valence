@@ -7,6 +7,33 @@ Sync correctness: pull cursors advance only through returned rows, never push ec
 ### System layout and accessibility
 
 ValenceApp now requests edge-to-edge layout and publishes system-bar/cutout insets as CSS variables. Existing pages must apply them to content and fixed controls. Android text zoom follows system font size. Codegen supports optional AppInfo.fontScale without changing old schemas; schema 7 adds app.appearance (dark mode, high contrast, reduced motion). Add its schema entry, regenerate and ship a host update. iOS root-font scaling is experimental and untested; the guide covers its limits.
+## Unreleased: account switching is safe
+
+Schema version 13. `auth.setToken` takes two more params and `auth.account()` is new, because a token is
+replaced far more often than a user changes and the host could not tell the two apart.
+
+- **`auth.setToken(token, {account})`** records your own opaque id for the user beside the token. The
+  same id again is a refresh and does nothing else. A **different** id, or `auth.setToken(null)` with an
+  id recorded, is an account switch.
+- **A switch refuses to run over queued writes.** It throws the new **`E_PENDING`** and changes nothing —
+  not the token, not the id, not a row. The host attaches whatever token is stored at the moment it makes
+  the request, so a switch over a full outbox would have pushed user A's rows under user B's credentials
+  from a background sync minutes later. `{discardPending: true}` is the only way past, and it deletes
+  those writes unsent.
+- **A switch clears every writable bucket** — rows, `max_usn` cursor and the whole outbox, in one
+  transaction, under the sync lease, *before* the new token is stored — and emits `sync.changed` for
+  them. Read-only buckets, prefs and your own `secure.*` keys are untouched. The wipe is local: no
+  tombstone is pushed, so user A's rows stay on your server.
+- **Nothing changes for an app that does not pass `account`.** Sign-out keeps the 0.3 behaviour exactly
+  (the token goes, the rows stay), and the first call that names an id when none is recorded *adopts* it
+  and clears nothing — otherwise upgrading would wipe the data of the user holding the phone.
+- **Gate the params on `has('auth.account')`,** never on `app.info().bridge`. They are params, so they
+  have no `since` of their own, and an older host rejects them with `E_PARAMS`. `valence codegen` refuses
+  to emit them without `auth.account` declared beside them.
+
+**What you must do:** nothing, unless your app can be used by more than one person on one device. Then
+add the two params and `auth.account` to `valence/bridge.schema.json` at your next version, regenerate,
+and pass `account` on sign-in.
 
 ## Unreleased: lifecycle, connectivity and update status
 
