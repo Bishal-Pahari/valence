@@ -202,12 +202,12 @@
       });
 
       async function showAuth(extra = '') {
-        const has = await call('auth.hasToken');
+        const stored = await call('auth.hasToken');
         // has('auth.account') is the gate for the account params too: they have no `since` of their own,
         // and an older host answers E_PARAMS for them (§4.4).
         const who = has('auth.account') ? await call('auth.account') : '(host has no auth.account)';
         document.getElementById('auth').textContent =
-          `auth.hasToken: ${has}\nauth.account: ${who}${extra ? '\n' + extra : ''}`;
+          `auth.hasToken: ${stored}\nauth.account: ${who}${extra ? '\n' + extra : ''}`;
       }
 
       // The account id is whatever the app's own identity for the user is. It is sent only when the host

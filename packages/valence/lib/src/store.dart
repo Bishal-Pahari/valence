@@ -610,6 +610,9 @@ final class ValenceStore {
       rows = await txn.delete('kv', where: 'bucket IN ($marks)', whereArgs: names);
       await txn.delete('bucket', where: 'name IN ($marks)', whereArgs: names);
       ops = await txn.delete('outbox');
+      // The freshness observations describe the account that just left. Left behind, sync.status()
+      // answers 'synced a minute ago' over the new account's empty buckets, before it has ever synced.
+      await txn.delete('prefs', where: 'key IN (?, ?)', whereArgs: ['valence.sync.lastSyncedAt', 'valence.sync.offline']);
     });
     return (rows, ops);
   }

@@ -8,6 +8,8 @@ import 'dart:typed_data';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform.dart';
+import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -588,6 +590,67 @@ void main() {
       expect(await v.store.pendingWrites(), 0);
     });
 
+    test('the new token is stored under the same lease that cleared the data (§4.4)', () async {
+      // The window this closes: the clear finishes, the lease is released, and a sync fired by a resume
+      // or by returning connectivity pulls the previous account's rows straight back — with the previous
+      // account's token, because the header is built per request — and the new token is then written
+      // over them. So the invariant is not "a sync is refused" but "the lease is still held at the
+      // moment the token is written", which is what this probes.
+      late Valence v;
+      final data = <String, String>{};
+      var heldAtTokenWrite = false;
+      final watcher = _WatchedSecureStorage(data, (key) async {
+        if (key != secureAuthTokenKey) return;
+        // acquireLease() answers false while *this* process holds a live lease, and takes it otherwise
+        // — so put back what the probe took.
+        final free = await v.sync.acquireLease();
+        if (free) await v.sync.releaseLease();
+        heldAtTokenWrite = !free;
+      });
+      FlutterSecureStoragePlatform.instance = watcher;
+      v = await open(writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
+      await v.authSetToken('jwt-a', account: 'user-a');
+      expect(heldAtTokenWrite, isFalse, reason: 'an ordinary sign-in takes no lease');
+      await v.authSetToken('jwt-b', account: 'user-b');
+      expect(heldAtTokenWrite, isTrue, reason: 'the switch wrote the token before releasing');
+      expect(data[secureAuthTokenKey], 'jwt-b');
+      expect(await v.sync.acquireLease(), isTrue, reason: 'and the lease is released at the end');
+      await v.sync.releaseLease();
+    });
+
+    test('an unreadable account id fails the call rather than reading as "none recorded"', () async {
+      // Every other secure read fails open, because the alternative is failing a sync over a bucket
+      // that was never authenticated. This one cannot: "absent" is the answer that means *no account
+      // has ever been recorded*, which turns the next sign-in into an adoption — B's token stored over
+      // A's rows and A's outbox, silently, on exactly the devices whose Keystore is in a bad state.
+      final data = <String, String>{secureAuthAccountKey: 'user-a', secureAuthTokenKey: 'jwt-a'};
+      FlutterSecureStoragePlatform.instance = _UnreadableAccount(data);
+      final v = await open(writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
+      await v.store.applyPullPage(
+          bucket: 'shelf', schema: 1, rows: [{'k': 'a', 'v': 1, 'u': 4, 'd': 0}], maxUsnAfter: 4);
+      await expectLater(
+        v.authSetToken('jwt-b', account: 'user-b'),
+        throwsA(isA<BridgeError>()
+            .having((e) => e.code, 'code', BridgeErrorCode.internal)
+            .having((e) => e.message, 'message', contains('same account'))),
+      );
+      expect(data[secureAuthTokenKey], 'jwt-a', reason: 'nothing was changed');
+      expect(await v.dataGet('shelf', 'a'), 1);
+    });
+
+    test('an empty token clears the token and never the data (§4.4)', () async {
+      // `''` has always meant "clear the token". A refresh loop that yields it on failure, or an
+      // uninitialised state field, must not read as "a different person is holding the phone".
+      final v = await open(writableBuckets: {'shelf'}, secure: testSecure({}));
+      await v.store.applyPullPage(
+          bucket: 'shelf', schema: 1, rows: [{'k': 'a', 'v': 1, 'u': 4, 'd': 0}], maxUsnAfter: 4);
+      await v.authSetToken('jwt-a', account: 'user-a');
+      await v.authSetToken('');
+      expect(await v.authHasToken(), isFalse);
+      expect(await v.dataGet('shelf', 'a'), 1, reason: 'only null is the sign-out');
+      expect(await v.authAccount(), 'user-a');
+    });
+
     test('a switch will not clear underneath a sync that holds the lease (§5.6)', () async {
       final v = await open(writableBuckets: {'shelf'}, secure: testSecure({}));
       await v.store.applyPullPage(
@@ -888,4 +951,31 @@ final class _ScriptSpy implements ValenceHostView {
 
   @override
   Future<void> handleReady() async {}
+}
+
+/// The in-memory secure storage the tests use, with a hook that runs *during* a write.
+///
+/// The §4.4 switch must still hold the sync lease when it stores the new token, and that is only
+/// observable from inside the write: afterwards the lease is gone either way.
+final class _WatchedSecureStorage extends TestFlutterSecureStoragePlatform {
+  _WatchedSecureStorage(super.data, this._onWrite);
+
+  final Future<void> Function(String key) _onWrite;
+
+  @override
+  Future<void> write({required String key, required String value, required Map<String, String> options}) async {
+    await _onWrite(key);
+    return super.write(key: key, value: value, options: options);
+  }
+}
+
+/// A platform whose account-id read throws, as an invalidated Keystore entry does.
+final class _UnreadableAccount extends TestFlutterSecureStoragePlatform {
+  _UnreadableAccount(super.data);
+
+  @override
+  Future<String?> read({required String key, required Map<String, String> options}) async {
+    if (key == secureAuthAccountKey) throw PlatformException(code: 'Invalid');
+    return super.read(key: key, options: options);
+  }
 }

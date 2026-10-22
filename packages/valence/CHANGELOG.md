@@ -12,9 +12,14 @@ is new. Recording a different opaque account id, or signing out with one recorde
 bucket's rows, `max_usn` cursor and the whole outbox in one transaction under the sync lease, before the
 new token is stored, and emits `sync.changed` for those buckets. It throws the new `E_PENDING`
 (`BridgeErrorCode.pending`) and changes nothing while the outbox is not empty, unless `discardPending` is
-set; it fails with `E_INTERNAL` rather than clearing underneath a sync that holds the lease. A refresh of
-the recorded id, a first id with none recorded, and an app that never passes one all clear nothing, so a
-host upgrade cannot wipe an existing user's data. iOS remains experimental and untested.
+set; it fails with `E_INTERNAL` rather than clearing underneath a sync that holds the lease, and it keeps
+the lease until the new token is written, so a sync starting in between cannot pull the previous
+account's rows back under the previous account's token. Only `null` is the sign-out — an empty token
+clears the token and no data. A refresh of the recorded id, a first id with none recorded, and an app
+that never passes one all clear nothing, so a host upgrade cannot wipe an existing user's data. An
+account id the Keystore cannot return throws `E_INTERNAL` instead of reading as "none recorded", which
+would have made the next sign-in an adoption over the previous account's rows. iOS remains experimental
+and untested.
 
 ## Unreleased - lifecycle, connectivity and update status
 
