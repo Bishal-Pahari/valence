@@ -311,6 +311,8 @@ void main() {
         () => Future<void>.delayed(const Duration(milliseconds: 1200)));
     expect(runtime.state.trialFails, 0);
     expect(webview.controller.loads, hasLength(1));
+    expect(log.lines.where((line) => line.startsWith('ready: timed out')),
+        isEmpty);
   });
 
   testWidgets(
@@ -354,12 +356,17 @@ void main() {
     await tester.runAsync(() async =>
         webview.controller.navigation.started(runtime.server!.origin));
     await io(tester);
-    await tester.pump(const Duration(seconds: 20));
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 1200)));
+    await io(tester);
     await tester.runAsync(runtime.appReady);
     expect(runtime.state.current, builtin.seq);
     expect(runtime.state.trial, isNull);
     expect(runtime.state.trialFails, 0);
     expect(runtime.state.bad, isEmpty);
+    expect(runtime.state.previous, isNull, reason: 'current ready must not recommit the builtin');
+    expect(log.lines.where((line) => line.startsWith('ready: timed out')),
+        isEmpty);
     expect(webview.controller.loads, hasLength(1));
   });
 
