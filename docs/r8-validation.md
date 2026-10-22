@@ -1,3 +1,51 @@
+# R8 queue refresh - 2026-10-23
+
+## In plain terms
+
+R8 now includes packages at `6b2eebd009af682d47da48eb079e3db65595fa5d` and the site's
+packages at `f0db1cd518bc6dd2af8663097845da980f8b3580`. Both worktrees remain on
+`codex/r8`. The template and example retain schema 7 and app.appearance since 7;
+all earlier method/event versions remain unchanged. No package versions changed.
+
+Read both test apps' VALENCE_FINDINGS.md and their newest iteration reports:
+Kundalini iteration 11 (2026-10-23) and app-a iteration 8 (2026-10-22). Shared
+updates now address the reported paging, event capability and update-ready gaps.
+The appearance guides use has('app.appearance'), with browser/older-host fallbacks,
+rather than comparing an app's own bridge number with the default template's 7.
+The example README now names its actual schema.
+
+Decision: preserve the shared data fixes and nonce/navigation/signature checks,
+keep R8's reserved number, and publish a completed update status before notifying
+the page. Review found that the incoming update-ready callback ran before lease
+release and status publication. A new regression failed with idle instead of ready
+inside that callback; moving notification after the completed status made it pass.
+The regression also checks pending/offered sequence, timestamp and one notification.
+The strict bridge gate caught a missing appearance entry in the test event-version
+table; it now records 7. Spec and site lifecycle guidance describe the ordering.
+
+## Final gates
+
+- npm test: 60 passed, zero failed/skipped; generated Dart analyzed and executed
+  with Flutter, and generated TypeScript passed strict checking.
+- Runtime flutter test: 387 passed; dart analyze --fatal-infos .: no issues.
+- Bridge: 21 tests passed; npx -y -p typescript tsc --strict -p tsconfig.json and
+  npm pack --dry-run passed.
+- Example: 17 tests passed; codegen --check wrote nothing; signed built-in
+  verification passed (seq 1792638425, bridge requirement 7); debug APK passed.
+- Site npm run build: 27 pages; SEO, link and anchor checks passed.
+- Flutter pub publish --dry-run: zero warnings.
+
+Final independent security review has no remaining confirmed findings. It also
+checked both shared-head ancestors, generated EVENT_SINCE wiring, schema 7,
+appearance publication, optional fontScale, retained trust boundaries and docs.
+
+No new emulator check ran. Historical Android evidence below is not fresh device
+validation of this combined build. TalkBack and true split-screen remain unverified;
+iOS remains experimental and untested. Test-app repos were read only. No pushes,
+publications, package-version changes or merges into shared branches occurred.
+
+---
+
 # R8 merge refresh - 2026-10-22
 
 ## In plain terms
