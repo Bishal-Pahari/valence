@@ -226,7 +226,10 @@ final class ValenceStore {
   }) async {
     final n = (limit == null || limit <= 0) ? defaultListLimit : (limit > maxListLimit ? maxListLimit : limit);
     final (where, args) = _liveRowsWhere(bucket, schema, prefix);
-    if (after != null && after.isNotEmpty) {
+    // `after != null`, not `after.isNotEmpty`: the empty string is a valid key — only `.` and `..` are
+    // refused (§4.2) — so treating `after: ''` as "no cursor" makes a bucket whose first key is empty
+    // hand back that same row for ever, and the bucket has no complete read at all.
+    if (after != null) {
       where.write(' AND key > ?');
       args.add(after);
     }
