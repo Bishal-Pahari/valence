@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Valence example</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+      body { margin: 0; padding: calc(24px + var(--valence-inset-top, 0px)) calc(24px + var(--valence-inset-right, 0px)) calc(24px + var(--valence-inset-bottom, 0px)) calc(24px + var(--valence-inset-left, 0px)); line-height: 1.5; }
+      h1 { font-size: 1.4rem; margin: 0 0 4px; }
+      p.sub { margin: 0 0 24px; opacity: 0.7; }
+      section { border-top: 1px solid rgba(128, 128, 128, 0.3); padding: 16px 0; }
+      button { min-height: 48px; min-width: 48px; font: inherit; padding: 8px 14px; margin-right: 8px; }
+      pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font-size: 0.85rem; }
+      li { margin-bottom: 4px; }
+    </style>
+  </head>
+  <body>
+    <main>
+    <h1>Valence example</h1>
+    <pre id="appearance" role="status">Waiting for system appearance</pre>
+    <p class="sub">The web UI, served from the host's loopback server as a signed bundle.</p>
+
+    <section>
+      <h2>Host</h2>
+      <pre id="info">reading app.info…</pre>
+      <pre id="batch">reading data.getMany…</pre>
+      <pre id="status">reading sync.status…</pre>
+    </section>
+
+    <section>
+      <h2>Your own data</h2>
+      <p>Written to native SQLite through the bridge, and queued for sync.</p>
+      <button id="add">Add a note</button>
+      <button id="delete">Delete latest note</button>
+      <button id="haptics">Haptic tap</button>
+      <ul id="rows"></ul>
+      <pre id="error"></pre>
+    </section>
+
+    <section>
+      <h2>Login and secrets</h2>
+      <p>
+        The token goes to the host, not into the page's storage: the host attaches it to every sync of
+        <code>shelf</code>, including the ones it runs while this page is not on screen.
+      </p>
+      <label for="token">API token</label>
+      <input id="token" placeholder="paste any string as a token" size="24" />
+      <input id="account" placeholder="account id (try a, then b)" size="18" />
+      <button id="set-token">auth.setToken</button>
+      <button id="clear-token">sign out</button>
+      <button id="probe">secure.* round trip</button>
+      <pre id="auth">reading auth.hasToken…</pre>
+      <p>
+        Naming a <em>different</em> account clears every writable bucket and the outbox, so the next
+        person on this phone does not read the last one's notes. It refuses while a note is still
+        queued; tick the box to drop those notes unsent.
+      </p>
+      <label><input type="checkbox" id="discard" /> discardPending</label>
+    </section>
+
+    <section>
+      <h2>Lifecycle, connectivity and updates</h2>
+      <p>
+        Four lifecycle states rather than Flutter's five, connectivity as the OS reports
+        <em>interfaces</em> (never reachability), and the reason the last update check ended as it did.
+      </p>
+      <button id="refresh-state">app.state + bundle.status</button>
+      <pre id="state">reading app.state…</pre>
+      <pre id="bundle">reading bundle.status…</pre>
+      <pre id="events">no lifecycle, connectivity or sync event yet</pre>
+    </section>
+
+    <section>
+      <h2>Your API</h2>
+      <p>Native HTTP to the local reference adapter. Set its bearer token above first.</p>
+      <button id="http">http.request</button>
+      <button id="http-denied">Try an unlisted origin</button>
+      <pre id="http-result"></pre>
+    </section>
+
+    </main>
+    <!--
+      A real app imports @getvalence/bridge through the generated web/lib/bridge.g.ts. This example talks
+      to the wire protocol directly, so it needs no bundler and `valence bundle` can sign the folder as is
+      — and so this file doubles as the smallest honest description of §4.2.
+    -->
+    <style>
+      :root[data-valence-dark-mode="true"] { color-scheme: dark; }
+      :root[data-valence-dark-mode="false"] { color-scheme: light; }
+      :root[data-valence-high-contrast="true"] { color: CanvasText; background: Canvas; }
+      :root[data-valence-reduced-motion="true"] * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+      :focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+      input { max-width: 100%; box-sizing: border-box; font: inherit; min-height: 48px; }
+    </style>
+    <script>
+      const nonce = document.querySelector('meta[name="valence-nonce"]')?.content ?? '';
+      const pending = new Map();
+      let nextId = 1;
+      window.__valence = {
+        r(reply) {
+          const p = pending.get(reply.id);
+          if (!p) return;
+          pending.delete(reply.id);
+          reply.ok ? p.resolve(reply.v) : p.reject(new Error(`${reply.e.code}: ${reply.e.message}`));
+        },
+        e(name, payload) {
+          if (name === 'app.appearance') {
+            const css = getComputedStyle(document.documentElement);
+            document.getElementById('appearance').textContent = JSON.stringify({ ...payload,
+              top: css.getPropertyValue('--valence-inset-top'), bottom: css.getPropertyValue('--valence-inset-bottom'),
+              left: css.getPropertyValue('--valence-inset-left'), right: css.getPropertyValue('--valence-inset-right'),
+              scale: css.getPropertyValue('--valence-font-scale') });
+          }
+          if (name === 'sync.changed') void refresh();
+          // §4.6. Logged rather than acted on, because the point of the three is that they *arrive*:
+          // app.lifecycle on the way out as well as in, app.online without asking, and sync.done after
+          // every run the host made on its own — including the ones with nothing to report.
+          if (name === 'app.lifecycle' || name === 'app.online' || name === 'sync.done') {
+            seen.unshift(new Date().toISOString().slice(11, 19) + ' ' + name + ' ' + JSON.stringify(payload));
+            document.getElementById('events').textContent = seen.slice(0, 8).join('\n');
+            if (name === 'app.lifecycle' || name === 'app.online') void showState();
+          }
+          // The host fires this when a sync request carrying the token came back 401 (§4.4). A real app
+          // refreshes the token here, or shows a login screen.
+          if (name === 'auth.expired') document.getElementById('auth').textContent = 'auth.expired: the server rejected the token';
+        },
+      };
+
+      const call = (m, p = {}) =>
+        new Promise((resolve, reject) => {
+          const id = nextId++;
+          pending.set(id, { resolve, reject });
+          window.Valence.postMessage(JSON.stringify({ id, n: nonce, m, p }));
+        });
+
+      const seen = [];
+
+      // What the generated client's has() does, written out: this bundle's own schema says when a name
+      // arrived, and the host reports the version it was compiled with. Both halves are needed, and
+      // app.info().bridge alone is not the gate — it is the *app's* schema version (§4.2, §4.4).
+      const SINCE = { 'auth.account': 13 };
+      let hostBridge = 0;
+      const has = (m) => (SINCE[m] ?? 1) <= hostBridge;
+
+      async function showState() {
+        document.getElementById('state').textContent = 'app.state: ' + JSON.stringify(await call('app.state'));
+        // Never a request, so it is safe to read on every event: the host is reporting what it already knows.
+        document.getElementById('bundle').textContent = 'bundle.status: ' + JSON.stringify(await call('bundle.status'));
+      }
+
+      const show = (err) => {
+        document.getElementById('error').textContent = err ? String(err) : '';
+      };
+
+      async function refresh() {
+        document.getElementById('status').textContent = 'sync.status: ' + JSON.stringify(await call('sync.status'));
+        document.getElementById('batch').textContent = 'data.getMany: ' + JSON.stringify(await call('data.getMany', { bucket: 'plants', keys: ['fern', 'missing', 'fern'] }));
+        const rows = await call('data.list', { bucket: 'shelf', limit: 20 });
+        document.getElementById('rows').innerHTML = rows
+          .map((r) => `<li>${r.key} — ${JSON.stringify(r.value)} ${r.usn === -1 ? '(not yet synced)' : ''}</li>`)
+          .join('');
+      }
+
+      document.getElementById('refresh-state').addEventListener('click', async () => {
+        show(null);
+        try {
+          await showState();
+        } catch (e) {
+          show(e);
+        }
+      });
+
+      document.getElementById('add').addEventListener('click', async () => {
+        show(null);
+        try {
+          await call('data.put', { bucket: 'shelf', key: `n-${Date.now()}`, value: { at: new Date().toISOString() } });
+          await refresh();
+        } catch (e) {
+          show(e);
+        }
+      });
+
+      document.getElementById('haptics').addEventListener('click', async () => {
+        show(null);
+        try {
+          await call('haptics.tap');
+        } catch (e) {
+          show(e);
+        }
+      });
+
+      document.getElementById('delete').addEventListener('click', async () => {
+        show(null);
+        try {
+          const rows = await call('data.list', { bucket: 'shelf', limit: 500 });
+          if (rows.length) await call('data.put', { bucket: 'shelf', key: rows.at(-1).key, value: null });
+          await refresh();
+        } catch (e) {
+          show(e);
+        }
+      });
+
+      async function showAuth(extra = '') {
+        const has = await call('auth.hasToken');
+        // has('auth.account') is the gate for the account params too: they have no `since` of their own,
+        // and an older host answers E_PARAMS for them (§4.4).
+        const who = has('auth.account') ? await call('auth.account') : '(host has no auth.account)';
+        document.getElementById('auth').textContent =
+          `auth.hasToken: ${has}\nauth.account: ${who}${extra ? '\n' + extra : ''}`;
+      }
+
+      // The account id is whatever the app's own identity for the user is. It is sent only when the host
+      // has auth.account; an older one would reject the unknown params and the sign-in would fail.
+      function authParams(token) {
+        const params = { token };
+        if (!has('auth.account')) return params;
+        const account = document.getElementById('account').value.trim();
+        if (account) params.account = account;
+        if (document.getElementById('discard').checked) params.discardPending = true;
+        return params;
+      }
+
+      document.getElementById('set-token').addEventListener('click', async () => {
+        show(null);
+        try {
+          await call('auth.setToken', authParams(document.getElementById('token').value || 'demo-token'));
+          await showAuth('stored in the Keystore; every shelf sync now sends Authorization: Bearer');
+          await refresh();
+        } catch (e) {
+          show(e);
+        }
+      });
+
+      document.getElementById('clear-token').addEventListener('click', async () => {
+        show(null);
+        try {
+          await call('auth.setToken', authParams(null));
+          await showAuth('signed out');
+          await refresh();
+        } catch (e) {
+          show(e);
+        }
+      });
+
+      // Proves the two halves of §4.4 on a real device: an ordinary key round-trips through the
+      // Keystore, and the host's own key is refused — which is why the page can never read the token back.
+      document.getElementById('probe').addEventListener('click', async () => {
+        show(null);
+        const lines = [];
+        try {
+          await call('secure.set', { key: 'demo', value: `written at ${new Date().toISOString()}` });
+          lines.push(`secure.get("demo") → ${await call('secure.get', { key: 'demo' })}`);
+          await call('secure.delete', { key: 'demo' });
+          lines.push(`after delete → ${await call('secure.get', { key: 'demo' })}`);
+        } catch (e) {
+          lines.push(`unexpected: ${e}`);
+        }
+        try {
+          await call('secure.get', { key: 'valence.auth.token' });
+          lines.push('secure.get("valence.auth.token") → NOT REFUSED, which is a bug');
+        } catch (e) {
+          lines.push(`secure.get("valence.auth.token") → ${e}`);
+        }
+        await showAuth(lines.join('\n'));
+      });
+
+      for (const [id, url] of [['http', 'http://10.0.2.2:8787/rpc'], ['http-denied', 'https://unlisted.invalid/']]) {
+        document.getElementById(id).addEventListener('click', async () => {
+          try {
+            const response = await call('http.request', { url });
+            document.getElementById('http-result').textContent = JSON.stringify(response, null, 2);
+          } catch (e) {
+            document.getElementById('http-result').textContent = String(e);
+          }
+        });
+      }
+
+      (async () => {
+        try {
+          const info = await call('app.info');
+          hostBridge = info.bridge;
+          document.getElementById('info').textContent = JSON.stringify(info, null, 2);
+          await refresh();
+          await showAuth();
+          await showState();
+        } catch (e) {
+          show(e);
+        }
+        // This is what commits an OTA release. Without it every update rolls back after two launches.
+        await call('app.ready');
+      })();
+    </script>
+  </body>
+</html>
