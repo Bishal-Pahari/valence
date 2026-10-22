@@ -1,75 +1,56 @@
-# R6 validation — 2026-10-22
+# R6 queue refresh validation ? 2026-10-22
 
-Branch: `codex/r6` in the package and site worktrees. Base: package `packages`
-at `406d153`; implementation commits `cfc523c` (package) and `62ee207` (site).
+Branch: `codex/r6` in both worktrees. Package base: `c55446f3d73afec7672c2615b0ffe70f1a6a074d`; site base: `5a23a4eaf3dc1fdacfb1f961dadbd33b5ed1d390`.
+Merge commits: package `4048ca0`, site `89e8296`.
 
 ## In plain terms
 
-Opening an approved OS link can take the user straight to a screen in the signed
-web UI, retaining its query and fragment. The store build fixes accepted origins;
-links cannot send the WebView outside loopback or authorize a native action.
-Schema 9 adds `link.initial` and `link.opened`. `onLink()` connects a web router,
-and `assetlinks`/`aasa` write website association files for separate HTTPS hosting.
+Deep links now include the newest shared runtime fixes and use reserved bridge schema 9. The generated clients, template, example and docs agree. The independent review found two defects that are fixed with regressions: the standalone web helper still used schema 5, and a WebView reload could lose a link before the new page subscribed. Each new page now re-arms the pending mailbox without replaying consumed links.
 
-## Evidence read
+## Decisions
 
-Both test-app repositories were read only. Kundalini's `VALENCE_FINDINGS.md` and
-`ITERATION_9_REPORT.md` describe the first-run chooser, F-37 through F-40, and the
-same-name asset cache failure. App-a has no standalone iteration report; its
-latest available report is the cycle-5 summary in `VALENCE_FINDINGS.md`, followed
-by findings through F-25, with a cycle-5 `NEXT.md`. These are historical app
-results, not fresh validation of this package branch. No app repository changed.
+Retain the shared lifecycle/startup, sync-status and database migration behavior while adding the R6 surface. Derive the invalid-future-version test from the current schema instead of using literal 9. Keep link origins compiled into the store build; links remain untrusted routing input and cannot grant HTTP access, native authority or off-origin navigation. These choices prioritize security and user data over routing convenience. R8 and R7 must merge before R6: this branch reserves schema 9 but does not duplicate their features.
 
-## Gates
+Generated files were regenerated. The example's merged HTML was rebuilt and signed through the normal keyring-matched CLI; obsolete content-addressed assets were removed. No package version changed.
+
+## App evidence read (read only)
+
+- Kundalini: `VALENCE_FINDINGS.md` and newest `ITERATION_10_REPORT.md`. Migration retained existing data with an app-side database move; the 912-row catalogue exposed paging truncation. Batch reads, sync status, cache revalidation and rollback were exercised. Findings F-41?F-48 describe migration/dependency/docs/status gaps.
+- App-a: `VALENCE_FINDINGS.md` and newest `ITERATION_7_REPORT.md`. The 0.4 migration retained the shelf; a fresh 54.3 MB seed launch was slow, account switching remained refused, anonymous 401 reporting needed follow-up, and Android insets required correction.
+
+These app reports are historical evidence for their snapshots, not new tests of this branch. Neither app repository was changed.
+
+## Final gates
 
 | Check | Result |
 |---|---|
-| `npm test` | 57 passed, zero skipped; generated Dart and strict TypeScript ran |
-| Runtime `flutter test` | 343 passed |
-| `dart analyze --fatal-infos` | No issues, including example |
-| Bridge `node --test test/*.test.ts` | 22 passed |
-| Bridge strict TypeScript / build / pack dry run | Passed |
-| Example `flutter test` | 15 passed |
-| Example `flutter build apk --debug` | Passed |
-| Example generated-code freshness | No files written |
-| Signed built-in verification | Passed; seq 1792607842, bridge 5 |
-| APK's embedded manifest vs source | Same seq 1792607842 and bridge 5 |
-| Site `npm run build` | 26 pages; SEO checks passed |
-| `flutter pub publish --dry-run` after commit | Zero warnings |
+| `npm test` | 61 passed, zero skipped; generated Dart and strict generated TypeScript ran |
+| Runtime `flutter test` | 385 passed, including reload mailbox regression |
+| `dart analyze --fatal-infos .` | No issues, including example |
+| Bridge `node --test test/*.test.ts` | 23 passed, zero skipped |
+| Bridge `npx -y -p typescript tsc -p tsconfig.json --strict` | Passed |
+| Bridge build and pack dry run | Passed |
+| Example `flutter test` | 17 passed |
+| Example debug APK | Built; embedded manifest matches source, seq 1792641283, bridge 9 |
+| Example `codegen --check` | No files written |
+| Signed built-in `verify` | Passed; seq 1792641283, one file |
+| Site `npm run build` | 27 pages; SEO checks passed |
+| `flutter pub publish --dry-run` | Zero warnings |
+
+The first CLI run caught a test using literal 9 as an invalid future version. After replacing it with `s.version + 1`, the entire suite passed again. The runtime suite and analyzer were rerun after the mailbox fix; bridge checks and site build were rerun after their final edits.
 
 ## Security review
 
-Independent review found no unresolved findings. A confirmed AASA validator
-defect rejected hyphenated bundle IDs and accepted underscores; the fix accepts
-the former and rejects the latter, with regression tests.
+No unresolved confirmed findings after fixes. Reviewed exact compiled origins, URL/path validation and bounds, startup deduplication, repeated intents, page-reload mailbox ownership, disposal, local History API routing, standalone/generated schema gates, strict generated decoders and nonce enforcement, and association-file identity validation/refusal to overwrite. Signature verification order, navigation lock, atomic updater writes and external key handling remain intact.
 
-- External origins are compiled from `links.origins`; HTTP/CSP trust is separate.
-- Raw strings are checked before `Uri.parse` can repair malformed escapes.
-- Path validation rejects controls, backslashes, encoded separators, dot segments,
-  network references and reserved host destinations. URLs are bounded in UTF-8.
-- Startup keeps the latest pending link, deduplicates initial/stream startup
-  delivery, and preserves subsequent repeat taps. Dispose cancels delivery.
-- The web helper subscribes before reading the initial mailbox, gives live events
-  priority over delayed initial replies, and suppresses navigation after cleanup.
-- Generated dispatch retains nonce checks and strict decoding; nullable built-in
-  return shapes cannot be redefined. Association generators refuse overwrites.
-- Manifest signature/check order, navigation lock, nonce, atomic updater state
-  and key handling are unchanged. No key or token contents are logged.
+## Android evidence and limits
 
-## Limits
+Shared lock `codex-builder` acquired and released. The helper's `ensure` timed out because its unqualified ADB commands saw two devices. Explicit `-s emulator-5554` confirmed boot completion and was used for every device action. Only the package example was installed, over its existing install; user data was retained.
 
-The optional emulator check was skipped after waiting over 20 minutes while
-`claude` held the shared lock. The waiting process was cancelled and the
-owner-checked unlock preserved Claude's lock. No device was touched. Cold/warm
-Android intent delivery, repeated taps, and `pm verify-app-links` /
-`pm set-app-links` are not claimed for this branch. They remain follow-up checks
-for the improver or the next available emulator slot.
+- Actual Android package: `com.getvalence.valence_example` (distinct from Valence config appId `com.getvalence.example`).
+- Cold VIEW intent `valence-example://app/shelf?sort=new#cold` routed to exactly `/shelf?sort=new#cold`. A read-only WebView inspection confirmed the route, page text, bridge 9 and bundle 1792641283. Activity launch waiting timed out under load, but the page subsequently loaded and routed correctly.
+- Two identical warm intents reached the existing activity; two separate `link routed: /shelf` log entries were observed. Page location/text confirmed `/shelf?sort=warm#one`.
+- `pm verify-app-links --re-verify` and `pm get-app-links` ran. Placeholder `links.example.invalid` reported state 1024, not verified ownership.
+- Forced App Links approval and adversarial-intent device probes did not run: execution policy rejected the commands. Malformed path/origin rejection is covered by the package regressions. Forced HTTPS delivery is not claimed, and real ownership verification needs a controlled HTTPS domain and the actual app-signing certificate.
 
-iOS custom schemes and Universal Links are experimental and untested. The example
-uses `links.example.invalid`, so genuine HTTPS ownership verification requires a
-maintainer-controlled domain and the real app-signing certificate. A forced
-Android approval can prove intent delivery only, not website ownership.
-
-The example intentionally uses the direct wire protocol without a web bundler;
-its screen routes accepted link payloads. The package helper's History API,
-validation and race behavior are exercised in the bridge tests.
+The temporary WebView debug forward was removed, the example was force-stopped and the lock released. No other app data, network settings or forwards were changed. No pushes, publications or merges into shared branches occurred. iOS custom schemes and Universal Links remain experimental and untested.
