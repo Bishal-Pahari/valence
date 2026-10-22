@@ -20,6 +20,7 @@ The cases cover:
 - Navigation: same-origin routes work; reserved host documents, another port, another host and
   off-origin subframes are refused. Only allowed main-frame external URLs launch outside the app.
 - The JavaScript channel receives the bound server's nonce and returns the serialized bridge reply.
+  The back callback consumes WebView history before asking the OS to close the app.
   Strict decoding and nonce rejection remain in the generated-dispatch and wire tests.
 - One-shot events flush once, reloads buffer again, and lifecycle state is re-derived rather than
   replayed from a stale queue.

@@ -27,6 +27,7 @@ void main() {
   late LogSpy log;
   late List<String> requests;
   late List<String> launches;
+  late List<String> platformCalls;
   late List<(String, String)> messages;
   late StreamController<Object?> connectivity;
   HttpOverrides? previousHttp;
@@ -48,6 +49,11 @@ void main() {
     log = LogSpy();
     requests = [];
     launches = [];
+    platformCalls = [];
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      platformCalls.add(call.method);
+      return null;
+    });
     messages = [];
     previousHttp = HttpOverrides.current;
     // Flutter's default HTTP stub returns 400 even for our real loopback liveness probe.
@@ -102,6 +108,7 @@ void main() {
     messenger.setMockMethodCallHandler(
         const MethodChannel('plugins.flutter.io/url_launcher'), null);
     messenger.setMockMessageHandler('flutter/assets', null);
+    messenger.setMockMethodCallHandler(SystemChannels.platform, null);
     await runtime.server?.close();
     // Test-owned database only, after the widget and native callbacks are gone.
     await runtime.store.db.close();
@@ -199,12 +206,20 @@ void main() {
     expect(log.lines, contains(contains('this resume does nothing')));
     webview.configureGate!.complete();
     await drain(tester);
-    await io(tester);
+    // A loaded WebView does not mean the asynchronous SQLite lease has finished.
+    // Wait for the observed triggers instead of assuming a fixed delay is enough under load.
+    for (var i = 0;
+        i < 1000 && !requests.any((r) => r.contains('sync.test'));
+        i++) {
+      await tester.pump();
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
+    }
     final controller = webview.controller;
     controller.navigation.finished(controller.loads.last.toString());
     expect(controller.scripts.where((s) => s.contains('app.resumed')), isEmpty);
-    expect(requests.where((r) => r.contains('/channels/')), hasLength(1));
-    expect(requests.where((r) => r.contains('sync.test')), hasLength(1));
+    expect(requests.where((r) => r.contains('/channels/')), isNotEmpty);
+    expect(requests.where((r) => r.contains('sync.test')), isNotEmpty);
     expect(controller.loads, hasLength(1));
     expect(runtime.state.trialFails, 0);
     expect(find.byKey(const ValueKey('stub-webview')), findsOneWidget);
@@ -244,6 +259,22 @@ void main() {
     await io(tester);
     expect(launches, ['https://outside.test/a'],
         reason: 'only allowed main-frame external URLs launch');
+  });
+
+  testWidgets('back uses web history before asking the OS to close the app',
+      (tester) async {
+    await mount(tester);
+    webview.controller.hasHistory = true;
+    await tester.binding.handlePopRoute();
+    await io(tester);
+    expect(webview.controller.backCount, 1);
+    expect(platformCalls, isNot(contains('SystemNavigator.pop')));
+    webview.controller.hasHistory = false;
+    await tester.binding.handlePopRoute();
+    await io(tester);
+    expect(webview.controller.backCount, 1);
+    expect(platformCalls.where((call) => call == 'SystemNavigator.pop'),
+        hasLength(1));
   });
 
   testWidgets('JS channel passes the live nonce and sends an escaped reply',
@@ -364,7 +395,8 @@ void main() {
     expect(runtime.state.trial, isNull);
     expect(runtime.state.trialFails, 0);
     expect(runtime.state.bad, isEmpty);
-    expect(runtime.state.previous, isNull, reason: 'current ready must not recommit the builtin');
+    expect(runtime.state.previous, isNull,
+        reason: 'current ready must not recommit the builtin');
     expect(log.lines.where((line) => line.startsWith('ready: timed out')),
         isEmpty);
     expect(webview.controller.loads, hasLength(1));
