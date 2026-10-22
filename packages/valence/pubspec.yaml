@@ -36,7 +36,7 @@ dependencies:
   sqflite: ^2.4.4+2
   url_launcher: ^6.3.3
   webview_flutter: ^4.14.1
-  # OS dialogs; Android SDK selects legacy photos/Bluetooth groups (contracts section 4.6).
+  # OS dialogs; Android SDK selects legacy photos/Bluetooth groups (contracts section 4.7).
   # ponytail: stay on 12.x until SDK 37 target resolution is verified with Flutter/AGP.
   permission_handler: ^12.0.3
   device_info_plus: ^13.3.0
