@@ -3,6 +3,42 @@
 Branch: `codex/r3` in the package and website worktrees. No version bump, push,
 publication or merge into `packages` was performed. Test-app repositories were read only.
 
+## Queue refresh - 2026-10-22
+
+**In plain terms.** Permissions now include the newest shared runtime and use the
+reserved schema 10. The merge retains lifecycle/startup guards, runtime-owned sync
+events and update-status reporting. Permissions have contract section 4.7, avoiding
+the existing lifecycle section 4.6. The example's local CLI was synchronized with
+the canonical CLI so regeneration retains permission delegations and config.
+
+Package base: `c55446f3d73afec7672c2615b0ffe70f1a6a074d`. Site base: `5a23a4e`.
+Package merge: `222230c`; site merge: `38915af`. Both branches: `codex/r3`.
+
+Decision: preserve compiled permission allowlists and foreground checks, strict
+decoding, nonce/navigation controls and shared data/migration behavior. Renumber
+only the unmerged permission additions; preserve existing method meanings. Schema
+10 is reserved for this branch; R8, R7 and R6 must merge first to provide contiguous
+capabilities. No package version changed.
+
+Independent valence-reviewer pass found no confirmed runtime/security defects.
+Its stale example CLI and documentation references were corrected; example-local
+`codegen --check` now reports no writes. Focused permission tests: 19 passed.
+
+Fresh gates: 60 CLI tests (zero skipped, generated Dart and strict generated TS
+ran), 399 runtime tests, clean Dart analysis, 18 bridge tests and strict TypeScript,
+bridge pack dry run, 17 example tests, signed built-in verification (seq 1792646661,
+bridge 10), and 27-page website/SEO build. Final APK and clean-tree pub dry run
+are pending at this writing; the earlier pub dry run warned only about uncommitted
+merge files and is being rerun after the commits.
+
+No new emulator run: this refresh merges shared behavior and renumbers the schema;
+the original Android evidence below remains historical. iOS remains experimental
+and untested. Test-app repositories were read only. No pushes, publications or
+merges into shared branches occurred. Only R3's shared roadmap status cell changed;
+this note lives here to honor the roadmap editing boundary.
+
+The following initial-build record is historical and predates this refresh.
+
 ## In plain terms
 
 The signed page can check or ask for camera, foreground location, notifications,
@@ -16,10 +52,10 @@ resume the page hears only about configured permissions whose status changed.
 - Read the shared roadmap and both test apps' `VALENCE_FINDINGS.md`.
 - Kundalini's newest report is `ITERATION_10_REPORT.md` (2026-10-22): native setup,
   migration correctness and honest device evidence remain essential.
-- App-a has no separate iteration-report file in this checkout, including hidden
-  files. Its available `NEXT.md` and findings summaries describe the earlier
-  Fernwise cycles; its `mobile/pubspec.yaml` still lists the individual runtime
-  dependencies. Those notes were treated as historical evidence, not a fresh 0.4 run.
+- App-a now has `ITERATION_7_REPORT.md` (2026-10-22): the packaged migration retained
+  the shelf, a fresh 54.3 MB seed was exercised, safe-area overlap was reported,
+  account switching remained refused, and anonymous 401 reporting needs follow-up.
+  These reports describe their snapshots, not a new test of this branch.
 - Started both branches from their local `refs/heads/packages`. Schema 9 was reserved
   in R3's own roadmap status cell before implementation; merge-order numbering
   remains the improver's responsibility.
