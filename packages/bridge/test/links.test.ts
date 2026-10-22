@@ -1,19 +1,19 @@
 import assert from 'node:assert/strict';
 import { test, beforeEach } from 'node:test';
 
-import { createBridge, __resetForTests } from '../src/index.ts';
+import { onLink, createBridge, __resetForTests } from '../src/index.ts';
 
 type Methods = {
   'app.info': { params: {}; returns: { bridge: number } };
   'link.initial': { params: {}; returns: { url: string; path: string } | null };
 };
-const table = { 'app.info': 1, 'link.initial': 5 };
+const table = { 'app.info': 1, 'link.initial': 9 };
 const link = (path: string) => ({ url: `https://links.example.com${path}`, path });
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 beforeEach(() => { __resetForTests(); delete (globalThis as any).window; });
 
-function host(version = 5) {
+function host(version = 9) {
   const sent: any[] = [];
   (globalThis as any).window = { Valence: { postMessage: (s: string) => sent.push(JSON.parse(s)) } };
   const b = createBridge<Methods, {}>(table);
@@ -42,7 +42,7 @@ test('unsubscribe suppresses delayed initial navigation; old host sends no link 
   window.__valence!.r({ id: sent[1].id, ok: true, v: link('/cold') });
   await flush(); assert.deepEqual(paths, []);
   __resetForTests();
-  const old = host(4); await old.connect;
+  const old = host(8); await old.connect;
   old.b.onLink(); assert.equal(old.sent.length, 1);
 });
 
@@ -73,4 +73,16 @@ test('plain browser shim can provide an initial route; missing support is inert'
   b.installShim({ 'link.initial': async () => link('/web') });
   b.onLink((l) => paths.push(l.path)); await flush();
   assert.deepEqual(paths, ['/web']);
+});
+
+test('package onLink uses schema 9 and remains inert on schema 8 hosts', async () => {
+  const old = host(8); await old.connect;
+  onLink(() => {}); assert.equal(old.sent.length, 1);
+  __resetForTests();
+  const current = host(9); await current.connect;
+  const paths: string[] = [];
+  const off = onLink((l) => paths.push(l.path));
+  assert.equal(current.sent[1].m, 'link.initial');
+  window.__valence!.r({ id: current.sent[1].id, ok: true, v: link('/current') });
+  await flush(); assert.deepEqual(paths, ['/current']); off();
 });

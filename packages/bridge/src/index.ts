@@ -90,7 +90,7 @@ export function onLink(
   handler: (link: AppLink) => void = routeLink,
   onError: (error: unknown) => void = () => console.error('Valence link could not be routed'),
 ): () => void {
-  return subscribeLink(handler, onError, 5);
+  return subscribeLink(handler, onError, 9);
 }
 
 function subscribeLink(

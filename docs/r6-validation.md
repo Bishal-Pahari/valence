@@ -8,7 +8,7 @@ at `406d153`; implementation commits `cfc523c` (package) and `62ee207` (site).
 Opening an approved OS link can take the user straight to a screen in the signed
 web UI, retaining its query and fragment. The store build fixes accepted origins;
 links cannot send the WebView outside loopback or authorize a native action.
-Schema 5 adds `link.initial` and `link.opened`. `onLink()` connects a web router,
+Schema 9 adds `link.initial` and `link.opened`. `onLink()` connects a web router,
 and `assetlinks`/`aasa` write website association files for separate HTTPS hosting.
 
 ## Evidence read

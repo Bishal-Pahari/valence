@@ -64,6 +64,26 @@ void main() {
   });
 
   test(
+      'a new page retains pending links until it subscribes without replaying consumed links',
+      () {
+    links.receive('myapp://app/launch');
+    links.beginPage();
+    expect(links.initial()!.path, '/launch');
+    links.receive('myapp://app/live');
+    expect(opened.single.path, '/live');
+    links.beginPage();
+    expect(links.initial(), isNull);
+    links.beginPage();
+    links.receive('myapp://app/during-reload');
+    links.receive('myapp://app/latest');
+    expect(opened.length, 1);
+    expect(links.initial()!.path, '/latest');
+    expect(links.initial(), isNull);
+    links.receive('myapp://app/after-reload');
+    expect(opened.last.path, '/after-reload');
+  });
+
+  test(
       'launch/stream duplicate is removed during startup; later URL repetition is preserved',
       () async {
     final stream = StreamController<String>(sync: true);

@@ -1,7 +1,7 @@
 # Deep links and routing
 
 Valence maps a link opened by the OS to a path inside your signed web UI. The
-WebView stays on its loopback origin. Schema 5 adds `link.initial`, `link.opened`
+WebView stays on its loopback origin. Schema 9 adds `link.initial`, `link.opened`
 and the web helper `onLink`. This implements contracts §6.3. Android is the tested
 platform; iOS is experimental and untested.
 
@@ -57,7 +57,7 @@ return `{url,path}` or `null` from `link.initial`.
 
 For manual integration, subscribe to `link.opened` before calling
 `call('link.initial')`. The call consumes the latest pending accepted link once;
-it returns `null` on later calls unless a new runtime has started. Until that call,
+it returns `null` on later calls unless a new page has started. Each WebView page start re-arms the mailbox, retaining pending links without replaying consumed ones. Until that call,
 links replace the pending mailbox (latest wins). Afterwards they are live events,
 including repeated taps on the same URL. The helper reports errors through its
 second callback; the default logs a fixed message without URL contents.

@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 9,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -24,7 +24,8 @@
       "params": {
         "bucket": "string",
         "prefix": "string?",
-        "limit": "int?"
+        "limit": "int?",
+        "after": "string?"
       },
       "returns": "Row[]"
     },
@@ -133,8 +134,26 @@
       "params": {},
       "returns": "SyncStatus"
     },
-    "link.initial": {
+    "app.state": {
+      "since": 6,
+      "params": {},
+      "returns": "AppState"
+    },
+    "bundle.status": {
+      "since": 6,
+      "params": {},
+      "returns": "BundleStatus"
+    },
+    "data.count": {
       "since": 5,
+      "params": {
+        "bucket": "string",
+        "prefix": "string?"
+      },
+      "returns": "int"
+    },
+    "link.initial": {
+      "since": 9,
       "params": {},
       "returns": "Link?"
     }
@@ -160,8 +179,26 @@
       "since": 2,
       "payload": {}
     },
+    "sync.done": {
+      "since": 6,
+      "payload": {
+        "result": "SyncResult"
+      }
+    },
+    "app.lifecycle": {
+      "since": 6,
+      "payload": {
+        "state": "string"
+      }
+    },
+    "app.online": {
+      "since": 6,
+      "payload": {
+        "online": "bool"
+      }
+    },
     "link.opened": {
-      "since": 5,
+      "since": 9,
       "payload": {
         "url": "string",
         "path": "string"
@@ -197,6 +234,18 @@
       "pending": "int",
       "lastSyncedAt": "int?",
       "offline": "bool"
+    },
+    "AppState": {
+      "lifecycle": "string",
+      "online": "bool"
+    },
+    "BundleStatus": {
+      "serving": "int",
+      "pending": "int?",
+      "trial": "int?",
+      "reason": "string",
+      "offered": "int?",
+      "checkedAt": "int?"
     },
     "Link": {
       "url": "string",

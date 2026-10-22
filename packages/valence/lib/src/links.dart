@@ -133,7 +133,13 @@ final class ValenceLinks {
     }
   }
 
-  /// Consumes the startup mailbox and enables subsequent live events.
+  /// Returns delivery to the mailbox while a new WebView page subscribes.
+  /// Already consumed links are not replayed; a still-pending link is retained.
+  void beginPage() {
+    _listening = false;
+  }
+
+  /// Consumes the page's mailbox and enables subsequent live events.
   ValenceLink? initial() {
     _listening = true;
     final result = _pending;
