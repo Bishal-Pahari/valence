@@ -8,7 +8,7 @@
 /// the last one is generated into `lib/valence/config.g.dart` by `valence codegen`.
 library;
 
-export 'src/app.dart' show ValenceApp, ValenceDispatch;
+export 'src/app.dart' show ValenceApp, ValenceDispatch, valenceLifecycleFor, valenceOnline;
 export 'src/appearance.dart' show ValenceAppearance;
 export 'src/runtime.dart'
     show
@@ -16,12 +16,16 @@ export 'src/runtime.dart'
         BridgeErrorCode,
         Valence,
         ValenceAppInfo,
+        ValenceAppState,
+        ValenceBundleReason,
+        ValenceBundleStatus,
         ValenceCheckFailure,
         ValenceConfig,
         ValenceFileEntry,
         ValenceHostView,
         ValenceHttp,
         ValenceHttpResponse,
+        ValenceLifecycle,
         ValenceLogger,
         ValenceManifest,
         ValenceOutboxOp,
@@ -42,6 +46,7 @@ export 'src/runtime.dart'
         defaultValenceLogger,
         fnv1a32,
         hostFileContentTypes,
+        isDatabaseLocked,
         isReservedBundlePath,
         isSafeBundlePath,
         maxListLimit,

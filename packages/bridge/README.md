@@ -18,6 +18,9 @@ import { call, connect, has, on, ready } from '$lib/valence/bridge.g';
 await connect();                                  // once at startup, before has()
 const plant = await call('data.get', { bucket: 'plants', key: 'fern' });
 const off = on('sync.changed', ({ buckets }) => refresh(buckets));
+on('sync.done', ({ result }) => setFreshness(result));          // every completed run, changed: 0 included
+on('app.lifecycle', ({ state }) => state === 'background' && saveDraft());
+on('app.online', ({ online }) => setBanner(!online));           // interface state, not reachability
 await ready();                                    // on every path that paints, once per page load
 ```
 
@@ -89,4 +92,6 @@ Sync correctness: pull cursors advance only through returned rows, never push ec
 
 ## System appearance
 
-Declare schema-5 app.appearance with bool darkMode, highContrast and reducedMotion fields, then subscribe through the generated on() during bootstrap before ready(). The host publishes an initial snapshot after every load and later preference changes. Optional AppInfo.fontScale is num?; default missing values to 1. Android already applies native text zoom, so do not scale it again in CSS. Use --valence-inset-top/right/bottom/left for content padding. [Guide](../../docs/accessibility.md).
+Declare schema-7 app.appearance with bool darkMode, highContrast and reducedMotion fields, then subscribe through the generated on() during bootstrap before ready(). The host publishes an initial snapshot after every load and later preference changes. Optional AppInfo.fontScale is num?; default missing values to 1. Android already applies native text zoom, so do not scale it again in CSS. Use --valence-inset-top/right/bottom/left for content padding. [Guide](../../docs/accessibility.md).
+
+Guard `has("data.count")` to page `data.list` with `after`: pass the last key of the previous page and the scan resumes strictly after it, which is the only complete read of a bucket larger than `data.list`'s 500-row clamp. `has("data.list")` cannot gate `after` — it is a new parameter on a method that has existed since version 1, and a host older than version 5 rejects the unknown field with `E_PARAMS`. `call("data.count", {bucket, prefix})` returns the number of live rows without reading any of them.

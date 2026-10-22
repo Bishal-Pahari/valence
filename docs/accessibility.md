@@ -1,7 +1,7 @@
 # Safe areas, text size and accessibility
 
 The host supplies system layout values. Your page still needs accessible HTML and responsive CSS.
-This guide implements contracts §4.6. Android is the validation target; iOS is experimental and untested.
+This guide implements contracts §4.7. Android is the validation target; iOS is experimental and untested.
 
 ## Keep controls clear of system bars
 
@@ -42,7 +42,7 @@ Add fontScale: "num?" to your schema's AppInfo type and regenerate. Existing fie
 signature stay unchanged. Older hosts omit it; use (await call('app.info')).fontScale ?? 1.
 Old app schemas can leave the field out. A host update needs a store build.
 
-Add app.appearance at since above your shipped bridge version (the default template uses schema 5),
+Add app.appearance at since above your shipped bridge version (the default template uses schema 7),
 with payload {darkMode: "bool", highContrast: "bool", reducedMotion: "bool"}. Subscribe during
 bootstrap before ready():
 

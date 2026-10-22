@@ -6,7 +6,42 @@ Sync correctness: pull cursors advance only through returned rows, never push ec
 
 ### System layout and accessibility
 
-ValenceApp now requests edge-to-edge layout and publishes system-bar/cutout insets as CSS variables. Existing pages must apply them to content and fixed controls. Android text zoom follows system font size. Codegen supports optional AppInfo.fontScale without changing old schemas; schema 5 adds app.appearance (dark mode, high contrast, reduced motion). Add its schema entry, regenerate and ship a host update. iOS root-font scaling is experimental and untested; the guide covers its limits.: offline tooling
+ValenceApp now requests edge-to-edge layout and publishes system-bar/cutout insets as CSS variables. Existing pages must apply them to content and fixed controls. Android text zoom follows system font size. Codegen supports optional AppInfo.fontScale without changing old schemas; schema 7 adds app.appearance (dark mode, high contrast, reduced motion). Add its schema entry, regenerate and ship a host update. iOS root-font scaling is experimental and untested; the guide covers its limits.
+
+## Unreleased: lifecycle, connectivity and update status
+
+Bridge version 6. Three events and two methods for the three questions a page in a browser tab answers
+from the platform and a page in the host cannot.
+
+- **`app.lifecycle`** fires on the way *out* as well as in, with four states — `foreground`,
+  `background`, `inactive`, `detached` — mapped from Flutter's five. Android delivers `hidden` and then
+  `paused` for one backgrounding, so both are `background` and only changes are emitted. Persist on
+  `background`: `detached` usually never arrives, because the engine is tearing down and there may be no
+  WebView left to run the script. `app.resumed` is unchanged.
+- **`app.online`** reports what the OS says about network *interfaces* — the same source as the
+  "connectivity came back" sync trigger — and is explicitly **not** reachability. Use it to decide
+  whether to *try*; use `SyncResult.reason` or `sync.status().offline` to say whether the last attempt
+  worked.
+- **`app.state()`** returns both current values, for a page that mounts after the transition: a cold
+  start from a notification tap, or the reload an applied update does.
+- **`sync.done`** carries the whole `SyncResult` after every completed run the host made on its own,
+  including `changed: 0`, `busy` and `unauthorized`. `sync.changed` is silent when a run moved nothing,
+  and most runs move nothing, so a "last synced" line could previously only be updated by a sync the page
+  asked for itself.
+- **`bundle.status()`** says why an update declined, from a closed set: `idle`, `unconfigured`,
+  `uptodate`, `rollout`, `bad`, `offline`, `rejected`, `toobig`, `waitingForData`, `busy`, `ready`,
+  alongside `serving`, `pending`, `trial`, `offered` and `checkedAt`. It never starts a request.
+  `rejected` means a published release is unservable on every device and is worth an alert of your own;
+  `waitingForData` is a healthy state that can last for days on an offline device, and is the one four
+  hosts mistook for "no update".
+
+**What you have to change in your own host:** nothing, if you leave the schema alone. To take the five,
+add them to `bridge.schema.json` with `since: 6`, raise `version` to 6 and regenerate — the `valence`
+package implements all of it, so no handler is yours to write. A page must treat a `reason` it does not
+recognise as "no update right now" rather than an error, because a newer host can return one that did
+not exist when the bundle was built.
+
+## Unreleased: offline tooling
 
 - Add schema-3 data.getMany and sync.status, and optional SyncResult.pending. Regenerate an additive schema and guard the new methods on older hosts.
 - Seed multiple declared read-only schemas using seedSchemas and versioned files; the runtime imports each declared pair.
@@ -118,6 +153,150 @@ CAS files, your `installId` and your signing key all carry over untouched; the
 package's test suite covers that. If your 0.3 host named its database something
 other than `valence.db`, one config line keeps it. Swapping the runtime is a
 store release, because `lib/` changed.
+
+### One OTA could retire the bundle inside your APK, silently
+
+- **`valence bundle --floor N` now refuses an `N` above your store build's
+  `seq`.** The floor applies to the built-in bundle too, which the spec left to
+  inference. That bundle is the one artifact every device is guaranteed to
+  have — what a wiped or offline phone falls back to, and the only code a store
+  review ever saw — so raising the floor past it retired **both** fallbacks a
+  device had, from the client side, with no store release. §2.4's ladder was left
+  with `current` and nothing underneath, and if that bundle later failed a check
+  the only recovery was a store release above the floor: a full review cycle,
+  which is exactly what OTA exists to avoid.
+
+  Nothing warned. `verify` was happy, `doctor` was green, and `baseline.json`
+  held the number that made it checkable in the file the CLI had just written.
+
+  **What you must do:** nothing, unless a build starts failing — in which case
+  the message names your store build's seq and the two ways forward. Raising the
+  floor *to* that seq is still allowed and is almost always what you want: it
+  strands every OTA below it and keeps the APK runnable. If you already have a
+  floor above your store seq, you get a warning rather than a refusal, because
+  the floor carries forward on its own and refusing would make every later
+  release unbuildable.
+- **The reference REST adapter refuses item keys of `.` and `..`.** Those two
+  survive `encodeURIComponent`, so URL resolution strips them as dot segments:
+  `/items/..` resolves to `/`. An accepted push would have sent an authenticated
+  `PUT` or `DELETE` to the upstream's root or collection endpoint. Found by an
+  independent review.
+
+### Smaller things the migration got wrong
+
+- **Migration step 2 now covers the `pub add` failure.** An app using
+  `flutter_local_notifications` cannot resolve `valence`, because
+  `connectivity_plus` wants `dbus ^0.8.0` and the notifications plugin's Linux
+  implementation wants `^0.7.8` — two Linux-only packages an Android build never
+  compiles. The host guide documented it; the migration page, which is where you
+  are standing when it happens, did not. The `dependency_overrides` fix is now
+  next to the `flutter pub add` line.
+- **`BridgeError`'s import is in the docs.** 0.3 generated it into your
+  `bridge.g.dart`; 0.4 imports it from the package without re-exporting, so every
+  file that throws one stops compiling with *"The name 'BridgeError' isn't a
+  class"*. Add `import 'package:valence/valence.dart';` — the migration page's
+  `handlers.dart` example now shows it.
+- **`lastSyncedAt` reads `null` after migrating, and the docs say so.**
+  `sync.status` is new in 0.4, so no 0.3 host wrote the timestamp: a migrated
+  device reports `null` while holding a complete database, and the honest
+  rendering of that is "Never synced" under current data. Treat `null` as "not
+  known yet" rather than "never". It self-corrects on the first 0.4 sync.
+- **A resume can arrive before start-up finishes.** On Android the lifecycle
+  observer fires during the first launch, so a resume handler can run before the
+  server, the store or the active bundle exists — and worse, can start an update
+  check alongside the UI-start transition still in flight. `ValenceApp` now
+  ignores a resume until start-up completes (it runs the same triggers itself at
+  the end of start-up anyway), and §3 states the rule for hosts that build their
+  own WebView.
+
+### A bucket over 500 rows can finally be read completely
+
+- **`data.list` takes an `after` cursor, and there is a new `data.count`**
+  (schema version 5). `after` is the last key of the previous page, and the scan
+  resumes strictly after it, so a bucket of any size has a complete read.
+
+  The clamp itself was right — an unbounded reply kills the WebView, and that can
+  roll back a healthy release — but with no way to page past it, **a bucket over
+  500 rows had no complete read at all.** And the damage was not a short list: a
+  truncated list is indistinguishable from a short one, so a stored key that
+  happened to fall outside the first page read as a key the device had never held.
+  One test app showed a first-run location chooser to a device that had been
+  configured for days, because the user's saved place was row 600 of 912. A prefix
+  is not a general answer; those keys were GeoNames ids and one prefix covered
+  about 900 of them.
+
+  `data.count(bucket, prefix?)` answers "how many does this device hold?" and "is
+  this key space empty?" with one indexed count instead of paging every row's
+  JSON.
+
+  **What you must do:** regenerate, and page anywhere you call `data.list` without
+  an explicit `limit`. **`has('data.list')` cannot gate `after`** — it is a new
+  *parameter* on a method that has existed since version 1, so it is true on a
+  host that will reject the unknown field with `E_PARAMS`. Gate on
+  `has('data.count')`, which ships in the same version, or on
+  `app.info().bridge >= 5`.
+- **A built-in can now grow an optional *param*,** not just an optional returned
+  field. Before this, a built-in's params were compared literally, so adding one
+  would have failed the next `codegen` in every existing app — and `--rebaseline`,
+  which overwrites the schema your store build recorded, would have been the only
+  way through. An app that has not declared `after` keeps generating code that
+  compiles; declaring it at the wrong type, under another name, or on a different
+  built-in is still refused, and your own methods still may not grow a param once
+  a store build has recorded them.
+
+### Upgrading could silently start your users on an empty database
+
+Found by an independent team migrating a live app holding 30.8 MB of synced
+data. **If you are on 0.3, read this before you ship the upgrade.**
+
+- **The package now moves a 0.3 database out of the documents directory.** 0.4
+  opens `<applicationSupportDirectory>/<databaseName>`. 0.3's spec never named a
+  directory — it said only "outside `valence/`" — so a 0.3 host could equally
+  have used `getApplicationDocumentsDirectory()`, and on Android those are two
+  different places (`files` and `app_flutter`).
+
+  The bug: such a host, migrated exactly as documented, created a **new, empty**
+  database beside the full one and showed the user a fresh install. No error, no
+  warning, and `host.database` could not fix it, because that setting names the
+  file and the problem was the directory.
+
+  The package now looks for the database in the documents directory when the
+  support directory has none, and moves it before opening anything — the `-wal`
+  and `-shm` sidecars included, and the `.db` last. Moving the `.db` alone would
+  discard every commit still in the write-ahead log, which for a syncing app is
+  the last sync. It never overwrites a database that is already there, and it
+  logs one line saying what it moved.
+
+  **What you must do:** upgrade the package, then confirm your row counts on a
+  device carrying real data — install over the top with `adb install -r`, never
+  uninstall first. If you already wrote a move of your own in `main()`, you can
+  delete it; the package will find nothing to do.
+
+### A background sync could fail the launch that migrated the database
+
+- **A locked database open is retried, and a blocked background run reports
+  `busy` instead of failing.** A schema migration runs in `BEGIN EXCLUSIVE`, and
+  the launch that runs it is the launch WorkManager fires your already-registered
+  periodic job on — so on every app update the UI isolate and the background
+  isolate race for the file, and the loser gets
+  `DatabaseException(database is locked (code 5 SQLITE_BUSY))`. The sync lease
+  cannot help, because the lease lives inside the database being opened.
+
+  The package now retries a locked open five times a second apart;
+  `Valence.backgroundSync` then returns `reason: "busy"` rather than throwing,
+  because nothing was attempted and the isolate holding the file is itself about
+  to sync. `Valence.open` still rethrows, because an app with no store cannot
+  start. A failed open is also no longer cached, which used to leave every later
+  call in that isolate failing against a database that was by then healthy.
+
+  **What you must do:** nothing. `busy` in a background run on an upgrade launch
+  is expected and not a bug to chase.
+- **The host guide's `backgroundSync` example now compiles.**
+  `Workmanager().executeTask` wants a `Future<bool>` and `backgroundSync` returns
+  a `ValenceSyncResult`, so the one-line example did not build. The guide shows
+  the whole callback, and says to return `true` even for an offline or empty run —
+  `false` is WorkManager backoff, and the package already has better triggers
+  (resume, connectivity) waiting.
 
 ### An OTA release could silently not happen, and the rollback could not tell
 

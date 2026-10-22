@@ -4,7 +4,7 @@ import 'package:flutter/widgets.dart';
 
 import 'wire.dart';
 
-/// System layout/preferences for one owning Flutter view (contracts §4.6).
+/// System layout/preferences for one owning Flutter view (contracts §4.7).
 ///
 /// Custom hosts may publish [script] after load and on metrics/settings changes.
 /// This reads system values, independently of a Material theme or a SafeArea.
@@ -35,7 +35,7 @@ final class ValenceAppearance {
   /// Android WebView's single integer text-zoom percentage.
   int get textZoom => (fontScale * 100).round();
 
-  /// The schema-5 `app.appearance` event payload.
+  /// The schema-7 `app.appearance` event payload.
   Map<String, Object> get payload => {
         'darkMode': darkMode,
         'highContrast': highContrast,
