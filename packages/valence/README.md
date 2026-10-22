@@ -101,8 +101,14 @@ seq. Pointing the channel at an older seq only cancels pending downloads.
 `flutter test` in this package runs the contracts §8 matrix: every canonical check rejecting, the state
 machine's strikes and promotions, the server's three branches in order, the store, sync and the lease.
 
+[The host widget tests](https://getvalence.pages.dev/docs/guides/host-widget-tests/) pump the real
+`ValenceApp` against a test-only WebView platform, with signed bundles, SQLite and a loopback socket, so
+`flutter test test/app_widget_test.dart` covers the lifecycle, the startup resume guard, the navigation
+lock, bridge nonce forwarding, event buffering and the ready timer.
+
 A green unit suite is **not** evidence the store opens on a phone — see the first gotcha above. The §8
-integration row is what covers that.
+integration row is what covers that, and the widget harness replaces only the native WebView calls, so
+it proves host *policy* and never the OS WebView's own behaviour. iOS stays experimental and untested.
 
 ## Versioning
 
