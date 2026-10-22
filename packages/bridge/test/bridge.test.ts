@@ -179,6 +179,17 @@ test('has() gates events as well as methods, so a feature behind one can be gate
   assert.equal(v.has('nope.nothing' as 'sync.changed'), false);
 });
 
+test('an event at exactly the host bridge version is available', async () => {
+  // The boundary, for events as for methods: `since <= hostBridge`, not `<`. Off by one here and the
+  // version that introduces an event is the one version that cannot use it.
+  const { sent } = host();
+  const v = bridge();
+  const c = v.connect();
+  reply({ id: sent[0]!.id, ok: true, v: { bridge: 4 } });
+  await c;
+  assert.equal(v.has('app.resumed'), true);
+});
+
 test('on the web has() is false for every event, because no host is there to emit one', async () => {
   browser();
   const v = bridge();

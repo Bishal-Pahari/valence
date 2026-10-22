@@ -755,6 +755,9 @@ test('an app that already shipped a store build can take a built-in\'s new param
 
   editSchema(root, (s) => {
     s.methods['data.list'].params.after = 'string?';
+    // `data.count` is `after`'s gate: the param has no `since`, so without a sibling at the new version
+    // the page has nothing to ask. assertBuiltinShapes requires it.
+    s.methods['data.count'] = { since: 5, params: { bucket: 'string', prefix: 'string?' }, returns: 'int' };
     s.version = 5;
   });
   assert.ok(codegen({ root, cfg }).written.length, 'the runtime param is additive against the recorded schema');
@@ -777,13 +780,56 @@ test('an app that already shipped a store build can take a built-in\'s new param
   // (app.info().bridge is not a second gate: it is the app's own schema version. See §4.2.)
   bad((s) => {
     s.methods['data.list'].params.after = 'string?';
-    s.version = 4; // the shipped version, so nothing can gate on the new param
+    s.methods['data.count'].since = 4; // the sibling is here, but at the shipped version, so it gates nothing
+    s.version = 4; // and neither does the version
   }, /needs "version" above the shipped 4/);
   // And a method-level key the IDL has not defined is not exempt from the baseline guard either.
   bad((s) => {
     s.methods['data.list'].deprecated = true;
     s.version = 5;
   }, /cannot change/);
+  // The sibling is not optional. Dropping `data.count` leaves `has('data.count')` false on every host
+  // the app will ever ship — including the ones that accept the cursor — so a page that follows the docs
+  // never pages, and the bucket `after` was added for still has no complete read. The version bump
+  // alone does not help: nothing in it is a name.
+  bad((s) => {
+    delete s.methods['data.count'];
+    s.version = 5;
+  }, /the only thing a page can gate it on is "data\.count"/);
+});
+
+test('a grown param needs its sibling even in a brand-new schema, with no store baseline', () => {
+  // The trap does not need a shipped baseline: an app can declare `after` on day one and never declare
+  // `data.count`, and then the one gate §4.2 permits is false for ever. So this lives in
+  // assertBuiltinShapes, which always runs, rather than in assertAdditive, which needs a baseline.
+  const { root, cfg } = fixture();
+  editSchema(root, (s) => {
+    s.methods['data.list'].params.after = 'string?';
+    s.version = 5;
+  });
+  assert.throws(() => codegen({ root, cfg }), /the only thing a page can gate it on is "data\.count"/);
+  // An event counts as a sibling too — it is a name `has()` can answer for.
+  editSchema(root, (s) => (s.events['data.counted'] = { since: 5, payload: {} }));
+  assert.throws(() => codegen({ root, cfg }), /gate it on is "data\.count"/, 'but it must be *the* sibling');
+  editSchema(root, (s) => {
+    delete s.events['data.counted'];
+    s.methods['data.count'] = { since: 5, params: { bucket: 'string', prefix: 'string?' }, returns: 'int' };
+  });
+  assert.ok(codegen({ root, cfg }).written.length);
+});
+
+test('one name cannot be both a method and an event, because has() resolves it to one answer', () => {
+  // has() takes either kind and reads one merged table (§4.3). A name declared as both answers for
+  // whichever wins, so `has('x')` could report false for an event the host really does emit.
+  const { root, cfg } = fixture();
+  editSchema(root, (s) => {
+    // Different `since` on purpose: that is the case where the merged lookup is observably wrong, since
+    // a bridge-6 host emits the event (since 6) while the method (since 7) makes has() say false.
+    s.methods['thing.happened'] = { since: 7, params: {}, returns: 'void' };
+    s.events['thing.happened'] = { since: 6, payload: {} };
+    s.version = 7;
+  });
+  assert.throws(() => codegen({ root, cfg }), /declared as both a method and an event/);
 });
 
 test('an app that already shipped a store build can take a built-in\'s new field', () => {

@@ -153,7 +153,12 @@ export interface Bridge<M, E> {
  */
 export function createBridge<M, E>(
   methodSince: { readonly [K in keyof M]: number },
-  eventSince: { readonly [K in keyof E]: number } = {} as { readonly [K in keyof E]: number },
+  // Required, not defaulted. A default of `{}` would let an app upgrade this package without
+  // regenerating and get `has(<any event>)` === false on every host, for ever and silently — while the
+  // widened `has()` type is exactly what makes that call compile. Required, a stale `bridge.g.ts` fails
+  // to build and names the thing to regenerate, which is the failure this whole surface exists to turn
+  // silent no-ops into. Nothing but generated code calls this.
+  eventSince: { readonly [K in keyof E]: number },
 ): Bridge<M, E> {
   installTransport();
   return {
