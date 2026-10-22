@@ -501,6 +501,82 @@ test('doctor reports absent evidence as warnings, compatibility errors as failur
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'built-in compatibility'));
 });
 
+test('doctor fails unsafe database names and browser/native origins with actionable fixes', async () => {
+  const { root, cfg } = fixture();
+  codegen({ root, cfg });
+  for (const name of ['../lost.db', 'C:\\lost.db', '/tmp/lost.db', '.', '', 'bad.db ', 'CON.db']) {
+    cfg.host.database = name;
+    const row = (await diagnose({ root, cfg })).find(([, n]) => n === 'database directory');
+    assert.equal(row[0], 'FAIL', name);
+    assert.match(row[2], /Fix:/);
+  }
+  cfg.host.database = 'legacy-data.db';
+  assert.ok((await diagnose({ root, cfg })).some(([s, n, m]) => s === 'WARN' && n === 'database directory' && m.includes('<appSupport>/legacy-data.db')));
+  for (const value of ["https://api.example.com; script-src *", 'https://user:secret@example.com', '*', 'file:///tmp', 'https://*.example.com', null]) {
+    cfg.web.connect = [value];
+    assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'connection origins'), String(value));
+  }
+  cfg.web.connect = ['https://api.example.com/v1?q=1'];
+  assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'PASS' && n === 'connection origins'));
+  for (const origin of ['https://api.example.com/v1', 'https://exam\tple.com', 'https://example.com\\']) {
+    cfg.http = { origins: [origin] };
+    assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'connection origins'));
+  }
+});
+
+test('doctor compares generated bridge, baseline and verified OTA requirements', async () => {
+  const { root, cfg, key } = fixture();
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const baselinePath = join(root, '.valence', 'baseline.json');
+  const baseline = readFileSync(baselinePath, 'utf8');
+  writeFileSync(baselinePath, JSON.stringify({ storeSeq: 1 }));
+  assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'store baseline'));
+  writeFileSync(baselinePath, baseline);
+  const dart = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
+  writeFileSync(dart, readFileSync(dart, 'utf8').replace('hostBridgeVersion = 4', 'hostBridgeVersion = 3'));
+  assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'bridge version'));
+  codegen({ root, cfg });
+  const ota = bundle({ root, cfg, key, requiresBridge: 5, now: NOW + 1000 });
+  assert.ok((await diagnose({ root, cfg })).some(([s, n, m]) => s === 'FAIL' && n === 'OTA bridge compatibility' && m.includes('store baseline is 4')));
+  const original = readFileSync(ota.manifestPath, 'utf8');
+  for (const bridge of [null, -1, 'not-a-version', {}, '4']) {
+    const manifest = JSON.parse(original);
+    manifest.requires.bridge = bridge;
+    const bytes = Buffer.from(JSON.stringify(manifest));
+    writeFileSync(ota.manifestPath, bytes);
+    writeFileSync(ota.manifestPath + '.sig', sign(null, bytes, key).toString('base64'));
+    assert.ok((await diagnose({ root, cfg })).some(([s, n, m]) => s === 'FAIL' && n === 'OTA bridge compatibility' && m.includes('positive integer')));
+  }
+  writeFileSync(ota.manifestPath, original);
+  // A bad signature must fail before the compatibility comparison.
+  writeFileSync(ota.manifestPath + '.sig', Buffer.alloc(64).toString('base64'));
+  assert.ok((await diagnose({ root, cfg })).some(([s, n, m]) => s === 'FAIL' && n === 'OTA bridge compatibility' && !m.includes('store baseline is 4')));
+});
+
+test('doctor scans tracked and untracked keys without disclosing private material, and checks linked key directories', async () => {
+  const { root, cfg, keyDir } = fixture();
+  codegen({ root, cfg });
+  execSync('git init -q', { cwd: root });
+  const header = ['-----BEGIN', 'PRIVATE KEY-----'].join(' ');
+  const secret = 'DO_NOT_DISCLOSE_KEY_BYTES';
+  writeFileSync(join(root, 'leaked.pem'), `${header}\n${secret}\n\0`);
+  for (const tracked of [false, true]) {
+    if (tracked) execSync('git add leaked.pem', { cwd: root });
+    const rows = await diagnose({ root, cfg, keyDir });
+    assert.ok(rows.some(([s, n]) => s === 'FAIL' && n === 'signing keys in Git'));
+    assert.ok(!JSON.stringify(rows).includes(secret));
+    assert.ok(!JSON.stringify(rows).includes(header));
+  }
+  execSync('git rm --cached -q leaked.pem', { cwd: root });
+  rmSync(join(root, 'leaked.pem'));
+  assert.ok((await diagnose({ root, cfg, keyDir })).some(([s, n]) => s === 'PASS' && n === 'signing keys in Git'));
+  const link = join(mkdtempSync(join(tmpdir(), 'doctor-link-')), 'keys');
+  symlinkSync(root, link, 'junction');
+  assert.ok((await diagnose({ root, cfg, keyDir: join(link, 'keys') })).some(([s, n]) => s === 'FAIL' && n === 'signing keys in Git'));
+  assert.ok((await diagnose({ root, cfg, keyDir, git: () => ({ error: { code: 'ENOENT' } }) })).some(([s, n]) => s === 'WARN' && n === 'signing keys in Git'));
+});
+
 test('codegen writes once, is stable, survives formatters, and --check detects real staleness', () => {
   const { root, cfg } = fixture();
   assert.equal(codegen({ root, cfg }).written.length, 3);

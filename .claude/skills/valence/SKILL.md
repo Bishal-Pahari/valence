@@ -266,7 +266,17 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
 - **Tests.** Run the host and web tests and report the counts. An app's suite covers its *wiring* — its own bridge methods, the built-in delegations reaching the runtime, the §4.2 denials through the generated path. The contracts §8 matrix is the `valence` package's own suite and is **not** expected here; an app that re-tests the state machine against code it does not contain gets a **WARN** for maintaining dead tests.
   When changing the runtime host widget, run `flutter test test/app_widget_test.dart` in `packages/valence` as part of the full suite. It pumps the real host with a stub WebView to cover startup/resume, navigation locks, nonce forwarding, buffered events, trial-ready timing and disposal. This is package evidence, not device or iOS verification; apps do not copy the harness.
 
-### R12 mechanical checks
+### Mechanical checks
+
+Both CLI doctors fail with a `Fix:` line on schema/generated bridge drift, invalid store baselines,
+verified local OTA requirements above the store bridge, database paths instead of file names,
+PEM signing keys in tracked or non-ignored Git files, and invalid browser/native origins. Archive
+obsolete OTA artifacts outside `dist-ota` before rerunning; never rewrite the store baseline to silence
+a compatibility failure. `web.connect` supports URL paths and grants browser CSP access only;
+`http.origins` grants native token access and requires exact origins plus a store build.
+Database location remains WARN: the CLI reports `<appSupport>/<host.database>` but cannot prove
+an installed phone's migration. Verify adoption on a device. Git scanning excludes ignored files
+and history; unavailable Git is WARN. Rotate exposed keys and audit history separately.
 
 Run `node valence/valence.mjs doctor --tests` before the manual audit. Report every WARN separately: missing stack/baseline, current seed pairs, dependency resolution, native-value declarations, and unexecuted section 8 mappings. `.valence/test-matrix.json` maps `bridge`, `loopback`, `updater`, `store-sync`, `integration` to host-relative test files. The package owns its invariants; map app wiring and device evidence rather than duplicating the runtime suite.
 
