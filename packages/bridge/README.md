@@ -18,6 +18,9 @@ import { call, connect, has, on, ready } from '$lib/valence/bridge.g';
 await connect();                                  // once at startup, before has()
 const plant = await call('data.get', { bucket: 'plants', key: 'fern' });
 const off = on('sync.changed', ({ buckets }) => refresh(buckets));
+on('sync.done', ({ result }) => setFreshness(result));          // every completed run, changed: 0 included
+on('app.lifecycle', ({ state }) => state === 'background' && saveDraft());
+on('app.online', ({ online }) => setBanner(!online));           // interface state, not reachability
 await ready();                                    // on every path that paints, once per page load
 ```
 
@@ -86,3 +89,5 @@ After codegen, import `call`, `connect` and `has` from your app's `bridge.g.ts`.
 Import through your generated `bridge.g.ts`. After `connect()`, guard `has("data.getMany")` and `has("sync.status")` for older hosts. `call("data.getMany", {bucket, keys})` returns distinct live rows in first-requested order, omitting missing/deleted keys (max 500 inputs). `call("sync.status")` returns outbox operation count (including deletes), nullable last-success timestamp, and the last attempt's offline flag. It makes no network request. `SyncResult.pending` is nullable for older hosts.
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
+
+Guard `has("data.count")` to page `data.list` with `after`: pass the last key of the previous page and the scan resumes strictly after it, which is the only complete read of a bucket larger than `data.list`'s 500-row clamp. `has("data.list")` cannot gate `after` — it is a new parameter on a method that has existed since version 1, and a host older than version 5 rejects the unknown field with `E_PARAMS`. `call("data.count", {bucket, prefix})` returns the number of live rows without reading any of them.

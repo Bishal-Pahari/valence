@@ -201,6 +201,77 @@ final class _BrokenSecureStoragePlatform extends FlutterSecureStoragePlatform {
   Future<Never> _fail() => Future.error(MissingPluginException('no secure storage on this platform'));
 }
 
+/// `SQLITE_BUSY`, worded and coded exactly as Android reports it when the schema upgrade's
+/// `BEGIN EXCLUSIVE` loses the race with another isolate's open (contracts §5.6).
+final class LockedDatabaseException extends DatabaseException {
+  LockedDatabaseException()
+      : super("database is locked (code 5 SQLITE_BUSY) sql 'BEGIN EXCLUSIVE' args [] during open, closing...");
+
+  @override
+  int? getResultCode() => 5;
+
+  @override
+  Object? get result => null;
+}
+
+/// A `DatabaseException` that is **not** a lock, but whose rendered form carries the lock wording in the
+/// failing statement's arguments — which on a write are the page's own values.
+final class NotLockedDatabaseException extends DatabaseException {
+  NotLockedDatabaseException(super.message, this.argument);
+
+  final String argument;
+
+  @override
+  int? getResultCode() => 19; // SQLITE_CONSTRAINT
+
+  @override
+  Object? get result => null;
+
+  @override
+  String toString() => "DatabaseException($_rendered) sql 'INSERT INTO kv …' args [$argument]";
+
+  String get _rendered => 'UNIQUE constraint failed';
+}
+
+/// A factory that refuses the first [locks] opens as locked, then behaves like the real one.
+///
+/// Standing in for the other isolate holding the file: nothing in `flutter_test` can take a real exclusive
+/// lock across isolates, and the behaviour under contention is the whole point.
+final class LockingDatabaseFactory implements DatabaseFactory {
+  LockingDatabaseFactory(this.inner, {this.locks = 1});
+
+  final DatabaseFactory inner;
+  int locks;
+
+  /// How many opens have been attempted, so a test can tell a retry from a single try.
+  int attempts = 0;
+
+  @override
+  Future<Database> openDatabase(String path, {OpenDatabaseOptions? options}) {
+    attempts++;
+    if (locks-- > 0) return Future.error(LockedDatabaseException());
+    return inner.openDatabase(path, options: options);
+  }
+
+  @override
+  Future<String> getDatabasesPath() => inner.getDatabasesPath();
+
+  @override
+  Future<void> setDatabasesPath(String path) => inner.setDatabasesPath(path);
+
+  @override
+  Future<void> deleteDatabase(String path) => inner.deleteDatabase(path);
+
+  @override
+  Future<bool> databaseExists(String path) => inner.databaseExists(path);
+
+  @override
+  Future<void> writeDatabaseBytes(String path, Uint8List bytes) => inner.writeDatabaseBytes(path, bytes);
+
+  @override
+  Future<Uint8List> readDatabaseBytes(String path) => inner.readDatabaseBytes(path);
+}
+
 /// Collects log lines, so a test can assert that a stop was *reported* and not just taken.
 final class LogSpy {
   final List<String> lines = [];

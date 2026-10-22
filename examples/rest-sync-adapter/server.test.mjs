@@ -82,6 +82,18 @@ test('REST snapshots, 600-row paging, tombstones and durable idempotent push', a
   const deletion = await call('/items/push', { ops: [{ id: 'op-2', k: 'k1', v: null, d: 1 }] });
   assert.equal(deletion.body.rows[0].d, 1); assert.equal(items.has('k1'), false);
   assert.equal((await call('/items/push', { ops: [{ ...op, id: 'op-3', v: { id: 'different' } }] })).status, 400);
+  // `.` and `..` survive encodeURIComponent, so URL resolution strips them as dot segments and an accepted
+  // push would send an authenticated PUT or DELETE to the upstream's collection or root endpoint.
+  for (const k of ['.', '..']) {
+    const before = writes;
+    assert.equal((await call('/items/push', { ops: [{ id: `dots-${k}`, k, v: { id: k }, d: 0 }] })).status, 400, k);
+    assert.equal((await call('/items/push', { ops: [{ id: `dotdel-${k}`, k, v: null, d: 1 }] })).status, 400, k);
+    assert.equal(writes, before, `a ${k} key must be refused before any upstream request`);
+  }
+  // And it refuses the whole batch, so one bad key cannot ride along with good ones.
+  const mixed = await call('/items/push', { ops: [{ id: 'ok-1', k: 'fine', v: { id: 'fine' }, d: 0 }, { id: 'bad-1', k: '..', v: null, d: 1 }] });
+  assert.equal(mixed.status, 400);
+  assert.equal((await call('/items?schema=1&since=0&limit=500')).body.rows.some((r) => r.k === 'fine'), false);
   const backlog = Array.from({ length: 601 }, (_, n) => ({
     id: `backlog-${n}`, k: `new-${n}`, v: { id: `new-${n}`, count: n }, d: 0,
   }));

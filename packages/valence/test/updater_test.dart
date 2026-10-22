@@ -1654,6 +1654,212 @@ void main() {
       expect(await store.get('plants', 2, 'b'), 2);
     });
   }
+
+  // ===========================================================================
+  /// Answers the pointer, the manifest, the signature and the files of [b], and null for anything else —
+  /// so a test can decide for itself what happens to the sync endpoints step 7 reaches.
+  http.Response? bundleOnly(http.BaseRequest req, SignedBundle b) {
+    final path = req.url.path;
+    if (path.contains('/channels/')) return http.Response(jsonEncode({'seq': b.seq, 'rollout': 100}), 200);
+    final base = '/manifests/${b.seq}.json';
+    if (path.endsWith(base)) return http.Response.bytes(b.bytes, 200);
+    if (path.endsWith('$base.sig')) return http.Response(b.signature, 200);
+    final file = RegExp(r'/files/([0-9a-f]{64})$').firstMatch(path);
+    if (file != null) return http.Response.bytes(b.blobs[file.group(1)]!, 200);
+    return null;
+  }
+
+  group('§4.6 why a check stopped, for bundle.status', () {
+    // Each row is a stop site in §2.3. The point is not that the check declined — every case above
+    // already covers that — it is that the page is told *which* reason it was, because "waiting for
+    // data" and "rolled out to 10%" are a healthy system while "rejected" is a broken release, and
+    // before this they were one answer: pending stayed null and nothing else moved.
+
+    test('nothing has been checked yet, and an app with no otaBase never will', () async {
+      final idle = makeUpdater(state: ValenceState(installId: 'i'));
+      expect(idle.lastReason, ValenceBundleReason.idle);
+      expect(idle.lastCheckedAt, isNull);
+      expect(idle.lastOffered, isNull);
+
+      final u = makeUpdater(state: ValenceState(installId: 'i'), config: testConfig(key, otaBase: ''));
+      expect(await u.checkForUpdate(), isNull);
+      expect(u.lastReason, ValenceBundleReason.unconfigured);
+      expect(u.lastOffered, isNull, reason: 'no pointer was ever fetched');
+      expect(u.lastCheckedAt, isNotNull, reason: 'the check completed; it just had nothing to do');
+    });
+
+    test('a healthy pending reports ready, with the seq the pointer offered', () async {
+      final b = await signBundle(key, seq: 20);
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        client: otaHost(bundles: {20: b}, pointerSeq: 20),
+      );
+      expect(await u.checkForUpdate(), 20);
+      expect(u.lastReason, ValenceBundleReason.ready);
+      expect(u.lastOffered, 20);
+    });
+
+    test('the three "nothing newer" stops are one reason, not three', () async {
+      for (final state in [
+        ValenceState(installId: 'i', current: 20),
+        ValenceState(installId: 'i', current: 10, pending: 20),
+        ValenceState(installId: 'i', current: 10, trial: 20, serving: 20),
+      ]) {
+        final u = makeUpdater(state: state, client: otaHost(bundles: {}, pointerSeq: 20));
+        expect(await u.checkForUpdate(), isNull);
+        expect(u.lastReason, ValenceBundleReason.uptodate);
+        expect(u.lastOffered, 20);
+      }
+    });
+
+    test('outside the rollout is its own reason: a newer release does exist', () async {
+      final b = await signBundle(key, seq: 20);
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        client: otaHost(bundles: {20: b}, pointerSeq: 20, rollout: 0),
+      );
+      expect(await u.checkForUpdate(), isNull);
+      expect(u.lastReason, ValenceBundleReason.rollout);
+      expect(u.lastOffered, 20);
+    });
+
+    test('a seq this install has rejected reports bad', () async {
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10, bad: [20]),
+        client: otaHost(bundles: {}, pointerSeq: 20),
+      );
+      expect(await u.checkForUpdate(), isNull);
+      expect(u.lastReason, ValenceBundleReason.bad);
+    });
+
+    test('a fetch that cannot reach the server reports offline, at every step that fetches', () async {
+      final b = await signBundle(key, seq: 20);
+      final cases = <String, http.Client>{
+        'the pointer': MockClient((_) => throw const SocketException('down')),
+        'the manifest': otaHost(bundles: {20: b}, pointerSeq: 20, failPaths: {'20.json'}),
+        'the signature': otaHost(bundles: {20: b}, pointerSeq: 20, failPaths: {'20.json.sig'}),
+      };
+      for (final e in cases.entries) {
+        final u = makeUpdater(state: ValenceState(installId: 'i', current: 10), client: e.value);
+        expect(await u.checkForUpdate(), isNull, reason: e.key);
+        expect(u.lastReason, ValenceBundleReason.offline, reason: e.key);
+      }
+      // A bundle file that 404s is the same answer; the published bytes may simply not be there yet.
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        client: otaHost(bundles: {20: SignedBundle(b.bytes, b.signature, b.manifest, const {})}, pointerSeq: 20),
+      );
+      expect(await u.checkForUpdate(), isNull);
+      expect(u.lastReason, ValenceBundleReason.offline);
+    });
+
+    test('a manifest that fails its checks reports rejected, not offline', () async {
+      // The one reason that deserves an alert: no device will ever take this release.
+      final other = await TestKey.create('k2');
+      final b = await signBundle(other, seq: 20);
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        client: otaHost(bundles: {20: b}, pointerSeq: 20),
+      );
+      expect(await u.checkForUpdate(), isNull);
+      expect(u.lastReason, ValenceBundleReason.rejected);
+      expect(u.lastOffered, 20);
+    });
+
+    test('a file whose bytes are not the published bytes reports rejected', () async {
+      final b = await signBundle(key, seq: 20);
+      final hash = b.blobs.keys.first;
+      final tampered = SignedBundle(b.bytes, b.signature, b.manifest, {hash: utf8.encode('not it')});
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        client: otaHost(bundles: {20: tampered}, pointerSeq: 20),
+      );
+      expect(await u.checkForUpdate(), isNull);
+      expect(u.lastReason, ValenceBundleReason.rejected);
+    });
+
+    test('over the size cap reports toobig', () async {
+      final b = await signBundle(key, seq: 20);
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        client: otaHost(bundles: {20: b}, pointerSeq: 20),
+        config: testConfig(key, bundleSizeCap: 1),
+      );
+      expect(await u.checkForUpdate(), isNull);
+      expect(u.lastReason, ValenceBundleReason.toobig);
+    });
+
+    test('a bundle waiting for its data pair reports waitingForData, not "no update"', () async {
+      // The state four hosts read as "nothing new". The bundle is downloaded and verified and simply
+      // cannot be served yet, and on an offline device it stays here indefinitely.
+      final b = await signBundle(key, seq: 20, requiresData: {'plants': 2});
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        // Everything the bundle needs is published except the data pair, which is step 7's whole point.
+        client: MockClient((req) async => bundleOnly(req, b) ?? http.Response('not published yet', 503)),
+        config: testConfig(key, dataSchemas: {'plants': 1}),
+      );
+      expect(await u.checkForUpdate(), isNull);
+      expect(u.lastReason, ValenceBundleReason.waitingForData);
+      expect(u.lastOffered, 20);
+
+      // Same answer with no syncBase at all: the pair has no route onto the device either way.
+      final dry = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        client: MockClient((req) async => bundleOnly(req, b) ?? http.Response('no', 404)),
+        config: testConfig(key, dataSchemas: {'plants': 1}, syncBase: ''),
+      );
+      expect(await dry.checkForUpdate(), isNull);
+      expect(dry.lastReason, ValenceBundleReason.waitingForData);
+    });
+
+    test('a step 7 that cannot take the lease reports busy, and the next check retries', () async {
+      final b = await signBundle(key, seq: 20, requiresData: {'plants': 2});
+      final cfg = testConfig(key, dataSchemas: {'plants': 1});
+      final held = ValenceSync(store: store, config: cfg);
+      expect(await held.acquireLease(), isTrue);
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        client: otaHost(bundles: {20: b}, pointerSeq: 20),
+        config: cfg,
+      );
+      expect(await u.checkForUpdate(), isNull);
+      expect(u.lastReason, ValenceBundleReason.busy);
+      await held.releaseLease();
+    });
+
+    test('a check that completed stamps checkedAt, and the stamp moves with each one', () async {
+      final u =
+          makeUpdater(state: ValenceState(installId: 'i', current: 20), client: otaHost(bundles: {}, pointerSeq: 20));
+      await u.checkForUpdate();
+      final first = u.lastCheckedAt!;
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      await u.checkForUpdate();
+      expect(u.lastCheckedAt!, greaterThanOrEqualTo(first));
+    });
+
+    test('the offered seq describes this check, not the last one', () async {
+      // Otherwise a page shows "update 20 available" for ever after one offer, including on a run that
+      // never reached the pointer at all.
+      final b = await signBundle(key, seq: 20);
+      final state = ValenceState(installId: 'i', current: 10);
+      var reachable = true;
+      final u = makeUpdater(
+        state: state,
+        client: MockClient((req) async {
+          if (!reachable) throw const SocketException('down');
+          return bundleOnly(req, b) ?? http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+        }),
+      );
+      expect(await u.checkForUpdate(), 20);
+      expect(u.lastOffered, 20);
+      reachable = false;
+      state.pending = null;
+      expect(await u.checkForUpdate(), isNull);
+      expect(u.lastOffered, isNull);
+      expect(u.lastReason, ValenceBundleReason.offline);
+    });
+  });
 }
 
 // Pauses at the real filesystem boundary between the data gate and manifest publication.

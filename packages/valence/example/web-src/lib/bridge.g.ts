@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 4;
+export const BRIDGE_VERSION = 6;
 
 export interface AppInfo {
   platform: string;
@@ -44,6 +44,20 @@ export interface SyncStatus {
   offline: boolean;
 }
 
+export interface AppState {
+  lifecycle: string;
+  online: boolean;
+}
+
+export interface BundleStatus {
+  serving: number;
+  pending?: number | null;
+  trial?: number | null;
+  reason: string;
+  offered?: number | null;
+  checkedAt?: number | null;
+}
+
 export interface Methods {
   'app.ready': { params: Record<string, never>; returns: void };
   'app.info': { params: Record<string, never>; returns: AppInfo };
@@ -55,6 +69,7 @@ export interface Methods {
     bucket: string;
     prefix?: string | null;
     limit?: number | null;
+    after?: string | null;
   }; returns: Row[] };
   'data.put': { params: {
     bucket: string;
@@ -101,6 +116,12 @@ export interface Methods {
     keys: string[];
   }; returns: Row[] };
   'sync.status': { params: Record<string, never>; returns: SyncStatus };
+  'app.state': { params: Record<string, never>; returns: AppState };
+  'bundle.status': { params: Record<string, never>; returns: BundleStatus };
+  'data.count': { params: {
+    bucket: string;
+    prefix?: string | null;
+  }; returns: number };
 }
 
 export interface Events {
@@ -112,6 +133,15 @@ export interface Events {
   };
   'app.resumed': Record<string, never>;
   'auth.expired': Record<string, never>;
+  'sync.done': {
+    result: SyncResult;
+  };
+  'app.lifecycle': {
+    state: string;
+  };
+  'app.online': {
+    online: boolean;
+  };
 }
 
 export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
@@ -134,6 +164,9 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'http.request': 4,
   'data.getMany': 3,
   'sync.status': 3,
+  'app.state': 6,
+  'bundle.status': 6,
+  'data.count': 5,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
@@ -141,6 +174,9 @@ export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
   'bundle.updateReady': 1,
   'app.resumed': 1,
   'auth.expired': 2,
+  'sync.done': 6,
+  'app.lifecycle': 6,
+  'app.online': 6,
 };
 
 /** Browser fallbacks for this app, so the same build also runs as the website. */

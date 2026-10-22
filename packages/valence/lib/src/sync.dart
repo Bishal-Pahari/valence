@@ -55,6 +55,19 @@ final class ValenceSyncResult {
 
   /// Remaining outbox operations, including deletes.
   final int pending;
+
+  /// The `SyncResult` wire shape, for the `sync.done` event (§4.6).
+  ///
+  /// Every field, including the two the generated `SyncResult` type may not declare: an app's `on()`
+  /// handler reads what it knows about and the rest costs nothing, while a page generated against the
+  /// newer schema on an older host is the case §4.3's "a grown field is always nullable" covers.
+  Map<String, Object?> toJson() => {
+        'buckets': buckets,
+        'changed': changed,
+        'offline': offline,
+        'reason': reason.name,
+        'pending': pending,
+      };
 }
 
 /// Local sync observations. [offline] is the last attempt, not current connectivity (§7.1).
