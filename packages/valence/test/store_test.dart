@@ -160,6 +160,21 @@ void main() {
       expect(await store.list('mix', 1, after: 'other'), isEmpty);
     });
 
+    test('an empty first key still advances the cursor', () async {
+      // `''` is a valid key: `data.put` refuses only `.` and `..`. A cursor treated as absent when it is
+      // empty returns the same first row on every page, so paging never terminates and the bucket has no
+      // complete read — the exact failure the cursor exists to remove.
+      await store.applyPullPage(
+        bucket: 'empty',
+        schema: 1,
+        rows: [row('', 'first', 1), row('a', 'second', 2)],
+        maxUsnAfter: 2,
+      );
+      final first = await store.list('empty', 1, limit: 1);
+      expect(first.map((r) => r.key), ['']);
+      expect((await store.list('empty', 1, limit: 1, after: first.last.key)).map((r) => r.key), ['a']);
+    });
+
     test('count answers how many rows without reading any of them, and ignores tombstones', () async {
       await store.applyPullPage(
         bucket: 'big',
