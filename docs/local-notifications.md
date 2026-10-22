@@ -1,6 +1,6 @@
 # Local reminders and badges
 
-Local notifications are built into schema 5. They run from the OS scheduler, including when the page
+Local notifications are built into schema 11. They run from the OS scheduler, including when the page
 is closed. Android is the tested platform; iOS paths are experimental and untested.
 
 Opt in in `valence.config.json`, run codegen, and ship a store build:
@@ -10,7 +10,7 @@ Opt in in `valence.config.json`, run codegen, and ship a store build:
 ```
 
 The default is disabled. A schema can omit the group. Existing app-specific `notify.daily` handlers
-can coexist, but their IDs share the same native scheduler: reserve distinct ID ranges. Custom notification or badge methods declared with since below 5 remain app-owned, with their shipped signatures intact. Only since-5+ declarations use the built-in delegation. Keep a shipped custom method unchanged; use your app adapter to call the native service, or adopt the standard name only if it has never shipped.
+can coexist, but their IDs share the same native scheduler: reserve distinct ID ranges. Custom notification or badge methods declared with since below 11 remain app-owned, with their shipped signatures intact. Only since-11+ declarations use the built-in delegation. Keep a shipped custom method unchanged; use your app adapter to call the native service, or adopt the standard name only if it has never shipped.
 
 Import `call`, `has` and `on` from your generated `bridge.g.ts`. Guard new calls with `has()` when
 the same web bundle serves older store builds. Install listeners before consuming the launch tap:

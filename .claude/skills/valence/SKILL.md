@@ -246,11 +246,11 @@ The steps below are for **OTA releases**.
    - Pointing the channel at an older seq only cancels pending downloads. Devices that already committed the bad bundle keep it until something newer arrives (§2.4).
    - Devices still trying a bad bundle revert on their own after two failed starts.
 
-### Local notifications (schema 5)
+### Local notifications (schema 11)
 
 When the app ships local reminders, read contracts ?6.5 and the [setup guide](https://getvalence.pages.dev/docs/guides/local-notifications/). Add notifications.enabled and a bundled status drawable, run codegen, merge templates/notifications.android.xml into the host manifest, enable core library desugaring and keep drawable/raw resources. Use inherited built-ins, reserve ID ranges alongside app-owned reminders, and record exact/inexact/blocked honestly. Install warm listeners before consuming notify.initial. Verify actual delivery, actions and cold taps, clock/timezone changes and reboot on Android. Initialization is passive; permission requests are explicit. iOS gets the delegate path and stays experimental and untested.
 
-The native dependency requires desugaring in every Android adopter, including disabled hosts. Pre-schema-5 custom notification and badge methods remain app-owned; preserve their shipped shapes. Only since-5+ declarations delegate to built-ins.
+The native dependency requires desugaring in every Android adopter, including disabled hosts. Pre-schema-11 custom notification and badge methods remain app-owned; preserve their shipped shapes. Only since-11+ declarations delegate to built-ins.
 
 ## Doctor (read only)
 
@@ -337,3 +337,7 @@ Use the built-in `http.request` (since 4, with 3 providing data.getMany and sync
 For offline use of existing REST APIs, adapt them to sections 5.3 and 5.5; `sync.base` is not an arbitrary REST URL. See `examples/rest-sync-adapter/` and the [backend guide](https://getvalence.pages.dev/docs/guides/your-backend/). Partial pull pages use the last included USN, tombstones persist, pushes deduplicate by id, and retry echoes the current winning row. Keep the durable cursor/id database. Android is tested; iOS is experimental and untested.
 
 For sync or schema-gate failures, use the package runtime: pull progress is distinct from completed pairs, push echoes never move cursors, and step 7 holds its lease through pending publication with a five-second bounded acquisition wait. The v2 database migration preserves queued operations in durable insertion order. Test partial HTTP/static pulls and GC/publication interleavings before claiming an update is safe.
+
+Bridge version 6 adds `app.lifecycle` (four states, only changes, `hidden`/`paused` both `background`), `app.online` (OS interface state, **not** reachability), `app.state()`, `sync.done` (the whole `SyncResult` after every completed run, `changed: 0` included, emitted after `sync.changed`) and `bundle.status()` (why the last check stopped, from a closed set of eleven; never a request). Persist on `background`, not `detached`. Pair `app.online` with `SyncResult.reason` rather than replacing it. `rejected` means a release no device will take; `waitingForData` is the healthy stall four hosts read as "no update" (§4.6).
+
+Page a bucket larger than the 500-row clamp with `data.list`'s `after` (the last key of the previous page; version 5), and read its size with `data.count`. Without the cursor a bucket past the clamp has no complete read and a truncated list looks like a short one. `after` is a param on a since-1 method, so gate it on `has('data.count')` or `app.info().bridge >= 5`, never `has('data.list')`. A built-in may grow an optional param as well as an optional returned field; both stay additive against the recorded store baseline. The database sits at `<appSupport>/<databaseName>` — the directory is fixed, and the package adopts a 0.3 database from the documents directory with its `-wal`/`-shm` sidecars rather than starting empty. A locked open is retried, and `backgroundSync` reports `busy` instead of failing the WorkManager job (§5.1, §5.6).

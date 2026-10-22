@@ -8,19 +8,23 @@
 /// the last one is generated into `lib/valence/config.g.dart` by `valence codegen`.
 library;
 
-export 'src/app.dart' show ValenceApp, ValenceDispatch;
+export 'src/app.dart' show ValenceApp, ValenceDispatch, valenceLifecycleFor, valenceOnline;
 export 'src/runtime.dart'
     show
         BridgeError,
         BridgeErrorCode,
         Valence,
         ValenceAppInfo,
+        ValenceAppState,
+        ValenceBundleReason,
+        ValenceBundleStatus,
         ValenceCheckFailure,
         ValenceConfig,
         ValenceFileEntry,
         ValenceHostView,
         ValenceHttp,
         ValenceHttpResponse,
+        ValenceLifecycle,
         ValenceLogger,
         ValenceManifest,
         ValenceNotifications,

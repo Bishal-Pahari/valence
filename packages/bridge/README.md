@@ -18,6 +18,9 @@ import { call, connect, has, on, ready } from '$lib/valence/bridge.g';
 await connect();                                  // once at startup, before has()
 const plant = await call('data.get', { bucket: 'plants', key: 'fern' });
 const off = on('sync.changed', ({ buckets }) => refresh(buckets));
+on('sync.done', ({ result }) => setFreshness(result));          // every completed run, changed: 0 included
+on('app.lifecycle', ({ state }) => state === 'background' && saveDraft());
+on('app.online', ({ online }) => setBanner(!online));           // interface state, not reachability
 await ready();                                    // on every path that paints, once per page load
 ```
 
@@ -88,6 +91,8 @@ Import through your generated `bridge.g.ts`. After `connect()`, guard `has("data
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
 
-## Local reminders (schema 5)
+Guard `has("data.count")` to page `data.list` with `after`: pass the last key of the previous page and the scan resumes strictly after it, which is the only complete read of a bucket larger than `data.list`'s 500-row clamp. `has("data.list")` cannot gate `after` — it is a new parameter on a method that has existed since version 1, and a host older than version 5 rejects the unknown field with `E_PARAMS`. `call("data.count", {bucket, prefix})` returns the number of live rows without reading any of them.
+
+## Local reminders (schema 11)
 
 Use the generated call/has/on surface for notify.* and badge.*. Guard notify.schedule with has() on older hosts; subscribe to notify.tapped and notify.action before consuming notify.initial. Payloads are untrusted data. The host needs compiled opt-in and native setup; see [local reminders](https://getvalence.pages.dev/docs/guides/local-notifications/).

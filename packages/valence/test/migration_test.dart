@@ -433,6 +433,28 @@ void main() {
       expect(await v.pendingWrites(), 0);
     });
 
+    test('a move that cannot finish fails the launch instead of starting empty', () async {
+      // The trap this rules out, and it is the data loss the whole adoption exists to prevent: if a
+      // part-way failure fell through to the open, an **empty** database would be created at the
+      // destination — and the next launch would find it there, skip the adoption, and never see the
+      // user's rows again. Silently, for ever. The 0.3 copy is intact, so failing loudly is recoverable.
+      await writeLegacyDatabase('valence.db', dir: documents);
+      // A directory where the `.db` has to go makes its rename fail while the sidecars succeed.
+      File(docPath('valence.db-wal')).writeAsStringSync('wal-bytes');
+      Directory(supportPath('valence.db')).createSync(recursive: true);
+      File('${supportPath('valence.db')}${Platform.pathSeparator}in-the-way').writeAsStringSync('x');
+
+      await expectLater(openPackage(), throwsA(isA<FileSystemException>()));
+      expect(File(docPath('valence.db')).existsSync(), isTrue, reason: 'the 0.3 database is still readable');
+
+      // And the next launch resumes the move from where it stopped, rather than being stuck.
+      Directory(supportPath('valence.db')).deleteSync(recursive: true);
+      ValenceStore.resetCacheForTests();
+      final v = await openPackage();
+      expect(await v.dataGet('shelf', 'p-1'), {'note': 'synced'});
+      expect(File(supportPath('valence.db-wal')).existsSync(), isTrue, reason: 'the sidecar moved in the first attempt');
+    });
+
     test('nothing is moved when both directories are the same place', () async {
       // path_provider can return one directory for both on some platforms. The guard keeps the adoption
       // from renaming the live database onto itself.

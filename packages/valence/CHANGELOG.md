@@ -2,7 +2,7 @@
 
 ## Unreleased - local reminders
 
-Schema 5 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. iOS is experimental and untested. Android hosts now need core library desugaring even when the feature is disabled, because the native plugin ships with the runtime. Existing custom notification IDs must be coordinated; pre-schema-5 custom methods retain their shipped shapes and app-owned handlers.
+Schema 11 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. iOS is experimental and untested. Android hosts now need core library desugaring even when the feature is disabled, because the native plugin ships with the runtime. Existing custom notification IDs must be coordinated; pre-schema-11 custom methods retain their shipped shapes and app-owned handlers.
 
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
@@ -10,6 +10,18 @@ Sync correctness: pull cursors advance only through returned rows, never push ec
 ## Unreleased - native HTTP and REST adapter
 
 Call your API with `http.request` (schema 4): the host enforces compiled `http.origins` origins, attaches the stored token, and never follows redirects. Existing hosts need codegen and a store build to add the capability or origins. A reference Node REST-to-sync adapter demonstrates durable pagination, tombstones and idempotent pushes. iOS remains experimental and untested.
+## Unreleased - lifecycle, connectivity and update status
+
+Bridge version 6. `ValenceApp` maps Flutter's five lifecycle states onto four and emits `app.lifecycle`
+only on a change (`hidden` and `paused` are both `background`, because Android delivers both for one
+backgrounding); it emits `app.online` from the connectivity it already watched, reading the current
+value at start-up rather than waiting for a change; and it emits `sync.done` with the whole
+`ValenceSyncResult` after every completed run, after `sync.changed` for the same run.
+`Valence.appState()` and `Valence.bundleStatus()` back the new `app.state` and `bundle.status`
+built-ins and never start a request. Every stop in the §2.3 check now records a `ValenceBundleReason`,
+so a page can tell a rollout gate from a release waiting for its data from a release no device will
+take. Persist on `background`, not `detached`. iOS remains experimental and untested.
+
 ## Unreleased: offline tooling
 
 - Add schema-3 data.getMany and sync.status, and optional SyncResult.pending. Regenerate an additive schema and guard the new methods on older hosts.

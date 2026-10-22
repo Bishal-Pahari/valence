@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 11,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -24,7 +24,8 @@
       "params": {
         "bucket": "string",
         "prefix": "string?",
-        "limit": "int?"
+        "limit": "int?",
+        "after": "string?"
       },
       "returns": "Row[]"
     },
@@ -133,15 +134,33 @@
       "params": {},
       "returns": "SyncStatus"
     },
-    "notify.permission": {
+    "app.state": {
+      "since": 6,
+      "params": {},
+      "returns": "AppState"
+    },
+    "bundle.status": {
+      "since": 6,
+      "params": {},
+      "returns": "BundleStatus"
+    },
+    "data.count": {
       "since": 5,
+      "params": {
+        "bucket": "string",
+        "prefix": "string?"
+      },
+      "returns": "int"
+    },
+    "notify.permission": {
+      "since": 11,
       "params": {
         "request": "bool?"
       },
       "returns": "bool"
     },
     "notify.schedule": {
-      "since": 5,
+      "since": 11,
       "params": {
         "id": "int",
         "title": "string",
@@ -157,24 +176,24 @@
       "returns": "NotifyScheduled"
     },
     "notify.cancel": {
-      "since": 5,
+      "since": 11,
       "params": {
         "id": "int"
       },
       "returns": "void"
     },
     "notify.pending": {
-      "since": 5,
+      "since": 11,
       "params": {},
       "returns": "NotifyPending[]"
     },
     "notify.initial": {
-      "since": 5,
+      "since": 11,
       "params": {},
       "returns": "json?"
     },
     "notify.channels.set": {
-      "since": 5,
+      "since": 11,
       "params": {
         "id": "string",
         "name": "string",
@@ -186,14 +205,14 @@
       "returns": "void"
     },
     "badge.set": {
-      "since": 5,
+      "since": 11,
       "params": {
         "n": "int"
       },
       "returns": "bool"
     },
     "badge.clear": {
-      "since": 5,
+      "since": 11,
       "params": {},
       "returns": "bool"
     }
@@ -219,8 +238,26 @@
       "since": 2,
       "payload": {}
     },
+    "sync.done": {
+      "since": 6,
+      "payload": {
+        "result": "SyncResult"
+      }
+    },
+    "app.lifecycle": {
+      "since": 6,
+      "payload": {
+        "state": "string"
+      }
+    },
+    "app.online": {
+      "since": 6,
+      "payload": {
+        "online": "bool"
+      }
+    },
     "notify.tapped": {
-      "since": 5,
+      "since": 11,
       "payload": {
         "id": "int",
         "payload": "string?",
@@ -228,7 +265,7 @@
       }
     },
     "notify.action": {
-      "since": 5,
+      "since": 11,
       "payload": {
         "id": "int",
         "payload": "string?",
@@ -265,6 +302,18 @@
       "pending": "int",
       "lastSyncedAt": "int?",
       "offline": "bool"
+    },
+    "AppState": {
+      "lifecycle": "string",
+      "online": "bool"
+    },
+    "BundleStatus": {
+      "serving": "int",
+      "pending": "int?",
+      "trial": "int?",
+      "reason": "string",
+      "offered": "int?",
+      "checkedAt": "int?"
     },
     "NotifyScheduled": {
       "id": "int",

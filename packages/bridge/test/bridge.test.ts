@@ -25,7 +25,7 @@ interface Events {
 }
 
 const SINCE = {
-  'notify.schedule': 5,
+  'notify.schedule': 11,
   'app.ready': 1,
   'app.info': 1,
   'data.get': 1,
@@ -261,11 +261,11 @@ test('ids increase, so concurrent calls resolve to their own replies', async () 
 });
 
 
-test('schema-5 notifications guard older hosts and deliver action payloads as data', async () => {
+test('schema-11 notifications guard older hosts and deliver action payloads as data', async () => {
   const { sent } = host();
   const v = bridge();
   const old = v.connect();
-  reply({ id: sent[0]!.id, ok: true, v: { bridge: 4 } });
+  reply({ id: sent[0]!.id, ok: true, v: { bridge: 10 } });
   await old;
   assert.equal(v.has('notify.schedule'), false);
   await assert.rejects(v.call('notify.schedule', { id: 42, title: 'Demo', at: 123 }), (e: unknown) => e instanceof BridgeError && e.code === 'E_UNSUPPORTED');
