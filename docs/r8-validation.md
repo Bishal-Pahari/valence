@@ -1,3 +1,46 @@
+# R8 queue refresh after doctor and widget-harness merges - 2026-10-23
+
+## In plain terms
+
+R8 now includes packages at e3ec37d8c340ab83d834d63b5eab5d17fa445d51 and the
+site packages at f5ed69395766afe9a958a1876943838b4a14493d. Both worktrees are
+on codex/r8. The code merge is ee63bfd; the site merge is f9bdf72.
+Template/example schema remains 7 and app.appearance remains since 7.
+
+Read both apps findings and latest reports: Kundalini iteration 11 (2026-10-23)
+and app-a iteration 8 (2026-10-22). Their device observations remain historical
+app evidence; this refresh does not claim a new app or emulator run.
+
+Decision: preserve all incoming doctor failures, data protections and host-widget
+coverage. The sole conflict was in the generated app instructions: retain both
+the release-time doctor rule and R8 accessibility guidance, because they protect
+different adopter obligations. No runtime redesign, package version change or
+schema renumbering was needed. Preserve the earlier R8 fix that publishes completed
+update status after releasing the lease and before notifying the page.
+
+## Fresh final gates
+
+- Root npm test: 64 passed, zero failed/skipped; generated Dart and strict
+  generated TypeScript were exercised.
+- Runtime flutter test: 396 passed; dart analyze --fatal-infos .: no issues.
+- Bridge: 21 tests passed; strict TypeScript and npm pack --dry-run passed.
+- Example: 17 tests passed; codegen --check wrote nothing; signature/file
+  verification passed (seq 1792638425, one file); debug APK build passed.
+- Flutter pub publish --dry-run: zero warnings.
+- Site npm run build: 28 pages; SEO, links and anchor checks passed.
+- Independent read-only security review: no confirmed findings. Its targeted
+  additive/fontScale tests (2), bridge appearance/capability tests (6), example
+  codegen check and signed built-in verification all passed.
+
+Review covered schema/delegations, optional fontScale, appearance publication,
+native zoom, navigation/nonce retention, completed update status ordering, both
+merged features and website consistency. Both worktrees were clean after merges.
+
+No new emulator run. TalkBack and true split-screen remain unverified; iOS remains
+experimental and untested. Test-app repositories were read only. No pushes,
+publications or merges into shared branches occurred.
+
+---
 # R8 queue refresh - 2026-10-23
 
 ## In plain terms
