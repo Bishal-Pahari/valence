@@ -1,3 +1,38 @@
+# R9 queue refresh - 2026-10-22
+
+Branch: `codex/r9` in both worktrees. Merged package `packages`
+`c55446f3d73afec7672c2615b0ffe70f1a6a074d` and site `packages`
+`5a23a4eaf3dc1fdacfb1f961dadbd33b5ed1d390`.
+
+## Decision and scope
+
+Retain the newest shared migration, paging, sync and lifecycle behavior. Security comes first:
+the explicit debug define still selects only a signature-verified installed manifest above the
+floor and outside the bad set; development preserves pending, trial and failure records.
+Normal release activation and strict bridge decoding remain unchanged. User data stays on the
+shared database adoption and bounded paging paths rather than carrying branch-local copies.
+R9 adds no bridge methods or parameters: both template and example schemas remain version 6,
+with the existing since values intact. No new schema reservation is needed.
+
+The site index conflict retained both the development guide and the incoming database,
+paging and lifecycle documentation. No package version numbers changed.
+
+Inputs reviewed: Kundalini's VALENCE_FINDINGS.md and ITERATION_10_REPORT.md, and app-a's
+VALENCE_FINDINGS.md and ITERATION_8_REPORT.md. Their migration/data and authentication findings
+remain distinct from this development-server queue refresh. Neither test app was modified.
+
+Independent security review against the merged branch found no confirmed defects. It traced
+compile-time exclusion, signed context and floor/bad checks, activation-record preservation,
+reserved route order, nonce/navigation/frame/worker restrictions, strict decoding, credentials,
+redirects and child-process shutdown. The reviewer ran the focused CLI test, bridge tests and
+example codegen check; the complete gates are recorded below when finished.
+
+Fresh Android device checks were optional and skipped for this refresh. The 2026-10-21 device
+results below are historical, not a claim that HMR was re-exercised after this merge. iOS remains
+experimental and untested; React Fast Refresh and a profile APK were not separately exercised.
+
+---
+
 # R9 validation - 2026-10-21
 
 Branch: `codex/r9` in the package and site worktrees. Base: package `406d153` on `packages`.
