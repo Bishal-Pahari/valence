@@ -695,9 +695,10 @@ test('an app that already shipped a store build can take a built-in\'s new param
   bad((s) => (s.methods['data.list'].params.cursor = 'string?'), /must stay/); // not a param the runtime added
   bad((s) => (s.methods['mine.list'].params.after = 'string?'), /cannot change/); // an app's own method may not grow
   bad((s) => (s.methods['data.list'].since = 2), /cannot change/); // since is not negotiable
-  // A grown param needs the version bump with it. A param has no `since`, so the schema version is the
-  // only thing has() and app.info().bridge can gate on — without this an app could add `after` at the
-  // shipped version and leave the page no way to tell it from a host that answers E_PARAMS.
+  // A grown param needs the version bump with it. A param has no `since`, so the only thing a page can
+  // gate on is a sibling method or event at the new version — without this an app could add `after` at
+  // the shipped version and leave the page no way to tell it from a host that answers E_PARAMS.
+  // (app.info().bridge is not a second gate: it is the app's own schema version. See §4.2.)
   bad((s) => {
     s.methods['data.list'].params.after = 'string?';
     s.version = 4; // the shipped version, so nothing can gate on the new param
@@ -881,6 +882,7 @@ test('the generated bridge binds the package: nonce, errors, events, the cap and
   editSchema(root, (s) => {
     s.version = 5;
     s.methods['later.method'] = { since: 2, params: {}, returns: 'void' };
+    s.events['later.event'] = { since: 2, payload: {} };
   });
   codegen({ root, cfg });
   const lib = join(root, cfg.web.lib);
@@ -902,6 +904,11 @@ test('the generated bridge binds the package: nonce, errors, events, the cap and
   // against an older host without a round trip, instead of coming back as E_UNKNOWN.
   assert.equal(c.has('later.method'), false);
   await assert.rejects(c.call('later.method'), (e) => e.code === 'E_UNSUPPORTED');
+  // EVENT_SINCE is wired in too, so an event is gateable. `on()` for an event the host never emits
+  // subscribes and silently never fires — harmless for the listener, not harmless for the feature
+  // behind it — and until this was passed there was no way to ask.
+  assert.equal(c.has('sync.changed'), true);
+  assert.equal(c.has('later.event'), false);
 
   const get = c.call('data.get', { bucket: 'b', key: 'k' });
   assert.deepEqual(sent[1], { id: sent[1].id, n: 'nonce-1', m: 'data.get', p: { bucket: 'b', key: 'k' } });

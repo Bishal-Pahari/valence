@@ -185,9 +185,10 @@ export type AppShim = Shim<Methods>;
 /**
  * This app's typed bridge.
  *
- * `connect()` once at startup, then `has()` tells you whether a method added in a later release
- * exists on *this* host. `ready()` after the first meaningful paint is what commits an OTA bundle.
+ * `connect()` once at startup, then `has()` tells you whether a method or event added in a later
+ * release exists on *this* host. `ready()` after the first meaningful paint commits an OTA bundle.
  */
 export const { call, has, on, ready, connect, installShim } = createBridge<Methods, Events>(
   METHOD_SINCE,
+  EVENT_SINCE,
 );
