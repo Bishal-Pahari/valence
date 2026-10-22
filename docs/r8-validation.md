@@ -1,3 +1,65 @@
+# R8 account-switch queue refresh - 2026-10-23
+
+## In plain terms
+
+R8 includes packages at 3ddd92e56c853cfa06c313b0a7ad64e74ca4e031 and site
+packages at 7766e850917ba5004321ea6f03759f8c8ffd9121. Both branches are codex/r8.
+The merges preserve account switching, queued-write refusal, all data/security
+safeguards, adaptive UI and status-before-updateReady publication.
+
+Schema decision: keep the upstream template/example version 13, auth.account
+since 13 and R8 app.appearance since 7. The queue's literal version-7 instruction
+is now incompatible with the incoming since-13 method: validation rejects it.
+Renumbering or removing the account method would violate additive evolution or
+lose user-data protection. This refresh therefore departs from the requested
+schema-7 status, explicitly, without changing package versions or other items.
+The template-version claims in both accessibility guides and example README
+now distinguish combined version 13 from appearance's reserved since 7.
+
+Preserve the shared upstream example's recorded storeSchema version 1,
+storeSeq 1792215625 and storeRoutes; only lastSeq advances to 1792704210.
+The signed combined built-in requires 13 and the generated host reports 13.
+An initial rebuild used --store; its unshipped baseline advance was removed
+in favor of the actual shared recorded baseline. No rebaseline flag was used.
+This keeps queued since-8 through since-12 additions valid against that record.
+Do not publish an intermediate version-13 host before those reserved features
+are integrated, or later additions fail against that shipped baseline. An older
+internal version-13 host without R8 must not receive OTA metadata advertising
+appearance since 7: its numeric capability comparison could overstate support.
+These branch snapshots are integration candidates, not releasable store builds.
+
+Read both apps' VALENCE_FINDINGS.md and newest reports: Kundalini iteration 11
+(2026-10-23), app-a iteration 8 (2026-10-22). Their paging, capability-gate,
+update-notification and retained-auth-warning observations are app evidence,
+not new device verification. Both test app repositories were read only.
+
+## Fresh gates
+
+- Root npm test: 67 passed, zero failed/skipped; generated Dart and strict
+  generated TypeScript were exercised.
+- Runtime flutter test: 401 passed; dart analyze --fatal-infos .: no issues.
+- Bridge: 22 passed; strict TypeScript, build and npm pack --dry-run passed.
+- Example: 17 passed, including a rerun after baseline correction; codegen
+  --check wrote nothing, signed built-in verification passed (seq 1792704210,
+  one file), and debug APK built successfully.
+- Flutter pub publish --dry-run: zero warnings.
+- Site npm run build: 29 pages; SEO/link/anchor checks passed after doc correction.
+- Independent security review: no remaining confirmed findings; focused CLI
+  shape/additive tests 10 passed, appearance/runtime/updater tests 164 passed,
+  clean Dart analysis, zero-write codegen and signed verification passed.
+
+The review covered both incoming account/data protections and R8's owning-view
+metrics, optional fontScale, strict generated delegations, JSON-only publication,
+nonce/navigation/CSP retention, update notification ordering and matching docs.
+It caught the stale template-version claim; that claim is corrected.
+
+No new emulator run; prior Android evidence below remains historical. TalkBack
+and true split-screen remain unverified; iOS is experimental and untested.
+No test-app writes, package-version changes, pushes, publications or merges into
+shared branches. Exactly one queue item was refreshed in this run.
+
+---
+
 # R8 capability/codegen queue refresh - 2026-10-23
 
 ## In plain terms
