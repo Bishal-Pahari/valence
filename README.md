@@ -126,6 +126,10 @@ node valence/valence.mjs keygen | codegen [--check] | bundle [--builtin|--store]
 
 ## Status
 
+The runtime includes [host widget tests](docs/host-widget-tests.md) for startup/resume, navigation
+locks, bridge nonce forwarding, buffered events, trial-ready timeouts and disposal. They pump the real
+host with a stub native WebView; Android device verification remains a separate gate.
+
 **0.4 beta, package-first.** The runtime is no longer generated per app: `valence` (pub.dev) is the whole Flutter host and `@getvalence/bridge` (npm) is the whole web client, both with their own test suites, and `valence codegen` emits only the typed, app-specific half and imports the rest. Moving from 0.3 is [one documented pass](docs/migrating-from-0.3.md) that keeps your data, your update state and your signing key.
 
 **Android is tested. iOS is experimental and untested** — its rules are implemented and specified, but there is no Apple hardware here, so nothing about them is claimed as verified.
@@ -148,7 +152,7 @@ node valence/valence.mjs keygen | codegen [--check] | bundle [--builtin|--store]
 
 `data.getMany` reads up to 500 keys in one bridge call; `sync.status` reports pending operations (including deletes) without a network call. Both are schema-3 additions: guard them with `has()`. `ota.channel` selects the host channel, and OTA builds now default to the recorded store bridge version; guard newer calls or explicitly raise `--requires-bridge`. `seedSchemas` plus `<bucket>.v<N>.json` seeds multiple declared schemas together. Test doubles can opt into generated `BridgeHandlersDefaults`.
 
-Run `node valence/valence.mjs doctor --tests` for mechanical checks and mapped unit tests. WARN means missing or unexecuted evidence; device behavior still needs a device run. [Full guide](https://getvalence.pages.dev/docs/guides/offline-tooling/).
+Run `node valence/valence.mjs doctor --tests` for mechanical checks and mapped unit tests. Broken bridge versions, incompatible local OTA requirements, database paths, PEM keys inside Git and invalid connection URLs fail with a fix. WARN means missing or unexecuted evidence; installed database adoption and device behavior still need a device run. [Full guide](https://getvalence.pages.dev/docs/guides/offline-tooling/).
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
