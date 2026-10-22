@@ -5,7 +5,7 @@ the retained task loads its path, query and hash on the current loopback origin.
 the task from Recents, force-stopping, or closing it with Back starts fresh. This is UI
 continuity, not a database backup. Use `data.put` for durable records and `secure.*` for secrets.
 
-Add the schema-5 built-ins from the template, run codegen, and ship a store build:
+Add the schema-8 built-ins from the template, run codegen, and ship a store build:
 
 ```ts
 import { call, connect, has } from './valence/bridge.g';
@@ -48,4 +48,4 @@ iOS is experimental and untested. Assign a restoration identifier to the
 `restorationIdentifier="valence.page"`. Follow [Flutter's restoration setup](https://api.flutter.dev/flutter/services/RestorationManager-class.html)
 for native embedding and device testing. OS snapshots are best effort on either platform.
 
-Source of truth: contracts §4.6; runtime `restoration.dart` and `app.dart`.
+Source of truth: contracts §4.7; runtime `restoration.dart` and `app.dart`.

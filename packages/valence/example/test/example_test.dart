@@ -374,6 +374,41 @@ void main() {
     },
   );
 
+  test('schema-6 lifecycle and update status delegate to the runtime', () async {
+    final h = await handlers();
+    final state = await dispatch(h, 'app.state');
+    // The wire values are the Dart enum names, and a page only ever runs in the foreground.
+    expect((state['v']! as Map)['lifecycle'], 'foreground');
+    expect((state['v']! as Map)['online'], isTrue);
+
+    h.valence.state.pending = 77;
+    final status = await dispatch(h, 'bundle.status');
+    final v = status['v']! as Map;
+    expect(v['pending'], 77);
+    expect(v['serving'], 0, reason: 'no host widget has bound a manifest in a unit test');
+    expect(v['trial'], isNull);
+    // Nothing has checked, so the honest answer is "idle" rather than a claim about freshness.
+    expect(v['reason'], 'idle');
+    expect(v['checkedAt'], isNull);
+    expect(v['offered'], isNull);
+
+    // Neither takes params, so the strict decoders refuse one rather than ignoring it.
+    final extra = await dispatch(h, 'app.state', params: {'verbose': true});
+    expect((extra['e']! as Map)['code'], 'E_PARAMS');
+  });
+
+  test('sync.done carries the whole SyncResult the reply would carry', () {
+    // One type for the reply and the event, so a page renders a freshness line from either.
+    const result = ValenceSyncResult(['shelf'], 2, false, ValenceSyncReason.ok, 0);
+    expect(
+      BridgeEvents.syncDone(result: SyncResult.fromJson(result.toJson())),
+      'window.__valence&&window.__valence.e("sync.done",{"result":{"buckets":["shelf"],"changed":2,'
+          '"offline":false,"reason":"ok","pending":0}})',
+    );
+    expect(BridgeEvents.appLifecycle(state: 'background'), contains('{"state":"background"}'));
+    expect(BridgeEvents.appOnline(online: false), contains('{"online":false}'));
+  });
+
   test('the generated event builders go through jsonEncode', () {
     expect(
       BridgeEvents.syncChanged(buckets: ['shelf']),

@@ -32,22 +32,31 @@ import {
 } from './valence.mjs';
 
 const TEMPLATES = join(import.meta.dirname, '..', 'templates');
+
+// Everything the template declares above version 4, so a fixture can be the app that has not regenerated.
+// Listed here rather than per test, because every new runtime capability has to land in exactly one place
+// for the "an older app still codegens" cases to keep meaning what they say.
+const SINCE_ABOVE_4 = {
+  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore'],
+  events: ['sync.done', 'app.lifecycle', 'app.online'],
+  types: ['SyncStatus', 'AppState', 'BundleStatus'],
+};
 const NOW = Date.UTC(2026, 9, 15);
 
 function fixture({ data = { calendar: 1 }, latest = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'mr-'));
   mkdirSync(join(root, 'valence'));
   cpSync(join(TEMPLATES, 'bridge.schema.json'), join(root, 'valence', 'bridge.schema.json'));
-  // Field evolution cases omit the optional batch/status additions.
+  // Field evolution cases omit the optional batch/status/paging/lifecycle additions: this is the shape of
+  // an app that has not regenerated against the newer runtime, which must still codegen and compile.
   if (!latest) {
     const p = join(root, 'valence', 'bridge.schema.json');
     const s = JSON.parse(readFileSync(p, 'utf8'));
     s.version = 4;
-    delete s.methods['state.save'];
-    delete s.methods['state.restore'];
-    delete s.methods['data.getMany'];
-    delete s.methods['sync.status'];
-    delete s.types.SyncStatus;
+    for (const m of SINCE_ABOVE_4.methods) delete s.methods[m];
+    for (const e of SINCE_ABOVE_4.events) delete s.events[e];
+    for (const t of SINCE_ABOVE_4.types) delete s.types[t];
+    delete s.methods['data.list'].params.after;
     delete s.types.SyncResult.pending;
     writeFileSync(p, JSON.stringify(s));
   }
@@ -78,7 +87,14 @@ const editSchema = (root, fn) => {
 
 test('task restoration is optional, shape-frozen and delegated to the package', () => {
   const { root, cfg } = fixture({ latest: true });
+  const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
+  assert.equal(schema.version, 8);
+  assert.equal(schema.methods['state.save'].since, 8);
+  assert.equal(schema.methods['state.restore'].since, 8);
   codegen({ root, cfg });
+  const ts = readFileSync(join(root, 'web', 'src', 'lib', 'valence', 'bridge.g.ts'), 'utf8');
+  assert.match(ts, /'state.save': 8/);
+  assert.match(ts, /'state.restore': 8/);
   const dart = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
   assert.match(dart, /valence.stateSave\(p.json\)/);
   assert.match(dart, /return valence.stateRestore\(\)/);
@@ -306,6 +322,55 @@ test('floor only goes up and never exceeds seq', () => {
   assert.throws(() => bundle({ root, cfg, key, floor: Number.MAX_SAFE_INTEGER, now: NOW }), /above this bundle/);
 });
 
+test('a floor above the store build retires the one bundle every device is guaranteed to have', () => {
+  // §2.2: the floor applies to the built-in bundle too, so one unreviewed OTA can strand both fallbacks a
+  // device has — its `previous` *and* the bundle inside the APK, which is the only code the store review
+  // saw. §2.4's ladder is then `current` and nothing underneath, and recovery is a full store review: the
+  // thing OTA exists to avoid. Observed in the field, with `doctor` green and no warning anywhere.
+  const { root, cfg, key } = fixture();
+  const store = bundle({ root, cfg, key, store: true, now: NOW });
+  const ota = bundle({ root, cfg, key, now: NOW + 1000 });
+  assert.ok(ota.manifest.seq > store.manifest.seq);
+
+  assert.throws(
+    () => bundle({ root, cfg, key, floor: ota.manifest.seq, now: NOW + 2000 }),
+    /above the store build's seq \d+/,
+    'the number that makes this checkable was already in baseline.json',
+  );
+  // Up to the store build is the useful case and stays allowed: it strands every OTA below it and leaves
+  // the APK runnable.
+  const safe = bundle({ root, cfg, key, floor: store.manifest.seq, now: NOW + 3000 });
+  assert.equal(safe.manifest.floor, store.manifest.seq);
+  assert.equal(safe.warnings.filter((w) => w.includes('no fallback')).length, 0);
+
+  // A store build is its own fallback, so it may raise the floor to its own seq.
+  const next = bundle({ root, cfg, key, store: true, floor: store.manifest.seq + 1, now: NOW + 4000 });
+  assert.ok(next.manifest.floor > store.manifest.seq);
+
+  // A project already in that state before the check existed is warned, not blocked — refusing would make
+  // every later release unbuildable, and the floor carries forward on its own.
+  const baselinePath = join(root, '.valence', 'baseline.json');
+  const b = JSON.parse(readFileSync(baselinePath, 'utf8'));
+  writeFileSync(baselinePath, JSON.stringify({ ...b, floor: b.storeSeq + 1 }));
+  const carried = bundle({ root, cfg, key, now: NOW + 5000 });
+  assert.match(carried.warnings.join('\n'), /carried forward .* above the store build's seq/);
+  assert.equal(carried.manifest.floor, b.storeSeq + 1, 'and it still carries forward');
+
+  // And restating that floor explicitly — what a pipeline passing --floor $FLOOR every run does — must
+  // take the same warn path. Refusing it deadlocked: every value at or below the carried floor is refused
+  // by "the floor only goes up", and every value above it by the check here, leaving no buildable number.
+  writeFileSync(baselinePath, JSON.stringify({ ...b, floor: b.storeSeq + 1 }));
+  const restated = bundle({ root, cfg, key, floor: b.storeSeq + 1, now: NOW + 6000 });
+  assert.match(restated.warnings.join('\n'), /carried forward .* above the store build's seq/);
+  assert.equal(restated.manifest.floor, b.storeSeq + 1);
+
+  // A --builtin build is the fallback being produced, so it is exempt like --store. floor <= seq already
+  // keeps it runnable, and the OTA message ("devices would refuse their own built-in bundle") is false of it.
+  writeFileSync(baselinePath, JSON.stringify({ ...b, floor: b.floor ?? 0 }));
+  const own = bundle({ root, cfg, key, builtin: true, floor: b.storeSeq + 1, now: NOW + 7000 });
+  assert.equal(own.manifest.floor, b.storeSeq + 1);
+});
+
 test('bundle rejects native code anywhere in the path', () => {
   const { root, cfg, key } = fixture();
   mkdirSync(join(root, 'web', 'build', 'x.framework'));
@@ -504,7 +569,10 @@ test('a built-in may be omitted but not redefined, because the package implement
     assert.throws(() => codegen({ root, cfg }), re);
   };
   bad((s) => (s.methods['data.list'].params.limit = 'int'), /must stay/);
-  bad((s) => (s.methods['data.list'].params.after = 'string?'), /must stay/);
+  // `after` is a declared optional param, so it is allowed — but only at the type the runtime declares,
+  // and no other new param is.
+  bad((s) => (s.methods['data.list'].params.after = 'string'), /must stay/);
+  bad((s) => (s.methods['data.list'].params.offset = 'int?'), /must stay/);
   bad((s) => (s.methods['prefs.get'].returns = 'string'), /must return string\?/);
   bad((s) => (s.types.SyncResult.changed = 'num'), /fields are not/);
   bad((s) => (s.methods['data.list'].returns = 'Row'), /a type with \{key, value, usn\}\[\]/);
@@ -530,6 +598,50 @@ test('a built-in may be omitted but not redefined, because the package implement
   assert.ok(codegen({ root, cfg }).written.length);
 });
 
+test('§4.6 lifecycle and update status are built-ins, frozen by shape and droppable', () => {
+  const { root, cfg } = fixture({ latest: true });
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  const bad = (mutate, re) => {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), re);
+  };
+  // The reason sets are closed (§4.2's rule for error codes), and both are carried as strings whose
+  // values are the Dart enum names. Typing one as anything else would silently drop the .name.
+  bad((s) => (s.types.AppState.lifecycle = 'int'), /fields are not/);
+  bad((s) => (s.types.BundleStatus.reason = 'int'), /fields are not/);
+  // serving is never null: 0 is "no bundle on screen yet", which a page can render.
+  bad((s) => (s.types.BundleStatus.serving = 'int?'), /fields are not/);
+  // And the four that *are* nullable stay nullable, or a host with no pending cannot answer at all.
+  bad((s) => (s.types.BundleStatus.pending = 'int'), /fields are not/);
+  bad((s) => (s.methods['app.state'].params.verbose = 'bool?'), /must stay/);
+
+  writeFileSync(schemaFile(root), pristine);
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(dart, /final s = valence\.appState\(\);/);
+  assert.match(dart, /lifecycle: s\.lifecycle\.name/);
+  assert.match(dart, /final s = valence\.bundleStatus\(\);/);
+  assert.match(dart, /reason: s\.reason\.name/);
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  // sync.done carries the whole record rather than a copy of its fields, so a page reuses one type for
+  // the reply and the event.
+  assert.match(ts, /'sync\.done': \{\n\s+result: SyncResult;/);
+  // All three are gated at version 6, which is what has()/EVENT_SINCE read.
+  for (const e of ["'sync.done': 6", "'app.lifecycle': 6", "'app.online': 6"]) assert.ok(ts.includes(e), e);
+
+  // An app that wants none of it drops all five, and the rest still generates.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => {
+    delete s.methods['app.state'];
+    delete s.methods['bundle.status'];
+    delete s.types.AppState;
+    delete s.types.BundleStatus;
+    for (const e of ['sync.done', 'app.lifecycle', 'app.online']) delete s.events[e];
+  });
+  assert.ok(codegen({ root, cfg }).written.length);
+});
+
 test('a built-in grows a field without breaking an app that has not taken it', () => {
   // Rule 5: the IDL is additive only. Before this, every built-in's shape was compared literally, so a
   // runtime could never add a field to one — the next codegen in every existing app would fail. The two
@@ -545,6 +657,73 @@ test('a built-in grows a field without breaking an app that has not taken it', (
   const without = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
   assert.doesNotMatch(without, /reason:/, 'and the delegation does not pass a field its type does not have');
   assert.match(without, /offline: r\.offline/);
+});
+
+test('a built-in grows a param without breaking an app that has not taken it', () => {
+  // The params half of rule 5. `data.list` gained `after` — the key cursor that makes a bucket past the
+  // 500-row clamp readable at all — and a built-in's params were compared literally, so adding one would
+  // have failed the next codegen in every existing app.
+  const { root, cfg } = fixture({ latest: true });
+  codegen({ root, cfg });
+  const withAfter = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(withAfter, /after: p\.after/, 'the template schema takes after, so the delegation passes it');
+
+  editSchema(root, (s) => delete s.methods['data.list'].params.after);
+  assert.ok(codegen({ root, cfg }).written.length, 'an app on the old three-param shape still generates');
+  const without = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.doesNotMatch(without, /after: p\.after/, 'and the delegation does not pass a param its schema lacks');
+  assert.match(without, /limit: p\.limit/);
+
+  // The allowance is per built-in: `after` belongs to data.list, not to every method with a bucket.
+  editSchema(root, (s) => (s.methods['data.count'].params.after = 'string?'));
+  assert.throws(() => codegen({ root, cfg }), /must stay/);
+});
+
+test('an app that already shipped a store build can take a built-in\'s new param', () => {
+  // The same trap as the new-field case: `bundle --store` records the schema the stores reviewed, and
+  // §4.1 refuses any later change to a method in it. Without the params allowance, every adopter who has
+  // ever cut a store build could not take `after` except through --rebaseline, which overwrites that
+  // reviewed record.
+  const { root, cfg, key } = fixture();
+  editSchema(root, (s) => {
+    // An app-owned method in the same store build, to prove the relaxation does not leak to one.
+    s.methods['mine.list'] = { since: 1, params: { bucket: 'string' }, returns: 'Row[]' };
+  });
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const shipped = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8')).storeSchema;
+  assert.deepEqual(Object.keys(shipped.methods['data.list'].params), ['bucket', 'prefix', 'limit']);
+
+  editSchema(root, (s) => {
+    s.methods['data.list'].params.after = 'string?';
+    s.version = 5;
+  });
+  assert.ok(codegen({ root, cfg }).written.length, 'the runtime param is additive against the recorded schema');
+  assert.match(readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8'), /after: p\.after/);
+
+  // The relaxation is exactly that param at exactly that type, and nothing else about the method.
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  const bad = (mutate, re) => {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), re);
+  };
+  bad((s) => (s.methods['data.list'].params.after = 'string'), /must stay/); // the runtime declares it nullable
+  bad((s) => (s.methods['data.list'].params.cursor = 'string?'), /must stay/); // not a param the runtime added
+  bad((s) => (s.methods['mine.list'].params.after = 'string?'), /cannot change/); // an app's own method may not grow
+  bad((s) => (s.methods['data.list'].since = 2), /cannot change/); // since is not negotiable
+  // A grown param needs the version bump with it. A param has no `since`, so the schema version is the
+  // only thing has() and app.info().bridge can gate on — without this an app could add `after` at the
+  // shipped version and leave the page no way to tell it from a host that answers E_PARAMS.
+  bad((s) => {
+    s.methods['data.list'].params.after = 'string?';
+    s.version = 4; // the shipped version, so nothing can gate on the new param
+  }, /needs "version" above the shipped 4/);
+  // And a method-level key the IDL has not defined is not exempt from the baseline guard either.
+  bad((s) => {
+    s.methods['data.list'].deprecated = true;
+    s.version = 5;
+  }, /cannot change/);
 });
 
 test('an app that already shipped a store build can take a built-in\'s new field', () => {

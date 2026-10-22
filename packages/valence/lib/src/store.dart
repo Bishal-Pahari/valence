@@ -52,6 +52,24 @@ const defaultListLimit = 100;
 /// The hard cap `data.list` clamps `limit` to, host-side, rather than trusting the page.
 const maxListLimit = 500;
 
+/// Whether [e] is SQLite refusing because something else holds the file: `SQLITE_BUSY` or `SQLITE_LOCKED`.
+///
+/// The open that takes `BEGIN EXCLUSIVE` for a schema upgrade is the one that collides, and an app update
+/// is when it happens: WorkManager fires the registered periodic job as the UI isolate comes up (§5.6).
+bool isDatabaseLocked(Object e) {
+  if (e is! DatabaseException) return false;
+  // Extended result codes are `code | (n << 8)`, so mask to the primary code. `getResultCode` is null on
+  // some platforms, which is why the rendered exception — the one Android actually prints — is the
+  // fallback. It is **anchored**, not a `contains`: `toString()` appends the failing SQL and its
+  // arguments, and those can be page-supplied, so a loose match would let `data.put(b, 'database is
+  // locked', v)` failing for any unrelated reason read as a lock and be retried instead of surfaced.
+  final code = (e.getResultCode() ?? 0) & 0xff;
+  return code == 5 || code == 6 || _lockedMessage.hasMatch(e.toString());
+}
+
+/// `DatabaseException(…)` wraps the message first, so anchoring here cannot reach the SQL or its args.
+final _lockedMessage = RegExp(r'^DatabaseException\((?:database is locked|database table is locked)', caseSensitive: false);
+
 /// The schema from contracts §5.1. `user_version` is carried by sqflite's own `version` argument.
 const _schemaSql = [
   'CREATE TABLE kv (bucket TEXT NOT NULL, schema INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, '
@@ -80,8 +98,21 @@ final class ValenceStore {
   /// Each isolate calls this on the same path and gets the same plugin-side connection back. A background
   /// isolate must call `DartPluginRegistrant.ensureInitialized()` before its first call, or the plugin is
   /// not registered in that isolate at all.
-  static Future<ValenceStore> open(String path, {DatabaseFactory? factory}) =>
-      _open.putIfAbsent(path, () => _openAt(path, factory ?? databaseFactory));
+  ///
+  /// A failed open is **not** cached. The schema upgrade takes `BEGIN EXCLUSIVE`, so a background isolate
+  /// opening while the UI isolate upgrades gets `SQLITE_BUSY` — and caching that rejection would make every
+  /// later call in the isolate fail against a database that is now perfectly fine.
+  static Future<ValenceStore> open(String path, {DatabaseFactory? factory}) {
+    final existing = _open[path];
+    if (existing != null) return existing;
+    final opening = _openAt(path, factory ?? databaseFactory);
+    _open[path] = opening;
+    return opening.catchError((Object e, StackTrace st) {
+      if (_open[path] == opening) _open.remove(path);
+      // Rethrown with the original trace, so the retry's final failure still points at the open.
+      Error.throwWithStackTrace(e, st);
+    });
+  }
 
   static Future<ValenceStore> _openAt(String path, DatabaseFactory factory) async {
     var mode = 'unknown';
@@ -179,19 +210,25 @@ final class ValenceStore {
   ///
   /// The clamp is host-side on purpose: the page is untrusted, and an unbounded list is the reply that
   /// kills the WebView.
+  ///
+  /// [after] is the key cursor that makes the clamp survivable: pass the last key of the previous page and
+  /// the scan resumes strictly after it, so a bucket of any size has a complete read. Without it a bucket
+  /// past [maxListLimit] has none at all, and a prefix is not a general answer — real key spaces are not
+  /// evenly distributed, and a truncated list is indistinguishable from a short one. `key` is the leading
+  /// column of the primary key, so this stays an index range scan. Paging by key rather than by offset
+  /// also means a concurrent sync cannot shift rows across a page boundary.
   Future<List<ValenceRow>> list(
     String bucket,
     int schema, {
     String? prefix,
     int? limit,
+    String? after,
   }) async {
     final n = (limit == null || limit <= 0) ? defaultListLimit : (limit > maxListLimit ? maxListLimit : limit);
-    final where = StringBuffer('bucket = ? AND schema = ? AND deleted = 0');
-    final args = <Object?>[bucket, schema];
-    if (prefix != null && prefix.isNotEmpty) {
-      // ESCAPE, so a key prefix containing % or _ matches literally.
-      where.write(r" AND key LIKE ? ESCAPE '\'");
-      args.add('${prefix.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_')}%');
+    final (where, args) = _liveRowsWhere(bucket, schema, prefix);
+    if (after != null && after.isNotEmpty) {
+      where.write(' AND key > ?');
+      args.add(after);
     }
     final rows = await db.query(
       'kv',
@@ -204,6 +241,26 @@ final class ValenceStore {
     return [
       for (final r in rows) ValenceRow(r['key']! as String, jsonDecode(r['value']! as String), r['usn']! as int),
     ];
+  }
+
+  /// Counts live rows, so "how much does this device hold?" and "is this key space empty?" cost one
+  /// indexed count rather than every row's JSON.
+  Future<int> count(String bucket, int schema, {String? prefix}) async {
+    final (where, args) = _liveRowsWhere(bucket, schema, prefix);
+    final rows = await db.rawQuery('SELECT COUNT(*) AS n FROM kv WHERE $where', args);
+    return rows.first['n']! as int;
+  }
+
+  /// The `(bucket, schema)` filter [list] and [count] share, with an optional key prefix.
+  (StringBuffer, List<Object?>) _liveRowsWhere(String bucket, int schema, String? prefix) {
+    final where = StringBuffer('bucket = ? AND schema = ? AND deleted = 0');
+    final args = <Object?>[bucket, schema];
+    if (prefix != null && prefix.isNotEmpty) {
+      // ESCAPE, so a key prefix containing % or _ matches literally.
+      where.write(r" AND key LIKE ? ESCAPE '\'");
+      args.add('${prefix.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_')}%');
+    }
+    return (where, args);
   }
 
   /// The highest applied `usn` for one `(bucket, schema)` pair, or 0 when the pair is unknown.

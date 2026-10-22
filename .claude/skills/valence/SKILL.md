@@ -7,7 +7,7 @@ argument-hint: "[init|release|doctor] [--channel name] [--rollout 0-100] [--floo
 
 # /valence
 
-For task restoration, follow [contracts §4.6](references/contracts.md#46-task-state-restoration-r7).
+For task restoration, follow [contracts §4.7](references/contracts.md#47-task-state-restoration-r7).
 Use the template's state.* built-ins; on iOS set the FlutterViewController
 restorationIdentifier in Main.storyboard (experimental and untested). Verify
 Home → am kill → retained-task reopen, then force-stop and Recents removal.
@@ -336,3 +336,7 @@ Use the built-in `http.request` (since 4, with 3 providing data.getMany and sync
 For offline use of existing REST APIs, adapt them to sections 5.3 and 5.5; `sync.base` is not an arbitrary REST URL. See `examples/rest-sync-adapter/` and the [backend guide](https://getvalence.pages.dev/docs/guides/your-backend/). Partial pull pages use the last included USN, tombstones persist, pushes deduplicate by id, and retry echoes the current winning row. Keep the durable cursor/id database. Android is tested; iOS is experimental and untested.
 
 For sync or schema-gate failures, use the package runtime: pull progress is distinct from completed pairs, push echoes never move cursors, and step 7 holds its lease through pending publication with a five-second bounded acquisition wait. The v2 database migration preserves queued operations in durable insertion order. Test partial HTTP/static pulls and GC/publication interleavings before claiming an update is safe.
+
+Bridge version 6 adds `app.lifecycle` (four states, only changes, `hidden`/`paused` both `background`), `app.online` (OS interface state, **not** reachability), `app.state()`, `sync.done` (the whole `SyncResult` after every completed run, `changed: 0` included, emitted after `sync.changed`) and `bundle.status()` (why the last check stopped, from a closed set of eleven; never a request). Persist on `background`, not `detached`. Pair `app.online` with `SyncResult.reason` rather than replacing it. `rejected` means a release no device will take; `waitingForData` is the healthy stall four hosts read as "no update" (§4.6).
+
+Page a bucket larger than the 500-row clamp with `data.list`'s `after` (the last key of the previous page; version 5), and read its size with `data.count`. Without the cursor a bucket past the clamp has no complete read and a truncated list looks like a short one. `after` is a param on a since-1 method, so gate it on `has('data.count')` or `app.info().bridge >= 5`, never `has('data.list')`. A built-in may grow an optional param as well as an optional returned field; both stay additive against the recorded store baseline. The database sits at `<appSupport>/<databaseName>` — the directory is fixed, and the package adopts a 0.3 database from the documents directory with its `-wal`/`-shm` sidecars rather than starting empty. A locked open is retried, and `backgroundSync` reports `busy` instead of failing the WorkManager job (§5.1, §5.6).

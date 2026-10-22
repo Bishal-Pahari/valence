@@ -124,6 +124,63 @@ void main() {
       expect((await store.list('big', 1, limit: -5)).length, defaultListLimit);
     });
 
+    test('the after cursor reads a bucket larger than the clamp, completely and without repeats', () async {
+      // The clamp is right and the bucket is bigger than it. Without a cursor there is no complete read
+      // at all, and a truncated list is indistinguishable from a short one — which is how a saved key
+      // outside the first page reads as a key the device has never heard of.
+      await store.applyPullPage(
+        bucket: 'big',
+        schema: 1,
+        rows: [for (var i = 0; i < 1201; i++) row('k${i.toString().padLeft(4, '0')}', i, i + 1)],
+        maxUsnAfter: 1201,
+      );
+      final seen = <String>[];
+      String? cursor;
+      for (var page = 0; page < 10; page++) {
+        final rows = await store.list('big', 1, limit: maxListLimit, after: cursor);
+        if (rows.isEmpty) break;
+        seen.addAll(rows.map((r) => r.key));
+        cursor = rows.last.key;
+      }
+      expect(seen.length, 1201, reason: 'every row, in three pages of 500, 500 and 201');
+      expect(seen.toSet().length, 1201, reason: 'strictly after, so no row is returned twice');
+      expect(seen, equals(List.of(seen)..sort()), reason: 'still key order across pages');
+    });
+
+    test('after composes with prefix and skips nothing at the boundary', () async {
+      await store.applyPullPage(
+        bucket: 'mix',
+        schema: 1,
+        rows: [row('np-1', {}, 1), row('np-2', {}, 2), row('np-3', {}, 3), row('other', {}, 4)],
+        maxUsnAfter: 4,
+      );
+      expect((await store.list('mix', 1, prefix: 'np-', after: 'np-1')).map((r) => r.key), ['np-2', 'np-3']);
+      // A cursor key that no longer exists — deleted between pages — still resumes in the right place.
+      expect((await store.list('mix', 1, prefix: 'np-', after: 'np-20')).map((r) => r.key), ['np-3']);
+      expect(await store.list('mix', 1, after: 'other'), isEmpty);
+    });
+
+    test('count answers how many rows without reading any of them, and ignores tombstones', () async {
+      await store.applyPullPage(
+        bucket: 'big',
+        schema: 1,
+        rows: [for (var i = 0; i < 600; i++) row('k${i.toString().padLeft(4, '0')}', i, i + 1)],
+        maxUsnAfter: 600,
+      );
+      expect(await store.count('big', 1), 600, reason: 'past the clamp list could never report');
+      expect(await store.count('big', 1, prefix: 'k00'), 100);
+      expect(await store.count('nothing', 1), 0);
+      expect(await store.count('big', 9), 0, reason: 'scoped to the pair, like every other read');
+
+      await store.applyPullPage(
+        bucket: 'big',
+        schema: 1,
+        rows: [row('k0000', null, 601, d: true)],
+        maxUsnAfter: 601,
+      );
+      expect(await store.count('big', 1), 599, reason: 'a tombstone is not a row the page can read');
+    });
+
     test('maxUsn is 0 for an unknown pair and tracks the applied page otherwise', () async {
       expect(await store.maxUsn('nothing', 1), 0);
       expect(await store.maxUsn('plants', 1), 4);

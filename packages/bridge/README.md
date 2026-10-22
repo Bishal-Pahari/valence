@@ -18,6 +18,9 @@ import { call, connect, has, on, ready } from '$lib/valence/bridge.g';
 await connect();                                  // once at startup, before has()
 const plant = await call('data.get', { bucket: 'plants', key: 'fern' });
 const off = on('sync.changed', ({ buckets }) => refresh(buckets));
+on('sync.done', ({ result }) => setFreshness(result));          // every completed run, changed: 0 included
+on('app.lifecycle', ({ state }) => state === 'background' && saveDraft());
+on('app.online', ({ online }) => setBanner(!online));           // interface state, not reachability
 await ready();                                    // on every path that paints, once per page load
 ```
 
@@ -89,4 +92,5 @@ Sync correctness: pull cursors advance only through returned rows, never push ec
 
 ## Task restoration
 
-Schema 5 adds `state.save({json})` and `state.restore()` for a task-local UI blob (65,536 JSON UTF-8 bytes). ValenceApp restores the local path/query/hash after OS process reclamation. Explicit task closure starts fresh; a different bundle seq clears the snapshot. Save promptly and keep durable records in SQLite. iOS is experimental and untested. [Guide](https://getvalence.pages.dev/docs/guides/state-restoration/).
+Schema 8 adds `state.save({json})` and `state.restore()` for a task-local UI blob (65,536 JSON UTF-8 bytes). ValenceApp restores the local path/query/hash after OS process reclamation. Explicit task closure starts fresh; a different bundle seq clears the snapshot. Save promptly and keep durable records in SQLite. iOS is experimental and untested. [Guide](https://getvalence.pages.dev/docs/guides/state-restoration/).
+Guard `has("data.count")` to page `data.list` with `after`: pass the last key of the previous page and the scan resumes strictly after it, which is the only complete read of a bucket larger than `data.list`'s 500-row clamp. `has("data.list")` cannot gate `after` — it is a new parameter on a method that has existed since version 1, and a host older than version 5 rejects the unknown field with `E_PARAMS`. `call("data.count", {bucket, prefix})` returns the number of live rows without reading any of them.

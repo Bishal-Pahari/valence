@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 5;
+const hostBridgeVersion = 8;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale});
@@ -97,6 +97,40 @@ final class SyncStatus {
   Map<String, Object?> toJson() => {'pending': pending, 'lastSyncedAt': lastSyncedAt, 'offline': offline};
 }
 
+final class AppState {
+  const AppState({required this.lifecycle, required this.online});
+
+  factory AppState.fromJson(Object? j, [String f = 'AppState']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'lifecycle', 'online'}, f);
+    return AppState(lifecycle: decodeString(m['lifecycle'], '$f.lifecycle'), online: decodeBool(m['online'], '$f.online'));
+  }
+
+  final String lifecycle;
+  final bool online;
+
+  Map<String, Object?> toJson() => {'lifecycle': lifecycle, 'online': online};
+}
+
+final class BundleStatus {
+  const BundleStatus({required this.serving, this.pending, this.trial, required this.reason, this.offered, this.checkedAt});
+
+  factory BundleStatus.fromJson(Object? j, [String f = 'BundleStatus']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'serving', 'pending', 'trial', 'reason', 'offered', 'checkedAt'}, f);
+    return BundleStatus(serving: decodeInt(m['serving'], '$f.serving'), pending: m['pending'] == null ? null : decodeInt(m['pending'], '$f.pending'), trial: m['trial'] == null ? null : decodeInt(m['trial'], '$f.trial'), reason: decodeString(m['reason'], '$f.reason'), offered: m['offered'] == null ? null : decodeInt(m['offered'], '$f.offered'), checkedAt: m['checkedAt'] == null ? null : decodeInt(m['checkedAt'], '$f.checkedAt'));
+  }
+
+  final int serving;
+  final int? pending;
+  final int? trial;
+  final String reason;
+  final int? offered;
+  final int? checkedAt;
+
+  Map<String, Object?> toJson() => {'serving': serving, 'pending': pending, 'trial': trial, 'reason': reason, 'offered': offered, 'checkedAt': checkedAt};
+}
+
 final class DataGetParams {
   const DataGetParams({required this.bucket, required this.key});
 
@@ -113,19 +147,20 @@ final class DataGetParams {
 }
 
 final class DataListParams {
-  const DataListParams({required this.bucket, this.prefix, this.limit});
+  const DataListParams({required this.bucket, this.prefix, this.limit, this.after});
 
   factory DataListParams.fromJson(Object? j, [String f = 'DataListParams']) {
     final m = decodeObject(j, f);
-    decodeKeys(m, const {'bucket', 'prefix', 'limit'}, f);
-    return DataListParams(bucket: decodeString(m['bucket'], '$f.bucket'), prefix: m['prefix'] == null ? null : decodeString(m['prefix'], '$f.prefix'), limit: m['limit'] == null ? null : decodeInt(m['limit'], '$f.limit'));
+    decodeKeys(m, const {'bucket', 'prefix', 'limit', 'after'}, f);
+    return DataListParams(bucket: decodeString(m['bucket'], '$f.bucket'), prefix: m['prefix'] == null ? null : decodeString(m['prefix'], '$f.prefix'), limit: m['limit'] == null ? null : decodeInt(m['limit'], '$f.limit'), after: m['after'] == null ? null : decodeString(m['after'], '$f.after'));
   }
 
   final String bucket;
   final String? prefix;
   final int? limit;
+  final String? after;
 
-  Map<String, Object?> toJson() => {'bucket': bucket, 'prefix': prefix, 'limit': limit};
+  Map<String, Object?> toJson() => {'bucket': bucket, 'prefix': prefix, 'limit': limit, 'after': after};
 }
 
 final class DataPutParams {
@@ -290,6 +325,21 @@ final class DataGetManyParams {
   Map<String, Object?> toJson() => {'bucket': bucket, 'keys': keys};
 }
 
+final class DataCountParams {
+  const DataCountParams({required this.bucket, this.prefix});
+
+  factory DataCountParams.fromJson(Object? j, [String f = 'DataCountParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'bucket', 'prefix'}, f);
+    return DataCountParams(bucket: decodeString(m['bucket'], '$f.bucket'), prefix: m['prefix'] == null ? null : decodeString(m['prefix'], '$f.prefix'));
+  }
+
+  final String bucket;
+  final String? prefix;
+
+  Map<String, Object?> toJson() => {'bucket': bucket, 'prefix': prefix};
+}
+
 final class StateSaveParams {
   const StateSaveParams({this.json});
 
@@ -324,6 +374,9 @@ abstract interface class BridgeHandlers {
   Future<HttpResponse> httpRequest(HttpRequestParams p);
   Future<List<Row>> dataGetMany(DataGetManyParams p);
   Future<SyncStatus> syncStatus();
+  Future<AppState> appState();
+  Future<BundleStatus> bundleStatus();
+  Future<int> dataCount(DataCountParams p);
   Future<void> stateSave(StateSaveParams p);
   Future<Object?> stateRestore();
 }
@@ -368,6 +421,12 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<List<Row>> dataGetMany(DataGetManyParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.getMany is not implemented');
   @override
   Future<SyncStatus> syncStatus() async => throw const BridgeError('E_UNSUPPORTED', 'sync.status is not implemented');
+  @override
+  Future<AppState> appState() async => throw const BridgeError('E_UNSUPPORTED', 'app.state is not implemented');
+  @override
+  Future<BundleStatus> bundleStatus() async => throw const BridgeError('E_UNSUPPORTED', 'bundle.status is not implemented');
+  @override
+  Future<int> dataCount(DataCountParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.count is not implemented');
   @override
   Future<void> stateSave(StateSaveParams p) async => throw const BridgeError('E_UNSUPPORTED', 'state.save is not implemented');
   @override
@@ -453,6 +512,17 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.syncStatus();
         return replyOk(id, r.toJson());
+      case 'app.state':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.appState();
+        return replyOk(id, r.toJson());
+      case 'bundle.status':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.bundleStatus();
+        return replyOk(id, r.toJson());
+      case 'data.count':
+        final r = await h.dataCount(DataCountParams.fromJson(p, 'p'));
+        return replyOk(id, r);
       case 'state.save':
         await h.stateSave(StateSaveParams.fromJson(p, 'p'));
         return replyOk(id, null);
@@ -476,6 +546,9 @@ abstract final class BridgeEvents {
   static String bundleUpdateReady({required int seq}) => eventScript('bundle.updateReady', {'seq': seq});
   static String appResumed() => eventScript('app.resumed', const <String, Object?>{});
   static String authExpired() => eventScript('auth.expired', const <String, Object?>{});
+  static String syncDone({required SyncResult result}) => eventScript('sync.done', {'result': result.toJson()});
+  static String appLifecycle({required String state}) => eventScript('app.lifecycle', {'state': state});
+  static String appOnline({required bool online}) => eventScript('app.online', {'online': online});
 }
 
 /// The built-in bridge methods, implemented against the `valence` runtime.
@@ -516,7 +589,7 @@ abstract class ValenceBuiltins {
 
   /// `data.list`, from the package.
   Future<List<Row>> dataList(DataListParams p) async {
-    final rows = await valence.dataList(p.bucket, prefix: p.prefix, limit: p.limit);
+    final rows = await valence.dataList(p.bucket, prefix: p.prefix, limit: p.limit, after: p.after);
     return [for (final r in rows) Row(key: r.key, value: r.value, usn: r.usn)];
   }
 
@@ -592,6 +665,23 @@ abstract class ValenceBuiltins {
   Future<SyncStatus> syncStatus() async {
     final r = await valence.syncStatus();
     return SyncStatus(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline);
+  }
+
+  /// `app.state`, from the package.
+  Future<AppState> appState() async {
+    final s = valence.appState();
+    return AppState(lifecycle: s.lifecycle.name, online: s.online);
+  }
+
+  /// `bundle.status`, from the package.
+  Future<BundleStatus> bundleStatus() async {
+    final s = valence.bundleStatus();
+    return BundleStatus(serving: s.serving, pending: s.pending, trial: s.trial, reason: s.reason.name, offered: s.offered, checkedAt: s.checkedAt);
+  }
+
+  /// `data.count`, from the package.
+  Future<int> dataCount(DataCountParams p) async {
+    return valence.dataCount(p.bucket, prefix: p.prefix);
   }
 
   /// `state.save`, from the package.

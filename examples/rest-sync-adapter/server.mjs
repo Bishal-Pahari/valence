@@ -93,8 +93,13 @@ export function createAdapter({ database, upstream, token, upstreamToken, fetchI
         // The host sends its whole outbox. Bound bytes in jsonBody, not operation count:
         // refusing a 201-operation batch would reject the same queued writes forever.
         if (!body || !Array.isArray(body.ops)) throw failure(400);
+        // `.` and `..` are the two keys encodeURIComponent leaves alone, so URL resolution strips them as
+        // dot segments: `/items/..` becomes `/` and `/items/.` becomes `/items/`. An accepted push would
+        // then send an authenticated PUT or DELETE to the upstream's root or collection endpoint. Refused
+        // here, before any upstream request, rather than relying on the upstream to refuse it.
         const valid = body.ops.every((op) => op && typeof op.id === 'string' && op.id.length > 0 && op.id.length <= 128 &&
-          typeof op.k === 'string' && op.k.length > 0 && op.k.length <= 256 && [0, 1].includes(op.d) &&
+          typeof op.k === 'string' && op.k.length > 0 && op.k.length <= 256 && op.k !== '.' && op.k !== '..' &&
+          [0, 1].includes(op.d) &&
           (op.d === 1 || (op.v && typeof op.v === 'object' && !Array.isArray(op.v) && op.v.id === op.k)));
         if (!valid) throw failure(400);
         const acked = [], rows = [];
