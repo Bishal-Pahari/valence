@@ -52,6 +52,7 @@ function browser(): void {
 const reply = (r: unknown) => (globalThis as any).window.__valence.r(r);
 const emit = (name: string, payload: unknown) => (globalThis as any).window.__valence.e(name, payload);
 const EVENT_SINCE = {
+  'app.appearance': 7,
   'sync.changed': 1,
   'app.resumed': 4,
 } as const;

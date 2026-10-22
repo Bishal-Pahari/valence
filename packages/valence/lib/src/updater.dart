@@ -145,7 +145,7 @@ final class ValenceUpdater {
   /// The sync driver, whose lease step 7 takes.
   final ValenceSync sync;
 
-  /// Called when a bundle marked `urgent` becomes pending, so the host can emit `bundle.updateReady`.
+  /// Called after any pending bundle's completed status is published, so the host can emit `bundle.updateReady`.
   ///
   /// Mutable because the host widget attaches after the runtime is open.
   void Function(int seq)? onUpdateReady;
@@ -232,6 +232,8 @@ final class ValenceUpdater {
   int? _recordCheck(int? seq) {
     if (seq != null) _reason = ValenceBundleReason.ready;
     _lastCheck = (reason: _reason, offered: _offered, checkedAt: DateTime.now().millisecondsSinceEpoch);
+    // Event-driven bundle.status reads must observe this check, after its lease is released.
+    if (seq != null) onUpdateReady?.call(seq);
     return seq;
   }
 
@@ -394,7 +396,6 @@ final class ValenceUpdater {
       // a page that wanted to say "an update is ready" with nothing but polling — and polling on resume
       // races this line, so the page shows nothing until the resume *after* the one that found the update.
       // Emitting is not applying: the host still waits for the next UI start unless the page asks.
-      onUpdateReady?.call(m.seq);
       return m.seq;
     } finally {
       // Cleared whether or not the check completed. A run that stopped at step 6 or 7 leaves orphan files

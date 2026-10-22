@@ -44,7 +44,11 @@ Old app schemas can leave the field out. A host update needs a store build.
 
 Add app.appearance at since above your shipped bridge version (the default template uses schema 7),
 with payload {darkMode: "bool", highContrast: "bool", reducedMotion: "bool"}. Subscribe during
-bootstrap before ready():
+bootstrap before ready().
+
+Gate appearance-dependent features with `has('app.appearance')`. On an older host or in a browser,
+keep CSS media-query fallbacks active. `app.info().bridge` is your app's own schema number;
+comparing it with the default template's 7 does not prove appearance support.
 
 ```ts
 import { on, ready } from './lib/bridge.g';
