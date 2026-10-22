@@ -25,7 +25,31 @@ Independent security review against the merged branch found no confirmed defects
 compile-time exclusion, signed context and floor/bad checks, activation-record preservation,
 reserved route order, nonce/navigation/frame/worker restrictions, strict decoding, credentials,
 redirects and child-process shutdown. The reviewer ran the focused CLI test, bridge tests and
-example codegen check; the complete gates are recorded below when finished.
+example codegen check.
+
+## Fresh gates
+
+| Check | Result |
+|---|---|
+| Root `npm test` | 61 passed; zero skipped; generated Dart compiled and ran |
+| Runtime `flutter test` | 390 passed |
+| Runtime `dart analyze --fatal-infos .` | No issues |
+| Define-enabled proxy `flutter test` | 7 passed |
+| Bridge tests / strict TypeScript | 18 passed / clean |
+| Bridge `npm pack --dry-run` | Passed |
+| Development demo strict TypeScript | Passed |
+| Example tests / `codegen --check` | 16 passed / no writes |
+| Debug APK with dev define | Built successfully |
+| Release APK with sentinel dev define / AOT exclusion scan | Built (47.3 MB); all 3 AOT libraries passed exclusion |
+| Site `npm run build` | 27 pages; SEO checks passed |
+| Runtime `flutter pub publish --dry-run` | 0 warnings from clean commit `3c9c20c` |
+
+The release gate built the current merged source with
+`--dart-define=VALENCE_DEV_URL=http://valence-dev-release-sentinel.invalid:5173`.
+`node packages/valence/tool/check-release-dev.mjs` scanned the resulting APK and reported
+`Release exclusion passed for 3 AOT libraries`. The debug and release builds took 403.7 s
+and 953.9 s respectively under this host's load; these are build timings, not app benchmarks.
+No failing gates remain. No push, publication or merge into a shared branch occurred.
 
 Fresh Android device checks were optional and skipped for this refresh. The 2026-10-21 device
 results below are historical, not a claim that HMR was re-exercised after this merge. iOS remains
