@@ -264,6 +264,7 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
   - `.gitattributes` covers the built-in bundle;
   - at least two §6 items.
 - **Tests.** Run the host and web tests and report the counts. An app's suite covers its *wiring* — its own bridge methods, the built-in delegations reaching the runtime, the §4.2 denials through the generated path. The contracts §8 matrix is the `valence` package's own suite and is **not** expected here; an app that re-tests the state machine against code it does not contain gets a **WARN** for maintaining dead tests.
+  When changing the runtime host widget, run `flutter test test/app_widget_test.dart` in `packages/valence` as part of the full suite. It pumps the real host with a stub WebView to cover startup/resume, navigation locks, nonce forwarding, buffered events, trial-ready timing and disposal. This is package evidence, not device or iOS verification; apps do not copy the harness.
 
 ### R12 mechanical checks
 

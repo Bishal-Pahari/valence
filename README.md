@@ -126,6 +126,10 @@ node valence/valence.mjs keygen | codegen [--check] | bundle [--builtin|--store]
 
 ## Status
 
+The runtime includes [host widget tests](docs/host-widget-tests.md) for startup/resume, navigation
+locks, bridge nonce forwarding, buffered events, trial-ready timeouts and disposal. They pump the real
+host with a stub native WebView; Android device verification remains a separate gate.
+
 **0.4 beta, package-first.** The runtime is no longer generated per app: `valence` (pub.dev) is the whole Flutter host and `@getvalence/bridge` (npm) is the whole web client, both with their own test suites, and `valence codegen` emits only the typed, app-specific half and imports the rest. Moving from 0.3 is [one documented pass](docs/migrating-from-0.3.md) that keeps your data, your update state and your signing key.
 
 **Android is tested. iOS is experimental and untested** — its rules are implemented and specified, but there is no Apple hardware here, so nothing about them is claimed as verified.

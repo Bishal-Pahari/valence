@@ -1,5 +1,11 @@
 # valence
 
+The package's [host widget tests](https://getvalence.pages.dev/docs/guides/host-widget-tests/) exercise the real `ValenceApp` with
+a test-only WebView platform, signed bundles, SQLite and a loopback socket. Run
+`flutter test test/app_widget_test.dart` for the lifecycle, startup resume guard, navigation, bridge
+nonce forwarding, event buffering and ready-timer cases. These tests complement Android device checks;
+iOS remains experimental and untested.
+
 The Flutter host runtime for [Valence](https://getvalence.pages.dev): your web app runs inside a native
 app as a **signed over-the-air bundle**, on top of an **offline-first SQLite** store with incremental sync
 and a **typed bridge**. UI changes ship without an app-store review; the native shell is reviewed rarely.
