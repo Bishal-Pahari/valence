@@ -28,6 +28,17 @@ from the platform and a page in the host cannot.
   `rejected` means a published release is unservable on every device and is worth an alert of your own;
   `waitingForData` is a healthy state that can last for days on an offline device, and is the one four
   hosts mistook for "no update".
+- **`bundle.updateReady` now fires for every pending bundle,** not only one released with `--urgent`.
+  It is the push signal that pairs with `bundle.status()`, and `bundle.applyUpdate` has never required
+  `urgent`, so gating the event on the flag left a page with nothing but polling — and polling on
+  resume races the update check, which finishes a few hundred milliseconds after the read. The result
+  was that a page learned about an update on the resume *after* the one that found it.
+  **What you must do:** nothing, unless you relied on the event meaning "urgent". Read
+  `bundle.status()` on mount and re-read it on `bundle.updateReady`; `urgent` is now purely the
+  release's request to be offered mid-session, which your page decides how to honour.
+- **A data-cap stop reports `toobig`, not `waitingForData`.** When the configured `dataSizeCap` ran out
+  *inside* a pair's pull rather than before it, `bundle.status().reason` blamed unavailable data for
+  what was the app's own limit — and sent you to inspect a server that was answering correctly.
 - **`has()` now answers for events too, not only methods.** `on()` for an event an older host has never
   heard of subscribes happily and then never fires: nothing throws, nothing logs, and the feature behind
   the listener quietly stops happening. Gate the *feature*, not the subscription. On the web `has()` is

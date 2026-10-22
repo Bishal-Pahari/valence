@@ -389,7 +389,12 @@ final class ValenceUpdater {
       state.pending = m.seq;
       save();
       _log('update: seq ${m.seq} is pending (${m.files.length} files)');
-      if (m.urgent) onUpdateReady?.call(m.seq);
+      // Every pending bundle, not only an `urgent` one. `bundle.applyUpdate` has never required `urgent`
+      // and `bundle.status` tells every page to call it, so gating the one *push* signal on the flag left
+      // a page that wanted to say "an update is ready" with nothing but polling — and polling on resume
+      // races this line, so the page shows nothing until the resume *after* the one that found the update.
+      // Emitting is not applying: the host still waits for the next UI start unless the page asks.
+      onUpdateReady?.call(m.seq);
       return m.seq;
     } finally {
       // Cleared whether or not the check completed. A run that stopped at step 6 or 7 leaves orphan files
@@ -508,6 +513,15 @@ final class ValenceUpdater {
         // From this pair's own max_usn, which is 0 the first time. Never a hard-coded since = 0.
         final rows = await sync.pullPair(e.key, e.value, byteBudget: budget);
         _log('update: step 7 pulled $rows rows for ${e.key} v${e.value}');
+        // The budget can run out *inside* the pull as well as before it, and then the pair is short for
+        // the same reason: the app's own data cap. Reporting that as `waitingForData` sends the developer
+        // to look at a server that is answering perfectly (§4.6).
+        if (sync.budgetExhausted) {
+          _log('update: step 7 stopped, seq ${m.seq} hit the ${config.dataSizeCap} byte data cap '
+              'during ${e.key} v${e.value}; backing off');
+          _reason = ValenceBundleReason.toobig;
+          return false;
+        }
       } on Object catch (err) {
         _log('update: step 7 stopped, seq ${m.seq} is waiting for ${e.key} v${e.value}: $err');
         _reason = ValenceBundleReason.waitingForData;
