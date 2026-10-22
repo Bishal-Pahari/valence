@@ -49,6 +49,7 @@ void main() {
     service = ValenceImageShare(
         manifest: () => active,
         casDir: cas,
+        temporaryDirectory: () async => cas,
         present: (params) async {
           presented.add(params);
           return const ShareResult('target', ShareResultStatus.success);
@@ -68,7 +69,7 @@ void main() {
     final p = presented.single;
     expect(await p.files!.single.readAsBytes(), png);
     expect(p.files!.single.mimeType, 'image/png');
-    expect(p.fileNameOverrides, ['chart.png']);
+    expect(p.files!.single.name, 'chart.png');
     expect(p.text, 'My chart');
     expect(p.sharePositionOrigin!.width, greaterThan(0));
   });
@@ -77,7 +78,7 @@ void main() {
       () async {
     await service.share(bytes: base64Encode([255, 216, 255, 224]), caption: '');
     expect(presented.single.files!.single.mimeType, 'image/jpeg');
-    expect(presented.single.fileNameOverrides, ['image.jpg']);
+    expect(presented.single.files!.single.name, 'image.jpg');
     expect(presented.single.text, isNull);
   });
 
@@ -149,7 +150,8 @@ void main() {
       ..writeAsBytesSync(png);
     expect(await service.share(path: 'assets/chart.png'), 'selected');
     expect(await presented.single.files!.single.readAsBytes(), png);
-    expect(presented.single.files!.single.path, isEmpty,
+    expect(presented.single.files!.single.path,
+        isNot(contains(sha256.convert(png).toString())),
         reason: 'never shares the CAS path');
     final rotten = Uint8List.fromList(png)..[20] ^= 1;
     await file.writeAsBytes(rotten);
@@ -213,11 +215,19 @@ void main() {
       'concurrent calls are refused and native failures release the guard without leaking paths',
       () async {
     final pending = Completer<ShareResult>();
+    final entered = Completer<void>();
     service = ValenceImageShare(
-        manifest: () => active, casDir: cas, present: (_) => pending.future);
+        manifest: () => active,
+        casDir: cas,
+        temporaryDirectory: () async => cas,
+        present: (_) {
+          entered.complete();
+          return pending.future;
+        });
     final first = service.share(bytes: base64Encode(png));
     await expectLater(
         service.share(bytes: base64Encode(png)), error(BridgeErrorCode.denied));
+    await entered.future;
     pending
         .completeError(FileSystemException('private payload', '/secret/path'));
     await expectLater(
@@ -228,6 +238,25 @@ void main() {
         service.share(bytes: 'bad'), error(BridgeErrorCode.params));
   });
 
+  test(
+      'scratch is wiped before reuse, outside files and denied calls remain untouched',
+      () async {
+    final outside = File('${cas.path}/unrelated')..writeAsStringSync('keep');
+    await service.share(bytes: base64Encode(png), fileName: 'first.png');
+    final first = File(presented.single.files!.single.path);
+    final stale = Directory('${first.parent.path}/stale')..createSync();
+    File('${stale.path}/old.png').writeAsBytesSync(png);
+    await expectLater(
+        service.share(path: '../secret'), error(BridgeErrorCode.denied));
+    expect(first.existsSync(), isTrue,
+        reason: 'denied input never erases cache');
+    await service.share(bytes: base64Encode(png), fileName: 'second.png');
+    expect(first.existsSync(), isFalse);
+    expect(stale.existsSync(), isFalse);
+    expect(File(presented.last.files!.single.path).existsSync(), isTrue);
+    expect(outside.readAsStringSync(), 'keep');
+  });
+
   test('dismissed and unavailable stay distinct from selection', () async {
     for (final status in [
       ShareResultStatus.dismissed,
@@ -236,6 +265,7 @@ void main() {
       service = ValenceImageShare(
           manifest: () => active,
           casDir: cas,
+          temporaryDirectory: () async => cas,
           present: (_) async => ShareResult('', status));
       expect(await service.share(bytes: base64Encode(png)), status.name);
     }

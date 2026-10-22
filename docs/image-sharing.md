@@ -29,8 +29,9 @@ is checked; the recipient decides whether it can decode the image. SVG is refuse
 `fileName` defaults to `image.png` or `image.jpg`. An explicit name must match
 `^[A-Za-z0-9][A-Za-z0-9_-]{0,79}\.(png|jpg|jpeg)$` and the detected format.
 `caption` is at most 4096 UTF-8 bytes. Empty captions are omitted; some recipients
-ignore captions. Temporary copies live in the app cache and may persist until the
-OS evicts them, so do not share credentials. No storage permission is required.
+ignore captions. The host wipes its dedicated input scratch directory before each
+valid share. Native plugin copies live in the app cache and may persist until the
+OS or plugin evicts them, so do not share credentials. No storage permission is required.
 
 Handle `E_PARAMS` for bad sources, names or format; `E_TOO_LARGE` for size limits;
 `E_DENIED` for off-bundle paths or a second concurrent share; and `E_INTERNAL` for

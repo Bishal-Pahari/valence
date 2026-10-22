@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:crypto/crypto.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'manifest.dart';
@@ -26,7 +27,9 @@ final class ValenceImageShare {
     required this.manifest,
     required this.casDir,
     Future<ShareResult> Function(ShareParams)? present,
-  }) : _present = present ?? SharePlus.instance.share;
+    Future<Directory> Function()? temporaryDirectory,
+  })  : _present = present ?? SharePlus.instance.share,
+        _temporaryDirectory = temporaryDirectory ?? getTemporaryDirectory;
 
   /// The manifest currently served by the host, after signature verification.
   final ValenceManifest? Function() manifest;
@@ -34,6 +37,7 @@ final class ValenceImageShare {
   /// The host's private content-addressed store.
   final Directory casDir;
   final Future<ShareResult> Function(ShareParams) _present;
+  final Future<Directory> Function() _temporaryDirectory;
   bool _busy = false;
 
   /// Opens native sharing. `selected` means a target was chosen, not delivery.
@@ -137,11 +141,24 @@ final class ValenceImageShare {
         throw const BridgeError(BridgeErrorCode.params,
             'fileName extension does not match image bytes');
       }
+      final root = await _temporaryDirectory();
+      // Only this fixed host-owned child is cleared, never the app cache root.
+      // Wipe links as links rather than following them into another directory.
+      final scratch =
+          Directory('${root.path}${Platform.pathSeparator}valence-share');
+      if (await FileSystemEntity.type(scratch.path, followLinks: false) ==
+          FileSystemEntityType.link) {
+        throw const BridgeError(
+            BridgeErrorCode.internal, 'invalid image sharing cache');
+      }
+      await scratch.create(recursive: true);
+      await for (final child in scratch.list(followLinks: false)) {
+        await child.delete(recursive: true);
+      }
+      final copy = File('${scratch.path}${Platform.pathSeparator}$name');
+      await copy.writeAsBytes(data, flush: true);
       final result = await _present(ShareParams(
-        files: [
-          XFile.fromData(data, mimeType: png ? 'image/png' : 'image/jpeg')
-        ],
-        fileNameOverrides: [name],
+        files: [XFile(copy.path, mimeType: png ? 'image/png' : 'image/jpeg')],
         text: caption == null || caption.isEmpty ? null : caption,
         // Native-owned anchor for the iPad popover; no web coordinates or paths.
         sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
