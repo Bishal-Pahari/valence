@@ -1,6 +1,6 @@
 # Remote push
 
-Contracts §6.4. New methods/events use `since: 5`; regenerate the schema and ship
+Contracts §6.4. New methods/events use `since: 12`; regenerate the schema and ship
 a store build. This feature is opt-in. No Firebase initialization is needed for
 an ordinary offline Valence host. Android delivery is **blocked: needs Firebase
 project** for the device check. iOS/APNs and its rich-image extension are

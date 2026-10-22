@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 12,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -24,7 +24,8 @@
       "params": {
         "bucket": "string",
         "prefix": "string?",
-        "limit": "int?"
+        "limit": "int?",
+        "after": "string?"
       },
       "returns": "Row[]"
     },
@@ -128,20 +129,38 @@
       "params": {},
       "returns": "SyncStatus"
     },
-    "push.token": {
+    "data.count": {
       "since": 5,
+      "params": {
+        "bucket": "string",
+        "prefix": "string?"
+      },
+      "returns": "int"
+    },
+    "app.state": {
+      "since": 6,
+      "params": {},
+      "returns": "AppState"
+    },
+    "bundle.status": {
+      "since": 6,
+      "params": {},
+      "returns": "BundleStatus"
+    },
+    "push.token": {
+      "since": 12,
       "params": {},
       "returns": "string?"
     },
     "push.permission": {
-      "since": 5,
+      "since": 12,
       "params": {
         "request": "bool?"
       },
       "returns": "string"
     },
     "push.initial": {
-      "since": 5,
+      "since": 12,
       "params": {},
       "returns": "PushMessage?"
     }
@@ -167,20 +186,38 @@
       "since": 2,
       "payload": {}
     },
+    "sync.done": {
+      "since": 6,
+      "payload": {
+        "result": "SyncResult"
+      }
+    },
+    "app.lifecycle": {
+      "since": 6,
+      "payload": {
+        "state": "string"
+      }
+    },
+    "app.online": {
+      "since": 6,
+      "payload": {
+        "online": "bool"
+      }
+    },
     "push.received": {
-      "since": 5,
+      "since": 12,
       "payload": {
         "message": "PushMessage"
       }
     },
     "push.tapped": {
-      "since": 5,
+      "since": 12,
       "payload": {
         "message": "PushMessage"
       }
     },
     "push.tokenChanged": {
-      "since": 5,
+      "since": 12,
       "payload": {
         "token": "string"
       }
@@ -215,6 +252,18 @@
       "pending": "int",
       "lastSyncedAt": "int?",
       "offline": "bool"
+    },
+    "AppState": {
+      "lifecycle": "string",
+      "online": "bool"
+    },
+    "BundleStatus": {
+      "serving": "int",
+      "pending": "int?",
+      "trial": "int?",
+      "reason": "string",
+      "offered": "int?",
+      "checkedAt": "int?"
     },
     "PushMessage": {
       "id": "string?",

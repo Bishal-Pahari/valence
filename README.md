@@ -154,6 +154,39 @@ Sync correctness: pull cursors advance only through returned rows, never push ec
 
 ### Remote push
 
-Remote push is opt-in in schema 5: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** See [setup and acceptance checks](docs/remote-push.md).
+Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** See [setup and acceptance checks](docs/remote-push.md).
 
 The Firebase native dependencies ship even when push is disabled; iOS hosts must target 15.0 or later. Firebase initialization remains opt-in. iOS is experimental and untested.
+
+### Lifecycle, connectivity and update status
+
+Bridge version 6 answers the three questions a page in a browser tab gets from the platform and a page in
+the host cannot. `app.lifecycle` fires on the way *out* as well as in, with four states —
+`foreground`, `background`, `inactive`, `detached` — mapped from Flutter's five and emitted only on a
+change, because Android delivers `hidden` and then `paused` for one backgrounding. Persist on
+`background`: `detached` usually never arrives. `app.online` reports the OS's network **interfaces**,
+not reachability, so it decides whether to *try* while `SyncResult.reason` says whether the last attempt
+worked. `app.state()` returns both, for a page that mounted after the transition. `sync.done` carries
+the whole `SyncResult` after every run the host made on its own, `changed: 0` included — which
+`sync.changed` never could, and most runs move nothing. `bundle.status()` names why the last update
+check stopped, from a closed set of eleven: `rejected` means a release no device will take, and
+`waitingForData` is the healthy stall four hosts read as "no update".
+[Full guide](https://getvalence.pages.dev/docs/guides/lifecycle/).
+
+### Reading a bucket bigger than 500 rows
+
+`data.list` clamps `limit` to 500 (an unbounded reply kills the WebView), so `data.list`'s `after` takes
+the last key of the previous page and resumes strictly after it — a complete read of any bucket. Without
+it a bucket past the clamp had none, and a truncated list is indistinguishable from a short one: a stored
+key outside the first page reads as a key the device has never held. `data.count` reports how many live
+rows a bucket holds without reading any of them. Both are version 5; `after` is a new *param* on a
+since-1 method, so gate it on `has("data.count")` or `app.info().bridge >= 5` rather than
+`has("data.list")`. A built-in may now grow an optional param the same way it may grow an optional
+returned field, additive against a recorded store baseline.
+
+The database lives at `<applicationSupportDirectory>/<databaseName>`; `host.database` names the file and
+the directory is fixed. A 0.3 host may have used the application documents directory instead, so the
+package adopts such a database on open — `-wal` and `-shm` move with it, the `.db` last, an existing
+destination is never overwritten, and the move is logged. A locked open (a schema migration's
+`BEGIN EXCLUSIVE` against the WorkManager job the same launch fires) is retried; `backgroundSync` then
+reports `reason: "busy"` rather than failing the job.

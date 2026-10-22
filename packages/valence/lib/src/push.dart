@@ -41,7 +41,7 @@ final class ValencePushMessage {
   /// Optional image metadata. Only HTTPS image URLs are exposed.
   final String? image;
 
-  /// The schema-5 wire record.
+  /// The schema-12 wire record.
   Map<String, Object?> toJson() {
     final uri = image == null ? null : Uri.tryParse(image!);
     return {

@@ -50,6 +50,18 @@
     </section>
 
     <section>
+      <h2>Lifecycle, connectivity and updates</h2>
+      <p>
+        Four lifecycle states rather than Flutter's five, connectivity as the OS reports
+        <em>interfaces</em> (never reachability), and the reason the last update check ended as it did.
+      </p>
+      <button id="refresh-state">app.state + bundle.status</button>
+      <pre id="state">reading app.state…</pre>
+      <pre id="bundle">reading bundle.status…</pre>
+      <pre id="events">no lifecycle, connectivity or sync event yet</pre>
+    </section>
+
+    <section>
       <h2>Your API</h2>
       <p>Native HTTP to the local reference adapter. Set its bearer token above first.</p>
       <button id="http">http.request</button>
@@ -86,6 +98,14 @@
           if (name === 'push.tokenChanged') document.getElementById('push-result').textContent = 'Registration changed; update your backend.';
           if (name === 'push.received' || name === 'push.tapped') document.getElementById('push-result').textContent = name + ': ' + JSON.stringify(payload.message);
           if (name === 'sync.changed') void refresh();
+          // §4.6. Logged rather than acted on, because the point of the three is that they *arrive*:
+          // app.lifecycle on the way out as well as in, app.online without asking, and sync.done after
+          // every run the host made on its own — including the ones with nothing to report.
+          if (name === 'app.lifecycle' || name === 'app.online' || name === 'sync.done') {
+            seen.unshift(new Date().toISOString().slice(11, 19) + ' ' + name + ' ' + JSON.stringify(payload));
+            document.getElementById('events').textContent = seen.slice(0, 8).join('\n');
+            if (name === 'app.lifecycle' || name === 'app.online') void showState();
+          }
           // The host fires this when a sync request carrying the token came back 401 (§4.4). A real app
           // refreshes the token here, or shows a login screen.
           if (name === 'auth.expired') document.getElementById('auth').textContent = 'auth.expired: the server rejected the token';
@@ -99,6 +119,14 @@
           window.Valence.postMessage(JSON.stringify({ id, n: nonce, m, p }));
         });
 
+      const seen = [];
+
+      async function showState() {
+        document.getElementById('state').textContent = 'app.state: ' + JSON.stringify(await call('app.state'));
+        // Never a request, so it is safe to read on every event: the host is reporting what it already knows.
+        document.getElementById('bundle').textContent = 'bundle.status: ' + JSON.stringify(await call('bundle.status'));
+      }
+
       const show = (err) => {
         document.getElementById('error').textContent = err ? String(err) : '';
       };
@@ -111,6 +139,15 @@
           .map((r) => `<li>${r.key} — ${JSON.stringify(r.value)} ${r.usn === -1 ? '(not yet synced)' : ''}</li>`)
           .join('');
       }
+
+      document.getElementById('refresh-state').addEventListener('click', async () => {
+        show(null);
+        try {
+          await showState();
+        } catch (e) {
+          show(e);
+        }
+      });
 
       document.getElementById('add').addEventListener('click', async () => {
         show(null);
@@ -223,6 +260,7 @@
           document.getElementById('info').textContent = JSON.stringify(info, null, 2);
           await refresh();
           await showAuth();
+          await showState();
         } catch (e) {
           show(e);
         }
