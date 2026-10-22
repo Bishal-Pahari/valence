@@ -13,6 +13,25 @@ import 'wire.dart';
 /// Turns one message from the JS channel into a reply. The generated `bridgeDispatch`, partially applied.
 typedef ValenceDispatch = Future<String> Function(String raw, String nonce);
 
+/// Flutter's five lifecycle states as the four a page sees (§4.6).
+///
+/// Top-level and pure on purpose: [ValenceApp] needs a WebView platform to build at all, so the mapping
+/// and the dedupe it feeds are the half of this that a unit test can reach.
+ValenceLifecycle valenceLifecycleFor(AppLifecycleState state) => switch (state) {
+      AppLifecycleState.resumed => ValenceLifecycle.foreground,
+      AppLifecycleState.inactive => ValenceLifecycle.inactive,
+      // Android delivers hidden and then paused for one backgrounding. One transition, so one event.
+      AppLifecycleState.hidden || AppLifecycleState.paused => ValenceLifecycle.background,
+      AppLifecycleState.detached => ValenceLifecycle.detached,
+    };
+
+/// Whether a connectivity report means online: **any** interface that is not `none` (§4.6).
+///
+/// connectivity_plus reports a list, and a device on Wi-Fi and VPN at once has two entries — so a check
+/// written against `results.first` calls a working device offline whenever the VPN sorts first. This is
+/// interface state and never reachability.
+bool valenceOnline(List<ConnectivityResult> results) => results.any((r) => r != ConnectivityResult.none);
+
 /// The host widget: the loopback server, the WebView, the navigation lock, the back gesture, the ready
 /// timer and the lifecycle triggers (contracts §2.4, §3, §4.2, §7).
 ///
@@ -53,8 +72,20 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   Object? _error;
   String _origin = '';
 
-  /// Event scripts waiting for `window.__valence` to exist.
+  /// One-shot event scripts waiting for `window.__valence` to exist.
+  ///
+  /// The §4.6 state events are **not** in here: they are dropped when no page is loaded, because
+  /// `app.state()` re-derives them. What is left is kept not because nothing could re-derive it —
+  /// `sync.status()` carries most of what `sync.done` does — but because `sync.changed` and the
+  /// `sync.done` for the same run have to stay ordered, and dropping either half breaks a pairing the
+  /// page is told it can rely on.
   final List<String> _buffered = [];
+
+  /// Bounded, because `onPageFinished` is not guaranteed. A host whose entry page never finishes, on a
+  /// device the host keeps syncing for, would otherwise grow this list for the life of the process. The
+  /// oldest go first: for every event in here the newest is the one worth delivering.
+  static const _maxBuffered = 64;
+
   bool _pageLoaded = false;
 
   /// The ready timer counts **foreground** time only, so a backgrounded app costs a trial nothing.
@@ -63,9 +94,6 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
 
   Timer? _updateTicker;
   StreamSubscription<List<ConnectivityResult>>? _connectivity;
-
-  /// The last `max_usn` each pair was reported to the page with, so resume can re-derive `sync.changed`.
-  final Map<String, int> _lastSeenUsn = {};
 
   /// Whether [_start] has finished, so a resume can tell steady state from start-up (§3).
   ///
@@ -159,12 +187,35 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     unawaited(_checkForUpdate());
     unawaited(_syncNow());
     _updateTicker = Timer.periodic(_valence.config.updateInterval, (_) => unawaited(_checkForUpdate()));
-    _connectivity = Connectivity().onConnectivityChanged.listen((results) {
-      if (results.any((r) => r != ConnectivityResult.none)) {
-        _log('sync: connectivity came back');
-        unawaited(_syncNow());
-      }
-    });
+    _connectivity = Connectivity().onConnectivityChanged.listen(_onConnectivity);
+    // The stream only reports *changes*, so without this a page that asks `app.state()` on a cold start
+    // reads the optimistic default rather than an answer (§4.6).
+    unawaited(_readConnectivity());
+  }
+
+  Future<void> _readConnectivity() async {
+    try {
+      _noteConnectivity(await Connectivity().checkConnectivity());
+    } on Object catch (e) {
+      _log('connectivity: could not read the current state: $e');
+    }
+  }
+
+  void _onConnectivity(List<ConnectivityResult> results) {
+    final online = _noteConnectivity(results);
+    // The sync trigger is "connectivity came back", so it fires on any report with a live interface, not
+    // only on the edge: a Wi-Fi-to-cellular handover is two live reports and the run in between failed.
+    if (online) {
+      _log('sync: connectivity came back');
+      unawaited(_syncNow());
+    }
+  }
+
+  /// Records connectivity and returns whether we are online. The runtime emits `app.online` (§4.6).
+  bool _noteConnectivity(List<ConnectivityResult> results) {
+    final online = valenceOnline(results);
+    _valence.noteOnline(online);
+    return online;
   }
 
   // ---------------------------------------------------------------------------
@@ -312,12 +363,19 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   }
 
   @override
+  bool get pageLoaded => _pageLoaded && _controller != null;
+
+  @override
   void runScript(String script) {
-    if (_pageLoaded && _controller != null) {
+    if (pageLoaded) {
       unawaited(_controller!.runJavaScript(script));
       return;
     }
     _buffered.add(script);
+    if (_buffered.length > _maxBuffered) {
+      _buffered.removeAt(0);
+      _log('event: the buffer is full at $_maxBuffered; dropping the oldest undelivered event');
+    }
   }
 
   @override
@@ -366,6 +424,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _noteLifecycle(state);
     switch (state) {
       case AppLifecycleState.resumed:
         if (_readyTicker != null) _readyClock.start();
@@ -377,6 +436,20 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
         // The ready timer counts foreground time, so it pauses with the app.
         _readyClock.stop();
     }
+  }
+
+  /// §4.6: the five platform states as the four the page sees, recorded only when they change.
+  ///
+  /// Not gated on `_started`, unlike the resume *work* below: a transition during start-up must still
+  /// update what `app.state()` returns, so the page that loads next reads the truth. The runtime decides
+  /// whether an event can be delivered — during start-up no page is loaded, so it is dropped, not queued.
+  void _noteLifecycle(AppLifecycleState state) {
+    final mapped = valenceLifecycleFor(state);
+    if (_valence.appState().lifecycle == mapped) return;
+    // Logged as well as emitted. The page can only report the events it *received*, so without a host-side
+    // line there is no way to tell "the platform never sent it" from "the script never ran".
+    _log('lifecycle: ${state.name} -> ${mapped.name}');
+    _valence.noteLifecycle(mapped);
   }
 
   Future<void> _onResume() async {
@@ -454,23 +527,9 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
 
   Future<void> _syncNow() async {
     try {
-      final result = await _valence.syncNow();
-      // For state rather than one-shot notifications, prefer re-deriving to replaying: compare each pair's
-      // max_usn with the last value the page was told, and report only the ones that moved (§4.2, §5.6).
-      final moved = <String>[];
-      final schemas = _valence.manifest?.requiresData ?? _valence.config.dataSchemas;
-      for (final bucket in {...result.buckets, ...schemas.keys, ..._valence.config.writableBuckets}) {
-        final schema = _valence.config.writableBuckets.contains(bucket) ? 1 : schemas[bucket] ?? 1;
-        final usn = await _valence.store.maxUsn(bucket, schema);
-        if (_lastSeenUsn[bucket] != usn) {
-          _lastSeenUsn[bucket] = usn;
-          moved.add(bucket);
-        }
-      }
-      // sync.changed, bundle.updateReady and app.resumed are the runtime's own events, so the package
-      // builds them with the same jsonEncode-based helper the generated BridgeEvents uses. An app's own
-      // events go through valence.emit(BridgeEvents.myEvent(...)).
-      if (moved.isNotEmpty) runScript(eventScript('sync.changed', {'buckets': moved}));
+      // `Valence.syncNow` emits sync.changed and then sync.done for the run, so that `data.put`'s own
+      // push — which never passes through here — reports itself too (§4.6).
+      await _valence.syncNow();
     } on Object catch (e) {
       _log('sync: run failed: $e');
     }

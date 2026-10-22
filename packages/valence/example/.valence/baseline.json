@@ -1,11 +1,11 @@
 {
-  "storeSeq": 1792215625,
+  "storeSeq": 1792646661,
   "storeRoutes": [
     "/",
     "/shelf"
   ],
   "storeSchema": {
-    "version": 1,
+    "version": 10,
     "methods": {
       "app.ready": {
         "since": 1,
@@ -30,7 +30,8 @@
         "params": {
           "bucket": "string",
           "prefix": "string?",
-          "limit": "int?"
+          "limit": "int?",
+          "after": "string?"
         },
         "returns": "Row[]"
       },
@@ -81,6 +82,100 @@
         "since": 1,
         "params": {},
         "returns": "void"
+      },
+      "secure.get": {
+        "since": 2,
+        "params": {
+          "key": "string"
+        },
+        "returns": "string?"
+      },
+      "secure.set": {
+        "since": 2,
+        "params": {
+          "key": "string",
+          "value": "string"
+        },
+        "returns": "void"
+      },
+      "secure.delete": {
+        "since": 2,
+        "params": {
+          "key": "string"
+        },
+        "returns": "void"
+      },
+      "auth.setToken": {
+        "since": 2,
+        "params": {
+          "token": "string?"
+        },
+        "returns": "void"
+      },
+      "auth.hasToken": {
+        "since": 2,
+        "params": {},
+        "returns": "bool"
+      },
+      "http.request": {
+        "since": 4,
+        "params": {
+          "url": "string",
+          "method": "string?",
+          "headers": "json?",
+          "body": "string?"
+        },
+        "returns": "HttpResponse"
+      },
+      "data.getMany": {
+        "since": 3,
+        "params": {
+          "bucket": "string",
+          "keys": "string[]"
+        },
+        "returns": "Row[]"
+      },
+      "sync.status": {
+        "since": 3,
+        "params": {},
+        "returns": "SyncStatus"
+      },
+      "app.state": {
+        "since": 6,
+        "params": {},
+        "returns": "AppState"
+      },
+      "bundle.status": {
+        "since": 6,
+        "params": {},
+        "returns": "BundleStatus"
+      },
+      "data.count": {
+        "since": 5,
+        "params": {
+          "bucket": "string",
+          "prefix": "string?"
+        },
+        "returns": "int"
+      },
+      "permissions.check": {
+        "since": 10,
+        "params": {
+          "kind": "string"
+        },
+        "returns": "string"
+      },
+      "permissions.request": {
+        "since": 10,
+        "params": {
+          "kind": "string"
+        },
+        "returns": "string"
+      },
+      "permissions.openSettings": {
+        "since": 10,
+        "params": {},
+        "returns": "bool"
       }
     },
     "events": {
@@ -99,6 +194,34 @@
       "app.resumed": {
         "since": 1,
         "payload": {}
+      },
+      "auth.expired": {
+        "since": 2,
+        "payload": {}
+      },
+      "sync.done": {
+        "since": 6,
+        "payload": {
+          "result": "SyncResult"
+        }
+      },
+      "app.lifecycle": {
+        "since": 6,
+        "payload": {
+          "state": "string"
+        }
+      },
+      "app.online": {
+        "since": 6,
+        "payload": {
+          "online": "bool"
+        }
+      },
+      "permissions.changed": {
+        "since": 10,
+        "payload": {
+          "permissions": "PermissionState[]"
+        }
       }
     },
     "types": {
@@ -117,10 +240,38 @@
       "SyncResult": {
         "buckets": "string[]",
         "changed": "int",
+        "offline": "bool",
+        "reason": "string?",
+        "pending": "int?"
+      },
+      "HttpResponse": {
+        "status": "int",
+        "headers": "json",
+        "body": "string"
+      },
+      "SyncStatus": {
+        "pending": "int",
+        "lastSyncedAt": "int?",
         "offline": "bool"
+      },
+      "AppState": {
+        "lifecycle": "string",
+        "online": "bool"
+      },
+      "BundleStatus": {
+        "serving": "int",
+        "pending": "int?",
+        "trial": "int?",
+        "reason": "string",
+        "offered": "int?",
+        "checkedAt": "int?"
+      },
+      "PermissionState": {
+        "kind": "string",
+        "status": "string"
       }
     }
   },
-  "lastSeq": 1792620197,
+  "lastSeq": 1792646661,
   "floor": 0
 }

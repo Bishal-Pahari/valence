@@ -52,12 +52,31 @@ const RESERVED_TYPES = new Set('Json Methods Events Object String Number Boolean
 // what exists. A field never moves from `fields` to `optional` or back: `fields` is the shape every host
 // has always returned.
 const BUILTINS = {
+  'permissions.check': { params: { kind: 'string' }, returns: 'string', call: () => 'return valence.permissions.check(p.kind);' },
+  'permissions.request': { params: { kind: 'string' }, returns: 'string', call: () => 'return valence.permissions.request(p.kind);' },
+  'permissions.openSettings': { params: {}, returns: 'bool', call: () => 'return valence.permissions.openSettings();' },
   'app.ready': { params: {}, returns: 'void', call: () => 'await valence.appReady();' },
   'app.info': {
     params: {},
     returns: { fields: { platform: 'string', host: 'int', bridge: 'int', bundle: 'int', locale: 'string' } },
     call: (t) =>
       `final i = valence.appInfo();\n        return ${t}(platform: i.platform, host: i.host, bridge: i.bridge, bundle: i.bundle, locale: i.locale);`,
+  },
+  // §4.6. Both read state the host already keeps, so neither starts a request and a page may poll them.
+  'app.state': {
+    params: {},
+    returns: { fields: { lifecycle: 'string', online: 'bool' } },
+    call: (t) => `final s = valence.appState();
+        return ${t}(lifecycle: s.lifecycle.name, online: s.online);`,
+  },
+  'bundle.status': {
+    params: {},
+    returns: {
+      fields: { serving: 'int', pending: 'int?', trial: 'int?', reason: 'string', offered: 'int?', checkedAt: 'int?' },
+    },
+    call: (t) =>
+      `final s = valence.bundleStatus();
+        return ${t}(serving: s.serving, pending: s.pending, trial: s.trial, reason: s.reason.name, offered: s.offered, checkedAt: s.checkedAt);`,
   },
   'data.get': {
     params: { bucket: 'string', key: 'string' },
@@ -66,9 +85,17 @@ const BUILTINS = {
   },
   'data.list': {
     params: { bucket: 'string', prefix: 'string?', limit: 'int?' },
+    // `after` is the key cursor that makes a bucket past `maxListLimit` readable at all. Optional, because
+    // the returns are a plain `Row[]` and an app on the older shape must keep compiling (rule 5).
+    optionalParams: { after: 'string?' },
     returns: { list: true, fields: { key: 'string', value: 'json', usn: 'int' } },
-    call: (t) =>
-      `final rows = await valence.dataList(p.bucket, prefix: p.prefix, limit: p.limit);\n        return [for (final r in rows) ${t}(key: r.key, value: r.value, usn: r.usn)];`,
+    call: (t, _has, hasParam) =>
+      `final rows = await valence.dataList(p.bucket, prefix: p.prefix, limit: p.limit${hasParam('after') ? ', after: p.after' : ''});\n        return [for (final r in rows) ${t}(key: r.key, value: r.value, usn: r.usn)];`,
+  },
+  'data.count': {
+    params: { bucket: 'string', prefix: 'string?' },
+    returns: 'int',
+    call: () => 'return valence.dataCount(p.bucket, prefix: p.prefix);',
   },
   'data.getMany': {
     params: { bucket: 'string', keys: 'string[]' },
@@ -431,6 +458,34 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
   }
 
   if (floor !== undefined && floor < (baseline.floor ?? 0)) throw new Error(`--floor ${floor} is below the current floor ${baseline.floor}; the floor only goes up`);
+  // The floor applies to the built-in bundle too (§2.2), and the built-in bundle is the one artifact every
+  // device is guaranteed to have — a wiped or offline phone's last resort, and the only code a store review
+  // ever saw. A floor above it therefore retires it *from the client side*, with no store release: §2.4's
+  // ladder is left with `current` and nothing underneath, so if the floor-raising bundle itself later fails
+  // a check, recovery is a full store review — exactly what OTA exists to avoid. One unreviewed OTA should
+  // not be able to do that silently, and `baseline.storeSeq` is in the file the CLI is already writing.
+  // A `--store` build is its own fallback, so its own seq is the ceiling, which §2.3's check below enforces.
+  const storeSeq = baseline.storeSeq ?? 0;
+  const effectiveFloor = floor ?? baseline.floor ?? 0;
+  // `--builtin` is exempt with `--store`: that bundle *is* the fallback being produced, and the
+  // `floor > seq` check below already keeps it runnable. Only an OTA can retire a fallback it is not.
+  if (!store && !builtin && storeSeq > 0 && effectiveFloor > storeSeq) {
+    const how = `Raise it to at most ${storeSeq} to keep the store build runnable, or ship a store build above ${effectiveFloor} first and raise the floor after it is live.`;
+    // Refuse only an actual *raise*. Restating a floor that is already above `storeSeq` — which a pipeline
+    // passing `--floor $FLOOR` every time does — changes nothing, and refusing it deadlocked against the
+    // "the floor only goes up" check above: every value at or below the carried floor was refused there,
+    // and every value above it refused here, with no buildable number in between.
+    if (floor !== undefined && floor > (baseline.floor ?? 0)) {
+      throw new Error(
+        `--floor ${floor} is above the store build's seq ${storeSeq}, so every device would refuse its own built-in bundle at check 4 and have no fallback below this release. ${how}`,
+      );
+    }
+    // Carried forward from a project that raised the floor before this check existed. Not refused, because
+    // that would make every later release unbuildable, but it is the same device state and must be said.
+    warnings.push(
+      `the floor carried forward (${effectiveFloor}) is above the store build's seq ${storeSeq}, so devices refuse their own built-in bundle and have no fallback below "current". ${how}`,
+    );
+  }
   // requires.bridge is a one-way door like floor: check 5 makes every host below it refuse this bundle *and* every
   // later release, because they inherit the same default. has() exists so one bundle can serve old and new hosts, so
   // say so when the default would undo it.
@@ -718,6 +773,16 @@ function isBuiltinGrowth(was, now, allowed) {
   return true;
 }
 
+// True when a built-in method's definition is its shipped one plus nothing but optional params from
+// `allowed`. Everything other than `params` must be identical — compared wholesale rather than by naming
+// `since` and `returns`, so a method-level key the IDL gains later is not silently exempt from the guard.
+function isBuiltinParamGrowth(was, now, allowed) {
+  if (!allowed || !now || typeof now !== 'object') return false;
+  const withoutParams = (d) => Object.fromEntries(Object.entries(d).filter(([k]) => k !== 'params'));
+  if (canonical(withoutParams(was)) !== canonical(withoutParams(now))) return false;
+  return isBuiltinGrowth(was.params ?? {}, now.params ?? {}, allowed);
+}
+
 // The schema is additive only once a store build has shipped it (contracts §4.1).
 export function assertAdditive(shipped, current) {
   if (!shipped) return;
@@ -731,6 +796,20 @@ export function assertAdditive(shipped, current) {
       // this the additive-only guard refuses the very upgrade §4.3 tells an adopter to make, and the only
       // way through would be --rebaseline, which overwrites the schema the stores reviewed.
       if (kind === 'types' && isBuiltinGrowth(def, current.types[name], grows[name])) continue;
+      // The same allowance for a built-in's *params*. `since` and `returns` must be untouched; only the
+      // optional params the runtime declared may appear. Without it the additive guard refuses the upgrade
+      // §4.3 tells an adopter to make, and --rebaseline — which overwrites the schema the stores reviewed —
+      // would be the only way through.
+      // A grown param must come with a version bump, because a param has no `since` of its own: the schema
+      // version is the only thing that tells a page whether this host understands it. Without this, an app
+      // could add `data.list.after` at the shipped version, leaving `app.info().bridge` and `has()` — the
+      // two gates §4.2 names — unable to distinguish it from the store build that answers `E_PARAMS`.
+      if (kind === 'methods' && isBuiltinParamGrowth(def, current.methods[name], BUILTINS[name]?.optionalParams)) {
+        if (current.version > shipped.version) continue;
+        throw new Error(
+          `"${name}" gained the param ${Object.keys(current.methods[name].params ?? {}).filter((p) => !Object.hasOwn(def.params ?? {}, p)).map((p) => `"${p}"`).join(', ')}, which needs "version" above the shipped ${shipped.version}. A param has no "since", so the schema version is the only thing has() and app.info().bridge can gate on.`,
+        );
+      }
       throw new Error(`${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
     }
   }
@@ -953,9 +1032,12 @@ function dartBuiltins(s) {
     // Which of the built-in's optional fields this app actually declared, so the delegation passes those
     // and no others. An app that never regenerated against the newer runtime keeps compiling.
     const declared = new Set((s.types.find((t) => t.name === m.returns.base)?.fields ?? []).map((f) => f.name));
+    // Same question for the optional *params*: an app that never regenerated against the newer runtime has
+    // not declared them, so the delegation must not pass them.
+    const declaredParams = new Set(m.params.map((f) => f.name));
     o.push(`  /// \`${m.name}\`, from the package.`);
     o.push(`  Future<${dartType(m.returns)}> ${camel(m.name)}(${arg}) async {`);
-    for (const line of builtin.call(typeName, (f) => declared.has(f)).split('\n')) {
+    for (const line of builtin.call(typeName, (f) => declared.has(f), (p) => declaredParams.has(p)).split('\n')) {
       o.push(line.startsWith('        ') ? `    ${line.trimStart()}` : `    ${line}`);
     }
     o.push('  }', '');
@@ -973,9 +1055,18 @@ export function assertBuiltinShapes(s) {
     const want = BUILTINS[m.name];
     if (!want) continue;
     const got = Object.fromEntries(m.params.map((f) => [f.name, typeString(f.type)]));
-    if (canonical(got) !== canonical(want.params)) {
+    // Required params, exactly. Beyond them only this built-in's own optional params, each at its declared
+    // type — the same rule as the return type's optional fields, and what lets the runtime add a param
+    // (rule 5) without every app on the older shape failing codegen.
+    const optionalParams = want.optionalParams ?? {};
+    const requiredParams = Object.fromEntries(Object.entries(got).filter(([f]) => !(f in optionalParams)));
+    const extraParams = Object.entries(got).filter(([f]) => f in optionalParams);
+    if (canonical(requiredParams) !== canonical(want.params) || extraParams.some(([f, t]) => t !== optionalParams[f])) {
+      const allowed = Object.keys(optionalParams).length
+        ? ` It may also take ${Object.entries(optionalParams).map(([f, t]) => `"${f}": ${t}`).join(', ')}.`
+        : '';
       throw new Error(
-        `"${m.name}" is implemented by the valence package, so its params must stay ${JSON.stringify(want.params)}, not ${JSON.stringify(got)}. Add a new method under a different name instead.`,
+        `"${m.name}" is implemented by the valence package, so its params must stay ${JSON.stringify(want.params)}, not ${JSON.stringify(got)}. Add a new method under a different name instead.${allowed}`,
       );
     }
     if (typeof want.returns === 'string') {
@@ -1017,6 +1108,11 @@ const dartStr = (s) =>
     .replace(/[\x00-\x1f\x7f]/g, (c) => `\\u{${c.charCodeAt(0).toString(16)}}`)}'`;
 
 export function genDartConfig(cfg, keyring) {
+  const kinds = cfg.permissions?.kinds ?? [];
+  const knownKinds = new Set(['camera', 'location', 'notifications', 'contacts', 'bluetooth', 'microphone', 'photos']);
+  if (!Array.isArray(kinds) || kinds.some((kind) => !knownKinds.has(kind)) || new Set(kinds).size !== kinds.length) {
+    throw new Error('permissions.kinds must be an array of unique supported permission kinds');
+  }
   const connect = cfg.http?.origins ?? [];
   if (!Array.isArray(connect)) throw new Error('http.origins must be an array of exact HTTP(S) origins');
   for (const origin of connect) {
@@ -1042,6 +1138,7 @@ export function genDartConfig(cfg, keyring) {
     `  syncBase: ${dartStr(cfg.sync?.base ?? '')},`,
     `  writableBuckets: {${writable}},`,
     `  dataSchemas: {${data}},`,
+    `  permissionKinds: {${kinds.map(dartStr).join(', ')}},`,
     `  httpOrigins: {${connect.map((o) => dartStr(new URL(o).origin)).join(', ')}},`,
     `  seedSchemas: {${Object.entries(cfg.seedSchemas ?? {}).map(([b, ns]) => `${dartStr(b)}: [${ns.join(', ')}]`).join(', ')}},`,
   ];

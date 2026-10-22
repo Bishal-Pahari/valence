@@ -4,7 +4,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -486,10 +488,14 @@ void main() {
       final result = await v.syncNow();
       expect(result.reason, ValenceSyncReason.unauthorized);
       expect(
-        view.scripts.single,
+        view.scripts.first,
         'window.__valence&&window.__valence.e("auth.expired",{})',
         reason: 'built through jsonEncode by the same helper as every other event',
       );
+      // And the run still reports itself: "the token was rejected" is exactly the outcome a freshness
+      // line has to show, and sync.changed alone has no way to say it (§4.6).
+      expect(view.events, ['auth.expired', 'sync.changed', 'sync.done']);
+      expect(view.scripts.last, contains('"reason":"unauthorized"'));
     });
   });
 
@@ -574,11 +580,162 @@ void main() {
           reason: 'the phrase appears only in a page-supplied argument');
     });
   });
+
+  // ===========================================================================
+  group('§4.6 lifecycle, connectivity and update status', () {
+    test('the five platform states are the four the page sees', () {
+      // The mapping is the contract, not an implementation detail: a page switching on the value has to
+      // be able to cover it, and "hidden" and "paused" are one backgrounding, not two.
+      expect(valenceLifecycleFor(AppLifecycleState.resumed), ValenceLifecycle.foreground);
+      expect(valenceLifecycleFor(AppLifecycleState.inactive), ValenceLifecycle.inactive);
+      expect(valenceLifecycleFor(AppLifecycleState.hidden), ValenceLifecycle.background);
+      expect(valenceLifecycleFor(AppLifecycleState.paused), ValenceLifecycle.background);
+      expect(valenceLifecycleFor(AppLifecycleState.detached), ValenceLifecycle.detached);
+    });
+
+    test('online means any interface that is not none', () {
+      // A device on Wi-Fi and VPN at once reports two, and a check written against the first entry calls
+      // it offline whenever the VPN sorts first.
+      expect(valenceOnline([ConnectivityResult.wifi]), isTrue);
+      expect(valenceOnline([ConnectivityResult.none, ConnectivityResult.vpn]), isTrue);
+      expect(valenceOnline([ConnectivityResult.none]), isFalse);
+      expect(valenceOnline([]), isFalse, reason: 'no interfaces at all is not online');
+    });
+
+    test('app.state answers before any event has been emitted, and optimistically', () async {
+      // A page only ever runs while the app is on screen, and a host whose connectivity plugin has not
+      // answered yet must not claim the device is offline: the cost of that error is a UI that refuses
+      // to try on a working network.
+      final v = await open();
+      expect(v.appState().lifecycle, ValenceLifecycle.foreground);
+      expect(v.appState().online, isTrue);
+    });
+
+    test('only a change emits, which is what makes the two events countable', () async {
+      final v = await open();
+      final spy = _ScriptSpy();
+      v.attach(spy);
+      // Android delivers hidden then paused for one backgrounding: both map to background, and the
+      // second one must not produce an event a page would count.
+      v.noteLifecycle(ValenceLifecycle.background);
+      v.noteLifecycle(ValenceLifecycle.background);
+      expect(v.appState().lifecycle, ValenceLifecycle.background);
+      v.noteLifecycle(ValenceLifecycle.foreground);
+
+      v.noteOnline(true); // already the optimistic default
+      v.noteOnline(false);
+      v.noteOnline(false);
+      expect(v.appState().online, isFalse);
+
+      expect(spy.events, ['app.lifecycle', 'app.lifecycle', 'app.online']);
+      expect(spy.scripts[0], contains('"state":"background"'));
+      expect(spy.scripts[1], contains('"state":"foreground"'));
+      expect(spy.scripts[2], contains('"online":false'));
+    });
+
+    test('a state event with no page is dropped, not queued, and app.state keeps the truth', () async {
+      // The §4.2 buffer is for one-shot events. These two are state: queueing them would be an unbounded
+      // list — a host whose entry page never loads, on a device moving between networks — holding
+      // transitions that are stale by the time anything reads them.
+      final v = await open();
+      final spy = _ScriptSpy()..pageLoaded = false;
+      v.attach(spy);
+      v.noteLifecycle(ValenceLifecycle.background);
+      v.noteOnline(false);
+      expect(spy.scripts, isEmpty);
+      // Recorded all the same, so the page that loads next reads the truth from app.state().
+      expect(v.appState().lifecycle, ValenceLifecycle.background);
+      expect(v.appState().online, isFalse);
+
+      // And nothing is replayed when a page does arrive.
+      spy.pageLoaded = true;
+      expect(spy.scripts, isEmpty);
+      v.noteLifecycle(ValenceLifecycle.foreground);
+      expect(spy.events, ['app.lifecycle']);
+    });
+
+    test('every completed run reports itself, sync.changed before sync.done', () async {
+      final v = await open(dataSchemas: {'plants': 1});
+      final spy = _ScriptSpy();
+      v.attach(spy);
+      final result = await v.syncNow();
+      // The mock server has nothing, so this is the run sync.changed alone could never report.
+      expect(result.changed, 0);
+      expect(spy.events, ['sync.changed', 'sync.done'], reason: 'refetch first, then the freshness line');
+      expect(spy.scripts.last, contains('"changed":0'));
+      expect(spy.scripts.last, contains('"reason":"ok"'));
+
+      // A second run moves nothing, so there is no sync.changed — and still a sync.done.
+      spy.scripts.clear();
+      await v.syncNow();
+      expect(spy.events, ['sync.done']);
+    });
+
+    test("data.put's own push reports itself, because the page's writes are most of an outbox", () async {
+      // The push goes straight through Valence.syncNow and never passes a host-widget trigger, so a host
+      // that reported only its own triggers would leave the freshness line untouched by the page's writes.
+      final v = await open(writableBuckets: {'notes'});
+      final spy = _ScriptSpy();
+      v.attach(spy);
+      await v.dataPut('notes', 'a', {'t': 1});
+      // The push is deliberately not awaited by data.put: a local write is durable at commit.
+      for (var i = 0; i < 100 && !spy.events.contains('sync.done'); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(spy.events, contains('sync.done'));
+    });
+
+    test('bundle.status before any check says idle rather than "up to date"', () async {
+      // The distinction the page needs: nothing has been asked yet, so claiming freshness would be a
+      // guess. serving is 0 because the host widget has not bound a manifest in a unit test.
+      final v = await open();
+      final s = v.bundleStatus();
+      expect(s.reason, ValenceBundleReason.idle);
+      expect(s.checkedAt, isNull);
+      expect(s.offered, isNull);
+      expect(s.serving, 0);
+      expect(s.pending, isNull);
+      expect(s.trial, isNull);
+    });
+
+    test('bundle.status reports the live activation state and the last check', () async {
+      final v = await open(config: testConfig(key, otaBase: ''));
+      v.state.pending = 31;
+      v.state.trial = 30;
+      // No otaBase, so the check is honest about never having run rather than guessing freshness.
+      await v.updater.checkForUpdate();
+      final s = v.bundleStatus();
+      expect(s.pending, 31);
+      expect(s.trial, 30);
+      expect(s.reason, ValenceBundleReason.unconfigured);
+      expect(s.checkedAt, isNotNull);
+    });
+
+    test('a SyncResult crosses the bridge the same way in a reply and in sync.done', () async {
+      // sync.done carries the whole record, including the two fields a schema may not declare: an app's
+      // handler reads what it knows about and an older host simply never sends them (§4.3).
+      const result = ValenceSyncResult(['notes'], 3, false, ValenceSyncReason.busy, 7);
+      expect(result.toJson(), {
+        'buckets': ['notes'],
+        'changed': 3,
+        'offline': false,
+        'reason': 'busy',
+        'pending': 7,
+      });
+    });
+  });
 }
 
 /// A host view that records the event scripts the runtime emits.
 final class _ScriptSpy implements ValenceHostView {
   final List<String> scripts = [];
+
+  /// Whether a page is loaded. Settable, because §4.6's state events are dropped when it is false.
+  @override
+  bool pageLoaded = true;
+
+  /// The names of the events emitted, in order. The shape is fixed by §4.2's wire table.
+  List<String> get events => [for (final s in scripts) s.split('.e("')[1].split('"')[0]];
 
   @override
   void runScript(String script) => scripts.add(script);

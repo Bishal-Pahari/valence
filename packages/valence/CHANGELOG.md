@@ -9,6 +9,18 @@ Sync correctness: pull cursors advance only through returned rows, never push ec
 ## Unreleased - native HTTP and REST adapter
 
 Call your API with `http.request` (schema 4): the host enforces compiled `http.origins` origins, attaches the stored token, and never follows redirects. Existing hosts need codegen and a store build to add the capability or origins. A reference Node REST-to-sync adapter demonstrates durable pagination, tombstones and idempotent pushes. iOS remains experimental and untested.
+## Unreleased - lifecycle, connectivity and update status
+
+Bridge version 6. `ValenceApp` maps Flutter's five lifecycle states onto four and emits `app.lifecycle`
+only on a change (`hidden` and `paused` are both `background`, because Android delivers both for one
+backgrounding); it emits `app.online` from the connectivity it already watched, reading the current
+value at start-up rather than waiting for a change; and it emits `sync.done` with the whole
+`ValenceSyncResult` after every completed run, after `sync.changed` for the same run.
+`Valence.appState()` and `Valence.bundleStatus()` back the new `app.state` and `bundle.status`
+built-ins and never start a request. Every stop in the §2.3 check now records a `ValenceBundleReason`,
+so a page can tell a rollout gate from a release waiting for its data from a release no device will
+take. Persist on `background`, not `detached`. iOS remains experimental and untested.
+
 ## Unreleased: offline tooling
 
 - Add schema-3 data.getMany and sync.status, and optional SyncResult.pending. Regenerate an additive schema and guard the new methods on older hosts.

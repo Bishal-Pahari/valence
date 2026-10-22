@@ -54,4 +54,4 @@ The schema is now 4 and `http.origins` compiles `http://10.0.2.2:8787` for emula
 
 ## Permissions demo
 
-Schema 9 adds a Permissions section: choose any of the seven kinds, Check, Request or open App settings. Resume deltas appear separately. All kinds are declared solely for this demonstration; production apps must enable and declare only the kinds they use. The Android manifest and iOS SPM usage strings are wired; iOS remains experimental and untested. [Setup guide](https://getvalence.pages.dev/docs/guides/permissions/).
+Schema 10 adds a Permissions section: choose any of the seven kinds, Check, Request or open App settings. Resume deltas appear separately. All kinds are declared solely for this demonstration; production apps must enable and declare only the kinds they use. The Android manifest and iOS SPM usage strings are wired; iOS remains experimental and untested. [Setup guide](https://getvalence.pages.dev/docs/guides/permissions/).

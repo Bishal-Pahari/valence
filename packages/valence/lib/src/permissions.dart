@@ -7,7 +7,7 @@ import 'package:permission_handler/permission_handler.dart' as native;
 import 'log.dart';
 import 'wire.dart';
 
-/// Permission names accepted by contracts §4.6. These do not grant access by themselves.
+/// Permission names accepted by contracts §4.7. These do not grant access by themselves.
 const valencePermissionKinds = {
   'camera',
   'location',
@@ -103,7 +103,7 @@ final class _NativePermissions implements ValencePermissionBackend {
   }
 }
 
-/// Store-compiled allowlist, serialized OS dialogs and resume deltas (contracts §4.6).
+/// Store-compiled allowlist, serialized OS dialogs and resume deltas (contracts §4.7).
 final class ValencePermissions {
   /// Creates a foreground UI service; construction makes no platform call.
   ValencePermissions({

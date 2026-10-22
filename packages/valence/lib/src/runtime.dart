@@ -41,7 +41,7 @@ export 'state.dart' show ValenceState;
 export 'store.dart'
     show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, isDatabaseLocked, maxListLimit;
 export 'sync.dart' show ValenceSync, ValenceSyncReason, ValenceSyncResult, ValenceSyncStatus;
-export 'updater.dart' show ValenceUpdater;
+export 'updater.dart' show ValenceBundleReason, ValenceBundleStatus, ValenceUpdater;
 export 'wire.dart' show BridgeError, BridgeErrorCode, maxMessageBytes;
 
 /// What `app.info` reports.
@@ -71,12 +71,54 @@ final class ValenceAppInfo {
   final String locale;
 }
 
+/// The host's four lifecycle states (§4.6).
+///
+/// Four, not Flutter's five: `hidden` and `paused` are one transition to [background] as far as a page is
+/// concerned, and emitting both would make a page that counts transitions count two for one backgrounding.
+/// The names are the wire values, through `.name`.
+enum ValenceLifecycle {
+  /// On screen and interactive. Flutter's `resumed`.
+  foreground,
+
+  /// Not visible. Flutter's `hidden` and `paused`. The last state with a live page: persist here.
+  background,
+
+  /// Visible but not interactive — a notification shade, a permission dialog, an incoming call.
+  ///
+  /// **Not** backgrounded. A page that pauses a video on this flickers.
+  inactive,
+
+  /// The engine is detached from any view. Flutter's `detached`.
+  ///
+  /// Reported for completeness and usually never delivered: there may be no WebView left to run the
+  /// script. Never persist from here.
+  detached,
+}
+
+/// The current lifecycle and connectivity, for `app.state` (§4.6).
+final class ValenceAppState {
+  /// Creates a state snapshot.
+  const ValenceAppState({required this.lifecycle, required this.online});
+
+  /// Where the app is in its lifecycle.
+  final ValenceLifecycle lifecycle;
+
+  /// What the OS says about network *interfaces* — not reachability. See §4.6.
+  final bool online;
+}
+
 /// What the runtime needs from the widget that owns the WebView.
 ///
 /// [ValenceApp] implements it. An app that builds its own WebView can too.
 abstract interface class ValenceHostView {
   /// Runs one script in the WebView, or buffers it until the entry page has loaded.
   void runScript(String script);
+
+  /// Whether a page is loaded and can receive a script *now*.
+  ///
+  /// The §4.6 state events are dropped rather than buffered when this is false, so the runtime has to be
+  /// able to ask. Everything else goes through [runScript] and is flushed when the page finishes.
+  bool get pageLoaded;
 
   /// Reloads the WebView from the server's origin.
   Future<void> reloadPage();
@@ -330,6 +372,56 @@ final class Valence {
     await view.handleReady();
   }
 
+  /// The current lifecycle and connectivity. [ValenceApp] keeps them up to date; see [noteLifecycle].
+  ///
+  /// The optimistic defaults are deliberate. A page only ever runs while the app is on screen, and a host
+  /// whose connectivity plugin has not answered yet must not tell the page it is offline — the cost of
+  /// being wrong the other way is a UI that refuses to try on a working network.
+  ValenceLifecycle _lifecycle = ValenceLifecycle.foreground;
+  bool _online = true;
+
+  /// `app.state`. The current values of the `app.lifecycle` and `app.online` events (§4.6).
+  ValenceAppState appState() => ValenceAppState(lifecycle: _lifecycle, online: _online);
+
+  /// Records a lifecycle transition and emits `app.lifecycle` if it is a change. Called by [ValenceApp].
+  void noteLifecycle(ValenceLifecycle lifecycle) {
+    if (_lifecycle == lifecycle) return;
+    _lifecycle = lifecycle;
+    _emitState(eventScript('app.lifecycle', {'state': lifecycle.name}));
+  }
+
+  /// Records connectivity and emits `app.online` if it is a change. Called by [ValenceApp].
+  void noteOnline(bool online) {
+    if (_online == online) return;
+    _online = online;
+    _emitState(eventScript('app.online', {'online': online}));
+  }
+
+  /// Emits a **state** event, or drops it when no page can receive it (§4.6).
+  ///
+  /// `app.lifecycle` and `app.online` are state, and §4.2's rule for state is to re-derive rather than
+  /// replay: a page that was not loaded calls [appState] on mount and gets the current pair, which is the
+  /// answer it wanted. Buffering them would be an unbounded queue — a host whose entry page never loads,
+  /// on a device moving between networks, has no bound on how many it collects — holding transitions that
+  /// are stale by the time anything reads them. The state is recorded either way, so nothing is lost.
+  void _emitState(String script) {
+    final view = _view;
+    if (view == null || !view.pageLoaded) return;
+    view.runScript(script);
+  }
+
+  /// `bundle.status`. Why the last update check ended as it did, and what is waiting (§4.6).
+  ///
+  /// Reads state the host already keeps, so a page may poll it: it never starts a network request.
+  ValenceBundleStatus bundleStatus() => ValenceBundleStatus(
+        serving: _manifest?.seq ?? 0,
+        pending: state.pending,
+        trial: state.trial,
+        reason: updater.lastReason,
+        offered: updater.lastOffered,
+        checkedAt: updater.lastCheckedAt,
+      );
+
   /// `app.info`.
   ValenceAppInfo appInfo() => ValenceAppInfo(
         platform: Platform.operatingSystem,
@@ -404,11 +496,51 @@ final class Valence {
     );
   }
 
-  /// `sync.now`.
-  Future<ValenceSyncResult> syncNow({List<String>? buckets}) => sync.run(
-        readSchemas: _manifest?.requiresData ?? config.dataSchemas,
-        only: buckets,
-      );
+  /// The last `max_usn` each pair was reported to the page with, so a run can re-derive `sync.changed`.
+  final Map<String, int> _lastSeenUsn = {};
+
+  /// `sync.now`, and every run the host makes on its own.
+  ///
+  /// The reporting lives here rather than in the host widget because `data.put`'s push goes straight
+  /// through this method: a run reported only by the widget's own triggers would leave the page's
+  /// freshness line untouched by the writes the page itself made, which is most of what moves an outbox.
+  /// The background isolate is the one run that cannot be reported — [backgroundSync] is static and has
+  /// no page to reach (§4.6).
+  Future<ValenceSyncResult> syncNow({List<String>? buckets}) async {
+    final result = await sync.run(
+      readSchemas: _manifest?.requiresData ?? config.dataSchemas,
+      only: buckets,
+    );
+    await _reportSync(result);
+    return result;
+  }
+
+  /// Emits `sync.changed` and then `sync.done` for one completed run (§4.6).
+  ///
+  /// The order is the contract: the page refetches what moved before it is told the run finished.
+  /// `sync.changed` is re-derived rather than replayed — each pair's `max_usn` against the last value the
+  /// page was told — because a background run cannot reach the WebView at all (§4.2, §5.6).
+  Future<void> _reportSync(ValenceSyncResult result) async {
+    try {
+      final moved = <String>[];
+      final schemas = _manifest?.requiresData ?? config.dataSchemas;
+      for (final bucket in {...result.buckets, ...schemas.keys, ...config.writableBuckets}) {
+        final schema = config.writableBuckets.contains(bucket) ? 1 : schemas[bucket] ?? 1;
+        final usn = await store.maxUsn(bucket, schema);
+        if (_lastSeenUsn[bucket] != usn) {
+          _lastSeenUsn[bucket] = usn;
+          moved.add(bucket);
+        }
+      }
+      if (moved.isNotEmpty) emit(eventScript('sync.changed', {'buckets': moved}));
+      // Every completed run, `changed: 0`, `busy` and `unauthorized` included — that is the whole point:
+      // "nothing moved" is the answer a freshness line needs and the one `sync.changed` never sends.
+      emit(eventScript('sync.done', {'result': result.toJson()}));
+    } on Object catch (e) {
+      // Reporting a run must never fail the run: the data is already committed.
+      _log('sync: could not report the run: $e');
+    }
+  }
 
   /// The pref recording which seed has already been imported (§5.2).
   static const _seedStamp = 'valence.seed.imported';

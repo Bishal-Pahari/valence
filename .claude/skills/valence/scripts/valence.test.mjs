@@ -32,26 +32,31 @@ import {
 } from './valence.mjs';
 
 const TEMPLATES = join(import.meta.dirname, '..', 'templates');
+
+// Everything the template declares above version 4, so a fixture can be the app that has not regenerated.
+// Listed here rather than per test, because every new runtime capability has to land in exactly one place
+// for the "an older app still codegens" cases to keep meaning what they say.
+const SINCE_ABOVE_4 = {
+  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'permissions.check', 'permissions.request', 'permissions.openSettings'],
+  events: ['sync.done', 'app.lifecycle', 'app.online', 'permissions.changed'],
+  types: ['SyncStatus', 'AppState', 'BundleStatus', 'PermissionState'],
+};
 const NOW = Date.UTC(2026, 9, 15);
 
 function fixture({ data = { calendar: 1 }, latest = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'mr-'));
   mkdirSync(join(root, 'valence'));
   cpSync(join(TEMPLATES, 'bridge.schema.json'), join(root, 'valence', 'bridge.schema.json'));
-  // Field evolution cases omit the optional batch/status/paging additions: this is the shape of an app
-  // that has not regenerated against the newer runtime, which must still codegen and compile.
+  // Field evolution cases omit the optional batch/status/paging/lifecycle additions: this is the shape of
+  // an app that has not regenerated against the newer runtime, which must still codegen and compile.
   if (!latest) {
     const p = join(root, 'valence', 'bridge.schema.json');
     const s = JSON.parse(readFileSync(p, 'utf8'));
     s.version = 4;
-    for (const name of Object.keys(s.methods)) if (name.startsWith('permissions.')) delete s.methods[name];
-    delete s.events['permissions.changed'];
-    delete s.types.PermissionState;
-    delete s.methods['data.getMany'];
-    delete s.methods['sync.status'];
-    delete s.methods['data.count'];
+    for (const m of SINCE_ABOVE_4.methods) delete s.methods[m];
+    for (const e of SINCE_ABOVE_4.events) delete s.events[e];
+    for (const t of SINCE_ABOVE_4.types) delete s.types[t];
     delete s.methods['data.list'].params.after;
-    delete s.types.SyncStatus;
     delete s.types.SyncResult.pending;
     writeFileSync(p, JSON.stringify(s));
   }
@@ -576,6 +581,50 @@ test('a built-in may be omitted but not redefined, because the package implement
   assert.ok(codegen({ root, cfg }).written.length);
 });
 
+test('§4.6 lifecycle and update status are built-ins, frozen by shape and droppable', () => {
+  const { root, cfg } = fixture({ latest: true });
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  const bad = (mutate, re) => {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), re);
+  };
+  // The reason sets are closed (§4.2's rule for error codes), and both are carried as strings whose
+  // values are the Dart enum names. Typing one as anything else would silently drop the .name.
+  bad((s) => (s.types.AppState.lifecycle = 'int'), /fields are not/);
+  bad((s) => (s.types.BundleStatus.reason = 'int'), /fields are not/);
+  // serving is never null: 0 is "no bundle on screen yet", which a page can render.
+  bad((s) => (s.types.BundleStatus.serving = 'int?'), /fields are not/);
+  // And the four that *are* nullable stay nullable, or a host with no pending cannot answer at all.
+  bad((s) => (s.types.BundleStatus.pending = 'int'), /fields are not/);
+  bad((s) => (s.methods['app.state'].params.verbose = 'bool?'), /must stay/);
+
+  writeFileSync(schemaFile(root), pristine);
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(dart, /final s = valence\.appState\(\);/);
+  assert.match(dart, /lifecycle: s\.lifecycle\.name/);
+  assert.match(dart, /final s = valence\.bundleStatus\(\);/);
+  assert.match(dart, /reason: s\.reason\.name/);
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  // sync.done carries the whole record rather than a copy of its fields, so a page reuses one type for
+  // the reply and the event.
+  assert.match(ts, /'sync\.done': \{\n\s+result: SyncResult;/);
+  // All three are gated at version 6, which is what has()/EVENT_SINCE read.
+  for (const e of ["'sync.done': 6", "'app.lifecycle': 6", "'app.online': 6"]) assert.ok(ts.includes(e), e);
+
+  // An app that wants none of it drops all five, and the rest still generates.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => {
+    delete s.methods['app.state'];
+    delete s.methods['bundle.status'];
+    delete s.types.AppState;
+    delete s.types.BundleStatus;
+    for (const e of ['sync.done', 'app.lifecycle', 'app.online']) delete s.events[e];
+  });
+  assert.ok(codegen({ root, cfg }).written.length);
+});
+
 test('a built-in grows a field without breaking an app that has not taken it', () => {
   // Rule 5: the IDL is additive only. Before this, every built-in's shape was compared literally, so a
   // runtime could never add a field to one — the next codegen in every existing app would fail. The two
@@ -618,14 +667,8 @@ test('an app that already shipped a store build can take a built-in\'s new param
   // §4.1 refuses any later change to a method in it. Without the params allowance, every adopter who has
   // ever cut a store build could not take `after` except through --rebaseline, which overwrites that
   // reviewed record.
-  const { root, cfg, key } = fixture({ latest: true });
+  const { root, cfg, key } = fixture();
   editSchema(root, (s) => {
-    delete s.methods['data.list'].params.after;
-    delete s.methods['data.count'];
-    s.version = 4;
-    for (const name of Object.keys(s.methods)) if (name.startsWith('permissions.')) delete s.methods[name];
-    delete s.events['permissions.changed'];
-    delete s.types.PermissionState;
     // An app-owned method in the same store build, to prove the relaxation does not leak to one.
     s.methods['mine.list'] = { since: 1, params: { bucket: 'string' }, returns: 'Row[]' };
   });

@@ -1,5 +1,5 @@
 {
-  "version": 9,
+  "version": 10,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -137,22 +137,32 @@
       },
       "returns": "int"
     },
+    "app.state": {
+      "since": 6,
+      "params": {},
+      "returns": "AppState"
+    },
+    "bundle.status": {
+      "since": 6,
+      "params": {},
+      "returns": "BundleStatus"
+    },
     "permissions.check": {
-      "since": 9,
+      "since": 10,
       "params": {
         "kind": "string"
       },
       "returns": "string"
     },
     "permissions.request": {
-      "since": 9,
+      "since": 10,
       "params": {
         "kind": "string"
       },
       "returns": "string"
     },
     "permissions.openSettings": {
-      "since": 9,
+      "since": 10,
       "params": {},
       "returns": "bool"
     }
@@ -178,8 +188,26 @@
       "since": 2,
       "payload": {}
     },
+    "sync.done": {
+      "since": 6,
+      "payload": {
+        "result": "SyncResult"
+      }
+    },
+    "app.lifecycle": {
+      "since": 6,
+      "payload": {
+        "state": "string"
+      }
+    },
+    "app.online": {
+      "since": 6,
+      "payload": {
+        "online": "bool"
+      }
+    },
     "permissions.changed": {
-      "since": 9,
+      "since": 10,
       "payload": {
         "permissions": "PermissionState[]"
       }
@@ -214,6 +242,18 @@
       "pending": "int",
       "lastSyncedAt": "int?",
       "offline": "bool"
+    },
+    "AppState": {
+      "lifecycle": "string",
+      "online": "bool"
+    },
+    "BundleStatus": {
+      "serving": "int",
+      "pending": "int?",
+      "trial": "int?",
+      "reason": "string",
+      "offered": "int?",
+      "checkedAt": "int?"
     },
     "PermissionState": {
       "kind": "string",

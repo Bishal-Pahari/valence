@@ -112,7 +112,7 @@ final class ValenceConfig {
   /// Compiled from `http.origins`; empty denies every request. Never supplied by an OTA manifest.
   final Set<String> httpOrigins;
 
-  /// Permission kinds enabled by this store build (contracts §4.6). Empty denies all.
+  /// Permission kinds enabled by this store build (contracts §4.7). Empty denies all.
   final Set<String> permissionKinds;
 
   /// Copy with overrides. Handy in tests and for pointing a debug build at a local OTA host.
