@@ -1195,23 +1195,84 @@ function runFlutter(args, cwd) {
   return spawnSync('cmd.exe', ['/d', '/c', `flutter ${args.join(' ')}`], options);
 }
 
-export async function diagnose({ root, cfg, tests = false, run = runFlutter }) {
+export async function diagnose({ root, cfg, tests = false, run = runFlutter, keyDir = join(homedir(), '.valence', 'keys'), git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' }) }) {
   const rows = [];
-  const check = async (name, fn) => {
+  const fixes = {
+    'generated code': 'run valence codegen; restore incompatible shipped schema changes before regenerating',
+    'stack report': 'restore .valence/stack-check.md or rerun the docs-scout phase',
+    'native value': 'declare two distinct supported nativeValue capabilities in valence.config.json',
+    'built-in compatibility': 'run valence codegen and valence bundle --builtin, then rebuild the host',
+    'seed coverage': 'regenerate seed.db with valence seed --from <seed-directory> for every current data pair',
+    'Flutter dependencies': 'run flutter pub get in host.dir and correct dependency constraints',
+    'test matrix': 'correct .valence/test-matrix.json using the documented IDs and host-relative test files',
+  };
+  const check = async (name, fn, fix = fixes[name] ?? 'correct the mapped test path or failing test, then rerun valence doctor --tests') => {
     try {
       const warning = await fn();
       rows.push([warning ? 'WARN' : 'PASS', name, warning ?? 'verified']);
     } catch (e) {
-      rows.push(['FAIL', name, e.message.split('\n')[0]]);
+      rows.push(['FAIL', name, `${e.message.split('\n')[0]} | Fix: ${fix}`]);
     }
   };
   const p = paths(root, cfg);
   const host = resolve(root, cfg.host.dir);
   await check('generated code', () => { codegen({ root, cfg, check: true }); });
+  await check('bridge version', () => {
+    const schema = parseSchema(readJson(p.schema));
+    const generated = /\bconst hostBridgeVersion = (\d+);/.exec(readFileSync(p.dart, 'utf8'));
+    if (!generated || Number(generated[1]) !== schema.version) throw new Error('schema version differs from generated hostBridgeVersion');
+  }, 'run valence codegen, rebuild the host and ship a store update for new native capabilities');
   await check('store baseline', () => {
     if (!existsSync(p.baseline)) return 'no recorded store build; additive guard has no shipped baseline';
-    if (!readJson(p.baseline).storeSchema) return 'no recorded store schema';
-  });
+    const baseline = readJson(p.baseline);
+    if (!baseline.storeSchema) {
+      if (baseline.storeSeq) throw new Error('storeSeq exists without storeSchema');
+      return 'no recorded store schema';
+    }
+    int(baseline.storeSeq, 'baseline.storeSeq', 1);
+    parseSchema(baseline.storeSchema);
+    assertAdditive(baseline.storeSchema, readJson(p.schema));
+  }, 'restore the committed baseline from the store release; do not rebaseline to silence a failure');
+  await check('OTA bridge compatibility', () => {
+    const dir = join(p.ota, 'manifests');
+    if (!existsSync(dir)) return 'no local OTA manifests; release compatibility not checked';
+    const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+    if (!files.length) return 'no local OTA manifests; release compatibility not checked';
+    const baseline = readBaseline(p);
+    const storeBridge = baseline.storeSchema ? parseSchema(baseline.storeSchema).version : null;
+    for (const file of files) {
+      const m = verifyBundle({ manifestPath: join(dir, file), filesDir: join(p.ota, 'files'), keyring: readJson(p.keyring), appId: cfg.appId });
+      if (!Number.isSafeInteger(m.requires?.bridge) || m.requires.bridge < 1) throw new Error('OTA requires.bridge must be a positive integer');
+      if (storeBridge !== null && m.requires.bridge > storeBridge) throw new Error(`OTA ${m.seq} requires bridge ${m.requires.bridge}, store baseline is ${storeBridge}`);
+    }
+    if (storeBridge === null) return 'OTA signatures verified, but no recorded store bridge; compatibility unverified';
+  }, 'rebuild OTA with --requires-bridge <store-version> and has() guards, or ship the new host first; archive obsolete local releases outside dist-ota');
+  await check('database directory', () => {
+    const name = cfg.host.database ?? 'valence.db';
+    if (typeof name !== 'string' || !name || name === '.' || name === '..' || /[<>:"/\\|?*\x00-\x1f]/.test(name) || /[. ]$/.test(name) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) throw new Error('host.database must be a plain file name, never a directory or path');
+    if (cfg.host.databaseDirectory !== undefined || cfg.host.databasePath !== undefined) throw new Error('host database directory/path overrides are unsupported');
+    return `<appSupport>/${name}; installed location and legacy adoption need a device check`;
+  }, 'set host.database to the existing database file name, run codegen; verify legacy adoption on a device before shipping');
+  await check('signing keys in Git', () => {
+    if (insideGit(keyDir)) throw new Error('configured signing-key directory resolves inside a Git work tree');
+    const repo = git(['rev-parse', '--show-toplevel']);
+    if (repo.error?.code === 'ENOENT') return 'Git unavailable; private-key scan not run';
+    if (repo.error || repo.status !== 0) return 'not a Git work tree; private-key scan not run';
+    // -l returns names only: never include matching lines or subprocess stderr in diagnostic output.
+    const result = git(['-C', repo.stdout.trim(), 'grep', '--untracked', '-a', '-l', '-E', '-e', '-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY-----', '--', '.']);
+    if (result.error || ![0, 1].includes(result.status)) throw new Error('Git private-key scan failed');
+    if (result.status === 0) throw new Error('PEM private key found in tracked or non-ignored files (contents withheld)');
+  }, 'move signing keys outside Git, remove exposed files from the index and rotate exposed keys; audit history separately');
+  await check('connection origins', () => {
+    if (!Array.isArray(cfg.web.connect ?? [])) throw new Error('web.connect must be an array of HTTP(S) URLs');
+    for (const value of cfg.web.connect ?? []) {
+      let url;
+      try { url = new URL(value); } catch { /* rejected below */ }
+      if (typeof value !== 'string' || !/^https?:\/\//.test(value) || /[\s*'";\\]/.test(value) || !url || !['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('web.connect contains an invalid HTTP(S) connection URL');
+    }
+    if (Array.isArray(cfg.http?.origins) && cfg.http.origins.some((value) => typeof value !== 'string' || /[\s\\]/.test(value))) throw new Error('http.origins contains whitespace or backslashes');
+    genDartConfig(cfg, readJson(p.keyring)); // Native token origins have the stricter exact-origin rule.
+  }, 'use HTTP(S) URLs in web.connect and exact trusted origins in http.origins; run codegen and ship a store build for native origin changes');
   await check('stack report', () => {
     if (!existsSync(join(root, '.valence', 'stack-check.md'))) return 'missing .valence/stack-check.md; run the docs-scout phase';
     return 'report present; freshness and policy wording require review';
