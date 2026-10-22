@@ -50,8 +50,15 @@ from the platform and a page in the host cannot.
   the listener quietly stops happening. Gate the *feature*, not the subscription. On the web `has()` is
   false for every event, since there is no host to emit one, so one branch covers both an old host and
   the website build. **What you must do:** regenerate — `bridge.g.ts` now passes `EVENT_SINCE` to
-  `createBridge` alongside `METHOD_SINCE`. If you call `createBridge` by hand, its second argument is
-  the event table and defaults to empty.
+  `createBridge` alongside `METHOD_SINCE`, and that second argument is **required**. Upgrading the
+  package without regenerating is a build error naming the file to regenerate, rather than `has()`
+  quietly answering `false` for every event on every host.
+- **Two new `codegen` refusals, both closing a silent gate.** Declaring `data.list`'s `after` without
+  also declaring `data.count` is refused: the sibling *is* the gate, so without it `has('data.count')`
+  is false on every host you will ever ship — including the ones that accept the cursor — and a page
+  following the docs never pages at all. And one name may no longer be both a method and an event,
+  because `has()` resolves a name to one answer and would otherwise report `false` for an event your
+  host really does emit.
 - **`data.list`'s `after` cursor advances past an empty first key.** `''` is a valid key — `data.put`
   refuses only `.` and `..` — and the host was reading `after: ''` as "no cursor", so a bucket whose
   first key was empty returned that same row on every page and could never be read completely.

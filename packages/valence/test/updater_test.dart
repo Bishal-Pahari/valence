@@ -584,6 +584,31 @@ void main() {
       expect(log.has('data cap'), isTrue);
     });
 
+    test('a cap spent by the first pair stops the second one as toobig too', () async {
+      // The other half of the §4.6 claim. Here the budget is gone *before* `pullPair` is called for the
+      // second pair, rather than during the first one's pull, and the reason must be the same: it is the
+      // app's own cap either way. This is also the path a real multi-pair bump takes.
+      final log = LogSpy();
+      final b = await signBundle(key, seq: 20, requiresData: {'plants': 2, 'seeds': 1});
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        config: testConfig(key, dataSizeCap: 300),
+        client: otaHost(
+          bundles: {20: b},
+          pointerSeq: 20,
+          syncBodies: {
+            // Completes — `more: false` returns before the budget check — and spends the whole cap.
+            'plants': jsonEncode({'rows': [dataRow('a', 'x' * 400, 1)], 'max': 1, 'more': false}),
+            'seeds': jsonEncode({'rows': [dataRow('b', 'y', 1)], 'max': 1, 'more': false}),
+          },
+        ),
+        log: log,
+      );
+      expect(await u.checkForUpdate(), isNull);
+      expect(u.lastReason, ValenceBundleReason.toobig);
+      expect(log.has('before'), isTrue, reason: 'the stop names the pair it never started');
+    });
+
     test('a bundle with no requires.data skips step 7 entirely', () async {
       final b = await signBundle(key, seq: 20);
       final seen = <String>[];

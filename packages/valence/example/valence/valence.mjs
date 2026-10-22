@@ -88,6 +88,11 @@ const BUILTINS = {
     // `after` is the key cursor that makes a bucket past `maxListLimit` readable at all. Optional, because
     // the returns are a plain `Row[]` and an app on the older shape must keep compiling (rule 5).
     optionalParams: { after: 'string?' },
+    // A param has no `since`, so the only gate a page can read is a sibling *name* that shipped with it
+    // (§4.2). `data.count` is `after`'s. Declaring `after` without it leaves the documented gate —
+    // `has('data.count')` — false on every host the app will ever ship, including the ones that accept
+    // the cursor, so a page following the docs never pages and the bucket still has no complete read.
+    paramSiblings: { after: 'data.count' },
     returns: { list: true, fields: { key: 'string', value: 'json', usn: 'int' } },
     call: (t, _has, hasParam) =>
       `final rows = await valence.dataList(p.bucket, prefix: p.prefix, limit: p.limit${hasParam('after') ? ', after: p.after' : ''});\n        return [for (final r in rows) ${t}(key: r.key, value: r.value, usn: r.usn)];`,
@@ -732,16 +737,23 @@ export function parseSchema(schema) {
   });
   const typeList = Object.entries(types).map(([name, f]) => ({ name, fields: fields(f, name) }));
   for (const core of CORE_METHODS) if (!methods.some((m) => m.name === core)) throw new Error(`schema must define ${core}`);
-  const unique = (list, kind) => {
-    const seen = new Map();
-    for (const x of list) {
-      const c = camel(x.name);
-      if (seen.has(c)) throw new Error(`${kind} "${x.name}" and "${seen.get(c)}" both become "${c}"`);
-      seen.set(c, x.name);
+  // Methods and events share one namespace, because `has()` takes either kind of name and resolves it
+  // against one table (§4.3): a name declared as both would answer for whichever won, so `has()` could
+  // say false for an event the host does emit. One pass therefore catches the cross-kind collision as
+  // well as the two-names-one-identifier collision inside each kind.
+  const seen = new Map();
+  for (const x of [...methods.map((m) => ({ ...m, kind: 'method' })), ...events.map((e) => ({ ...e, kind: 'event' }))]) {
+    const c = camel(x.name);
+    const prev = seen.get(c);
+    if (prev) {
+      throw new Error(
+        prev.name === x.name
+          ? `"${x.name}" is declared as both a method and an event; has() resolves one name to one answer, so pick one`
+          : `${x.kind} "${x.name}" and ${prev.kind} "${prev.name}" both become "${c}"`,
+      );
     }
-  };
-  unique(methods, 'method');
-  unique(events, 'event');
+    seen.set(c, x);
+  }
   const classNames = new Set(typeList.map((t) => t.name));
   for (const m of methods) if (classNames.has(pascal(m.name) + 'Params')) throw new Error(`${m.name}: params class name collides with a type`);
   return { version, types: typeList, methods, events };
@@ -1070,6 +1082,18 @@ export function assertBuiltinShapes(s) {
       throw new Error(
         `"${m.name}" is implemented by the valence package, so its params must stay ${JSON.stringify(want.params)}, not ${JSON.stringify(got)}. Add a new method under a different name instead.${allowed}`,
       );
+    }
+    // A grown param must arrive with the sibling name that gates it (§4.2). Checked here rather than in
+    // assertAdditive, because the trap does not need a store baseline: an app that declares `after` and
+    // never declares `data.count` has the documented gate answering false on every host it ships,
+    // including the ones that accept the cursor — so a page that follows the docs never pages, and the
+    // bucket it was added for still has no complete read.
+    for (const [param, sibling] of Object.entries(want.paramSiblings ?? {})) {
+      if (param in got && !s.methods.some((x) => x.name === sibling) && !s.events.some((x) => x.name === sibling)) {
+        throw new Error(
+          `"${m.name}" declares the param "${param}", which has no "since" of its own — so the only thing a page can gate it on is "${sibling}", shipped in the same version. Declare "${sibling}" too, or drop "${param}": has("${m.name}") is true on hosts that reject it with E_PARAMS.`,
+        );
+      }
     }
     if (typeof want.returns === 'string') {
       if (typeString(m.returns) !== want.returns) {
