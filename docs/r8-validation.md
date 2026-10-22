@@ -1,3 +1,48 @@
+# R8 capability/codegen queue refresh - 2026-10-23
+
+## In plain terms
+
+R8 now includes packages at 637edcda14fd7ebb279d06f8cf4eac1cda634411 and site
+packages at f77979aa2bead2aca2b14af08c00768ac482e8e9. Both worktrees remain on
+codex/r8. Code merge: 985a8b9. Site merge: d0b18cd; README correction: e10f193.
+Template/example schema remains 7 and app.appearance remains since 7.
+
+Read both apps' VALENCE_FINDINGS.md and newest iteration reports: Kundalini
+iteration 11 (2026-10-23) and app-a iteration 8 (2026-10-22). App observations
+remain historical evidence; test-app repositories were read only.
+
+Decision: retain required EVENT_SINCE regeneration, method/event collision
+refusal and data.list-after sibling enforcement, because a false capability
+gate can silently strand a feature even on capable hosts. Preserve all incoming
+data/security safeguards and R8's status-before-updateReady ordering. The sole
+merge conflict was agent guidance: retain both the upstream lifecycle/codegen
+requirements and the adaptive UI setup. Correct the site's stale README mention
+of schema 5 to schema 7. No runtime redesign or package version changes.
+
+## Fresh gates
+
+- Root npm test: 66 passed, zero failed/skipped; generated Dart and strict
+  generated TypeScript were exercised.
+- Runtime flutter test: 397 passed; dart analyze --fatal-infos .: no issues.
+- Bridge: 22 tests passed; strict TypeScript, build and npm pack --dry-run passed.
+- Example: 17 tests passed; codegen --check returned written: []; signed built-in
+  verification passed (seq 1792638425, one file); debug APK build passed.
+- Flutter pub publish --dry-run: zero warnings.
+- Site npm run build: 28 pages; SEO/link/anchor checks passed.
+- Independent security review: no confirmed findings. Targeted CLI additive-field
+  and parameter tests passed 3/3; bridge tests 22/22, strict TypeScript, example
+  codegen check, diff check and shared-base ancestry also passed in review.
+
+Review covered schema 7/since 7, optional fontScale, owning-view metrics, generated
+capability gating, JSON-only appearance publication, nonce/navigation/CSP retention,
+status publication after lease release and before updateReady, and site consistency.
+
+No new emulator run. Earlier Android evidence below is historical; TalkBack and
+true split-screen remain unverified. iOS remains experimental and untested.
+No pushes, publications, shared-branch merges or test-app writes.
+
+---
+
 # R8 queue refresh after doctor and widget-harness merges - 2026-10-23
 
 ## In plain terms
