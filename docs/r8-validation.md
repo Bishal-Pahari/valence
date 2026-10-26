@@ -1,3 +1,58 @@
+# R8 queue refresh - 2026-10-26
+
+## In plain terms
+
+R8 now includes packages at e879260366282c9f504057423d54f682dcb10c81
+(merge 6a60782). Site packages remains f59fbc1568c895d4cd35d385733175397beeef6a,
+already included in the site branch. Both worktrees are on codex/r8. This is
+one queue item; no other branch or roadmap status was changed.
+
+Decision: preserve upstream account security and the reserved appearance number.
+The combined template/example schema stays at version 13, auth.account stays
+since 13 and app.appearance stays since 7. Lowering the combined version to 7
+would invalidate the upstream since-13 method; removing or renumbering it would
+misrepresent account-switch support. This is an explicit deviation from the
+queue's requested combined schema 7, carried forward from the previous refresh.
+Do not publish this intermediate host before all reserved surfaces are integrated,
+or advertise appearance to an older internal schema-13 host that lacks it.
+The recorded example store baseline and signed built-in were not changed today.
+Package versions were not changed.
+
+Read both apps' VALENCE_FINDINGS.md and newest reports: Kundalini iteration 11
+(2026-10-23), app-a iteration 9 (2026-10-26). The newest app-a report adds F-32:
+the supplied generator emits an event table argument that the supplied bridge
+snapshot cannot accept. Both accessibility guides now explain that tooling and
+bridge must be updated together before regeneration (code 053d250, site 2959842).
+This documents the compatibility requirement; it does not repair the harness's
+snapshot artifacts or claim to close the app finding. Neither app was modified.
+The reported database-lock warnings have no established cause and are not
+attributed to R8. App nav clipping still requires actual page inset padding.
+
+## Fresh gates
+
+- Root npm test: 67 passed, zero failed/skipped. Generated Dart analyzed and ran
+  against Flutter; generated TypeScript passed strict/verbatimModuleSyntax checks.
+- Runtime flutter test: 404 passed; dart analyze --fatal-infos .: no issues.
+- Bridge: 22 passed; strict TypeScript, build and npm pack --dry-run passed.
+- Example: 17 passed; codegen --check wrote nothing; built-in verification passed
+  at seq 1792706013, one file; debug APK built successfully.
+- Final site npm run build: 29 pages; SEO/link/anchor checks passed.
+- Independent security review: no confirmed R8 findings. Checked contracts
+  sections 3, 4.2, 4.6 and 4.7, owning-view metrics, strict decoding/delegations,
+  JSON-only publication, nonce/navigation/CSP retention, additive fontScale,
+  non-compounding iOS fallback and status-before-updateReady ordering. Focused
+  CLI fontScale regression passed; reviewer codegen check wrote nothing.
+  The reviewer's overlapping Flutter attempt failed before tests on a locked
+  sqlite3.dll; its crash log was removed. The main full runtime gate passed.
+
+No new emulator run was attempted for this queue refresh. Earlier Android evidence
+below is historical; TalkBack and true split-screen remain unverified. iOS remains
+experimental and untested. No pushes, publications, test-app writes or merges into
+packages/main. Shared ROADMAP edits are restricted to R8's Status cell; this file
+carries the requested plain-language note.
+
+---
+
 # R8 account-switch security refresh - 2026-10-23
 
 ## In plain terms
