@@ -16,7 +16,7 @@ beforeEach(() => { __resetForTests(); delete (globalThis as any).window; });
 function host(version = 9) {
   const sent: any[] = [];
   (globalThis as any).window = { Valence: { postMessage: (s: string) => sent.push(JSON.parse(s)) } };
-  const b = createBridge<Methods, {}>(table);
+  const b = createBridge<Methods, {}>(table, {});
   const connect = b.connect();
   window.__valence!.r({ id: sent[0].id, ok: true, v: { bridge: version } });
   return { b, sent, connect };
@@ -67,7 +67,7 @@ test('default router preserves origin and query/hash; malicious paths and malfor
 
 test('plain browser shim can provide an initial route; missing support is inert', async () => {
   (globalThis as any).window = {};
-  const b = createBridge<Methods, {}>(table);
+  const b = createBridge<Methods, {}>(table, {});
   const paths: string[] = [];
   b.onLink((l) => paths.push(l.path));
   b.installShim({ 'link.initial': async () => link('/web') });

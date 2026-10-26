@@ -135,3 +135,11 @@ Primary setup references, checked 2026-10-22:
 [Android association files](https://developer.android.com/training/app-links/configure-assetlinks),
 [Android verification](https://developer.android.com/training/app-links/verify-applinks),
 [Apple associated domains](https://developer.apple.com/documentation/xcode/supporting-associated-domains).
+
+## Unreleased integration branch
+
+The reserved R6 methods and event have `since: 9`. This intermediate branch also
+contains upstream account security at schema 13, so its template and example report
+13. Integrate the remaining reserved surfaces before publishing this host; the
+number alone cannot describe a partial feature set. Apps number their own schemas,
+so use the generated `onLink()` helper or `has('link.initial')` for support.

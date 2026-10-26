@@ -186,6 +186,10 @@ somewhere to keep a token. Add five methods and one event to `valence/bridge.sch
 They are built-ins, so there is no handler to write — `ValenceBuiltins` delegates them to the package.
 What they do and what they deliberately do not do is on the [Login and secrets](https://getvalence.pages.dev/docs/guides/auth/) page.
 
+If more than one person can use the device, take the account switch with them — two more params on
+`auth.setToken` and `auth.account`, at version 13 rather than 2:
+[Signing users in and out](https://getvalence.pages.dev/docs/guides/accounts/).
+
 **The bump has one consequence:** `requires.bridge` follows the schema version, so your next OTA release
 declares `2` and the hosts already in the field stop taking it until your store build lands. If you need
 one more release to reach them, pin it with `valence bundle --requires-bridge 1`.
