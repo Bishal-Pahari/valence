@@ -1,3 +1,80 @@
+# R7 queue refresh - 2026-10-26
+
+In plain terms: task restoration now includes the current shared runtime and keeps
+one user's saved draft out of the next user's session, even when Android restores
+an older task snapshot. Implementation merge: `32dac43`; site: `965b8eb`, both
+on `codex/r7`.
+
+## Current bases and decisions
+
+- Package base: `e879260366282c9f504057423d54f682dcb10c81`.
+- Site base: `f59fbc1568c895d4cd35d385733175397beeef6a`.
+- R8 is already refreshed against this package base; this run refreshes R7 only.
+- Preserve upstream schema 13 and auth.account since 13, with state.save and
+  state.restore at their reserved since 8. This explicitly departs from the queue's
+  instruction to set the whole schema to 8: doing that would invalidate upstream
+  account protections. The intermediate host must not be published until all
+  reserved surfaces are integrated. The example's real store baseline remains
+  schema 1; rebuilding a local built-in does not invent a shipped baseline.
+- Regenerate example Dart/TypeScript from the merged schema and re-sign the built-in,
+  seq 1793034531, rather than resolve generated or signed bytes manually.
+- Security first: the inherited restoration snapshot was bound only to bundle seq.
+  Bind it to a fingerprint of the secure native account as well. Successful switch
+  or sign-out clears route/blob; same-account refresh and first-account adoption
+  retain the live draft. A stale OS snapshot from another account is discarded.
+  Failure to read the account discards the snapshot and opens the verified root
+  page, preserving public/offline startup. A revision guard drops route captures
+  begun before an account change; capture runs on background, not detached.
+- Fault injection confirmed an inherited R13 failure: writing B's bearer before
+  B's account could leave B credentials under A identity when the second write
+  failed. Switches now delete the old token, persist the new identity, rebind the
+  snapshot, then store the new token, all under the sync lease. Interrupted writes
+  leave original credentials or no bearer. Retry sign-in repairs the state.
+  Authentication operations are serialized, including their identity reads; a
+  refusal does not poison the next attempt. Apps must still cancel stale refreshes
+  without account ids and redraw their live DOM after switching.
+- Extend R15's native WebView stub for URL changes/currentUrl and cover safe route
+  observation plus a delayed pre-switch background capture through the real widget.
+  Preserve upstream verification, sync, data, nonce/navigation and ready behavior.
+
+## Current gates
+
+| Gate | Result |
+|---|---|
+| npm test | 67 passed, zero skipped; generated Dart and strict TypeScript exercised |
+| Package flutter test | 409 passed |
+| dart analyze --fatal-infos . | No issues |
+| Bridge tests / strict tsc / build | 21 passed / clean / passed |
+| Bridge npm pack --dry-run | Passed |
+| Generated example strict + verbatimModuleSyntax TypeScript | Clean, package import mapped to current bridge source |
+| Example flutter test --no-pub | 17 passed on final runtime |
+| Example flutter build apk --debug --no-pub | Passed on final runtime |
+| Example codegen --check / signed built-in verification | No writes / valid seq 1793034531 |
+| Site npm run build | 29 pages; SEO checks passed |
+| flutter pub publish --dry-run | 0 warnings after implementation commit |
+| Package and site git diff --check | Clean |
+
+Independent security review has no remaining confirmed findings after the snapshot,
+secure-write-order and overlapping-auth fixes. Permanent regressions cover account
+adoption/refresh/refusal/switch/sign-out, stale snapshots, unreadable identity,
+account/token write failures with retry and concurrent explicit account changes.
+
+No new emulator run; the Android evidence below is historical. iOS remains
+experimental and untested. No fresh process-reclamation device claim is made for
+this merge or its account-failure paths.
+
+Read both apps' VALENCE_FINDINGS.md and their newest reports: Kundalini iteration
+11 (2026-10-23), Fernwise/app-a iteration 9 (2026-10-26). The latter reports a
+mismatched supplied CLI/bridge snapshot pair (F-32) and unisolated lock warnings
+(F-33). This branch's current generated code compiles against its matching bridge;
+it does not replace the harness snapshots or claim to resolve the app's warnings.
+Neither app was edited. Package versions are unchanged. No pushes, publications,
+or merges into shared packages/main branches occurred.
+
+---
+
+## Historical queue refresh (2026-10-22)
+
 # R7 queue refresh - 2026-10-22
 
 In plain terms: the state-restoration branch now includes the current shared runtime
