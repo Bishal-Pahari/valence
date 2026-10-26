@@ -1371,7 +1371,8 @@ test('push builtins freeze permission and nullable initial-message shapes', () =
 test('push uses reserved schema 12 while older app-owned push shapes remain custom', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.ok(schema.version >= 12);
+  assert.equal(schema.version, 13);
+  assert.equal(schema.methods['auth.account'].since, 13);
   for (const group of ['methods', 'events']) {
     for (const [name, def] of Object.entries(schema[group])) {
       if (name.startsWith('push.')) assert.equal(def.since, 12, name);
@@ -1384,6 +1385,9 @@ test('push uses reserved schema 12 while older app-owned push shapes remain cust
   assert.match(ts, /'push.initial': 12/);
   editSchema(root, (s) => {
     s.version = 11;
+    delete s.methods['auth.account'];
+    delete s.methods['auth.setToken'].params.account;
+    delete s.methods['auth.setToken'].params.discardPending;
     for (const group of ['methods', 'events']) {
       for (const name of Object.keys(s[group])) if (name.startsWith('push.')) delete s[group][name];
     }
