@@ -6,6 +6,12 @@ an ordinary offline Valence host. Android delivery is **blocked: needs Firebase
 project** for the device check. iOS/APNs and its rich-image extension are
 experimental and untested.
 
+The reserved `since: 12` identifies this addition in Valence?s template. An app
+maintains its own additive schema history; gate calls and events with `has()`
+from its regenerated bridge rather than comparing `app.info().bridge` to 12.
+Update the generated bridge and `@getvalence/bridge` together: current generated
+code supplies both method and event availability tables.
+
 ## Configure the native host
 
 Add `firebase_core: ^4.14.0` and `firebase_messaging: ^16.7.0` to your host's

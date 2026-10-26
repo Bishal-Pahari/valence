@@ -1,81 +1,90 @@
-# R5 queue refresh validation - 2026-10-22
+# R5 queue refresh validation - 2026-10-26
 
-R5 is refreshed on `codex/r5` in both designated worktrees, merged from
-package base `c55446f3d73afec7672c2615b0ffe70f1a6a074d` and site base
-`5a23a4eaf3dc1fdacfb1f961dadbd33b5ed1d390`. Remote push uses reserved
-schema **12**. Device acceptance remains **blocked: needs Firebase project**.
-No live delivery, image display, or OS background execution is claimed.
-iOS/APNs and its Notification Service Extension remain experimental and untested.
+R5 is refreshed on `codex/r5` in both designated worktrees. Package base:
+`e879260366282c9f504057423d54f682dcb10c81`; site base:
+`f59fbc1568c895d4cd35d385733175397beeef6a`. Implementation merge: `b3f2c8e`;
+legacy fixture correction: `6790ec0`; site merge: `38c707a`.
 
-## What changed and why
+## Decisions and scope
 
-- Merged the shared database adoption, locked-open retry, paging, lifecycle,
-  connectivity and update-status fixes. They remain identical to the package base.
-- Template and example schema versions are 12; every push method and event has
-  `since: 12`. Generated Dart and TypeScript, recorded example store baseline,
-  contracts, skill, guides, READMEs, changelogs and site all agree.
-- Preserved app-owned `push.*` shapes and handlers declared before 12. Only
-  since-12-or-later declarations opt into the runtime. This additive compatibility
-  decision protects existing apps from having their custom methods reinterpreted.
-  A regression verifies schema numbers, method availability tables, custom method
-  preservation and built-in shape validation.
-- Regenerated and re-signed the combined example from source, at seq 1792652121,
-  requiring bridge 12. Signature and per-file checks pass; codegen reports no drift.
-- Retained exact data-only sync hints, compiled configuration/native token use,
-  nonce and strict decoding, bounded escaped replies/events, and canonical OTA
-  verification. Foreground hints call `syncNow()`, retaining `sync.done`.
-  Background hints never close SQLite or consume an OTA trial.
+Security first, then users' data, then developer compatibility:
 
-Security comes first, then stored data and developer compatibility. Accordingly,
-this refresh retains the shared fixes and custom handlers rather than overriding
-an older app's declarations. No release versions changed.
+- Keep upstream schema **13** and `auth.account` since **13**, with every R5
+  method/event since **12**, the number reserved for push. Lowering the combined
+  schema to 12 invalidates the upstream account API. This explicitly departs from
+  the queue's request to set the whole schema to 12. This intermediate host must
+  not be published until the earlier reserved surfaces are integrated.
+- Preserve the real example schema-1 store baseline from `packages`, rather than
+  record the incomplete combined surface as an already-shipped schema-13 host.
+- Preserve upstream account/outbox protections, shared database lifetime, locked
+  open handling, native token use, and lease-protected background sync. Push data
+  remains untrusted; only an exact data-only sync hint can trigger ordinary sync.
+  No payload can change config, navigate, activate an OTA bundle or acknowledge
+  a trial. Nonce checks, strict decoders and bounded escaped envelopes remain.
+- Resolve source conflicts by combining push with upstream account exports and
+  current lifecycle/capability guidance. Regenerate both bridge outputs with
+  method and event tables. The signed built-in is seq **1793038082**, bridge 13,
+  one file. Its signature, file hash and size verify; codegen has no drift.
+- Keep app-owned pre-12 push handlers custom. The legacy fixture removes newer
+  account declarations before lowering its schema to 11. Regression coverage
+  checks combined schema 13, account since 13, push since 12 and legacy delegation.
+- Both push guides now explain app-owned schema numbering and updating codegen
+  together with the web bridge package, prompted by app-a F-32.
+
+## Merge dependency and inherited limits
+
+Merge R8, R7, R6, R3 and R4 before R5, as the queue requires. R7 contains a fix for
+an inherited HIGH account-switch partial secure-write failure and serializes auth calls.
+If the new bearer write succeeds and the account-id write fails on the base,
+sync can use the new bearer under the previous identity.
+R5 retains the `packages` auth method bodies unchanged; this standalone branch is
+not a substitute for that earlier fix. Keep the earlier R7 account-write ordering
+when merging. Review this integration again after the earlier branches land.
+
+Neither this refresh nor passing gates establishes Firebase delivery. Device
+acceptance remains **blocked: needs Firebase project**. No live delivery, image
+display, token rotation, or OS push-background execution is claimed. A sync hint
+completing is not proof of authenticated backup; anonymous writable-bucket 401
+reporting and sync-status outcome persistence remain inherited limitations.
 
 ## Gates
 
 | Check | Result |
 |---|---|
-| Root `npm test` | 61 passed, zero failed/skipped; real generated Dart and strict generated TS ran |
-| Runtime `flutter test` | 396 passed, including push wire/Firebase and background sync cases |
+| Root `npm test` | 68 passed, zero failed/skipped; real generated Dart and strict generated TS exercised |
+| Runtime `flutter test` | 415 passed |
 | Runtime `dart analyze --fatal-infos .` | No issues, includes example |
 | Example `flutter test` | 18 passed |
-| Bridge `node --test test/*.test.ts` | 18 passed |
-| Bridge `npx -y -p typescript tsc --strict -p tsconfig.json` | Passed |
-| Bridge `npm pack --dry-run` | Passed |
-| Site `npm run build` | 27 pages; SEO/link checks passed |
-| Example `codegen --check` and `verify --manifest ... --files ...` | Passed; no generated drift |
-| Runtime `flutter pub publish --dry-run` | Zero warnings |
-| Example `flutter build apk --debug` | Passed; 695.3 seconds, existing Firebase Core Kotlin warning |
+| Bridge `node --test test/*.test.ts` | 21 passed |
+| Bridge strict `tsc -p tsconfig.json` | Passed |
+| Bridge build and `npm pack --dry-run` | Passed |
+| Site `npm run build` | 29 pages; SEO/link checks passed |
+| Example codegen check and signed built-in verification | Passed |
+| Runtime `flutter pub publish --dry-run` | Zero warnings after implementation commit |
+| Example `flutter build apk --debug` | Passed; embedded built-in manifest matches signed source |
 | Both `git diff --check refs/heads/packages` | Passed |
 
-The first CLI run exposed a fixture that assumed schema 9 was invalid. It now
-checks `since > schema.version`, keeping the validation meaningful as versions
-grow. The full suite passed after that correction.
+The first root run loaded the pre-correction legacy fixture and failed it; the
+complete rerun passed all 68 tests. The first pub dry run warned only about the
+uncommitted merge; the committed implementation passed with zero warnings.
+The Firebase Core Kotlin Gradle Plugin compatibility warning remains a future
+build-toolchain limitation; no dependency or release version was changed here.
 
-## Security review
+## Independent review and intake
 
-Read-only review used the repository's full `valence-reviewer` checklist.
-No confirmed security findings remain. It checked generated nonce/strict dispatch,
-disabled-host behavior, legacy custom declarations, exact sync hints, native
-configuration and authentication, tap startup races, disposal, payload caps,
-Unicode escaping, image metadata, unchanged OTA/state/data paths and site docs.
-Two focused CLI regressions and codegen/whitespace checks passed independently.
-The sole documentation finding (the old schema number in this note) is corrected.
+The read-only `valence-reviewer` pass found the legacy fixture issue, now fixed,
+and no additional confirmed R5 security defects. It independently passed 89
+focused runtime tests, 16 CLI schema/builtin/push checks, all 21 bridge tests,
+strict TypeScript, Dart analysis, codegen check and built-in verification.
+The account-switch issue above is an inherited dependency on the earlier queue.
 
-## Intake and limits
+Both complete app findings and newest reports were read only: Kundalini
+`ITERATION_11_REPORT.md`, app-a `ITERATION_9_REPORT.md`. Their device observations
+remain historical evidence. The app-a supplied wizard/bridge tarball mismatch
+is not resolved merely by testing matching source here; harness snapshots were
+not replaced. No test app or other builder's worktree was written.
 
-Read both apps' `VALENCE_FINDINGS.md` and newest reports:
-Kundalini `ITERATION_10_REPORT.md` and app-a `ITERATION_8_REPORT.md`.
-Kundalini's database/paging migration failures reinforce preserving the merged
-upstream fixes; app-a's authenticated rejection and queued-write evidence remains
-app-owned historical evidence, not a new device test of this branch.
-
-No emulator was acquired: without a Firebase project there is no end-to-end push
-check to run. The maintainer must supply matching Firebase configuration before
-delivery, tap/image and OS background acceptance can run. The normal example
-remains usable with push disabled. Firebase dependencies still require iOS 15+;
-iOS and its service extension are untested. The existing Firebase Core Kotlin
-Gradle Plugin compatibility warning is a future-toolchain limitation.
-
-Implementation merge: `c15fcd7`; site tip: `e679e86`, both `codex/r5`.
-The earlier queued branches must merge first. No test app or other builder's
-worktree was written. Nothing was pushed, published or merged into a shared branch.
+No emulator was acquired because there is no configured Firebase project to test
+end-to-end push. iOS/APNs and its service extension remain experimental and
+untested. Exactly one queue item was refreshed. Nothing was pushed, published,
+or merged into `packages` or `main`; no release versions changed.
