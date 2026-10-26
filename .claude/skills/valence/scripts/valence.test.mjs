@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { sign } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
+import { runInNewContext } from 'node:vm';
 import { execSync } from 'node:child_process';
 
 import {
@@ -67,6 +68,43 @@ test('association generators validate identity/certificates, write the website l
   const other = mkdtempSync(join(tmpdir(), 'valence-links-cli-'));
   execSync(`node "${join(import.meta.dirname, '../../../../bin/valence.mjs')}" aasa --app-id ABCDE12345.com.example.app --out "${other}"`, { stdio: 'pipe' });
   assert.ok(existsSync(join(other, '.well-known', 'apple-app-site-association')));
+});
+
+
+test('the signed example keeps a live link newer than its delayed initial reply', async () => {
+  const html = readFileSync(join(import.meta.dirname, '../../../../packages/valence/example/web/index.html'), 'utf8');
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  for (const liveAt of [null, 'beforeInfo', 'duringInitial']) {
+    const sent = [], routed = [];
+    const location = new URL('http://127.0.0.1:18000/');
+    const elements = new Map();
+    const window = { Valence: { postMessage: (raw) => sent.push(JSON.parse(raw)) } };
+    const document = {
+      querySelector: () => ({ content: 'nonce' }),
+      getElementById(id) {
+        if (!elements.has(id)) elements.set(id, { addEventListener() {} });
+        return elements.get(id);
+      },
+    };
+    runInNewContext(script, {
+      window, document, location, URL,
+      history: { pushState: (_, __, path) => { routed.push(path); location.href = new URL(path, location).href; } },
+      console: { info() {} }, dispatchEvent() {}, PopStateEvent: class {},
+    });
+    const live = () => window.__valence.e('link.opened', { url: 'valence-example://app/warm', path: '/warm?q=1#x' });
+    if (liveAt === 'beforeInfo') live();
+    assert.equal(sent[0].m, 'app.info');
+    window.__valence.r({ id: sent[0].id, ok: true, v: { bridge: 13 } });
+    await flush();
+    assert.equal(sent[1].m, 'link.initial');
+    if (liveAt === 'duringInitial') live();
+    window.__valence.r({ id: sent[1].id, ok: true, v: { url: 'valence-example://app/cold', path: '/cold' } });
+    await flush();
+    assert.deepEqual(routed, [liveAt ? '/warm?q=1#x' : '/cold']);
+    live(); live();
+    assert.deepEqual(routed.slice(-2), ['/warm?q=1#x', '/warm?q=1#x']);
+  }
 });
 
 test('link origins compile into the native policy and built-in nullable shape stays frozen', () => {
