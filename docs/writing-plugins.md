@@ -15,6 +15,12 @@ are wired into the example app.
 5. Call through `bridge.g.ts` with `has()` guards and a browser shim where needed.
 6. Run the generated-code, native and web gates, then make a store release.
 
+After a tooling or bridge upgrade, regenerate and run your web TypeScript build.
+The generated client passes both method and event capability tables to the bridge;
+use a matching CLI/bridge snapshot pair. An unchanged version string alone does
+not establish snapshot compatibility. Doctor checks shipped plugin definitions
+against the merged schema and still rejects changes or removal.
+
 Choose one lower-camel namespace for methods/events and its PascalCase prefix
 for types. Fragments may reference only their own named types. Conflicts are errors,
 including identical definitions. Core namespaces are reserved. Metadata fields

@@ -8,7 +8,7 @@ test('plugin types use the ordinary client, capability gate and browser shim', a
   __resetForTests();
   (globalThis as any).window = {};
   (globalThis as any).document = { querySelector: () => null };
-  const bridge = createBridge<HapticsMethods, Record<string, never>>({ 'haptics.tap': 1 });
+  const bridge = createBridge<HapticsMethods, Record<string, never>>({ 'haptics.tap': 1 }, {});
   assert.equal(bridge.has('haptics.tap'), false);
   await assert.rejects(bridge.call('haptics.tap'), { code: 'E_UNSUPPORTED' });
   let taps = 0;
