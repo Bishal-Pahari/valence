@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 
 import { VALENCE_VERSION } from '../.claude/skills/valence/scripts/valence.mjs';
 import { run, doctor, detectWeb, detectHost, detectAppId } from './valence.mjs';
@@ -137,6 +137,21 @@ test('doctor passes on a fresh setup (only warnings for not-yet-built things)', 
 test('CLI commands pass through to valence.mjs, and versions agree', () => {
   assert.equal(execSync(`node "${join(PKG, 'bin', 'valence.mjs')}" version`, { encoding: 'utf8' }).trim(), VALENCE_VERSION);
   assert.equal(JSON.parse(readFileSync(join(PKG, 'package.json'), 'utf8')).version, VALENCE_VERSION);
+});
+
+test('both doctor entry points exit nonzero with a fix for a broken mechanical setup', async () => {
+  const { root, keyDir } = project();
+  await quiet(() => run(['--root', root, '--yes', '--no-launch', '--key-dir', keyDir]));
+  const configPath = join(root, 'valence', 'valence.config.json');
+  const cfg = JSON.parse(readFileSync(configPath, 'utf8'));
+  cfg.host.database = '../wrong.db';
+  writeFileSync(configPath, JSON.stringify(cfg));
+  for (const cli of [join(PKG, 'bin', 'valence.mjs'), join(root, 'valence', 'valence.mjs')]) {
+    const result = spawnSync(process.execPath, [cli, 'doctor', '--root', root], { encoding: 'utf8' });
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /database directory/);
+    assert.match(result.stdout, /Fix:/);
+  }
 });
 
 test('the runtime version the wizard declares matches the two packages in this repo', () => {

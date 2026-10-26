@@ -85,6 +85,11 @@ const BUILTINS = {
     // `after` is the key cursor that makes a bucket past `maxListLimit` readable at all. Optional, because
     // the returns are a plain `Row[]` and an app on the older shape must keep compiling (rule 5).
     optionalParams: { after: 'string?' },
+    // A param has no `since`, so the only gate a page can read is a sibling *name* that shipped with it
+    // (§4.2). `data.count` is `after`'s. Declaring `after` without it leaves the documented gate —
+    // `has('data.count')` — false on every host the app will ever ship, including the ones that accept
+    // the cursor, so a page following the docs never pages and the bucket still has no complete read.
+    paramSiblings: { after: 'data.count' },
     returns: { list: true, fields: { key: 'string', value: 'json', usn: 'int' } },
     call: (t, _has, hasParam) =>
       `final rows = await valence.dataList(p.bucket, prefix: p.prefix, limit: p.limit${hasParam('after') ? ', after: p.after' : ''});\n        return [for (final r in rows) ${t}(key: r.key, value: r.value, usn: r.usn)];`,
@@ -149,12 +154,25 @@ const BUILTINS = {
   'secure.delete': { params: { key: 'string' }, returns: 'void', call: () => 'await valence.secureDelete(p.key);' },
   'auth.setToken': {
     params: { token: 'string?' },
+    // §4.4. The opaque account id is what tells a refresh from a different person, and `discardPending`
+    // is the only way past the refusal to drop one account's queued writes. Optional, because every app
+    // on the older shape must keep compiling (rule 5).
+    optionalParams: { account: 'string?', discardPending: 'bool?' },
+    // Neither param has a `since`, so the only gate is the sibling name that shipped with them. Without
+    // `auth.account` declared, a page following the docs reads a false gate on every host — including
+    // the ones that enforce the switch — and therefore never passes the id at all, which is the silent
+    // half of this feature: no error, no switch, user B looking at user A's rows.
+    paramSiblings: { account: 'auth.account', discardPending: 'auth.account' },
     returns: 'void',
-    call: () => 'await valence.authSetToken(p.token);',
+    call: (_t, _has, hasParam) =>
+      `await valence.authSetToken(p.token${hasParam('account') ? ', account: p.account' : ''}${hasParam('discardPending') ? ', discardPending: p.discardPending ?? false' : ''});`,
   },
   // There is deliberately no auth.getToken: the token lives under the reserved `valence.` prefix, so the
   // page can set and clear it and ask whether one is there, and can never read it back (§4.4).
   'auth.hasToken': { params: {}, returns: 'bool', call: () => 'return valence.authHasToken();' },
+  // The account id *is* readable back: the page chose it, so it learns nothing new, and it is what makes
+  // "is the host still holding the user I signed in?" answerable after a cold start.
+  'auth.account': { params: {}, returns: 'string?', call: () => 'return valence.authAccount();' },
   'http.request': {
     params: { url: 'string', method: 'string?', headers: 'json?', body: 'string?' },
     returns: { fields: { status: 'int', headers: 'json', body: 'string' } },
@@ -729,16 +747,23 @@ export function parseSchema(schema) {
   });
   const typeList = Object.entries(types).map(([name, f]) => ({ name, fields: fields(f, name) }));
   for (const core of CORE_METHODS) if (!methods.some((m) => m.name === core)) throw new Error(`schema must define ${core}`);
-  const unique = (list, kind) => {
-    const seen = new Map();
-    for (const x of list) {
-      const c = camel(x.name);
-      if (seen.has(c)) throw new Error(`${kind} "${x.name}" and "${seen.get(c)}" both become "${c}"`);
-      seen.set(c, x.name);
+  // Methods and events share one namespace, because `has()` takes either kind of name and resolves it
+  // against one table (§4.3): a name declared as both would answer for whichever won, so `has()` could
+  // say false for an event the host does emit. One pass therefore catches the cross-kind collision as
+  // well as the two-names-one-identifier collision inside each kind.
+  const seen = new Map();
+  for (const x of [...methods.map((m) => ({ ...m, kind: 'method' })), ...events.map((e) => ({ ...e, kind: 'event' }))]) {
+    const c = camel(x.name);
+    const prev = seen.get(c);
+    if (prev) {
+      throw new Error(
+        prev.name === x.name
+          ? `"${x.name}" is declared as both a method and an event; has() resolves one name to one answer, so pick one`
+          : `${x.kind} "${x.name}" and ${prev.kind} "${prev.name}" both become "${c}"`,
+      );
     }
-  };
-  unique(methods, 'method');
-  unique(events, 'event');
+    seen.set(c, x);
+  }
   const classNames = new Set(typeList.map((t) => t.name));
   for (const m of methods) if (classNames.has(pascal(m.name) + 'Params')) throw new Error(`${m.name}: params class name collides with a type`);
   return { version, types: typeList, methods, events };
@@ -797,14 +822,15 @@ export function assertAdditive(shipped, current) {
       // optional params the runtime declared may appear. Without it the additive guard refuses the upgrade
       // §4.3 tells an adopter to make, and --rebaseline — which overwrites the schema the stores reviewed —
       // would be the only way through.
-      // A grown param must come with a version bump, because a param has no `since` of its own: the schema
-      // version is the only thing that tells a page whether this host understands it. Without this, an app
-      // could add `data.list.after` at the shipped version, leaving `app.info().bridge` and `has()` — the
-      // two gates §4.2 names — unable to distinguish it from the store build that answers `E_PARAMS`.
+      // A grown param must come with a version bump, because a param has no `since` of its own: the only
+      // signal a page can read is a *sibling* method or event that arrived in the same version, and a
+      // sibling needs a version to arrive at. Without this, an app could add `data.list.after` at the
+      // shipped version, leaving has() unable to distinguish this host from the store build that answers
+      // `E_PARAMS`. Note app.info().bridge is no help: it is this app's own schema version (§4.2).
       if (kind === 'methods' && isBuiltinParamGrowth(def, current.methods[name], BUILTINS[name]?.optionalParams)) {
         if (current.version > shipped.version) continue;
         throw new Error(
-          `"${name}" gained the param ${Object.keys(current.methods[name].params ?? {}).filter((p) => !Object.hasOwn(def.params ?? {}, p)).map((p) => `"${p}"`).join(', ')}, which needs "version" above the shipped ${shipped.version}. A param has no "since", so the schema version is the only thing has() and app.info().bridge can gate on.`,
+          `"${name}" gained the param ${Object.keys(current.methods[name].params ?? {}).filter((p) => !Object.hasOwn(def.params ?? {}, p)).map((p) => `"${p}"`).join(', ')}, which needs "version" above the shipped ${shipped.version}. A param has no "since", so a page can only gate it on a sibling method or event at the new version — has("data.count") for data.list's "after".`,
         );
       }
       throw new Error(`${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
@@ -861,11 +887,12 @@ export function genTs(s) {
   o.push('/**');
   o.push(' * This app\'s typed bridge.');
   o.push(' *');
-  o.push(' * `connect()` once at startup, then `has()` tells you whether a method added in a later release');
-  o.push(' * exists on *this* host. `ready()` after the first meaningful paint is what commits an OTA bundle.');
+  o.push(' * `connect()` once at startup, then `has()` tells you whether a method or event added in a later');
+  o.push(' * release exists on *this* host. `ready()` after the first meaningful paint commits an OTA bundle.');
   o.push(' */');
   o.push('export const { call, has, on, ready, connect, installShim } = createBridge<Methods, Events>(');
   o.push('  METHOD_SINCE,');
+  o.push('  EVENT_SINCE,');
   o.push(');', '');
   return o.join('\n');
 }
@@ -1066,6 +1093,18 @@ export function assertBuiltinShapes(s) {
         `"${m.name}" is implemented by the valence package, so its params must stay ${JSON.stringify(want.params)}, not ${JSON.stringify(got)}. Add a new method under a different name instead.${allowed}`,
       );
     }
+    // A grown param must arrive with the sibling name that gates it (§4.2). Checked here rather than in
+    // assertAdditive, because the trap does not need a store baseline: an app that declares `after` and
+    // never declares `data.count` has the documented gate answering false on every host it ships,
+    // including the ones that accept the cursor — so a page that follows the docs never pages, and the
+    // bucket it was added for still has no complete read.
+    for (const [param, sibling] of Object.entries(want.paramSiblings ?? {})) {
+      if (param in got && !s.methods.some((x) => x.name === sibling) && !s.events.some((x) => x.name === sibling)) {
+        throw new Error(
+          `"${m.name}" declares the param "${param}", which has no "since" of its own — so the only thing a page can gate it on is "${sibling}", shipped in the same version. Declare "${sibling}" too, or drop "${param}": has("${m.name}") is true on hosts that reject it with E_PARAMS.`,
+        );
+      }
+    }
     if (typeof want.returns === 'string') {
       if (typeString(m.returns) !== want.returns) {
         throw new Error(`"${m.name}" is implemented by the valence package, so it must return ${want.returns}, not ${typeString(m.returns)}`);
@@ -1195,23 +1234,84 @@ function runFlutter(args, cwd) {
   return spawnSync('cmd.exe', ['/d', '/c', `flutter ${args.join(' ')}`], options);
 }
 
-export async function diagnose({ root, cfg, tests = false, run = runFlutter }) {
+export async function diagnose({ root, cfg, tests = false, run = runFlutter, keyDir = join(homedir(), '.valence', 'keys'), git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' }) }) {
   const rows = [];
-  const check = async (name, fn) => {
+  const fixes = {
+    'generated code': 'run valence codegen; restore incompatible shipped schema changes before regenerating',
+    'stack report': 'restore .valence/stack-check.md or rerun the docs-scout phase',
+    'native value': 'declare two distinct supported nativeValue capabilities in valence.config.json',
+    'built-in compatibility': 'run valence codegen and valence bundle --builtin, then rebuild the host',
+    'seed coverage': 'regenerate seed.db with valence seed --from <seed-directory> for every current data pair',
+    'Flutter dependencies': 'run flutter pub get in host.dir and correct dependency constraints',
+    'test matrix': 'correct .valence/test-matrix.json using the documented IDs and host-relative test files',
+  };
+  const check = async (name, fn, fix = fixes[name] ?? 'correct the mapped test path or failing test, then rerun valence doctor --tests') => {
     try {
       const warning = await fn();
       rows.push([warning ? 'WARN' : 'PASS', name, warning ?? 'verified']);
     } catch (e) {
-      rows.push(['FAIL', name, e.message.split('\n')[0]]);
+      rows.push(['FAIL', name, `${e.message.split('\n')[0]} | Fix: ${fix}`]);
     }
   };
   const p = paths(root, cfg);
   const host = resolve(root, cfg.host.dir);
   await check('generated code', () => { codegen({ root, cfg, check: true }); });
+  await check('bridge version', () => {
+    const schema = parseSchema(readJson(p.schema));
+    const generated = /\bconst hostBridgeVersion = (\d+);/.exec(readFileSync(p.dart, 'utf8'));
+    if (!generated || Number(generated[1]) !== schema.version) throw new Error('schema version differs from generated hostBridgeVersion');
+  }, 'run valence codegen, rebuild the host and ship a store update for new native capabilities');
   await check('store baseline', () => {
     if (!existsSync(p.baseline)) return 'no recorded store build; additive guard has no shipped baseline';
-    if (!readJson(p.baseline).storeSchema) return 'no recorded store schema';
-  });
+    const baseline = readJson(p.baseline);
+    if (!baseline.storeSchema) {
+      if (baseline.storeSeq) throw new Error('storeSeq exists without storeSchema');
+      return 'no recorded store schema';
+    }
+    int(baseline.storeSeq, 'baseline.storeSeq', 1);
+    parseSchema(baseline.storeSchema);
+    assertAdditive(baseline.storeSchema, readJson(p.schema));
+  }, 'restore the committed baseline from the store release; do not rebaseline to silence a failure');
+  await check('OTA bridge compatibility', () => {
+    const dir = join(p.ota, 'manifests');
+    if (!existsSync(dir)) return 'no local OTA manifests; release compatibility not checked';
+    const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+    if (!files.length) return 'no local OTA manifests; release compatibility not checked';
+    const baseline = readBaseline(p);
+    const storeBridge = baseline.storeSchema ? parseSchema(baseline.storeSchema).version : null;
+    for (const file of files) {
+      const m = verifyBundle({ manifestPath: join(dir, file), filesDir: join(p.ota, 'files'), keyring: readJson(p.keyring), appId: cfg.appId });
+      if (!Number.isSafeInteger(m.requires?.bridge) || m.requires.bridge < 1) throw new Error('OTA requires.bridge must be a positive integer');
+      if (storeBridge !== null && m.requires.bridge > storeBridge) throw new Error(`OTA ${m.seq} requires bridge ${m.requires.bridge}, store baseline is ${storeBridge}`);
+    }
+    if (storeBridge === null) return 'OTA signatures verified, but no recorded store bridge; compatibility unverified';
+  }, 'rebuild OTA with --requires-bridge <store-version> and has() guards, or ship the new host first; archive obsolete local releases outside dist-ota');
+  await check('database directory', () => {
+    const name = cfg.host.database ?? 'valence.db';
+    if (typeof name !== 'string' || !name || name === '.' || name === '..' || /[<>:"/\\|?*\x00-\x1f]/.test(name) || /[. ]$/.test(name) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) throw new Error('host.database must be a plain file name, never a directory or path');
+    if (cfg.host.databaseDirectory !== undefined || cfg.host.databasePath !== undefined) throw new Error('host database directory/path overrides are unsupported');
+    return `<appSupport>/${name}; installed location and legacy adoption need a device check`;
+  }, 'set host.database to the existing database file name, run codegen; verify legacy adoption on a device before shipping');
+  await check('signing keys in Git', () => {
+    if (insideGit(keyDir)) throw new Error('configured signing-key directory resolves inside a Git work tree');
+    const repo = git(['rev-parse', '--show-toplevel']);
+    if (repo.error?.code === 'ENOENT') return 'Git unavailable; private-key scan not run';
+    if (repo.error || repo.status !== 0) return 'not a Git work tree; private-key scan not run';
+    // -l returns names only: never include matching lines or subprocess stderr in diagnostic output.
+    const result = git(['-C', repo.stdout.trim(), 'grep', '--untracked', '-a', '-l', '-E', '-e', '-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY-----', '--', '.']);
+    if (result.error || ![0, 1].includes(result.status)) throw new Error('Git private-key scan failed');
+    if (result.status === 0) throw new Error('PEM private key found in tracked or non-ignored files (contents withheld)');
+  }, 'move signing keys outside Git, remove exposed files from the index and rotate exposed keys; audit history separately');
+  await check('connection origins', () => {
+    if (!Array.isArray(cfg.web.connect ?? [])) throw new Error('web.connect must be an array of HTTP(S) URLs');
+    for (const value of cfg.web.connect ?? []) {
+      let url;
+      try { url = new URL(value); } catch { /* rejected below */ }
+      if (typeof value !== 'string' || !/^https?:\/\//.test(value) || /[\s*'";\\]/.test(value) || !url || !['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('web.connect contains an invalid HTTP(S) connection URL');
+    }
+    if (Array.isArray(cfg.http?.origins) && cfg.http.origins.some((value) => typeof value !== 'string' || /[\s\\]/.test(value))) throw new Error('http.origins contains whitespace or backslashes');
+    genDartConfig(cfg, readJson(p.keyring)); // Native token origins have the stricter exact-origin rule.
+  }, 'use HTTP(S) URLs in web.connect and exact trusted origins in http.origins; run codegen and ship a store build for native origin changes');
   await check('stack report', () => {
     if (!existsSync(join(root, '.valence', 'stack-check.md'))) return 'missing .valence/stack-check.md; run the docs-scout phase';
     return 'report present; freshness and policy wording require review';

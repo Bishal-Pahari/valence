@@ -606,6 +606,36 @@ void main() {
       );
       await u.checkForUpdate();
       expect(log.has('byte budget'), isTrue);
+      // The cap stopped it *inside* the pull, which is the same reason as a cap that stops it before one:
+      // the app's own limit, not unavailable data. §4.6 calls that `toobig`, and reporting
+      // `waitingForData` sends the developer to inspect a server that answered correctly.
+      expect(u.lastReason, ValenceBundleReason.toobig);
+      expect(log.has('data cap'), isTrue);
+    });
+
+    test('a cap spent by the first pair stops the second one as toobig too', () async {
+      // The other half of the §4.6 claim. Here the budget is gone *before* `pullPair` is called for the
+      // second pair, rather than during the first one's pull, and the reason must be the same: it is the
+      // app's own cap either way. This is also the path a real multi-pair bump takes.
+      final log = LogSpy();
+      final b = await signBundle(key, seq: 20, requiresData: {'plants': 2, 'seeds': 1});
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        config: testConfig(key, dataSizeCap: 300),
+        client: otaHost(
+          bundles: {20: b},
+          pointerSeq: 20,
+          syncBodies: {
+            // Completes — `more: false` returns before the budget check — and spends the whole cap.
+            'plants': jsonEncode({'rows': [dataRow('a', 'x' * 400, 1)], 'max': 1, 'more': false}),
+            'seeds': jsonEncode({'rows': [dataRow('b', 'y', 1)], 'max': 1, 'more': false}),
+          },
+        ),
+        log: log,
+      );
+      expect(await u.checkForUpdate(), isNull);
+      expect(u.lastReason, ValenceBundleReason.toobig);
+      expect(log.has('before'), isTrue, reason: 'the stop names the pair it never started');
     });
 
     test('a bundle with no requires.data skips step 7 entirely', () async {
@@ -633,7 +663,10 @@ void main() {
       expect(notified, [20]);
     });
 
-    test('a non-urgent bundle does not', () async {
+    test('a non-urgent bundle calls back too, because applyUpdate never needed urgent', () async {
+      // `bundle.updateReady` is the only push signal that pairs with `bundle.status`, and `applyUpdate`
+      // promotes any pending bundle. Gating the event on `urgent` left a page polling on resume, which
+      // races this transition: the update is found 400 ms after the read and reported a resume late.
       final b = await signBundle(key, seq: 20);
       final notified = <int>[];
       final u = makeUpdater(
@@ -641,7 +674,20 @@ void main() {
         client: otaHost(bundles: {20: b}, pointerSeq: 20),
         onUpdateReady: notified.add,
       );
-      await u.checkForUpdate();
+      expect(await u.checkForUpdate(), 20);
+      expect(notified, [20]);
+    });
+
+    test('a check that never reaches pending stays silent', () async {
+      // The event means "there is a verified bundle waiting", so a stop before step 8 must not fire it.
+      final b = await signBundle(key, seq: 20);
+      final notified = <int>[];
+      final u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10, bad: [20]),
+        client: otaHost(bundles: {20: b}, pointerSeq: 20),
+        onUpdateReady: notified.add,
+      );
+      expect(await u.checkForUpdate(), isNull);
       expect(notified, isEmpty);
     });
 
@@ -1525,7 +1571,7 @@ void main() {
     resume.complete();
     expect(await Future.wait([first, second]), [20, 20]);
     expect(pointers, 1);
-    expect(publications, 0, reason: 'non-urgent candidates do not notify');
+    expect(publications, 1, reason: 'both checks coalesce onto one publication, so one updateReady');
     expect(u.state.pending, 20);
   });
 

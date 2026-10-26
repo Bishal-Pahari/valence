@@ -565,7 +565,10 @@ export async function doctor(o) {
       if (missing.length) throw new Error(`missing: ${missing.join(' | ')} (${NPX} update adds them)`);
     });
   }
-  if (cfg) rows.push(...await diagnose({ root, cfg, tests: o.tests }));
+  if (cfg) rows.push(...await diagnose({ root, cfg, tests: o.tests, keyDir: o.keyDir }));
+  for (const row of rows) {
+    if (row[0] === 'FAIL' && !row[2].includes('Fix:')) row[2] += ' | Fix: correct the reported input, then rerun valence doctor';
+  }
   console.log(`\n${bold('Valence doctor')} ${dim('(mechanical checks; device evidence still needs review)')}`);
   for (const [s, name, msg] of rows) say(s === 'PASS' ? green('✓') : s === 'WARN' ? yellow('!') : red('✗'), name, msg);
   console.log();
