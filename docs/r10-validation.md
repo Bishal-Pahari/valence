@@ -1,5 +1,69 @@
 # R10 validation
 
+## Queue refresh - 2026-10-27
+
+**In plain terms.** Native plugins now include current account, event-capability,
+doctor and host-widget work. Fixed two merge defects: the plugin bridge fixture
+omitted the event table, and doctor falsely rejected shipped plugin methods by
+comparing the merged baseline with the unmerged app schema. A regression failed
+before the doctor fix and now accepts valid plugins and rejects edits/removal.
+
+**Bases and commits.** Package base e879260366282c9f504057423d54f682dcb10c81;
+site base f59fbc1. Integration commits: package 84fc029, site b905b74.
+Both worktrees remain on codex/r10. Exactly one queue item refreshed.
+
+**Decisions and why.** Preserve upstream schema 13/auth.account since 13. R10 adds
+no base schema methods, parameters or since values; lowering the whole schema to
+6 would invalidate upstream account protections. Haptics keeps since 1. Preserve
+the genuine schema-1 example store baseline, regenerate and verify the signed
+built-in without rebaselining. Integrate earlier reserved surfaces before
+publishing this intermediate host. Preserve both conflicting runtime-test helpers
+and both README links. Doctor must use the effective plugin schema, like codegen
+and bundle, rather than weakening shipped-definition checks. No release versions
+changed, as explicitly required for this run.
+
+**Security review.** Independent read-only review checked contracts 4.7, ownership,
+reserved/duplicate namespaces, fragment collisions, baseline edits/removal,
+nonce/strict parameter decoding, typed result decoding, missing handlers,
+restricted open.external, example wiring and docs. Review confirmed the doctor
+defect and rechecked its fix: nine doctor/plugin tests, strict bridge TypeScript,
+mirrored CLI byte equality, codegen freshness and diff checks passed. No remaining
+confirmed R10-specific finding. **Inherited HIGH:** upstream can store a new token
+before its account identity if secure storage fails. Merge R7 first; preserve its
+serialized fail-closed auth writes and rerun combined account regressions/gates.
+R10 does not modify the auth implementation.
+
+**App inputs.** Both complete VALENCE_FINDINGS.md files and newest reports were
+reviewed read-only: Kundalini iteration 11 and app-a iteration 9. App-a F-32 and
+Kundalini event-gating findings informed the two-table fixture and upgrade docs.
+Strict compilation uses this branch's matching source; no harness snapshots were
+replaced or claimed compatible. App-a F-33's database-lock cause remains unproven.
+
+| Gate | Result |
+|---|---|
+| Root npm test | 71 passed, zero skips; generated Dart and strict TypeScript ran |
+| Runtime flutter test | 402 passed |
+| dart analyze --fatal-infos . | No issues, including example/plugin |
+| Bridge tests / strict TypeScript | 22 passed / clean |
+| Bridge build / pack dry run | Passed |
+| Example flutter test | 16 passed |
+| Generated TypeScript and plugin types | Strict/verbatimModuleSyntax clean against current bridge source |
+| Example codegen --check | Fresh, zero writes |
+| Built-in signature/files | Verified, seq 1793039932, requires.bridge 13 |
+| Example debug APK | Built; embedded manifest matches signed source bytes |
+| flutter pub publish --dry-run | Zero warnings |
+| Site build / SEO | 29 pages, passed |
+| git diff --check | Clean in both worktrees |
+
+Logs: %TEMP%/valence-r10-20261027-*.log. The first direct example TypeScript
+check could not resolve the locally uninstalled bridge. A temporary TypeScript
+config mapped it to this branch's source and passed; no dependency files changed.
+
+**Limits.** No new emulator run; device plugin execution and felt vibration remain
+unverified. Android build and mocked native-channel invocation passed. iOS remains
+experimental and untested. No test-app writes, pushes, publications, version bumps
+or merges into shared branches occurred.
+
 ## Queue refresh — 2026-10-22
 
 Both worktrees are on `codex/r10`. Merged package base
