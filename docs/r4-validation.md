@@ -1,5 +1,56 @@
 # R4 local reminders: validation
 
+## Queue refresh - 2026-10-26
+
+**In plain terms.** Local reminders now include the current account, doctor, event
+capability and host-widget work. A merged test fixture now includes the notification
+action event's version, and the website distinguishes older custom wall-clock
+scheduling from the built-in absolute-time API. Permission prompts remain explicit.
+
+Package base: `e879260366282c9f504057423d54f682dcb10c81`; merge: `c40cf1f`.
+Site base: `f59fbc1568c895d4cd35d385733175397beeef6a`; merge: `d8e5dd7`.
+Both branches are `codex/r4`.
+
+Decision: retain upstream schema 13 and account behavior since 13, with every R4
+method/event since its reserved 11. Lowering the whole schema to 11 would invalidate
+upstream account capabilities. Keep the actual schema-1 store baseline, regenerate
+the typed clients, and re-sign the example without replacing that baseline. The
+intermediate host must not be published before reserved lower-numbered surfaces
+are integrated; R8, R7, R6 and R3 precede R4 in the merge queue. Existing app-owned
+notification methods below since 11 retain their signatures. Package versions
+are unchanged. A programmatic comparison confirmed every upstream schema entry
+is preserved in both template and example.
+
+Fresh gates: root `npm test` 69 passed, zero failed/skipped (real generated Dart
+and strict generated TypeScript exercised); runtime `flutter test` 408 passed;
+`dart analyze --fatal-infos .` clean; bridge 22 tests, strict TypeScript, build
+and pack dry run passed; example 17 tests, codegen check with no writes and signed
+built-in verification passed (seq 1793037233, bridge 13). Android x64 debug APK
+built and its embedded manifest matches the verified built-in. Pub publish dry
+run passed with zero warnings. Website build and SEO/link checks passed for 29
+pages. The APK retains the known app_badge_plus future Kotlin compatibility warning.
+
+Independent security review found no confirmed security defects. It checked
+runtime bounds/validation, serial queue cap, exact-access fallback, bounded image
+decoding and private attachments, escaped responses, strict generated dispatch and
+nonce checks, legacy compatibility, native declarations, event buffering and the
+preserved navigation/trial protections. Its six focused CLI checks and example
+codegen check passed. The historical timezone documentation finding was fixed;
+its final copy cleanup and explicit permission wording are included. The bridge
+regression now checks both method and event availability at host 10 versus 11.
+
+Read both apps' findings and latest reports read only: Kundalini iteration 11
+and app-a iteration 9. App-a's supplied generator/bridge snapshot mismatch remains
+a harness delivery issue; this branch's matched generator and bridge compile. No
+harness snapshots were replaced. No new emulator run was attempted: earlier Android
+observations below remain historical. iOS remains experimental and untested.
+Only R4's shared roadmap Status cell changes; this note stays here to respect the
+shared-file boundary. No push, publication, package version change, test-app edit
+or merge into shared branches occurred. Exactly one queue item was refreshed.
+
+The records below are historical and predate this refresh.
+
+
 ## Queue refresh - 2026-10-22
 
 **In plain terms.** The reminder branch now includes `packages` at
