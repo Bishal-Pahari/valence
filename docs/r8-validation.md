@@ -37,6 +37,7 @@ attributed to R8. App nav clipping still requires actual page inset padding.
 - Example: 17 passed; codegen --check wrote nothing; built-in verification passed
   at seq 1792706013, one file; debug APK built successfully.
 - Final site npm run build: 29 pages; SEO/link/anchor checks passed.
+- Flutter pub publish --dry-run: zero warnings.
 - Independent security review: no confirmed R8 findings. Checked contracts
   sections 3, 4.2, 4.6 and 4.7, owning-view metrics, strict decoding/delegations,
   JSON-only publication, nonce/navigation/CSP retention, additive fontScale,
