@@ -1,3 +1,75 @@
+# R9 queue refresh - 2026-10-27
+
+Branch: `codex/r9` in both worktrees. Package base: `e879260366282c9f504057423d54f682dcb10c81`;
+site base: `f59fbc1568c895d4cd35d385733175397beeef6a`. Merge commits: package `1403eac`,
+site `37c3928`. Development documentation follow-ups: package `71226b1`, site `2913b4d`.
+
+## In plain terms
+
+Live development now includes upstream account isolation, event capability metadata, mechanical
+doctor checks and real host-widget tests. The generated bridge and installed bridge package
+must be compatible before HMR starts; both development guides now say to regenerate and type-check
+after upgrades. This responds to app-a F-32 without claiming the harness snapshots were replaced.
+
+## Decisions and review
+
+- Security first: retain all compile-time development exclusions, signature/floor/bad checks,
+  nonce and navigation restrictions, strict decoding and activation evidence. No R9 API surface
+  was added, so no new schema number or `since` value is needed.
+- Preserve upstream template/example schema 13 and `auth.account` since 13. Lowering these to the
+  branch's former schema 6 would invalidate upstream account behavior. The roadmap reserves no
+  R9-specific number. Preserve the genuine recorded store baseline at schema 1; do not ship this
+  intermediate schema-13 host before the earlier reserved surfaces are integrated.
+- Merge conflicts retained both doctor and live-development agent instructions, and retained the
+  corrected capability-gating advice alongside the development summary in the site's machine index.
+- Independent `valence-reviewer` review found no R9-specific confirmed security defect, including
+  the merged host-widget interactions and final documentation changes.
+- **Inherited HIGH; merge R7 first.** Upstream R13 stores a new token before its identity. If the
+  identity write fails, sync can populate the new account's rows under the old recorded identity;
+  signing back into that identity can retain the wrong rows/outbox. R9 does not change these auth
+  methods; development keeps ordinary sync and bridge access, without a confirmed new amplification.
+  R7 contains serialized fail-closed writes: clear the old token, persist the identity, then store
+  the new token under the lease. Preserve that implementation when merging R9 and rerun the combined
+  auth regression tests and gates. This branch alone is not the account-switch fix.
+
+Read both complete app findings and newest reports, read-only: Kundalini iteration 11 (2026-10-23),
+app-a iteration 9 (2026-10-26). Their device observations and unresolved snapshot compatibility remain
+separate from this framework refresh. No test-app files or other builders' worktrees were changed.
+
+## Fresh gates
+
+| Check | Result |
+|---|---|
+| Root `npm test` | 68 passed, zero failed/skipped; generated Dart and TypeScript exercised |
+| Runtime `flutter test` | 409 passed |
+| Runtime `dart analyze --fatal-infos .` | No issues |
+| `test/dev_test.dart` with compile-time dev URL | 7 passed; real host reserved routes and HMR transport included |
+| Bridge tests | 21 passed |
+| Bridge strict TypeScript, build and pack dry run | Passed |
+| Development demo strict TypeScript | Passed |
+| Example tests | 16 passed |
+| Example `codegen --check` | No writes |
+| Built-in signature/file verification | Passed, seq 1792704817, one file |
+| Debug APK with dev define | Built; embedded manifest matches current signed source |
+| Release APK with sentinel dev define | Built, 47.4 MB; embedded manifest matches current signed source |
+| Release AOT exclusion checker | Passed for all 3 AOT libraries |
+| Runtime publish dry run | Zero warnings from clean commit 71226b1 |
+| Site build and SEO checks | 29 pages passed, including final documentation change |
+
+The release build used
+`--dart-define=VALENCE_DEV_URL=http://valence-dev-release-sentinel.invalid:5173`.
+`node packages/valence/tool/check-release-dev.mjs` checked the resulting APK against that
+exact URL and implementation-specific proxy markers. The first publish dry run saw the pending
+example README edit and failed with one dirty-worktree warning; the clean-commit rerun passed
+with zero warnings. No failing gate remains.
+
+No new emulator run. The 2026-10-21 HMR device evidence below is historical. React Fast Refresh
+and a profile APK were not separately exercised. iOS remains experimental and untested.
+Exactly one queue item refreshed. Package versions did not change. Nothing was pushed or published,
+and no merge or commit was made to a shared branch.
+
+---
+
 # R9 queue refresh - 2026-10-22
 
 Branch: `codex/r9` in both worktrees. Merged package `packages`
