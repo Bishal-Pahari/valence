@@ -27,6 +27,10 @@ or codegen changes are needed. Vite HMR/Fast Refresh retains component state whe
 framework supports it. A full browser reload resets page state as usual. A native-code,
 schema, plugin or compiled-origin change still needs codegen and a Flutter rebuild.
 
+After upgrading Valence tooling or `@getvalence/bridge`, regenerate the app bridge and run
+your web type check before starting HMR. The generated method and event tables must match
+the installed bridge package. Hot reload cannot repair an incompatible tooling/package pair.
+
 The signed installed bundle supplies data-schema context; the dev page can read and write real
 native SQLite data and call the compiled native methods. Use a separate development app id,
 test accounts and test data. The explicit define grants that server's code the full bridge.
