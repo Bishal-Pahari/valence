@@ -50,6 +50,11 @@ Gate appearance-dependent features with `has('app.appearance')`. On an older hos
 keep CSS media-query fallbacks active. `app.info().bridge` is your app's own schema number;
 comparing it with appearance's reserved version 7 does not prove appearance support.
 
+Keep the code generator and installed bridge package on a matching snapshot. Event-aware generated
+code passes both method and event tables to `createBridge`; an older bridge accepting only the method
+table cannot compile it. Update the tooling and bridge together, then regenerate. Editing generated
+code to suppress that mismatch loses the event capability check this guide relies on.
+
 ```ts
 import { on, ready } from './lib/bridge.g';
 
