@@ -54,4 +54,5 @@ export 'src/runtime.dart'
         maxListLimit,
         normaliseRequestPath,
         secureAuthTokenKey,
+        secureAuthAccountKey,
         maxMessageBytes;

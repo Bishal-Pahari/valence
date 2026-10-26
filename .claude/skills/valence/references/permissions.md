@@ -14,8 +14,8 @@ Add a store-compiled allowlist to `valence/valence.config.json`:
 Run `valence codegen`, add the matching native declarations below, and ship a new
 store build. Older hosts need the schema additions too; `codegen` does not overwrite
 an existing schema. Copy the three methods, event and `PermissionState` type from
-the starter schema, assigning the next reserved version for your app. The template's
-framework version is 10; your app's version history is independent. Keep older
+the starter schema, assigning the next reserved version for your app. The template retains upstream schema 13; these
+permissions additions are since 10; your app's version history is independent. Keep older
 methods unchanged. An empty or absent allowlist denies all kinds. An OTA cannot
 expand it, even when Android already declares a permission for another native feature.
 
