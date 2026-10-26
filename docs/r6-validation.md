@@ -1,3 +1,76 @@
+# R6 queue refresh - 2026-10-26
+
+In plain terms: deep links now include the current shared runtime, account security,
+mechanical doctor and host-widget harness. A delayed startup-link reply can no longer
+send the example back after a newer live intent has already routed it.
+Implementation merge: 948349b; ordering fix: 5af94d2; site: 388cd9d.
+Both worktrees are on codex/r6.
+
+## Bases and decisions
+
+- Package base: e879260366282c9f504057423d54f682dcb10c81.
+- Site base: f59fbc1568c895d4cd35d385733175397beeef6a.
+- Exactly one queue item refreshed. R8 and R7 already include this packages base;
+  R7 must merge before R6, including its account-interruption protections.
+- Preserve upstream schema 13/auth.account since 13 and R6 link.initial/link.opened
+  since 9. This explicitly departs from setting the entire schema to 9, which
+  would invalidate upstream account behavior. Do not publish the intermediate
+  host until all reserved surfaces are integrated; the version comparison cannot
+  describe an incomplete surface. The example retains its actual schema-1 store
+  baseline instead of recording an internal rebuild as a store release.
+- Preserve both intents in conflicts: current account delegations, capability
+  gates, required EVENT_SINCE, doctor instructions and native-link setup. The
+  link helper tests now pass the required event table. Bindings were regenerated;
+  the merged HTML was re-signed normally, final built-in seq 1793035571.
+- Keep compiled exact origins, nonce/navigation locks, strict decoding, signature
+  checks and atomic updater writes intact. Links remain routing input, not
+  authentication. No package version changed.
+
+## Gates
+
+| Gate | Result |
+|---|---|
+| npm test | 69 passed, zero skipped; generated Dart/strict TypeScript exercised |
+| Runtime flutter test | 404 passed |
+| dart analyze --fatal-infos . | No issues, including example |
+| Bridge tests / strict tsc / build | 26 passed / clean / passed |
+| Bridge npm pack --dry-run | Passed |
+| Generated example strict + verbatimModuleSyntax TypeScript | Clean against current bridge source |
+| Example flutter test --no-pub | 17 passed |
+| Example flutter build apk --debug --no-pub | Passed; embedded manifest matches final source |
+| Example codegen --check / signed built-in verify | No writes / valid seq 1793035571 |
+| Site npm run build | 29 pages; SEO checks passed |
+| flutter pub publish --dry-run | Zero warnings |
+| Both worktrees git diff --check | Clean |
+
+## Security review
+
+The required read-only valence-reviewer pass found a medium ordering defect in
+this example's manual bridge: a delayed initial reply could replace a newer live
+route. The actual-inline-script VM regression failed before the fix and passes
+now. It covers cold-only delivery, a live intent before app.info replies, a live
+intent while link.initial is pending, and repeated live intents. Record receipt
+of live delivery from page startup and ignore stale initial navigation, matching
+the package helper. Rebuilt the signed example after the fix. Final review reports
+no remaining confirmed findings. Reviewed origin/path validation, mailbox and
+lifecycle sequencing, generated delegation and association-file validation.
+
+## App context and limits
+
+Read both apps' VALENCE_FINDINGS.md and newest reports: Kundalini iteration 11
+(2026-10-23), app-a/Fernwise iteration 9 (2026-10-26). App-a F-32 reports mismatched
+harness CLI/bridge snapshots; this branch's generated code compiles against its
+matching bridge, but no harness snapshots were replaced. F-33's unisolated lock
+warnings are not claimed fixed. Neither test-app repo was edited.
+
+No new emulator run; the Android evidence below remains historical. Real HTTPS
+domain ownership is still unverified for the placeholder domain. iOS remains
+experimental and untested. No pushes, publications or shared-branch merges.
+
+---
+
+## Historical validation
+
 # R6 queue refresh validation ? 2026-10-22
 
 Branch: `codex/r6` in both worktrees. Package base: `c55446f3d73afec7672c2615b0ffe70f1a6a074d`; site base: `5a23a4eaf3dc1fdacfb1f961dadbd33b5ed1d390`.
