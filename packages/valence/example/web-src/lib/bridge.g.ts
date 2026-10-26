@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 12;
+export const BRIDGE_VERSION = 13;
 
 export interface AppInfo {
   platform: string;
@@ -111,8 +111,11 @@ export interface Methods {
   }; returns: void };
   'auth.setToken': { params: {
     token?: string | null;
+    account?: string | null;
+    discardPending?: boolean | null;
   }; returns: void };
   'auth.hasToken': { params: Record<string, never>; returns: boolean };
+  'auth.account': { params: Record<string, never>; returns: string | null };
   'http.request': { params: {
     url: string;
     method?: string | null;
@@ -183,6 +186,7 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'secure.delete': 2,
   'auth.setToken': 2,
   'auth.hasToken': 2,
+  'auth.account': 13,
   'http.request': 4,
   'data.getMany': 3,
   'sync.status': 3,
@@ -213,9 +217,10 @@ export type AppShim = Shim<Methods>;
 /**
  * This app's typed bridge.
  *
- * `connect()` once at startup, then `has()` tells you whether a method added in a later release
- * exists on *this* host. `ready()` after the first meaningful paint is what commits an OTA bundle.
+ * `connect()` once at startup, then `has()` tells you whether a method or event added in a later
+ * release exists on *this* host. `ready()` after the first meaningful paint commits an OTA bundle.
  */
 export const { call, has, on, ready, connect, installShim } = createBridge<Methods, Events>(
   METHOD_SINCE,
+  EVENT_SINCE,
 );

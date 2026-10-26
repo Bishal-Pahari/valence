@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 12;
+const hostBridgeVersion = 13;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale});
@@ -298,17 +298,19 @@ final class SecureDeleteParams {
 }
 
 final class AuthSetTokenParams {
-  const AuthSetTokenParams({this.token});
+  const AuthSetTokenParams({this.token, this.account, this.discardPending});
 
   factory AuthSetTokenParams.fromJson(Object? j, [String f = 'AuthSetTokenParams']) {
     final m = decodeObject(j, f);
-    decodeKeys(m, const {'token'}, f);
-    return AuthSetTokenParams(token: m['token'] == null ? null : decodeString(m['token'], '$f.token'));
+    decodeKeys(m, const {'token', 'account', 'discardPending'}, f);
+    return AuthSetTokenParams(token: m['token'] == null ? null : decodeString(m['token'], '$f.token'), account: m['account'] == null ? null : decodeString(m['account'], '$f.account'), discardPending: m['discardPending'] == null ? null : decodeBool(m['discardPending'], '$f.discardPending'));
   }
 
   final String? token;
+  final String? account;
+  final bool? discardPending;
 
-  Map<String, Object?> toJson() => {'token': token};
+  Map<String, Object?> toJson() => {'token': token, 'account': account, 'discardPending': discardPending};
 }
 
 final class HttpRequestParams {
@@ -389,6 +391,7 @@ abstract interface class BridgeHandlers {
   Future<void> secureDelete(SecureDeleteParams p);
   Future<void> authSetToken(AuthSetTokenParams p);
   Future<bool> authHasToken();
+  Future<String?> authAccount();
   Future<HttpResponse> httpRequest(HttpRequestParams p);
   Future<List<Row>> dataGetMany(DataGetManyParams p);
   Future<SyncStatus> syncStatus();
@@ -434,6 +437,8 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<void> authSetToken(AuthSetTokenParams p) async => throw const BridgeError('E_UNSUPPORTED', 'auth.setToken is not implemented');
   @override
   Future<bool> authHasToken() async => throw const BridgeError('E_UNSUPPORTED', 'auth.hasToken is not implemented');
+  @override
+  Future<String?> authAccount() async => throw const BridgeError('E_UNSUPPORTED', 'auth.account is not implemented');
   @override
   Future<HttpResponse> httpRequest(HttpRequestParams p) async => throw const BridgeError('E_UNSUPPORTED', 'http.request is not implemented');
   @override
@@ -522,6 +527,10 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
       case 'auth.hasToken':
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.authHasToken();
+        return replyOk(id, r);
+      case 'auth.account':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.authAccount();
         return replyOk(id, r);
       case 'http.request':
         final r = await h.httpRequest(HttpRequestParams.fromJson(p, 'p'));
@@ -669,12 +678,17 @@ abstract class ValenceBuiltins {
 
   /// `auth.setToken`, from the package.
   Future<void> authSetToken(AuthSetTokenParams p) async {
-    await valence.authSetToken(p.token);
+    await valence.authSetToken(p.token, account: p.account, discardPending: p.discardPending ?? false);
   }
 
   /// `auth.hasToken`, from the package.
   Future<bool> authHasToken() async {
     return valence.authHasToken();
+  }
+
+  /// `auth.account`, from the package.
+  Future<String?> authAccount() async {
+    return valence.authAccount();
   }
 
   /// `http.request`, from the package.
