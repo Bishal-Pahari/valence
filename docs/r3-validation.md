@@ -1,4 +1,49 @@
-# R3 permissions validation - 2026-10-22
+# R3 permissions validation - 2026-10-26
+
+## Queue refresh - 2026-10-26
+
+**In plain terms.** Permissions now include the current account-switch safeguards,
+mechanical doctor, event capability gates and host-widget tests. The compiled
+allowlist and foreground-only, serialized dialogs remain intact. The website
+keeps both the permissions and account guides.
+
+Package base: `e879260366282c9f504057423d54f682dcb10c81`; merge: `3e70c5d`.
+Site base: `f59fbc1568c895d4cd35d385733175397beeef6a`; merge: `f45ccf2`.
+Both branches are `codex/r3`.
+
+Decision: retain upstream schema 13 and `auth.account` since 13, with permissions
+methods and event since 10. Lowering the whole schema to 10 would invalidate
+upstream account behavior. Preserve the actual schema-1 store baseline, regenerate
+both typed clients, and rebuild the signed example without replacing that record.
+This intermediate host must not be published before the reserved lower-numbered
+surfaces are integrated; R8, R7 and R6 precede R3 in the merge queue. Package
+versions are unchanged.
+
+Fresh gates: 67 root tests, zero skips (generated Dart and strict generated
+TypeScript exercised); 418 runtime tests; clean `dart analyze --fatal-infos .`;
+21 bridge tests, strict TypeScript, bridge build and pack dry-run; 17 example
+tests; clean example codegen check; signed built-in verification (seq 1793036366,
+bridge 13); Android x64 debug APK with its embedded manifest matched to the
+verified bundle; pub publish dry-run with zero warnings; 29-page website build
+and SEO/link checks. Every gate passed.
+
+Independent security review found no confirmed defects. It checked immutable
+allowlists, unknown/disabled kinds before native access, serialized queue recovery,
+foreground rechecks after asynchronous preparation, detach identity, startup and
+resume ordering, native declarations, generated nonce/strict parameter handling,
+website consistency and additive schema preservation. Independent example codegen
+and two focused Node checks passed; a programmatic comparison confirmed both
+schemas retain every upstream method, event and type.
+
+Read both apps' findings and newest reports read only: Kundalini iteration 11 and
+app-a iteration 9. App-a's mismatched supplied snapshots remain a harness delivery
+issue; this branch's matched generator/bridge pass compilation. No harness package
+snapshots were replaced. No new emulator run was made; the Android evidence below
+is historical. iOS remains experimental and untested. Only R3's roadmap Status
+cell is changed; this note stays here to respect the shared-file boundary. No
+push, publication or merge into shared branches was performed.
+
+The following records are historical and predate this refresh.
 
 Branch: `codex/r3` in the package and website worktrees. No version bump, push,
 publication or merge into `packages` was performed. Test-app repositories were read only.
