@@ -129,6 +129,15 @@ final class ValenceSync {
   bool _unauthorized = false;
   bool _incomplete = false;
 
+  /// Whether the last [pullPair] stopped because it had spent its `byteBudget`, rather than because the
+  /// pair was finished or the link failed.
+  ///
+  /// The updater's step 7 reads this: a pair left short by the configured data cap is `toobig` (§4.6),
+  /// not `waitingForData`. The two look identical from the outside — the pair is simply not in
+  /// `syncedPairs()` — and telling a developer their data is unavailable when their own cap stopped the
+  /// download sends them looking at the server.
+  bool budgetExhausted = false;
+
   /// Reads persisted observations and current outbox depth without taking the sync lease.
   Future<ValenceSyncStatus> status() async => ValenceSyncStatus(
         pending: await store.pendingWrites(),
@@ -310,6 +319,7 @@ final class ValenceSync {
   ///
   /// Returns the rows applied. Stops early and logs when [byteBudget] is exhausted.
   Future<int> pullPair(String bucket, int schema, {int? byteBudget}) async {
+    budgetExhausted = false;
     if (config.syncMode == ValenceSyncMode.staticChunks && !config.writableBuckets.contains(bucket)) {
       return _pullStatic(bucket, schema, byteBudget: byteBudget);
     }
@@ -370,6 +380,7 @@ final class ValenceSync {
       if (!page.more) return applied;
       if (byteBudget != null && spent >= byteBudget) {
         _incomplete = true;
+        budgetExhausted = true;
         _log('sync: pull $bucket v$schema hit the $byteBudget byte budget after $applied rows; backing off');
         return applied;
       }
@@ -448,6 +459,7 @@ final class ValenceSync {
       await renewLease();
       if (byteBudget != null && spent >= byteBudget && chunks.any((c) => c.to > chunk.to)) {
         _incomplete = true;
+        budgetExhausted = true;
         _log('sync: static pull $bucket v$schema hit the $byteBudget byte budget; backing off');
         return applied;
       }

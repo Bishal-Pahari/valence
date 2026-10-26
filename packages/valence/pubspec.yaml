@@ -44,6 +44,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  # The widget harness replaces only native WebView calls, not host policy.
+  webview_flutter_platform_interface: ^2.15.1
   # So a test can swap in flutter_secure_storage's own in-memory platform instead of the Keystore.
   flutter_secure_storage_platform_interface: ^2.1.1
   sqflite_common_ffi: ^2.4.4
