@@ -1,15 +1,5 @@
 # valence
 
-## Task restoration in 0.4
-
-Schema 8 adds `state.save({json})` and `state.restore()` for at most 65,536 JSON
-UTF-8 bytes of task-local UI state. ValenceApp installs its own RootRestorationScope
-and restores the local path/query/hash after OS process reclamation. A fresh task
-after explicit closure starts empty; an update or rollback clears the snapshot.
-Use SQLite for durable records and secure storage for secrets.
-[Guide](../../docs/state-restoration.md). The iOS FlutterViewController needs a
-restoration identifier in Main.storyboard; iOS is experimental and untested.
-
 The Flutter host runtime for [Valence](https://getvalence.pages.dev): your web app runs inside a native
 app as a **signed over-the-air bundle**, on top of an **offline-first SQLite** store with incremental sync
 and a **typed bridge**. UI changes ship without an app-store review; the native shell is reviewed rarely.
@@ -20,6 +10,19 @@ import, sync with its lease, the strict bridge decoding, and the WebView with it
 gesture and console capture.
 
 Your app supplies two things: its generated config, and its own native bridge methods.
+
+Task snapshots are bound to the native account as well as the signed bundle: switching or signing out clears the route and draft, including stale OS snapshots. Refresh and first-account adoption retain the live draft.
+
+## Task restoration in 0.4
+
+Schema 8 adds `state.save({json})` and `state.restore()` for at most 65,536 JSON
+UTF-8 bytes of task-local UI state. ValenceApp installs its own RootRestorationScope
+and restores the local path/query/hash after OS process reclamation. A fresh task
+after explicit closure starts empty; an update or rollback clears the snapshot.
+Use SQLite for durable records and secure storage for secrets.
+[Guide](../../docs/state-restoration.md). The iOS FlutterViewController needs a
+restoration identifier in Main.storyboard; iOS is experimental and untested.
+
 
 ## Setup
 
@@ -111,8 +114,14 @@ seq. Pointing the channel at an older seq only cancels pending downloads.
 `flutter test` in this package runs the contracts §8 matrix: every canonical check rejecting, the state
 machine's strikes and promotions, the server's three branches in order, the store, sync and the lease.
 
+[The host widget tests](https://getvalence.pages.dev/docs/guides/host-widget-tests/) pump the real
+`ValenceApp` against a test-only WebView platform, with signed bundles, SQLite and a loopback socket, so
+`flutter test test/app_widget_test.dart` covers the lifecycle, the startup resume guard, the navigation
+lock, bridge nonce forwarding, event buffering and the ready timer.
+
 A green unit suite is **not** evidence the store opens on a phone — see the first gotcha above. The §8
-integration row is what covers that.
+integration row is what covers that, and the widget harness replaces only the native WebView calls, so
+it proves host *policy* and never the OS WebView's own behaviour. iOS stays experimental and untested.
 
 ## Versioning
 
@@ -125,6 +134,18 @@ MIT. The spec is `contracts.md`, which ships inside the `/valence` Claude Code s
 ## Native HTTP (contracts section 4.5)
 
 Generated `http.request` delegates to `Valence.httpRequest`. Configure exact trusted `http.origins` origins, regenerate, and ship a host; they become `ValenceConfig.httpOrigins` (default deny all). The host reads the R1 token per request, with `authToken` callback precedence, and emits `auth.expired` for an authenticated 401. Redirects are returned without following them. Text bodies: 64 KiB; headers: 16 KiB; total deadline: 20 seconds. Use HTTPS in production and no shared server secrets in an APK. [API and adapter guide](https://getvalence.pages.dev/docs/guides/your-backend/). iOS remains experimental and untested.
+## Account switching (contracts section 4.4)
+
+`Valence.authSetToken(token, {account, discardPending})` records your own opaque account id beside the
+token. The same id is a refresh. A different id, or `authSetToken(null)` with an id recorded, clears
+every writable bucket's rows, `max_usn` cursor and the whole outbox in one transaction, under the sync
+lease, *before* the new token is stored, and emits `sync.changed` for those buckets. It throws
+`E_PENDING` and changes nothing while the outbox is not empty — the host reads the stored token when it
+makes a request, so the alternative is pushing one account's writes under another's credentials — unless
+`discardPending` is set. A first id with none recorded is an adoption that clears nothing, and an app
+that never passes one keeps the 0.3 behaviour. `Valence.authAccount()` reads the id back and is the gate
+the page must check: the params have no `since` of their own.
+
 ## Lifecycle, connectivity and update status (contracts section 4.6)
 
 `Valence.appState()` returns the current `ValenceLifecycle` and the OS's network-interface state;

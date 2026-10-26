@@ -143,7 +143,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       );
       _valence.updater.save(); // bind may have moved state.port
       _valence.bound(server, manifest);
-      _valence.restoration.activate(manifest.seq);
+      await _valence.prepareRestoration(manifest.seq);
       _origin = server.origin;
       _log('serving bundle ${manifest.seq} on ${server.origin}');
 
@@ -441,7 +441,9 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       case AppLifecycleState.hidden:
         // The ready timer counts foreground time, so it pauses with the app.
         _readyClock.stop();
-        unawaited(_captureRoute());
+        if (state == AppLifecycleState.hidden || state == AppLifecycleState.paused) {
+          unawaited(_captureRoute());
+        }
     }
   }
 
@@ -449,9 +451,11 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     final seq = _valence.manifest?.seq;
     final controller = _controller;
     final origin = _origin;
+    final accountRevision = _valence.restoration.accountRevision;
     try {
       final url = await controller?.currentUrl();
-      if (mounted && seq == _valence.manifest?.seq && controller == _controller && origin == _origin && url != null) {
+      if (mounted && seq == _valence.manifest?.seq && controller == _controller && origin == _origin &&
+          accountRevision == _valence.restoration.accountRevision && url != null) {
         _valence.restoration.observe(url, origin);
       }
     } on Object catch (e) {

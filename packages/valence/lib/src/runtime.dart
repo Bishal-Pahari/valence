@@ -34,7 +34,7 @@ export 'manifest.dart'
         isReservedBundlePath,
         isSafeBundlePath;
 export 'native_http.dart' show ValenceHttp, ValenceHttpResponse;
-export 'secure.dart' show ValenceSecure, secureAuthTokenKey;
+export 'secure.dart' show ValenceSecure, secureAuthTokenKey, secureAuthAccountKey;
 export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
 export 'store.dart' show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, isDatabaseLocked, maxListLimit;
@@ -152,6 +152,19 @@ final class Valence {
 
   /// `state.restore`: the last task-local blob, or null in a fresh task.
   Object? stateRestore() => restoration.restore();
+
+  /// Validates a restored task against secure account state before any route is loaded.
+  Future<void> prepareRestoration(int seq) async {
+    try {
+      restoration.bindAccount(await secure.authAccount());
+    } on BridgeError {
+      // Public/offline startup must survive a missing Keystore. The snapshot cannot be trusted,
+      // but the verified root page can still load without restoring anyone's route or draft.
+      restoration.clear();
+      _log('restoration: account could not be checked; starting with an empty task snapshot');
+    }
+    restoration.activate(seq);
+  }
 
   Valence._({
     required this.config,
@@ -553,11 +566,123 @@ final class Valence {
   /// `secure.delete`.
   Future<void> secureDelete(String key) => secure.delete(key);
 
+  Future<void> _authTail = Future<void>.value();
+
   /// `auth.setToken`. A null [token] clears it. The host attaches it to every user-bucket request (§4.4).
-  Future<void> authSetToken(String? token) => secure.setAuthToken(token);
+  ///
+  /// [account] is the app's own opaque id for the user. Recording a **different** one, or signing out
+  /// with one recorded, is an account switch: it refuses to run over queued writes unless
+  /// [discardPending] is set, and then clears every writable bucket before the new token is stored.
+  /// An app that never passes [account] keeps the 0.3 behaviour — the token changes and no row moves.
+  Future<void> authSetToken(String? token, {String? account, bool discardPending = false}) {
+    final result = _authTail.then((_) => _setAuthToken(token, account: account, discardPending: discardPending));
+    // A refused switch must not poison the queue for the user's next attempt.
+    _authTail = result.then<void>((_) {}, onError: (Object error, StackTrace stack) {});
+    return result;
+  }
+
+  Future<void> _setAuthToken(String? token, {String? account, required bool discardPending}) async {
+    final next = (account == null || account.isEmpty) ? null : account;
+    // `null` only. An empty string clears the token exactly as it did before R13 — a refresh loop that
+    // yields '' on failure, or an app's uninitialised state field, must not be read as "this is a
+    // different person" and destroy the user's local data.
+    final signOut = token == null;
+    final recorded = await secure.authAccount();
+    // The *recorded* id changing is the switch. A first id with none recorded is an adoption: that is an
+    // app upgrading to this shape with its current user signed in, and wiping there would destroy the
+    // data of the user holding the phone. Signing out counts only once an id is recorded, so no app gets
+    // a wipe it did not ask for by upgrading its host.
+    final switching = recorded != null && (signOut || (next != null && next != recorded));
+    if (!switching) {
+      await _storeToken(token, signOut: signOut, next: next);
+      restoration.bindAccount(signOut ? null : next ?? recorded, adopt: recorded == null && !signOut);
+      return;
+    }
+    await _switchAccount(token, from: recorded, to: signOut ? null : next, discardPending: discardPending);
+  }
+
+  /// Writes the token, and the recorded id when the call named one.
+  ///
+  /// Clear the id on sign-out, so the next sign-in of a *third* account is an adoption rather than a
+  /// second wipe of data that is already gone. On a switch the new id replaces it; on a refresh it is
+  /// unchanged; an app that passes no id at all leaves whatever was recorded alone, which is what makes
+  /// a Dart-side refresh loop calling authSetToken(newToken) harmless.
+  Future<void> _storeToken(String? token, {required bool signOut, required String? next}) async {
+    await secure.setAuthToken(token);
+    if (signOut) {
+      await secure.setAuthAccount(null);
+    } else if (next != null) {
+      await secure.setAuthAccount(next);
+    }
+  }
+
+  /// The §4.4 switch: clear, then store, **both** under the §5.6 sync lease.
+  Future<void> _switchAccount(
+    String? token, {
+    required String from,
+    required String? to,
+    required bool discardPending,
+  }) async {
+    // A push in flight has already read the old token, and its acknowledgements would land after the
+    // wipe — re-creating rows of the account that just left. The lease is the only thing that orders us
+    // against it, so failing to take it fails the switch rather than clearing underneath one.
+    final wait = Stopwatch()..start();
+    var acquired = await sync.acquireLease();
+    while (!acquired && wait.elapsed < const Duration(seconds: 5)) {
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+      acquired = await sync.acquireLease();
+    }
+    if (!acquired) {
+      throw BridgeError(
+        BridgeErrorCode.internal,
+        'a sync is running and did not finish within five seconds; nothing was changed, so call '
+        'auth.setToken again',
+      );
+    }
+    try {
+      final (rows, ops) = await store.clearWritable(config.writableBuckets, discardPending: discardPending);
+      _log('auth: account switch from "$from" to ${to == null ? 'signed out' : '"$to"'} cleared $rows '
+          'row(s) and $ops queued write(s) from ${config.writableBuckets.length} writable bucket(s)');
+      // A writable bucket the app has since dropped from its config keeps its rows here, because the
+      // clear can only name the buckets it is told about. Say so: those rows belong to the account that
+      // just left, and the page can still read them.
+      final known = {...config.writableBuckets, ...config.dataSchemas.keys, ...?_manifest?.requiresData.keys};
+      final orphans = [for (final b in (await store.allPairs()).keys) if (!known.contains(b)) b];
+      if (orphans.isNotEmpty) {
+        _log('auth: ${orphans.join(', ')} hold rows and are in neither "writable" nor "data"; the switch '
+            'could not clear them, so the previous account is still readable there');
+      }
+      // Inside the lease: a sync starting between the clear and the token write would pull the previous
+      // account's rows straight back under the previous account's token, because the header is built
+      // per request, and the new token would then be stored over them.
+      // Secure storage writes one key at a time. Remove A's bearer before recording B, then write
+      // B's bearer only after B's identity is durable. Every crash/failure between these writes leaves
+      // no token, never B's credentials under A's identity (which would also restore A's task draft).
+      await secure.setAuthToken(null);
+      await secure.setAuthAccount(to);
+      restoration.bindAccount(to);
+      await secure.setAuthToken(token);
+    } finally {
+      await sync.releaseLease();
+    }
+    // The page may be showing the rows that just went. sync.changed is the event it already listens to
+    // for that, and re-deriving it costs nothing here: every writable bucket is empty now.
+    for (final bucket in config.writableBuckets) {
+      _lastSeenUsn[bucket] = 0;
+    }
+    if (config.writableBuckets.isNotEmpty) {
+      emit(eventScript('sync.changed', {'buckets': config.writableBuckets.toList()}));
+    }
+  }
 
   /// `auth.hasToken`. Whether a token is stored — the only thing the page may learn about it.
   Future<bool> authHasToken() => secure.hasAuthToken();
+
+  /// `auth.account`. The opaque id last passed to [authSetToken], or null.
+  ///
+  /// Also the gate for the `account` and `discardPending` params, which have no `since` of their own:
+  /// `has('auth.account')` is false on exactly the hosts that would reject them with `E_PARAMS` (§4.4).
+  Future<String?> authAccount() => secure.authAccount();
 
   /// `http.request`: online text RPC restricted to the host's compiled origins (§4.5).
   Future<ValenceHttpResponse> httpRequest({

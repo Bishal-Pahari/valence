@@ -2,6 +2,8 @@
 
 ## Unreleased: task restoration
 
+Task restoration now checks the native account before loading a restored route, clears drafts on account switch/sign-out and refuses late route captures from the previous account. Refresh and first-account adoption keep the live draft.
+
 Schema 8 adds `state.save({json})` and `state.restore()` for a task-local UI blob (65,536 JSON UTF-8 bytes). ValenceApp restores the local path/query/hash after OS process reclamation. Explicit task closure starts fresh; a different bundle seq clears the snapshot. Save promptly and keep durable records in SQLite. iOS is experimental and untested.
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
@@ -9,6 +11,22 @@ Sync correctness: pull cursors advance only through returned rows, never push ec
 ## Unreleased - native HTTP and REST adapter
 
 Call your API with `http.request` (schema 4): the host enforces compiled `http.origins` origins, attaches the stored token, and never follows redirects. Existing hosts need codegen and a store build to add the capability or origins. A reference Node REST-to-sync adapter demonstrates durable pagination, tombstones and idempotent pushes. iOS remains experimental and untested.
+## Unreleased - account switching is safe
+
+Schema version 13. `Valence.authSetToken` takes `account` and `discardPending`, and `Valence.authAccount()`
+is new. Recording a different opaque account id, or signing out with one recorded, clears every writable
+bucket's rows, `max_usn` cursor and the whole outbox in one transaction under the sync lease, before the
+new token is stored, and emits `sync.changed` for those buckets. It throws the new `E_PENDING`
+(`BridgeErrorCode.pending`) and changes nothing while the outbox is not empty, unless `discardPending` is
+set; it fails with `E_INTERNAL` rather than clearing underneath a sync that holds the lease, and it keeps
+the lease until the new token is written, so a sync starting in between cannot pull the previous
+account's rows back under the previous account's token. Only `null` is the sign-out — an empty token
+clears the token and no data. A refresh of the recorded id, a first id with none recorded, and an app
+that never passes one all clear nothing, so a host upgrade cannot wipe an existing user's data. An
+account id the Keystore cannot return throws `E_INTERNAL` instead of reading as "none recorded", which
+would have made the next sign-in an adoption over the previous account's rows. iOS remains experimental
+and untested.
+
 ## Unreleased - lifecycle, connectivity and update status
 
 Bridge version 6. `ValenceApp` maps Flutter's five lifecycle states onto four and emits `app.lifecycle`

@@ -34,6 +34,8 @@ verified bundle with a different seq (including rollback) discards both route an
 The new page must still call `ready()` after painting; restoration never commits an OTA.
 Only the current URL is restored, not the browser's full Back stack.
 
+Snapshots also follow the native account: switching accounts or signing out clears the route and draft. Same-account refresh and first-account adoption keep the live draft. Startup checks an account fingerprint against secure storage before restoring, so a stale OS snapshot cannot expose the previous user's UI state. The page must redraw its own live account UI after switching; restoration does not erase the DOM.
+
 For custom native hosts, use the Flutter restoration APIs to preserve the runtime's
 task-local model; simply calling `Valence.open` does not enable widget restoration.
 
@@ -49,3 +51,7 @@ iOS is experimental and untested. Assign a restoration identifier to the
 for native embedding and device testing. OS snapshots are best effort on either platform.
 
 Source of truth: contracts §4.7; runtime `restoration.dart` and `app.dart`.
+
+If secure storage cannot confirm the account at startup, the host discards the snapshot and opens the verified root page so public/offline startup still works.
+
+Account-changing calls are serialized in the host, and a refusal does not block later attempts. An app refresh loop must cancel an outstanding refresh when the user changes, or pass the correct explicit account id; a refresh without an id cannot tell the host whose token it is. Interrupted secure writes can leave the new account recorded without a token; retry sign-in to repair it.

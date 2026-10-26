@@ -226,7 +226,10 @@ final class ValenceStore {
   }) async {
     final n = (limit == null || limit <= 0) ? defaultListLimit : (limit > maxListLimit ? maxListLimit : limit);
     final (where, args) = _liveRowsWhere(bucket, schema, prefix);
-    if (after != null && after.isNotEmpty) {
+    // `after != null`, not `after.isNotEmpty`: the empty string is a valid key — only `.` and `..` are
+    // refused (§4.2) — so treating `after: ''` as "no cursor" makes a bucket whose first key is empty
+    // hand back that same row for ever, and the bucket has no complete read at all.
+    if (after != null) {
       where.write(' AND key > ?');
       args.add(after);
     }
@@ -569,6 +572,49 @@ final class ValenceStore {
       await txn.delete('kv', where: 'bucket = ? AND schema = ?', whereArgs: [bucket, schema]);
       await txn.delete('bucket', where: 'name = ? AND schema = ?', whereArgs: [bucket, schema]);
     });
+  }
+
+  /// Deletes every row, cursor and queued write of the given writable [buckets] (contracts §4.4).
+  ///
+  /// This is the account switch, and nothing else may call it: the rows belong to the account that is
+  /// being replaced, and keeping them would show user A's data to user B on a shared phone while a
+  /// `max_usn` from A's server numbering silently skipped the start of B's history.
+  ///
+  /// One transaction, so a crash halfway cannot leave rows without their outbox or a cursor without its
+  /// rows. The outbox is cleared **whole**: every op in it belongs to a writable bucket by construction
+  /// (`data.put` refuses anything else), and an op left behind would be pushed under the next account's
+  /// token. Returns the number of `kv` rows and outbox ops deleted, for the log line.
+  ///
+  /// The "are there unsent writes?" question is answered **inside** the same transaction, and throws
+  /// `E_PENDING` unless [discardPending] is set. Asking first and deleting afterwards leaves a window in
+  /// which a `data.put` lands between the two — and that write would then be deleted unsent by a call
+  /// whose whole contract is that it refuses to do exactly that.
+  Future<(int, int)> clearWritable(Set<String> buckets, {required bool discardPending}) async {
+    if (buckets.isEmpty) return (0, 0);
+    var rows = 0;
+    var ops = 0;
+    final marks = List.filled(buckets.length, '?').join(', ');
+    final names = buckets.toList();
+    await db.transaction((txn) async {
+      if (!discardPending) {
+        final queued = (await txn.rawQuery('SELECT COUNT(*) AS n FROM outbox')).first['n']! as int;
+        if (queued > 0) {
+          throw BridgeError(
+            BridgeErrorCode.pending,
+            '$queued local write${queued == 1 ? ' has' : 's have'} not reached the server, and ${queued == 1 ? 'it belongs' : 'they belong'} '
+            'to the account being signed out. Sync them first, or pass {"discardPending": true} to '
+            'delete them unsent (contracts §4.4).',
+          );
+        }
+      }
+      rows = await txn.delete('kv', where: 'bucket IN ($marks)', whereArgs: names);
+      await txn.delete('bucket', where: 'name IN ($marks)', whereArgs: names);
+      ops = await txn.delete('outbox');
+      // The freshness observations describe the account that just left. Left behind, sync.status()
+      // answers 'synced a minute ago' over the new account's empty buckets, before it has ever synced.
+      await txn.delete('prefs', where: 'key IN (?, ?)', whereArgs: ['valence.sync.lastSyncedAt', 'valence.sync.offline']);
+    });
+    return (rows, ops);
   }
 
   // ---------------------------------------------------------------------------
