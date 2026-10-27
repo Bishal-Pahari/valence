@@ -6,12 +6,51 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:valence/valence.dart';
 import 'package:valence/src/dev.dart';
 
+// Keep the real upstream handshake, then simulate a downstream socket failure.
+class _FailedUpgradeRequest extends Fake implements HttpRequest {
+  _FailedUpgradeRequest(this.request);
+  final HttpRequest request;
+  @override
+  String get method => request.method;
+  @override
+  Uri get uri => request.uri;
+  @override
+  HttpHeaders get headers => request.headers;
+  @override
+  HttpResponse get response => _FailedUpgradeResponse(request.response);
+}
+
+class _FailedUpgradeResponse extends Fake implements HttpResponse {
+  _FailedUpgradeResponse(this.response);
+  final HttpResponse response;
+  @override
+  HttpHeaders get headers => response.headers;
+  @override
+  set statusCode(int value) => response.statusCode = value;
+  @override
+  set contentLength(int value) => response.contentLength = value;
+  @override
+  Future<Socket> detachSocket({bool writeHeaders = true}) async =>
+      throw const HttpException('downstream socket failed');
+}
+
 void main() {
   test('development accepts only explicit HTTP(S) origins', () {
     for (final url in ['file:///tmp', 'http://u:p@localhost', 'http://localhost/x',
       'http://localhost?x', 'http://localhost#x', '//localhost']) {
       expect(() => ValenceDevProxy(url), throwsArgumentError);
     }
+  });
+
+  test('invalid dev URL allocates no HTTP client', () {
+    var clients = 0;
+    HttpOverrides.runZoned(() {
+      expect(() => ValenceDevProxy('file:///tmp'), throwsArgumentError);
+    }, createHttpClient: (_) {
+      clients++;
+      throw StateError('unexpected HTTP client allocation');
+    });
+    expect(clients, 0);
   });
 
   test('every read of VALENCE_DEV_URL is guarded by kDebugMode (§3.1)', () {
@@ -47,9 +86,11 @@ void main() {
   late ValenceDevProxy dev;
   late HttpClient client;
   final seen = <HttpRequest>[];
+  late Completer<void> remoteClosed;
 
   setUp(() async {
     seen.clear();
+    remoteClosed = Completer<void>();
     upstream = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     upstream.listen((req) async {
       seen.add(req);
@@ -59,7 +100,9 @@ void main() {
       } else if (WebSocketTransformer.isUpgradeRequest(req)) {
         final socket = await WebSocketTransformer.upgrade(req,
             protocolSelector: (protocols) => protocols.contains('vite-hmr') ? 'vite-hmr' : null);
-        socket.listen((message) => socket.add(message));
+        socket.listen((message) => socket.add(message), onDone: () {
+          if (req.uri.path == '/upgrade-failure') remoteClosed.complete();
+        });
         return;
       } else {
         req.response.headers.contentType = req.uri.path == '/module.js'
@@ -72,7 +115,8 @@ void main() {
     proxy = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     proxy.listen((req) async {
       try {
-        await dev.handle(req, 'launch-secret');
+        await dev.handle(req.uri.path == '/upgrade-failure'
+            ? _FailedUpgradeRequest(req) : req, 'launch-secret');
       } on Object {
         req.response.statusCode = 502;
         await req.response.close();
@@ -142,6 +186,13 @@ void main() {
   test('WebSocket redirects are refused', () async {
     await expectLater(WebSocket.connect('ws://127.0.0.1:${proxy.port}/redirect'), throwsA(isA<WebSocketException>()));
     expect(seen.length, 1);
+  });
+
+  test('failed downstream upgrade closes its connected upstream socket', () async {
+    await expectLater(WebSocket.connect('ws://127.0.0.1:${proxy.port}/upgrade-failure'),
+        throwsA(isA<WebSocketException>()));
+    expect(seen.single.uri.path, '/upgrade-failure');
+    await remoteClosed.future.timeout(const Duration(seconds: 3));
   });
 
   test('real host keeps reserved routes native under the compile-time dev define', () async {

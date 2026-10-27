@@ -65,6 +65,11 @@ Details and exact policy quotes are in [contracts.md §7](.claude/skills/valence
 
 ## Quick start
 
+Native plugin results are checked against the schema; malformed results report
+`E_INTERNAL`. Plugin packages have host privileges. Their separately published
+web types are hand-maintained; see [the plugin guide](docs/writing-plugins.md)
+for the storage boundaries and the tooling/runtime namespace check.
+
 Share a PNG or JPEG through the native sheet with schema-14 `share.image`, from
 small inline bytes or the active signed bundle, with an optional caption.
 [Image sharing and limits](docs/image-sharing.md). Older custom sharing handlers remain compatible.

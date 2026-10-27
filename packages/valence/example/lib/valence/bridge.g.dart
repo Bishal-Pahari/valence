@@ -1131,6 +1131,7 @@ abstract class ValenceBuiltins {
 
   /// `haptics.tap`, from the package.
   Future<void> hapticsTap() async {
-    await plugins.invoke(valence, 'haptics.tap', const <String, Object?>{});
+    final r = await plugins.invoke(valence, 'haptics.tap', const <String, Object?>{});
+    if (r != null) throw const BridgeError('E_INTERNAL', 'native plugin returned an invalid result');
   }
 }

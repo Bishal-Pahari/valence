@@ -17,11 +17,11 @@ final class ValenceDevProxy {
       throw ArgumentError(
           'VALENCE_DEV_URL must be an HTTP(S) origin without credentials');
     }
+    _client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
   }
 
   final Uri upstream;
-  final HttpClient _client = HttpClient()
-    ..connectionTimeout = const Duration(seconds: 5);
+  late final HttpClient _client;
   final Set<WebSocket> _sockets = {};
 
   void close() {
@@ -66,11 +66,17 @@ final class ValenceDevProxy {
     if (WebSocketTransformer.isUpgradeRequest(req)) {
       final remote = await _connect(target,
           req.headers.value('sec-websocket-protocol')?.split(',').map((p) => p.trim()).toList() ?? []);
-      final local = await WebSocketTransformer.upgrade(req,
-          protocolSelector: (protocols) =>
-              remote.protocol != null && protocols.contains(remote.protocol)
-                  ? remote.protocol
-                  : null);
+      final WebSocket local;
+      try {
+        local = await WebSocketTransformer.upgrade(req,
+            protocolSelector: (protocols) =>
+                remote.protocol != null && protocols.contains(remote.protocol)
+                    ? remote.protocol
+                    : null);
+      } on Object {
+        await remote.close();
+        rethrow;
+      }
       _sockets.addAll([local, remote]);
       void finish() {
         _sockets.removeAll([local, remote]);
