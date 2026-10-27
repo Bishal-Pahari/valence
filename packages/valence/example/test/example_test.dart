@@ -450,4 +450,20 @@ void main() {
     );
     expect(BridgeEvents.bundleUpdateReady(seq: 42), contains('{"seq":42}'));
   });
+  test('permissions use strict generated dispatch and the store allowlist', () async {
+    final h = await handlers(config: valenceConfig.copyWith(permissionKinds: {}));
+    final denied = await dispatch(h, 'permissions.check', params: {'kind': 'camera'});
+    expect((denied['e']! as Map)['code'], BridgeErrorCode.denied);
+    final unknown = await dispatch(h, 'permissions.check', params: {'kind': 'sql'});
+    expect((unknown['e']! as Map)['code'], BridgeErrorCode.params);
+    final invalid = await dispatch(h, 'permissions.request', params: {'kind': 'camera', 'force': true});
+    expect((invalid['e']! as Map)['code'], BridgeErrorCode.params);
+    final nonce = await dispatch(h, 'permissions.request', params: {'kind': 'camera'}, withNonce: 'bad');
+    expect((nonce['e']! as Map)['code'], BridgeErrorCode.denied);
+    final inactive = await dispatch(h, 'permissions.openSettings');
+    expect((inactive['e']! as Map)['code'], BridgeErrorCode.denied);
+    expect(BridgeEvents.permissionsChanged(permissions: [const PermissionState(kind: 'camera', status: 'granted')]),
+      contains('"permissions":[{"kind":"camera","status":"granted"}]'));
+  });
+
 }

@@ -16,6 +16,8 @@ import 'links.dart';
 import 'manifest.dart';
 import 'native_http.dart';
 import 'restoration.dart';
+
+import 'permissions.dart';
 import 'secure.dart';
 import 'server.dart';
 import 'state.dart';
@@ -38,10 +40,12 @@ export 'manifest.dart'
         isReservedBundlePath,
         isSafeBundlePath;
 export 'native_http.dart' show ValenceHttp, ValenceHttpResponse;
+export 'permissions.dart' show ValencePermissions, ValencePermissionBackend, valencePermissionKinds;
 export 'secure.dart' show ValenceSecure, secureAuthTokenKey, secureAuthAccountKey;
 export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
-export 'store.dart' show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, isDatabaseLocked, maxListLimit;
+export 'store.dart'
+    show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, isDatabaseLocked, maxListLimit;
 export 'sync.dart' show ValenceSync, ValenceSyncReason, ValenceSyncResult, ValenceSyncStatus;
 export 'updater.dart' show ValenceBundleReason, ValenceBundleStatus, ValenceUpdater;
 export 'wire.dart' show BridgeError, BridgeErrorCode, maxMessageBytes;
@@ -202,6 +206,7 @@ final class Valence {
     Directory? documentsDir,
     ValenceSecure? secure,
     DatabaseFactory? databaseFactory,
+    ValencePermissionBackend? permissionBackend,
   }) async {
     // `open` is awaited in `main()` **before** `runApp`, and `runApp` is what would otherwise create the
     // binding — but the store's directory (path_provider), the seed (rootBundle) and secure storage all
@@ -271,9 +276,19 @@ final class Valence {
     // §4.4: a rejected token is the page's problem to fix, so it has to reach the page. Buffered like
     // every other event, which matters here because a cold start's first sync beats the entry page.
     sync.onUnauthorized = () => valence.emit(eventScript('auth.expired', const <String, Object?>{}));
+    valence.permissions = ValencePermissions(
+      kinds: config.permissionKinds,
+      isForeground: () =>
+          valence._view != null && WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed,
+      backend: permissionBackend,
+      log: log,
+    );
     await valence._importSeed();
     return valence;
   }
+
+  /// Permission service for the UI isolate, never used by background sync.
+  late final ValencePermissions permissions;
 
   /// The app's configuration.
   final ValenceConfig config;
@@ -334,6 +349,11 @@ final class Valence {
     return view == null ? 1 : ValenceAppearance.fromMediaQuery(MediaQueryData.fromView(view)).fontScale;
   }
 
+  /// Detaches only the view being disposed, so it cannot authorize permission prompts.
+  void detach(ValenceHostView view) {
+    if (identical(_view, view)) _view = null;
+  }
+
   /// Records the server and manifest the host widget is serving. Called by [ValenceApp].
   void bound(ValenceServer server, ValenceManifest manifest) {
     _server = server;
@@ -378,7 +398,8 @@ final class Valence {
     try {
       final counts = await store.importSeed(seedPath, config.dataSchemas, additionalSchemas: {
         for (final e in config.seedSchemas.entries)
-          if (config.dataSchemas.containsKey(e.key) && !config.writableBuckets.contains(e.key)) e.key: e.value,
+          if (config.dataSchemas.containsKey(e.key) && !config.writableBuckets.contains(e.key))
+            e.key: e.value,
       });
       final moved = counts.values.fold<int>(0, (a, b) => a + b);
       if (moved > 0) _log('seed: imported $counts');
@@ -498,7 +519,8 @@ final class Valence {
       store.list(bucket, schemaFor(bucket), prefix: prefix, limit: limit, after: after);
 
   /// `data.count`. Live rows only, resolved against the same schema as [dataList].
-  Future<int> dataCount(String bucket, {String? prefix}) => store.count(bucket, schemaFor(bucket), prefix: prefix);
+  Future<int> dataCount(String bucket, {String? prefix}) =>
+      store.count(bucket, schemaFor(bucket), prefix: prefix);
 
   /// `data.put`. A null [value] is the delete. Refuses a bucket that is not writable.
   Future<void> dataPut(String bucket, String key, Object? value) async {
@@ -911,7 +933,9 @@ final class Valence {
         e.osError,
       );
     }
-    if (moved.isNotEmpty) log('store: moved the 0.3 database to ${File(path).parent.path} (${moved.join(', ')})');
+    if (moved.isNotEmpty) {
+      log('store: moved the 0.3 database to ${File(path).parent.path} (${moved.join(', ')})');
+    }
   }
 
   /// Reads one asset as bytes. Used for the built-in bundle and the seed.

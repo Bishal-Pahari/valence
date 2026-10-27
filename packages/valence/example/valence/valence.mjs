@@ -54,6 +54,10 @@ const RESERVED_TYPES = new Set('Json Methods Events Object String Number Boolean
 const BUILTINS = {
   'state.save': { params: { json: 'json?' }, returns: 'void', call: () => 'valence.stateSave(p.json);' },
   'state.restore': { params: {}, returns: 'json?', call: () => 'return valence.stateRestore();' },
+
+  'permissions.check': { params: { kind: 'string' }, returns: 'string', call: () => 'return valence.permissions.check(p.kind);' },
+  'permissions.request': { params: { kind: 'string' }, returns: 'string', call: () => 'return valence.permissions.request(p.kind);' },
+  'permissions.openSettings': { params: {}, returns: 'bool', call: () => 'return valence.permissions.openSettings();' },
   'app.ready': { params: {}, returns: 'void', call: () => 'await valence.appReady();' },
   'app.info': {
     params: {},
@@ -1155,6 +1159,12 @@ const dartStr = (s) =>
 
 export function genDartConfig(cfg, keyring) {
   const linkOrigins = validateLinkOrigins(cfg.links?.origins ?? []);
+
+  const kinds = cfg.permissions?.kinds ?? [];
+  const knownKinds = new Set(['camera', 'location', 'notifications', 'contacts', 'bluetooth', 'microphone', 'photos']);
+  if (!Array.isArray(kinds) || kinds.some((kind) => !knownKinds.has(kind)) || new Set(kinds).size !== kinds.length) {
+    throw new Error('permissions.kinds must be an array of unique supported permission kinds');
+  }
   const connect = cfg.http?.origins ?? [];
   if (!Array.isArray(connect)) throw new Error('http.origins must be an array of exact HTTP(S) origins');
   for (const origin of connect) {
@@ -1180,6 +1190,7 @@ export function genDartConfig(cfg, keyring) {
     `  syncBase: ${dartStr(cfg.sync?.base ?? '')},`,
     `  writableBuckets: {${writable}},`,
     `  dataSchemas: {${data}},`,
+    `  permissionKinds: {${kinds.map(dartStr).join(', ')}},`,
     `  httpOrigins: {${connect.map((o) => dartStr(new URL(o).origin)).join(', ')}},`,
     `  linkOrigins: {${linkOrigins.map(dartStr).join(', ')}},`,
     `  seedSchemas: {${Object.entries(cfg.seedSchemas ?? {}).map(([b, ns]) => `${dartStr(b)}: [${ns.join(', ')}]`).join(', ')}},`,

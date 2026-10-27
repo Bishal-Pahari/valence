@@ -9,6 +9,20 @@
         <key>CFBundleURLName</key><string>com.getvalence.example</string>
         <key>CFBundleURLSchemes</key><array><string>valence-example</string></array>
     </dict></array>
+
+	<key>NSCameraUsageDescription</key>
+	<string>Demonstrate the camera permission when you tap Request.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Demonstrate the foreground location permission when you tap Request.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Demonstrate the contacts permission when you tap Request.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Demonstrate the microphone permission when you tap Request.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Demonstrate the photo library permission when you tap Request.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Demonstrate the Bluetooth permission when you tap Request.</string>
+
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

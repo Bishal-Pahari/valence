@@ -291,12 +291,14 @@ For batch reads, use `data.getMany` (since 3, max 500 keys). Read outbox depth f
 
 | Item | Version | Note |
 |---|---|---|
-| `valence` (pub.dev) | 0.4.0-beta.0 | **The host runtime.** `flutter pub add valence`. It brings `webview_flutter`, `sqflite`, `path_provider`, `cryptography`, `crypto`, `http`, `url_launcher`, `connectivity_plus` and `flutter_secure_storage` with it, so a host declares none of those itself. Needs Flutter 3.44 or later, and `minSdk 23` on Android (secure storage). Versioned independently of this CLI |
+| `valence` (pub.dev) | 0.4.0-beta.0 | **The host runtime.** `flutter pub add valence`. It brings `webview_flutter`, `sqflite`, `path_provider`, `cryptography`, `crypto`, `http`, `url_launcher`, `connectivity_plus`, `flutter_secure_storage`, `permission_handler` and `device_info_plus` with it, so a host declares none of those itself. Needs Flutter 3.44 or later, and `minSdk 23` on Android (secure storage). Versioned independently of this CLI |
 | `@getvalence/bridge` (npm) | 0.4.0-beta.0 | **The web client.** ESM, zero runtime dependencies, Node 22.18+ to run its own tests. App code imports it through the generated `bridge.g.ts`, never directly |
 | Flutter / Dart | 3.47.7 / 3.13.5 (stable, 2026-10-08) | `sqflite` 2.4.4+2 needs Flutter 3.44 or later |
 | webview_flutter | 4.14.1 (2026-07-07) | **default WebView**. `flutter_inappwebview` has had no stable release since 6.1.5 (2024-10-08) |
 | sqflite | 2.4.4+2 (2026-10-13) | Local store, inside the `valence` package. Drift 2.35.2 is fine if the app already uses it for its own tables |
 | cryptography | 2.9.0 (2025-11-21) | Ed25519 verify on the device, inside the `valence` package |
+| permission_handler | 12.0.3 (compatibility line checked 2026-10-22) | OS permission groups; [primary package docs](https://pub.dev/packages/permission_handler). SDK-37 resolution failed with the 13.x Android plugin; stay below 13 until verified. Android checks normalize inferred permanent denial. iOS remains experimental and untested. |
+| device_info_plus | 13.3.0 (checked 2026-10-22) | Android SDK number for permissions mappings; [primary package docs](https://pub.dev/packages/device_info_plus). Requires Kotlin 2.2+, AGP 8.12.1+, Gradle 8.13+, iOS 13+ and Xcode 26.1.1+. |
 | flutter_secure_storage | 11.2.0 (2026-09-16) | The bearer token and `secure.*` (§4.4), inside the `valence` package. **v11 wraps an AES-GCM record with a Keystore key instead of the deprecated `EncryptedSharedPreferences`**, and needs `minSdk 23`. `resetOnError` is on, so an undecryptable record is dropped rather than thrown — treat every read as "may be absent" (resolved 2026-10-21) |
 | workmanager | 0.10.10 (2026-09-07) | Background sync; best effort on iOS. **The app's dependency, not the package's** — `valence` gives you `Valence.backgroundSync(config)` and deliberately does not depend on `workmanager`. **Applies the Kotlin Gradle Plugin, and every Android build warns that future Flutter versions will refuse to build plugins that do** (observed 2026-10-17). Still current; re-check by 2026-12. If it becomes unbuildable, drive `WorkManager` and `BGTaskScheduler` through a platform channel — §5.6 specifies the triggers, not the package |
 | home_widget | 0.10.0 (2026-09-17) | Optional native value (§6) |
@@ -362,3 +364,7 @@ Task restoration follows the recorded account: switch/sign-out clears route and 
 ## Deep-link setup
 
 When an app opens OS links, follow contracts ?6.3: compile exact `links.origins`, configure native registrations, install one generated `onLink()` subscription after `connect()`, and test cold/warm and repeated intents. `assetlinks` and `aasa` generate website association documents; review and host them separately. A forced Android approval proves delivery only. iOS stays experimental and untested.
+
+## OS permissions (contracts §4.7)
+
+When the app needs camera, foreground location, notifications, contacts, Bluetooth, microphone or photos, use the package permissions built-ins (since 10). Compile only its needed `permissions.kinds`, copy the matching schema additions, regenerate, add the matching Android declarations and iOS usage keys/macros, then ship a store build. Read [references/permissions.md](references/permissions.md) for native setup before claiming a grant can be requested. Check silently on startup, request only from an explicit user action, handle all five status strings, and observe resume deltas. Never infer permanent denial from an Android status check. Test denial, settings return and queued/background requests. Do not replace the runtime service with generated handler bodies. iOS remains experimental and untested.

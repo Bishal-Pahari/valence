@@ -65,3 +65,9 @@ Task snapshots are bound to the native account as well as the signed bundle: swi
 ## Deep-link demo
 
 The R6 surfaces were added at schema 9. This merged example reports schema 13 and accepts `valence-example://app` and `https://links.example.invalid`. Native Android filters and experimental iOS registrations are included. The page shows the routed path/query/hash and uses the wire protocol directly, matching the rest of this no-bundler demo. Production apps use `onLink()` from their generated client. See [setup](../../../docs/deep-links.md). The placeholder HTTPS domain cannot verify; forced approval tests delivery only.
+
+The schema is now 4 and `http.origins` compiles `http://10.0.2.2:8787` for emulator tests. Run the reference adapter in `examples/rest-sync-adapter/`, set its `ADAPTER_TOKEN` through the Login form, and tap `http.request`. `GET /rpc` returns authenticated status without echoing the token; the other button proves an unlisted origin is denied. No CORS headers are needed. This local HTTP endpoint is for tests; production uses HTTPS. The offline bundle and seed still work without that server.
+
+## Permissions demo
+
+Schema 10 adds a Permissions section: choose any of the seven kinds, Check, Request or open App settings. Resume deltas appear separately. All kinds are declared solely for this demonstration; production apps must enable and declare only the kinds they use. The Android manifest and iOS SPM usage strings are wired; iOS remains experimental and untested. [Setup guide](https://getvalence.pages.dev/docs/guides/permissions/).

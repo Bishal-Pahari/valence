@@ -39,9 +39,9 @@ const TEMPLATES = join(import.meta.dirname, '..', 'templates');
 // Listed here rather than per test, because every new runtime capability has to land in exactly one place
 // for the "an older app still codegens" cases to keep meaning what they say.
 const SINCE_ABOVE_4 = {
-  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial'],
-  events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online', 'link.opened'],
-  types: ['SyncStatus', 'AppState', 'BundleStatus', 'Link'],
+  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings'],
+  events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online', 'link.opened', 'permissions.changed'],
+  types: ['SyncStatus', 'AppState', 'BundleStatus', 'Link', 'PermissionState'],
 };
 const NOW = Date.UTC(2026, 9, 15);
 
@@ -1464,4 +1464,22 @@ test('legacy CSP origins do not grant native credentials or break codegen', () =
   assert.match(config, /httpOrigins: \{\}/);
   assert.ok(!config.includes('analytics.example.test'));
   assert.ok(!config.includes('maps.example.test'));
+});
+
+
+test('R3 codegen compiles only configured permission kinds and freezes built-in shapes', () => {
+  const { root, cfg } = fixture({ latest: true });
+  cfg.permissions = { kinds: ['camera', 'photos'] };
+  codegen({ root, cfg });
+  const config = readFileSync(join(root, cfg.host.dir, 'lib/valence/config.g.dart'), 'utf8');
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(config, /permissionKinds: \{'camera', 'photos'\}/);
+  assert.match(dart, /valence.permissions.request\(p.kind\)/);
+  for (const kinds of [['camera', 'camera'], ['storage'], 'camera', [null]]) {
+    cfg.permissions = { kinds };
+    assert.throws(() => codegen({ root, cfg }), /permissions.kinds/);
+  }
+  cfg.permissions = { kinds: [] };
+  editSchema(root, (s) => { s.methods['permissions.request'].returns = 'bool'; });
+  assert.throws(() => codegen({ root, cfg }), /permissions.request/);
 });

@@ -64,6 +64,11 @@ export interface Link {
   path: string;
 }
 
+export interface PermissionState {
+  kind: string;
+  status: string;
+}
+
 export interface Methods {
   'app.ready': { params: Record<string, never>; returns: void };
   'app.info': { params: Record<string, never>; returns: AppInfo };
@@ -136,6 +141,13 @@ export interface Methods {
   }; returns: void };
   'state.restore': { params: Record<string, never>; returns: Json | null };
   'link.initial': { params: Record<string, never>; returns: Link | null };
+  'permissions.check': { params: {
+    kind: string;
+  }; returns: string };
+  'permissions.request': { params: {
+    kind: string;
+  }; returns: string };
+  'permissions.openSettings': { params: Record<string, never>; returns: boolean };
 }
 
 export interface Events {
@@ -164,6 +176,9 @@ export interface Events {
   'link.opened': {
     url: string;
     path: string;
+  };
+  'permissions.changed': {
+    permissions: PermissionState[];
   };
 }
 
@@ -194,6 +209,9 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'state.save': 8,
   'state.restore': 8,
   'link.initial': 9,
+  'permissions.check': 10,
+  'permissions.request': 10,
+  'permissions.openSettings': 10,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
@@ -206,6 +224,7 @@ export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
   'app.online': 6,
   'app.appearance': 7,
   'link.opened': 9,
+  'permissions.changed': 10,
 };
 
 /** Browser fallbacks for this app, so the same build also runs as the website. */

@@ -29,6 +29,10 @@ export 'src/runtime.dart'
         ValenceLogger,
         ValenceLink,
         ValenceLinks,
+
+        ValencePermissions,
+        ValencePermissionBackend,
+        valencePermissionKinds,
         ValenceManifest,
         ValenceOutboxOp,
         ValenceRow,

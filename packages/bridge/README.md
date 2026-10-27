@@ -113,3 +113,7 @@ Guard `has("data.count")` to page `data.list` with `after`: pass the last key of
 ## Route OS links
 
 After `connect()`, install one `onLink()` subscription at the app root. It consumes `link.initial`, subscribes to `link.opened`, and defaults to a local `history.pushState` plus `popstate`. Pass `onLink(({path}) => router.navigate(path), reportError)` for your own router and call its returned cleanup on unmount. Import from your generated `bridge.g.ts`; unsupported hosts are a no-op. See [deep-link setup](../../docs/deep-links.md).
+
+## OS permissions
+
+Schema 9 bindings expose `permissions.check`, `permissions.request`, `permissions.openSettings` and `permissions.changed`. Import them through your generated client and guard calls with `has()`. The native host enforces its store-compiled allowlist. Checks do not prompt; request from a user action. Status strings include denial, permanent denial, restriction and limited access; see the [guide](https://getvalence.pages.dev/docs/guides/permissions/). iOS is experimental and untested.

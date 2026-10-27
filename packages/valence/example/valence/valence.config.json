@@ -37,5 +37,16 @@
       "https://links.example.invalid",
       "valence-example://app"
     ]
+  },
+  "permissions": {
+    "kinds": [
+      "camera",
+      "location",
+      "notifications",
+      "contacts",
+      "bluetooth",
+      "microphone",
+      "photos"
+    ]
   }
 }

@@ -147,6 +147,21 @@ final class Link {
   Map<String, Object?> toJson() => {'url': url, 'path': path};
 }
 
+final class PermissionState {
+  const PermissionState({required this.kind, required this.status});
+
+  factory PermissionState.fromJson(Object? j, [String f = 'PermissionState']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'kind', 'status'}, f);
+    return PermissionState(kind: decodeString(m['kind'], '$f.kind'), status: decodeString(m['status'], '$f.status'));
+  }
+
+  final String kind;
+  final String status;
+
+  Map<String, Object?> toJson() => {'kind': kind, 'status': status};
+}
+
 final class DataGetParams {
   const DataGetParams({required this.bucket, required this.key});
 
@@ -372,6 +387,34 @@ final class StateSaveParams {
   Map<String, Object?> toJson() => {'json': json};
 }
 
+final class PermissionsCheckParams {
+  const PermissionsCheckParams({required this.kind});
+
+  factory PermissionsCheckParams.fromJson(Object? j, [String f = 'PermissionsCheckParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'kind'}, f);
+    return PermissionsCheckParams(kind: decodeString(m['kind'], '$f.kind'));
+  }
+
+  final String kind;
+
+  Map<String, Object?> toJson() => {'kind': kind};
+}
+
+final class PermissionsRequestParams {
+  const PermissionsRequestParams({required this.kind});
+
+  factory PermissionsRequestParams.fromJson(Object? j, [String f = 'PermissionsRequestParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'kind'}, f);
+    return PermissionsRequestParams(kind: decodeString(m['kind'], '$f.kind'));
+  }
+
+  final String kind;
+
+  Map<String, Object?> toJson() => {'kind': kind};
+}
+
 abstract interface class BridgeHandlers {
   Future<void> appReady();
   Future<AppInfo> appInfo();
@@ -399,6 +442,9 @@ abstract interface class BridgeHandlers {
   Future<void> stateSave(StateSaveParams p);
   Future<Object?> stateRestore();
   Future<Link?> linkInitial();
+  Future<String> permissionsCheck(PermissionsCheckParams p);
+  Future<String> permissionsRequest(PermissionsRequestParams p);
+  Future<bool> permissionsOpenSettings();
 }
 
 /// Opt-in defaults for test doubles or partial hosts. Production hosts extend ValenceBuiltins.
@@ -455,6 +501,12 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<Object?> stateRestore() async => throw const BridgeError('E_UNSUPPORTED', 'state.restore is not implemented');
   @override
   Future<Link?> linkInitial() async => throw const BridgeError('E_UNSUPPORTED', 'link.initial is not implemented');
+  @override
+  Future<String> permissionsCheck(PermissionsCheckParams p) async => throw const BridgeError('E_UNSUPPORTED', 'permissions.check is not implemented');
+  @override
+  Future<String> permissionsRequest(PermissionsRequestParams p) async => throw const BridgeError('E_UNSUPPORTED', 'permissions.request is not implemented');
+  @override
+  Future<bool> permissionsOpenSettings() async => throw const BridgeError('E_UNSUPPORTED', 'permissions.openSettings is not implemented');
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
@@ -562,6 +614,16 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.linkInitial();
         return replyOk(id, r?.toJson());
+      case 'permissions.check':
+        final r = await h.permissionsCheck(PermissionsCheckParams.fromJson(p, 'p'));
+        return replyOk(id, r);
+      case 'permissions.request':
+        final r = await h.permissionsRequest(PermissionsRequestParams.fromJson(p, 'p'));
+        return replyOk(id, r);
+      case 'permissions.openSettings':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.permissionsOpenSettings();
+        return replyOk(id, r);
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
     }
@@ -583,6 +645,7 @@ abstract final class BridgeEvents {
   static String appOnline({required bool online}) => eventScript('app.online', {'online': online});
   static String appAppearance({required bool darkMode, required bool highContrast, required bool reducedMotion}) => eventScript('app.appearance', {'darkMode': darkMode, 'highContrast': highContrast, 'reducedMotion': reducedMotion});
   static String linkOpened({required String url, required String path}) => eventScript('link.opened', {'url': url, 'path': path});
+  static String permissionsChanged({required List<PermissionState> permissions}) => eventScript('permissions.changed', {'permissions': permissions.map((e) => e.toJson()).toList()});
 }
 
 /// The built-in bridge methods, implemented against the `valence` runtime.
@@ -737,5 +800,20 @@ abstract class ValenceBuiltins {
   Future<Link?> linkInitial() async {
     final r = valence.linkInitial();
     return r == null ? null : Link(url: r.url, path: r.path);
+  }
+
+  /// `permissions.check`, from the package.
+  Future<String> permissionsCheck(PermissionsCheckParams p) async {
+    return valence.permissions.check(p.kind);
+  }
+
+  /// `permissions.request`, from the package.
+  Future<String> permissionsRequest(PermissionsRequestParams p) async {
+    return valence.permissions.request(p.kind);
+  }
+
+  /// `permissions.openSettings`, from the package.
+  Future<bool> permissionsOpenSettings() async {
+    return valence.permissions.openSettings();
   }
 }

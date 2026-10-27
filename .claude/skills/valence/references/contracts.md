@@ -969,6 +969,47 @@ Android process reclamation is tested with Home then `adb shell am kill <appId>`
 reopening the retained task. iOS uses Flutter restoration too but is experimental
 and untested; its app must opt into native state restoration as Flutter documents.
 
+### 4.7 Permissions (schema 10, R3)
+
+`permissions.check({kind}) -> string`, `permissions.request({kind}) -> string`, and
+`permissions.openSettings() -> bool` are built-ins at `since: 10`. Kinds are `camera`,
+`location` (foreground only), `notifications`, `contacts`, `bluetooth`
+(scan and connect, not advertise), `microphone`, and `photos` (the OS library permission group).
+Unknown kinds return `E_PARAMS`; known kinds outside the store-compiled
+`permissions.kinds` allowlist return `E_DENIED` before any platform call. The default
+allowlist is empty. Changing it requires codegen, native declarations and a store
+release; a signed OTA cannot grant itself another permission. No background request
+or startup prompt is allowed. Requests and opening settings require an attached,
+foreground host; otherwise `E_DENIED`. Calls are serialized to prevent overlapping
+OS dialogs, and a queued request rechecks foreground state before dispatching one to the platform.
+
+Statuses are `granted`, `denied`, `permanentlyDenied`, `restricted`, `limited`.
+Preserve the OS answer: Android checks can report `denied` after a permanent denial;
+only a request can disambiguate it. iOS provisional notifications map to `limited`.
+Location checks the declared OS permission group. Recommend coarse-only on Android
+12+ so approximate foreground access counts as granted; fine location for legacy
+Bluetooth is declared only through API 30. If another feature declares fine location
+on Android 12+, an approximate-only grant can report denied because the plugin
+requires the whole declared group. This is not a precision or service-enabled API. Android photos use storage through API 32 and images from 33;
+selected-image access from 34 is limited. iOS library permission includes images and videos; legacy Android storage is also broader than images. Contacts requests the platform group, including write/account permissions if the Android host declared them. Declarations should be minimal; the bridge does not narrow an OS grant. Android Bluetooth before 31 requires
+foreground location for scanning; from 31 both scan and connect must be granted.
+For combined permissions, return the most restrictive status (restricted,
+permanentlyDenied, denied, limited, granted). Unsupported platforms return
+`E_UNSUPPORTED`. Native errors remain errors, never fabricated grants.
+
+`permissions.changed({permissions: PermissionState[]})` (since 10), where
+`PermissionState = {kind: string, status: string}`, reports only changed configured
+kinds on resume. Startup establishes a baseline without prompting or emitting a
+change. Successful checks and requests update it. Each kind is checked independently;
+one native failure is logged and does not hide changes to the others. Resume checks
+share the request queue. The native adapter rechecks foreground after SDK preparation, immediately before dispatching a request. Events use the existing JSON escaping and page buffering;
+apps check on startup because these are changes, not a durable event log.
+
+Use `permission_handler` with native Android declarations and iOS usage strings and
+compile macros for the configured kinds only. Never enable every permission for a
+production app. iOS is experimental and untested. The setup table and runnable
+example are in `docs/permissions.md`.
+
 ## 5. Data layer
 
 ### 5.1 SQLite schema (host, sqflite)
@@ -1265,6 +1306,12 @@ snapshot restore and fresh-task reset, same-bundle and native-account isolation 
 routes (including encoded /_host/), rotated loopback port, unchanged trial checks;
 Android Home → am kill → retained-task reopen restores path/query/hash and blob,
 force-stop and explicit task removal start fresh.
+
+R3 permissions: unknown/unconfigured kinds and background/queued requests are
+denied before platform access; all five statuses and provisional normalization;
+legacy/modern Android photos and Bluetooth mappings; serialized dialogs recover
+after errors; resume emits changed kinds only, tolerates an individual failure and
+does not prompt; generated dispatch retains nonce and strict parameter checks.
 
 **R16 mechanical doctor.** Both CLI entry points use the same diagnostics. Every FAIL includes a `Fix:` line and exits nonzero, without rewriting files. Compare schema and generated host bridge versions; validate the recorded store schema; verify local OTA manifests and their files before comparing `requires.bridge` with the recorded store version. An OTA above that version is FAIL: rebuild with the store bridge floor and guard newer calls, or ship the new host first. Missing store evidence is WARN; historical OTA artifacts are checked too, so archive obsolete local releases outside `dist-ota` before rerunning. `host.database` is a plain file name (default `valence.db`), never a path: fail on separators, traversal or an invalid filename, and report `<appSupport>/<name>` with a WARN that actual installed location and legacy adoption need a device check. Never open or move a user's database from doctor. Inspect Git's tracked and untracked, non-ignored files for PEM private-key headers; fail without printing key material, including when the configured signing-key directory resolves inside Git through a link. Git unavailable is WARN, not PASS. Ignored files are outside this scan; this is a working-tree check, not a Git-history secret audit. Validate `web.connect` as HTTP(S) URLs without credentials, whitespace or CSP source syntax; paths remain supported and normalize to origins. Validate `http.origins` separately as exact HTTP(S) origins; browser CSP permission never grants native token access. R16 does not add bridge methods or change package versions.
 

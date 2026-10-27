@@ -170,6 +170,25 @@
       "since": 9,
       "params": {},
       "returns": "Link?"
+    },
+    "permissions.check": {
+      "since": 10,
+      "params": {
+        "kind": "string"
+      },
+      "returns": "string"
+    },
+    "permissions.request": {
+      "since": 10,
+      "params": {
+        "kind": "string"
+      },
+      "returns": "string"
+    },
+    "permissions.openSettings": {
+      "since": 10,
+      "params": {},
+      "returns": "bool"
     }
   },
   "events": {
@@ -225,6 +244,12 @@
         "url": "string",
         "path": "string"
       }
+    },
+    "permissions.changed": {
+      "since": 10,
+      "payload": {
+        "permissions": "PermissionState[]"
+      }
     }
   },
   "types": {
@@ -273,6 +298,10 @@
     "Link": {
       "url": "string",
       "path": "string"
+    },
+    "PermissionState": {
+      "kind": "string",
+      "status": "string"
     }
   }
 }

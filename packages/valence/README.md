@@ -178,3 +178,7 @@ ValenceApp publishes --valence-inset-top/right/bottom/left CSS variables, applie
 ## Deep links
 
 Compile `links.origins` with codegen and register matching native filters. The runtime captures startup links before seed import; `link.initial()` drains the mailbox, then `link.opened` delivers live intents. The WebView remains on loopback. See [setup and security](../../docs/deep-links.md); iOS is experimental and untested.
+
+## Permissions (contracts §4.7)
+
+Use the generated `permissions.check`, `permissions.request`, `permissions.openSettings` and `permissions.changed` (since 10). The runtime serializes prompts and restricts them to a foreground attached host and its compiled `permissionKinds`. Empty denies all. Add native declarations and ship a store build; see the [permissions guide](https://getvalence.pages.dev/docs/guides/permissions/). iOS is experimental and untested.

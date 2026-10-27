@@ -36,6 +36,8 @@ final class ValenceConfig {
     this.authToken,
     this.httpOrigins = const {},
     this.linkOrigins = const {},
+
+    this.permissionKinds = const {},
   });
 
   /// The reverse-domain id a manifest must carry (canonical check 2).
@@ -115,6 +117,9 @@ final class ValenceConfig {
   /// Exact HTTPS/custom-scheme origins accepted as local routes (§6.3).
   final Set<String> linkOrigins;
 
+  /// Permission kinds enabled by this store build (contracts §4.7). Empty denies all.
+  final Set<String> permissionKinds;
+
   /// Copy with overrides. Handy in tests and for pointing a debug build at a local OTA host.
   ValenceConfig copyWith({
     String? otaBase,
@@ -129,6 +134,8 @@ final class ValenceConfig {
     Future<String?> Function()? authToken,
     Set<String>? httpOrigins,
     Set<String>? linkOrigins,
+
+    Set<String>? permissionKinds,
   }) =>
       ValenceConfig(
         appId: appId,
@@ -152,5 +159,7 @@ final class ValenceConfig {
         authToken: authToken ?? this.authToken,
         httpOrigins: httpOrigins ?? this.httpOrigins,
         linkOrigins: linkOrigins ?? this.linkOrigins,
+
+        permissionKinds: permissionKinds ?? this.permissionKinds,
       );
 }
