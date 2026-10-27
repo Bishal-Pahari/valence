@@ -256,3 +256,5 @@ Deep links in 0.4: [setup and routing](docs/deep-links.md) covers store-compiled
 Schema 9 adds check/request/settings and resume change events for seven permission kinds. Enable only `permissions.kinds` in a store build, add native declarations, and regenerate; OTA cannot expand the allowlist. Permission grants are separate from feature implementations. See [Permissions](docs/permissions.md). iOS is experimental and untested.
 
 Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent. Older hosts omit them. See [capability revisions and durable status](https://getvalence.pages.dev/docs/guides/capabilities-and-status/).
+
+Sync outcomes are an open string set: `ok`, `busy`, `offline`, `unauthorized`, `failed`. A non-200 or invalid protocol response reports `failed`, including a 401 sent to a request without a bearer token. Only a bearer-bearing 401 expires authentication. Partial changes remain applied, queued writes remain available for retry, and incomplete runs never advance the last successful unscoped timestamp. Treat every non-`ok` outcome as incomplete, even when `changed` is positive. See contracts section 5.6.
