@@ -29,8 +29,18 @@ for types. Fragments may reference only their own named types. Conflicts are err
 including identical definitions. Core namespaces, including `share`, are reserved. Metadata fields
 name the Dart package, npm package and setup document; tooling executes none of them.
 
-The registry snapshots method ownership. Missing implementations return
-`E_UNSUPPORTED`; methods not in the schema return `E_UNKNOWN` without calling a
+The generated `hostPluginNamespaces` and `hostPluginMethods` describe the native
+registrations required by the merged fragments, including event-only plugins.
+Constructing `ValenceBuiltins` checks both through `ValencePluginRegistry.checked`.
+A missing plugin or declared method throws `StateError` with a registration fix
+in every build mode. Regenerate after upgrading; old generated handlers retain
+the old behavior. Add a host test that constructs your real `AppHandlers` before
+shipping. Doctor names the requirements as a warning because it cannot prove
+which native instances your Dart code constructs. Neither check proves native
+permissions, initialization or platform behavior.
+
+The registry snapshots method ownership. Direct registry calls without generated
+requirements still report missing methods as `E_UNSUPPORTED`; methods not in the schema return `E_UNKNOWN` without calling a
 plugin. The generated adapters strictly decode parameters before invocation and
 typed JSON results before replying. Native subscriptions can emit generated
 `BridgeEvents` scripts with `valence.emit`. The app/plugin owns initialization and
