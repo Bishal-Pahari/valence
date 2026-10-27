@@ -1,4 +1,55 @@
-# Integration validation - 2026-10-27
+# Integration validation - 2026-10-28
+
+## 2026-10-28 revalidation
+
+**In plain terms.** The existing nine-branch candidate is still based on the newest
+local packages heads: code ebb0793d576c74c6841686298c9ad828479f02b7 and site
+afe2366c75670aa31811e0b2681fdc313f5d8751. No must-have item is todo or awaiting
+implementation. All nine ready branch tips and both packages heads are ancestors
+of the tested integration tips, code c14309d77affc145a0df1e51ae5fdc448fdc3ad4 and
+site 3c3aefbd5a45f32cf11445b75184ba2a2d12cb31.
+The merge order and source SHAs below remain applicable.
+
+Decision: retain the already combined implementation rather than introduce
+unrequested runtime or schema changes. Security and user-data checks take priority
+over stretch work while improver acceptance is pending. Package versions and
+reserved schema numbers are unchanged. Both apps' findings and newest reports
+(Kundalini iteration 12, app-a iteration 11) were reread without modifying them.
+
+All gates were rerun on 2026-10-28:
+
+| Gate | Result |
+|---|---|
+| Root npm test | 92 passed, zero skipped; compiled generated Dart and strict TS included |
+| Runtime flutter test | 528 passed |
+| Runtime fatal-info Dart analysis | No issues |
+| Example flutter test | 26 passed |
+| Define-enabled dev proxy / diagnostic widget | 10 passed / 1 passed |
+| Bridge tests / strict-verbatim TypeScript | 29 passed, zero skipped / passed |
+| Bridge npm pack dry run | Passed |
+| Example generated client / dev-web TypeScript | Passed |
+| Source and vendored codegen --check / CLI equality | Fresh / identical |
+| Signed built-in and source/CAS hashes and sizes | Verified, seq 1793115254, two files |
+| Runtime pub publish dry run | Zero warnings |
+| Site production build and SEO checks | 41 pages passed |
+| Fresh debug and release APK builds | Passed; signed manifest and signature bytes match source in both |
+| Release AOT exclusion | Sentinel URL, proxy/diagnostic strings excluded from all three ABI libraries |
+| Release plugin/probe inspection | Registration validation retained; R23 synthetic token and probe markers excluded in all three libraries |
+
+The release build supplied
+--dart-define=VALENCE_DEV_URL=http://valence-dev-release-sentinel.invalid:5173;
+the repository checker inspected that exact URL. Android builds still emit the
+existing plugin Kotlin migration notices. These are not pub dry-run warnings.
+The checks above precede documentation-only commits in both worktrees.
+No new independent review or emulator session was run: previous review and device
+evidence below retain their original dates and limits. Firebase delivery needs
+the maintainer project; iOS remains experimental and untested. Snapshot pairing,
+read-only retention/tombstone storage, migration desugaring discoverability and
+unisolated app lock/paint observations are not closed by these integration gates.
+No writes to test apps or other worktrees, shared-branch commits or merges,
+version changes, pushes or publications occurred.
+
+## 2026-10-27 integration record
 
 ## In plain terms
 
