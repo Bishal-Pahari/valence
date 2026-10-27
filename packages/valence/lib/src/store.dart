@@ -612,7 +612,7 @@ final class ValenceStore {
       ops = await txn.delete('outbox');
       // The freshness observations describe the account that just left. Left behind, sync.status()
       // answers 'synced a minute ago' over the new account's empty buckets, before it has ever synced.
-      await txn.delete('prefs', where: 'key IN (?, ?)', whereArgs: ['valence.sync.lastSyncedAt', 'valence.sync.offline']);
+      await txn.delete('prefs', where: 'key IN (?, ?, ?)', whereArgs: ['valence.sync.lastSyncedAt', 'valence.sync.offline', 'valence.sync.reason']);
     });
     return (rows, ops);
   }

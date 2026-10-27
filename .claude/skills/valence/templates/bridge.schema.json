@@ -1,5 +1,5 @@
 {
-  "version": 14,
+  "version": 15,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -384,7 +384,8 @@
       "bridge": "int",
       "bundle": "int",
       "locale": "string",
-      "fontScale": "num?"
+      "fontScale": "num?",
+      "builtins": "int?"
     },
     "Row": {
       "key": "string",
@@ -406,7 +407,8 @@
     "SyncStatus": {
       "pending": "int",
       "lastSyncedAt": "int?",
-      "offline": "bool"
+      "offline": "bool",
+      "reason": "string?"
     },
     "AppState": {
       "lifecycle": "string",
@@ -418,7 +420,8 @@
       "trial": "int?",
       "reason": "string",
       "offered": "int?",
-      "checkedAt": "int?"
+      "checkedAt": "int?",
+      "urgent": "bool?"
     },
     "Link": {
       "url": "string",

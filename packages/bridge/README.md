@@ -139,3 +139,5 @@ Use the generated call/has/on surface for notify.* and badge.*. Guard notify.sch
 ## Image sharing (schema 14)
 
 Import `call` and `has` through the generated `bridge.g.ts`. Guard `has("share.image")`, then call with exactly one of canonical base64 `bytes` (128 KiB decoded maximum) or active signed bundle `path` (5 MiB), optional `fileName` and `caption`. PNG/JPEG only. The string result is `selected`, `dismissed` or `unavailable`; selection is not proof of delivery. Adding the method requires a native store build. [Image sharing and legacy custom handlers](https://getvalence.pages.dev/docs/guides/image-sharing/). iOS remains experimental and untested.
+
+Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent. Older hosts omit them. See [capability revisions and durable status](https://getvalence.pages.dev/docs/guides/capabilities-and-status/).

@@ -83,6 +83,7 @@ final class ValenceAppInfo {
     required this.bundle,
     required this.locale,
     this.fontScale = 1,
+    this.builtins = 15,
   });
 
   /// `android`, `ios`, or whatever `Platform.operatingSystem` says.
@@ -102,6 +103,9 @@ final class ValenceAppInfo {
 
   /// System text scale; optional in old generated bridge schemas (§4.7).
   final double fontScale;
+
+  /// Valence capability revision, independent of the app's bridge schema number.
+  final int builtins;
 }
 
 /// The host's four lifecycle states (§4.6).
@@ -575,6 +579,23 @@ final class Valence {
         offered: updater.lastOffered,
         checkedAt: updater.lastCheckedAt,
       );
+
+  /// Reads the pending manifest's signed urgency without changing the synchronous API.
+  Future<ValenceBundleStatus> bundleStatusWithUrgency() async {
+    final pending = state.pending;
+    final urgent =
+        pending == null ? null : await updater.pendingUrgent(pending);
+    final status = bundleStatus();
+    return ValenceBundleStatus(
+      serving: status.serving,
+      pending: status.pending,
+      trial: status.trial,
+      reason: status.reason,
+      offered: status.offered,
+      checkedAt: status.checkedAt,
+      urgent: status.pending == pending ? urgent : null,
+    );
+  }
 
   /// `app.info`.
   ValenceAppInfo appInfo() => ValenceAppInfo(
