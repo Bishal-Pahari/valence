@@ -14,7 +14,7 @@ import 'store.dart';
 /// `changed: 0, offline: false` — so a freshness indicator reports confident freshness over stale data,
 /// and a page that retries on an empty result cannot tell there is anything to retry.
 enum ValenceSyncReason {
-  /// The run happened. `changed` is then the real answer, zero included.
+  /// Every attempted operation completed. `changed` is the real answer, zero included.
   ///
   /// An app with no `syncBase` also reports `ok`: there is no server for its data to be stale against,
   /// so "nothing to do" is the honest answer rather than a blocked or failed run.
@@ -33,6 +33,10 @@ enum ValenceSyncReason {
   /// not fully succeed (§4.4). On the host side a `switch` over this enum stops compiling when a value is
   /// added, which is the intended way to find the places that assumed three.
   unauthorized,
+
+  /// A server response or protocol failure left a pull or push incomplete. An anonymous 401 is
+  /// a server failure too: it does not expire a login. Applied rows and queued writes are retained.
+  failed,
 }
 
 /// What one sync run did, as `sync.now` returns it.
@@ -303,7 +307,9 @@ final class ValenceSync {
         ? ValenceSyncReason.unauthorized
         : offline
             ? ValenceSyncReason.offline
-            : ValenceSyncReason.ok;
+            : _incomplete
+                ? ValenceSyncReason.failed
+                : ValenceSyncReason.ok;
     return ValenceSyncResult(touched, changed, offline, reason, await store.pendingWrites());
   }
 

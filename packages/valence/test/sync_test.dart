@@ -139,12 +139,120 @@ void main() {
     });
 
     test('a completed run reports ok, and a run that could not reach the server reports offline', () async {
-      final ok = syncWith(MockClient((_) async => http.Response('{"rows":[],"max_usn":0,"more":false}', 200)));
+      final ok = syncWith(MockClient((_) async => http.Response('{"rows":[],"max":0,"more":false}', 200)));
       expect((await ok.run(readSchemas: {'plants': 1})).reason, ValenceSyncReason.ok);
       final down = syncWith(MockClient((_) => throw const SocketException('down')));
       final r = await down.run(readSchemas: {'plants': 1});
       expect(r.reason, ValenceSyncReason.offline);
       expect(r.offline, isTrue, reason: 'the old field keeps its old meaning');
+    });
+  });
+
+  group('incomplete runs (R26, §5.6)', () {
+    for (final status in [401, 403, 500]) {
+      for (final bucket in ['plants', 'shelf']) {
+        test('anonymous $status on $bucket is failed, not ok or unauthorized', () async {
+          final sync = syncWith(
+            MockClient((_) async => http.Response('', status)),
+            config: testConfig(key, writableBuckets: {'shelf'}),
+          );
+          var expired = 0;
+          sync.onUnauthorized = () => expired++;
+          final result = await sync.run(readSchemas: {'plants': 1}, only: [bucket]);
+          expect(result.reason, ValenceSyncReason.failed);
+          expect(result.toJson()['reason'], 'failed');
+          expect(result.offline, isFalse);
+          expect(expired, 0);
+          expect((await sync.status()).lastSyncedAt, isNull);
+        });
+      }
+    }
+
+    for (final body in [
+      '<html>',
+      '{"rows":[],"max":0,"more":true}',
+      '{"rows":[{"k":"b","v":2,"u":2},{"k":"a","v":1,"u":1}],"max":2,"more":false}',
+    ]) {
+      test('invalid pull page reports failed: $body', () async {
+        final sync = syncWith(MockClient((_) async => http.Response(body, 200)));
+        expect((await sync.run(readSchemas: {'plants': 1})).reason, ValenceSyncReason.failed);
+        expect(await store.maxUsn('plants', 1), 0);
+        expect((await sync.status()).lastSyncedAt, isNull);
+      });
+    }
+
+    test('partial progress is retained, failures do not stamp freshness, and recovery resets reason', () async {
+      var failing = false;
+      var page = 0;
+      final sync = syncWith(MockClient((req) async {
+        if (!failing) return http.Response('{"rows":[],"max":0,"more":false}', 200);
+        page++;
+        if (page > 1) return http.Response('', 500);
+        return http.Response(jsonEncode({'rows': [row('a', 1, 1)], 'max': 1, 'more': true}), 200);
+      }));
+      expect((await sync.run(readSchemas: {'plants': 1})).reason, ValenceSyncReason.ok);
+      final stamp = (await sync.status()).lastSyncedAt;
+      expect(stamp, isNotNull);
+      failing = true;
+      final partial = await sync.run(readSchemas: {'plants': 1});
+      expect(partial.reason, ValenceSyncReason.failed);
+      expect(partial.changed, 1);
+      expect(await store.get('plants', 1, 'a'), 1);
+      expect(await store.maxUsn('plants', 1), 1);
+      expect((await sync.status()).lastSyncedAt, stamp);
+      failing = false;
+      expect((await sync.run(readSchemas: {'plants': 1}, only: ['plants'])).reason, ValenceSyncReason.ok);
+      expect((await sync.status()).lastSyncedAt, stamp);
+    });
+
+    for (final response in [http.Response('', 500), http.Response('<html>', 200)]) {
+      test('failed push keeps queued writes: ${response.statusCode}', () async {
+        await store.put('shelf', 'a', 1, opId: 'queued-a');
+        final sync = syncWith(MockClient((req) async => req.method == 'POST'
+            ? response
+            : http.Response('{"rows":[],"max":0,"more":false}', 200)),
+            config: testConfig(key, writableBuckets: {'shelf'}));
+        final result = await sync.run(readSchemas: {});
+        expect(result.reason, ValenceSyncReason.failed);
+        expect(result.pending, 1);
+        expect(await store.get('shelf', 1, 'a'), 1);
+        expect((await sync.status()).lastSyncedAt, isNull);
+      });
+    }
+
+    for (final failAt in ['index', 'chunk']) {
+      test('static $failAt failure reports failed', () async {
+        final sync = syncWith(MockClient((req) async {
+          if (req.url.path.endsWith('index.json')) {
+            return failAt == 'index' ? http.Response('invalid', 200)
+                : http.Response('[{"to":1,"file":"one.json"}]', 200);
+          }
+          return http.Response('', 500);
+        }), config: testConfig(key, syncMode: ValenceSyncMode.staticChunks));
+        expect((await sync.run(readSchemas: {'plants': 1})).reason, ValenceSyncReason.failed);
+        expect((await sync.status()).lastSyncedAt, isNull);
+      });
+    }
+
+    test('offline outranks a server failure without losing the offline flag', () async {
+      final sync = syncWith(MockClient((req) async {
+        if (req.url.path.endsWith('/plants')) return http.Response('', 500);
+        throw const SocketException('no route');
+      }), config: testConfig(key, writableBuckets: {'shelf'}));
+      final result = await sync.run(readSchemas: {'plants': 1});
+      expect(result.reason, ValenceSyncReason.offline);
+      expect(result.offline, isTrue);
+    });
+
+    test('authenticated rejection outranks an unrelated server failure', () async {
+      final sync = syncWith(MockClient((req) async =>
+          http.Response('', req.url.path.endsWith('/plants') ? 500 : 401)),
+          config: testConfig(key, writableBuckets: {'shelf'})
+              .copyWith(authToken: () async => 'token'));
+      var expired = 0;
+      sync.onUnauthorized = () => expired++;
+      expect((await sync.run(readSchemas: {'plants': 1})).reason, ValenceSyncReason.unauthorized);
+      expect(expired, 1);
     });
   });
 
@@ -358,7 +466,7 @@ void main() {
       sync.onUnauthorized = () => expiries++;
       final result = await sync.run(readSchemas: {'plants': 1});
       expect(expiries, 0);
-      expect(result.reason, ValenceSyncReason.ok);
+      expect(result.reason, ValenceSyncReason.failed);
       expect(log.has('HTTP 401'), isTrue, reason: 'still logged, because something is wrong');
     });
 

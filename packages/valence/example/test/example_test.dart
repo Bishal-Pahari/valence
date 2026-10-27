@@ -606,13 +606,13 @@ void main() {
       ['shelf'],
       2,
       false,
-      ValenceSyncReason.ok,
+      ValenceSyncReason.failed,
       0,
     );
     expect(
       BridgeEvents.syncDone(result: SyncResult.fromJson(result.toJson())),
       'window.__valence&&window.__valence.e("sync.done",{"result":{"buckets":["shelf"],"changed":2,'
-      '"offline":false,"reason":"ok","pending":0}})',
+      '"offline":false,"reason":"failed","pending":0}})',
     );
     expect(
       BridgeEvents.appLifecycle(state: 'background'),
