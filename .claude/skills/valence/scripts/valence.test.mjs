@@ -300,6 +300,13 @@ test('plugin conflicts, reserved namespaces, foreign references and malformed fr
   cfg.plugins.pop();
   cfg.plugins = [join(root, 'probe.json')];
   assert.throws(() => loadPluginSchema(root, cfg), /project-relative/);
+  // Relative is not the same as contained. A fragment reached through `..` builds on the author's
+  // machine and dies with ENOENT on a fresh clone, and the merged schema that .valence/baseline.json
+  // records as "what the stores reviewed" then has no source in the repo.
+  for (const outside of ['../probe.json', 'plugins/../../probe.json', '..\\probe.json']) {
+    cfg.plugins = [outside];
+    assert.throws(() => loadPluginSchema(root, cfg), /inside the project/, outside);
+  }
   cfg.plugins = ['probe.json'];
   editSchema(root, s => { s.methods['probe.read'] = probePlugin().methods['probe.read']; });
   assert.throws(() => codegen({ root, cfg }), /conflicts with the app/);

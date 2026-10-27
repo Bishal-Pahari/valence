@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased: dev-mode and plugin hardening
+
+- `Valence.emit` enforces the §4.2 256 KB envelope cap, so an oversized event — now possible because
+  §4.10 lets a plugin emit one — is dropped with a log line instead of killing the WebView and spending
+  a trial strike.
+- A test asserts every `VALENCE_DEV_URL` read in `lib/` is guarded by `kDebugMode` in the same
+  expression, which is what makes the §3.1 dev path compile-time absent from release builds.
+- `tool/check-release-dev.mjs` matches app-bundle AOT paths (`base/lib/<abi>/libapp.so`) as well as APK
+  ones.
+
 ## Unreleased: account-switch hardening (§4.4)
 
 - `Valence.dataPut` throws `E_INTERNAL` for the duration of an account transition, which now spans the

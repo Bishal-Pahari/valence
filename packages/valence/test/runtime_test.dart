@@ -427,6 +427,33 @@ void main() {
           throwsA(
               isA<BridgeError>().having((e) => e.code, 'code', 'E_PARAMS')));
     });
+
+    test('an event over the §4.2 cap is dropped rather than sent to the WebView',
+        () async {
+      // §4.10 invites a plugin to emit generated events, so an event payload stopped being
+      // host-bounded. replyOk and replyError are measured for a reason: an oversized string through
+      // the platform channel overruns Binder's shared transaction buffer and kills the WebView — and a
+      // WebView death while a trial bundle is on screen spends a strike, so an oversized event could
+      // get a healthy bundle marked bad. The cap belongs at emit, which every event goes through.
+      final log = LogSpy();
+      final v = await open(log: log);
+      final view = _ScriptSpy();
+      v.attach(view);
+      // The §4.2 envelope, built here rather than imported: emit takes the finished script, and the
+      // cap has to hold for whatever string reaches it.
+      String event(Object? payload) =>
+          'window.__valence&&window.__valence.e("probe.changed",${jsonEncode(payload)})';
+
+      v.emit(event({'rows': 'x' * 16}));
+      expect(view.events, ['probe.changed'],
+          reason: 'an ordinary event still goes');
+
+      v.emit(event({'rows': 'x' * (maxMessageBytes + 1)}));
+      expect(view.scripts.length, 1,
+          reason: 'and the oversized one never reached the view');
+      expect(log.has('dropped an envelope'), isTrue,
+          reason: 'dropping it silently would be a feature that just stops happening');
+    });
   });
 
   group('data.put is only for writable buckets (§5.5)', () {

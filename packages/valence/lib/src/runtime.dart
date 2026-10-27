@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show FlutterView;
 
@@ -996,7 +997,19 @@ final class Valence {
   /// ```dart
   /// valence.emit(BridgeEvents.syncChanged(buckets: ['plants']));
   /// ```
-  void emit(String script) => _view?.runScript(script);
+  void emit(String script) {
+    // Every event funnels through here, a built-in's and a plugin's alike (§4.10), so this is where the
+    // §4.2 cap belongs. `replyOk`/`replyError` are bounded because an oversized string through the
+    // platform channel overruns Binder's shared transaction buffer and kills the WebView — and a
+    // WebView death while a trial bundle is on screen spends a strike, so an oversized *event* can get
+    // a perfectly healthy bundle marked bad. Every built-in payload is host-bounded and small; a
+    // plugin's is whatever the plugin chose to emit, which is what made this reachable.
+    if (utf8.encode(script).length > maxMessageBytes) {
+      _log('event: dropped an envelope over $maxMessageBytes bytes of UTF-8');
+      return;
+    }
+    _view?.runScript(script);
+  }
 
   /// Writes bytes under the server's reserved `/_host/` prefix and returns the relative URL.
   ///

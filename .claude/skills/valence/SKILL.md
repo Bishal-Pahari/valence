@@ -244,6 +244,7 @@ Phases 1, 4 and 6 spawn agents. If your harness can't (headless, or subagents di
 - `--store` records the routes and bridge schema the stores reviewed in `.valence/baseline.json`. From then on, `codegen` keeps that schema additive-only, and `valence bundle` warns about routes the stores haven't seen.
 - Commit `baseline.json` along with the release.
 - **Nothing stops a store build made with plain `--builtin`**, and if that happens the shipped schema stays editable. If the project has CI for store builds, make that job run `valence bundle --store`, and offer to add it.
+- **If the project has ever used `valence dev`, prove the dev path is not in the artefact you submit.** Run `node tool/check-release-dev.mjs <apk-or-aab> <dev-origin>` from the `valence` package against the release build; it fails if any AOT library still contains the dev URL or the proxy. The guard is a compile-time constant and a package test keeps it in place (§8), so this is belt-and-braces — but it is the only check that looks at the bytes a store would ship.
 
 The steps below are for **OTA releases**.
 

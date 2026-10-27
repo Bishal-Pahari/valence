@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased: hardening the two newest trust boundaries
+
+Review of the combined feature merge found no broken security path in live development (R9) or native
+plugins (R10) — release builds really do exclude the dev server, and a plugin really cannot redefine a
+built-in. These are the gaps around them.
+
+- **An event over the 256 KB cap is now dropped instead of sent.** Replies were measured and events were
+  not, because every built-in payload is small and host-bounded. Plugins made an event payload arbitrary,
+  and an oversized one kills the WebView — which, if a trial bundle is on screen, spends one of its
+  strikes and can get a healthy bundle marked bad.
+- **A plugin fragment path must stay inside the project.** `..` was accepted, so a build could depend on
+  a file outside the repo and the reviewed schema recorded in `.valence/baseline.json` would have no
+  source in it.
+- **The dev-server guard now has a test.** Release exclusion rests on each read of `VALENCE_DEV_URL`
+  being a `kDebugMode` compile-time constant. Removing one left every suite green, with the dev proxy
+  live in the release snapshot; a package test now fails instead, and the release workflow says to run
+  `check-release-dev.mjs` against the artefact you submit.
+- `check-release-dev.mjs` also reads app bundles (`base/lib/<abi>/libapp.so`), not just APKs. It is the
+  bundle you upload to Play.
+
 ## Unreleased: three more ways an account switch could leak across accounts
 
 All three are §4.4 hardening, found by review of the account work. None needs an app change.

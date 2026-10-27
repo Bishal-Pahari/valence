@@ -14,6 +14,34 @@ void main() {
     }
   });
 
+  test('every read of VALENCE_DEV_URL is guarded by kDebugMode (§3.1)', () {
+    // R9's requirement is that a release build contains none of this path, and that holds only
+    // because each read is a compile-time constant the AOT compiler can fold away. Drop the
+    // `kDebugMode` from any one of them and the sentinel URL becomes a live const in the release
+    // snapshot with ValenceDevProxy reachable from bind() — while `dart analyze`, every suite here
+    // and the root suite all stay green. tool/check-release-dev.mjs proves exclusion against a built
+    // APK, but nothing except a person remembering to run it stood between that edit and a shipped
+    // dev proxy. This is the cheap half: the guard cannot quietly leave the source.
+    final lib = Directory('lib');
+    expect(lib.existsSync(), isTrue, reason: 'run flutter test from the package root');
+    const call = "String.fromEnvironment('VALENCE_DEV_URL')";
+    var found = 0;
+    for (final entity in lib.listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.dart')) continue;
+      // Whitespace collapsed, so the check does not depend on where the formatter broke the line.
+      final source = entity.readAsStringSync().replaceAll(RegExp(r'\s+'), ' ');
+      for (var i = source.indexOf(call); i >= 0; i = source.indexOf(call, i + 1)) {
+        found++;
+        final before = source.substring(i < 120 ? 0 : i - 120, i);
+        expect(before, contains('kDebugMode'),
+            reason: '${entity.path} reads the dev URL unguarded: ...$before$call');
+      }
+    }
+    expect(found, 3,
+        reason: 'server.dart, app.dart and runtime.dart each read it once; if that '
+            'changed, confirm the new site is guarded and update this count');
+  });
+
   late HttpServer upstream;
   late HttpServer proxy;
   late ValenceDevProxy dev;
