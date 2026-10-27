@@ -482,8 +482,9 @@ the offline observation. Scoped attempts count too; it does not certify that all
 buckets succeeded. Busy/skipped runs and exceptions preserve the previous outcome.
 A migrated or never-attempted database returns null; no-server runs preserve it.
 Account switch/sign-out clears this observation with the other account-owned sync
-observations. It is an open string set; unknown reasons are not success. Existing
-anonymous-401 semantics are unchanged. An app needing an acknowledgement tied to
+observations. It is an open string set; unknown reasons are not success. An anonymous 401 is persisted as `failed` (?5.6), without emitting `auth.expired`;
+the stored reason and the returned result use the same lease-held classification.
+An app needing an acknowledgement tied to
 one authenticated bucket must still track its explicit scoped check.
 
 `urgent` describes the currently pending bundle's signed manifest, never the

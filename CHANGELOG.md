@@ -7,14 +7,14 @@ signed reload, update checks and applyUpdate log their development bypass rather
 silent. Restart without VALENCE_DEV_URL to validate signed offline starts and rollback. No
 schema, package version or host setup changes are required.
 
-## Unreleased: explicit LAN development trust
+## Unreleased: check for updates after reconnect
 
-- `valence dev` now binds loopback by default. A LAN address or hostname requires
-  `--allow-lan`; that mode binds all interfaces and names the cleartext full-bridge
-  risk before starting. Add the flag to existing physical-device dev commands.
-  Manual Flutter defines remain explicit trust grants; release/profile exclusion
-  is unchanged. Refresh vendored tooling when upgrading.
-
+- A live connectivity report while the app is foregrounded now retries the signed update check,
+  including Wi-Fi/cellular handovers. Concurrent checks coalesce; data requirements retain their lease
+  and verification. Background reconnects sync only and defer the update check to resume.
+- `bundle.status` describes the last completed attempt until another one completes. Read `offline` as
+  "could not check on the last attempt", rather than a claim about the current connection.
+- Upgrade the native host package to get the trigger; no schema bump or app handler change is needed.
 
 ## Unreleased: local native HTTP stays on loopback in the example
 
@@ -25,14 +25,18 @@ schema, package version or host setup changes are required.
   XML does not block native Dart HTTP to a compiled cleartext origin. Those origins
   can receive the host token in release builds; use HTTPS for remote APIs.
 
-## Unreleased: check for updates after reconnect
+## Unreleased: explicit LAN development trust
 
-- A live connectivity report while the app is foregrounded now retries the signed update check,
-  including Wi-Fi/cellular handovers. Concurrent checks coalesce; data requirements retain their lease
-  and verification. Background reconnects sync only and defer the update check to resume.
-- `bundle.status` describes the last completed attempt until another one completes. Read `offline` as
-  "could not check on the last attempt", rather than a claim about the current connection.
-- Upgrade the native host package to get the trigger; no schema bump or app handler change is needed.
+- `valence dev` now binds loopback by default. A LAN address or hostname requires
+  `--allow-lan`; that mode binds all interfaces and names the cleartext full-bridge
+  risk before starting. Add the flag to existing physical-device dev commands.
+  Manual Flutter defines remain explicit trust grants; release/profile exclusion
+  is unchanged. Refresh vendored tooling when upgrading.
+
+
+## Unreleased: capability and status fields
+
+Schema 15 adds nullable builtins, persisted sync reason and signed pending urgency. Regenerate and ship a store build; declaring builtins also requires current optional params on declared built-ins. Earlier hosts and schemas keep working. Account changes clear the new sync observation.
 
 ## Unreleased: seed completion survives database locks
 
@@ -60,10 +64,6 @@ schema, package version or host setup changes are required.
   app. Nothing changes for a fragment that stamps itself; the two forms are exclusive per entry, and a
   stamp naming something the fragment does not declare is an error. The example's haptics plugin now
   uses the published form, which is the shape to copy.
-
-## Unreleased: capability and status fields
-
-Schema 15 adds nullable builtins, persisted sync reason and signed pending urgency. Regenerate and ship a store build; declaring builtins also requires current optional params on declared built-ins. Earlier hosts and schemas keep working. Account changes clear the new sync observation.
 
 ## Unreleased: hardening the two newest trust boundaries
 
