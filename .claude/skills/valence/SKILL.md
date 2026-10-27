@@ -132,7 +132,8 @@ For native plugins, read contracts §4.10. Install the Dart and npm types packag
 list fragment paths in config `plugins`, follow native setup notes and register
 instances in `ValenceBuiltins(..., plugins: [...])`. Codegen merges fragments into
 the same strict dispatcher; keep runtime code in the packages. New capabilities
-need `since` above the store baseline and a store release. The framework example's
+need `since` above the store baseline and a store release. A published fragment
+declares no `since`; the app stamps it per entry, `{path, since: {"ns.method": N}}`. The framework example's
 `plugins/haptics` package is the runnable reference.
 
 ### Phase 4: Build (two builder agents in parallel, with separate files)

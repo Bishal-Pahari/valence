@@ -8,8 +8,11 @@ are wired into the example app.
 
 1. Install the Dart plugin and npm types packages and follow their native setup notes.
 2. List project-root-relative fragment paths in `valence/valence.config.json.plugins`.
+   A published fragment declares no `since`; stamp it from the entry instead:
+   `{"path": "...", "since": {"acmeScan.read": 3}}`, covering every method and event.
 3. For a new capability, bump the app's bridge schema version and use a `since`
-   above the recorded store version. Package versions do not determine `since`.
+   above the recorded store version. Package versions do not determine `since`,
+   which is why a published fragment cannot carry one and does not have to be edited.
 4. Run `node valence/valence.mjs codegen`; extend `ValenceBuiltins` with
    `super(plugins: [MyPlugin()])`. Only merged schema methods get dispatch cases.
 5. Call through `bridge.g.ts` with `has()` guards and a browser shim where needed.

@@ -1074,7 +1074,16 @@ strict parameter checks. Plugin results are decoded against their declared retur
 replying. Message limits, navigation locks, signatures and reserved secrets remain mandatory.
 Plugins are trusted native code, with the same privileges as the host, not a sandbox.
 
-`valence.config.json.plugins` is an optional array of project-root-relative fragment paths.
+`valence.config.json.plugins` is an optional array of entries, each either a
+project-root-relative fragment path or `{path, since}`, where `since` maps every method and
+event name in that fragment to an app bridge version. The two forms are exclusive per entry:
+with `since` present the fragment must declare none and must be covered completely, and
+without it the fragment declares its own. A `since` key the fragment does not declare is an
+error, so a renamed or dropped method cannot keep a stale stamp. This is what lets a
+**published** fragment be installed unedited: `since` is an app bridge version, and no package
+can know the recorded baseline of every app that installs it (§4.3). The merged schema, and
+therefore the recorded store baseline, holds the resolved number, so changing a stamp after a
+store build is a change like any other and the additive-only guard refuses it.
 Each fragment is `{namespace, dartPackage, npmPackage, setup, types, methods, events}`. Metadata
 strings name the packages and the setup document; they are not imports or commands to execute.
 The namespace is one lower-camel identifier. All method/event names start with `namespace.`;
@@ -1083,8 +1092,9 @@ Two fragments cannot share a namespace, and no fragment can collide with an app 
 or type, even with an identical definition. Core namespaces (`share`, `app`, `data`, `prefs`, `sync`,
 `open`, `bundle`, `secure`, `auth`, `permissions`, `notify`, `badge`, `push`, `link`, `state`,
 `http`) are reserved. Fragments cannot declare a schema version: the app owns the combined
-version and each method/event's explicit `since`. After a store baseline exists, additions
-require a higher version; changes/removals are rejected by the same additive-only guard.
+version and each method/event's explicit `since`, in the fragment or in its `plugins` entry.
+After a store baseline exists, additions require a higher version; changes/removals are
+rejected by the same additive-only guard.
 Codegen, bundle and doctor read the effective merged schema when checking the recorded store
 baseline, so changing/removing a fragment cannot bypass compatibility checks.
 

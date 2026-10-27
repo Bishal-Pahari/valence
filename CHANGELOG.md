@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased: a published plugin installs without editing it
+
+- **A `plugins` entry can be `{path, since}`,** stamping each of a fragment's methods and events with
+  an app bridge version. `since` is an app version, so no fragment shipped in a pub package could
+  carry a number right for every app that installs it: a published plugin was installable only by
+  editing a file inside `~/.pub-cache` or copying the fragment into your repo and re-stamping it per
+  app. Nothing changes for a fragment that stamps itself; the two forms are exclusive per entry, and a
+  stamp naming something the fragment does not declare is an error. The example's haptics plugin now
+  uses the published form, which is the shape to copy.
+
 ## Unreleased: hardening the two newest trust boundaries
 
 Review of the combined feature merge found no broken security path in live development (R9) or native

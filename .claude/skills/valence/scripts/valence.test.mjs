@@ -328,6 +328,54 @@ test('a new plugin method needs since above the shipped host', () => {
   codegen({ root, cfg, check: true });
 });
 
+test('an app stamps since for a published fragment that declares none', () => {
+  const { root, cfg, key } = fixture();
+  const shipped = JSON.parse(readFileSync(schemaFile(root), 'utf8')).version;
+  bundle({ root, cfg, key, store: true, now: NOW });
+  // What a published plugin actually ships: no since anywhere, because it cannot know this app's baseline.
+  const published = probePlugin();
+  delete published.methods['probe.read'].since;
+  delete published.events['probe.changed'].since;
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(published));
+  cfg.plugins = ['probe.json'];
+  assert.throws(() => codegen({ root, cfg }), /needs a since/);
+  cfg.plugins = [{ path: 'probe.json', since: { 'probe.read': shipped + 1, 'probe.changed': shipped + 1 } }];
+  editSchema(root, s => { s.version = shipped + 1; });
+  codegen({ root, cfg });
+  codegen({ root, cfg, check: true });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart, /plugins.invoke.valence, 'probe.read'/);
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  assert.match(ts, new RegExp(`'probe.read': ${shipped + 1}`));
+  // The resolved number, not the fragment, is what the stores reviewed, so a later restamp is a change.
+  bundle({ root, cfg, key, store: true, now: NOW + 1000 });
+  const baseline = JSON.parse(readFileSync(join(root, '.valence/baseline.json'), 'utf8'));
+  assert.equal(baseline.storeSchema.methods['probe.read'].since, shipped + 1);
+  cfg.plugins = [{ path: 'probe.json', since: { 'probe.read': shipped, 'probe.changed': shipped + 1 } }];
+  assert.throws(() => codegen({ root, cfg }), /cannot change/);
+});
+
+test('a stamp and a fragment cannot both answer for since, and neither can half answer', () => {
+  const { root, cfg } = pluginFixture();
+  const reject = (plugins, change, pattern) => {
+    const p = probePlugin();
+    change(p);
+    writeFileSync(join(root, 'probe.json'), JSON.stringify(p));
+    cfg.plugins = plugins;
+    assert.throws(() => codegen({ root, cfg }), pattern);
+  };
+  const stamp = (since) => [{ path: 'probe.json', since }];
+  reject(stamp({ 'probe.read': 2, 'probe.changed': 2 }), () => {}, /declares since and the plugins entry stamps it/);
+  const bare = (p) => { delete p.methods['probe.read'].since; delete p.events['probe.changed'].since; };
+  reject(stamp({ 'probe.read': 2 }), bare, /add "probe.changed" to this entry's since/);
+  reject(stamp({ 'probe.read': 2, 'probe.changed': 2, 'probe.gone': 2 }), bare, /since names "probe.gone"/);
+  reject(stamp({ 'probe.read': 2, 'probe.changed': 99 }), bare, /probe.changed.since/);
+  reject([{ path: 'probe.json' }], bare, /since must be an object/);
+  reject([{ path: 'probe.json', since: { 'probe.read': 2, 'probe.changed': 2 }, extra: 1 }], bare, /unknown field "extra"/);
+  reject([{ since: { 'probe.read': 2 } }], bare, /project-relative/);
+  reject([{ path: '../probe.json', since: { 'probe.read': 2 } }], bare, /inside the project/);
+});
+
 // ---------- keys ----------
 
 test('keygen refuses a key dir inside git, including through a link', () => {

@@ -773,11 +773,31 @@ export function loadPluginSchema(root, cfg) {
   const schema = readJson(paths(root, cfg).schema);
   const owners = new Set();
   const namespaces = new Set();
-  if (cfg.plugins !== undefined && !Array.isArray(cfg.plugins)) throw new Error('plugins must be an array of fragment paths');
+  if (cfg.plugins !== undefined && !Array.isArray(cfg.plugins)) throw new Error('plugins must be an array of plugin entries');
   const object = (v) => v && typeof v === 'object' && !Array.isArray(v);
-  for (const path of cfg.plugins ?? []) {
-    if (typeof path !== 'string' || !path || isAbsolute(path)) throw new Error('plugin path must be a nonempty project-relative string');
-    const fragment = readJson(resolve(root, path));
+  for (const entry of cfg.plugins ?? []) {
+    // An entry is a path, or {path, since} when the app stamps the versions itself. `since` is an app
+    // bridge version (§4.3), so a fragment shipped inside a pub package cannot carry one number that is
+    // right for every app that installs it: without this form a published plugin is installable only by
+    // editing a file in ~/.pub-cache or vendoring the fragment.
+    const stamp = object(entry) ? entry.since : null;
+    if (object(entry)) {
+      for (const key of Object.keys(entry)) {
+        if (key !== 'path' && key !== 'since') throw new Error(`plugin entry: unknown field "${key}" (an entry is a path or {path, since})`);
+      }
+      if (!object(stamp)) throw new Error('plugin entry: since must be an object of {"namespace.method": version}');
+    }
+    const path = object(entry) ? entry.path : entry;
+    if (typeof path !== 'string' || !path || isAbsolute(path) || path.split(/[/\\]/).includes('..')) {
+      throw new Error('plugin path must be a nonempty project-relative string inside the project');
+    }
+    // Contained, not merely relative. A fragment reached through `..` builds on the author's machine and
+    // dies with ENOENT on a fresh clone, and the merged schema that .valence/baseline.json records as
+    // "what the stores reviewed" would then have no source in the repo at all. Same rule as the §8 test
+    // mapping further down this file.
+    const resolved = resolve(root, path);
+    if (relative(root, resolved).startsWith('..')) throw new Error(`plugin ${path}: leaves the project directory`);
+    const fragment = readJson(resolved);
     const { namespace } = fragment;
     if (typeof namespace !== 'string' || !/^[a-z][a-zA-Z0-9]*$/.test(namespace) || PLUGIN_RESERVED.has(namespace)) {
       throw new Error(`plugin ${path}: invalid or reserved namespace "${namespace}"`);
@@ -806,9 +826,26 @@ export function loadPluginSchema(root, cfg) {
           const base = typeof type === 'string' ? type.replace(/\?$/, '').replace(/\[\]$/, '') : '';
           if (!PRIMS.has(base) && !Object.hasOwn(fragment.types ?? {}, base)) throw new Error(`plugin ${path}: unknown local type "${type}"`);
         }
+        // The stamp and the fragment are exclusive, so exactly one place answers "which version is this",
+        // and neither a missing nor a doubly-declared since can resolve silently.
+        let merged = definition;
+        if (kind !== 'types') {
+          const own = Object.hasOwn(definition, 'since');
+          if (stamp && own) throw new Error(`plugin ${path}: ${kind} "${name}" declares since and the plugins entry stamps it; remove one`);
+          if (stamp && !Object.hasOwn(stamp, name)) throw new Error(`plugin ${path}: add "${name}" to this entry's since in valence.config.json`);
+          if (!stamp && !own) throw new Error(`plugin ${path}: ${kind} "${name}" needs a since, in the fragment or in this entry's since`);
+          if (stamp) merged = { ...definition, since: stamp[name] };
+        }
         // defineProperty handles JSON keys such as __proto__ without mutating object prototypes.
-        Object.defineProperty(schema[kind], name, { value: definition, enumerable: true, configurable: true, writable: true });
+        Object.defineProperty(schema[kind], name, { value: merged, enumerable: true, configurable: true, writable: true });
         if (kind === 'methods') owners.add(name);
+      }
+    }
+    // A stamp for a name the fragment does not declare is the leftover of a renamed or dropped method,
+    // which would otherwise sit in the config forever and gate nothing.
+    for (const name of Object.keys(stamp ?? {})) {
+      if (!Object.hasOwn(fragment.methods ?? {}, name) && !Object.hasOwn(fragment.events ?? {}, name)) {
+        throw new Error(`plugin ${path}: since names "${name}", which the fragment does not declare`);
       }
     }
   }

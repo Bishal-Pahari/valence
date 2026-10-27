@@ -5,7 +5,7 @@
   "setup": "README.md",
   "types": {},
   "methods": {
-    "haptics.tap": { "since": 1, "params": {}, "returns": "void" }
+    "haptics.tap": { "params": {}, "returns": "void" }
   },
   "events": {}
 }
