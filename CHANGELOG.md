@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: check for updates after reconnect
+
+- A live connectivity report while the app is foregrounded now retries the signed update check,
+  including Wi-Fi/cellular handovers. Concurrent checks coalesce; data requirements retain their lease
+  and verification. Background reconnects sync only and defer the update check to resume.
+- `bundle.status` describes the last completed attempt until another one completes. Read `offline` as
+  "could not check on the last attempt", rather than a claim about the current connection.
+- Upgrade the native host package to get the trigger; no schema bump or app handler change is needed.
+
 ## Unreleased: a published plugin installs without editing it
 
 - **A `plugins` entry can be `{path, since}`,** stamping each of a fragment's methods and events with

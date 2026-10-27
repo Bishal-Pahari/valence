@@ -216,6 +216,8 @@ check stopped, from a closed set of eleven: `rejected` means a release no device
 `waitingForData` is the healthy stall four hosts read as "no update". Drive it from
 `bundle.updateReady`, which fires for **every** pending bundle rather than only an `--urgent` one —
 polling on resume races the check, so a page otherwise hears about an update one resume late.
+Foreground connectivity reports now retry the signed update check, including Wi-Fi/cellular handovers.
+The last `offline` result remains historical until a check completes; reconnecting does not prove success.
 [Full guide](https://getvalence.pages.dev/docs/guides/lifecycle/).
 
 ### Reading a bucket bigger than 500 rows
