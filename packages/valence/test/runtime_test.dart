@@ -1055,6 +1055,7 @@ void main() {
       final data = <String, String>{};
       final v = await open(writableBuckets: const {}, secure: testSecure(data));
       await v.authSetToken('jwt-a', account: 'user-a');
+      await v.store.hostPrefSet('valence.sync.reason', 'unauthorized');
       // Through the store, because data.put refuses a bucket that is no longer writable — which is
       // precisely how an outbox outlives the config that admitted it.
       await v.store.put('shelf', 'note', {'t': 'mine'}, opId: 'op-1');
@@ -1068,11 +1069,15 @@ void main() {
       );
       expect(data[secureAuthTokenKey], 'jwt-a', reason: 'nothing was changed');
       expect(await v.authAccount(), 'user-a');
+      expect((await v.syncStatus()).reason, 'unauthorized',
+          reason: 'a refused switch retains the outgoing account observation');
 
       await v.authSetToken('jwt-b', account: 'user-b', discardPending: true);
       expect(await v.store.pendingWrites(), 0,
           reason: 'and the flag still clears them');
       expect(await v.authAccount(), 'user-b');
+      expect((await v.syncStatus()).reason, isNull,
+          reason: 'no writable buckets still means a new account has no outcome');
     });
 
     test('the account id is recorded before the token is written (§4.4)',

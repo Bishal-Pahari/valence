@@ -777,8 +777,16 @@ export function loadPluginSchema(root, cfg) {
   if (cfg.plugins !== undefined && !Array.isArray(cfg.plugins)) throw new Error('plugins must be an array of fragment paths');
   const object = (v) => v && typeof v === 'object' && !Array.isArray(v);
   for (const path of cfg.plugins ?? []) {
-    if (typeof path !== 'string' || !path || isAbsolute(path)) throw new Error('plugin path must be a nonempty project-relative string');
-    const fragment = readJson(resolve(root, path));
+    if (typeof path !== 'string' || !path || isAbsolute(path) || path.split(/[/\\]/).includes('..')) {
+      throw new Error('plugin path must be a nonempty project-relative string inside the project');
+    }
+    // Contained, not merely relative. A fragment reached through `..` builds on the author's machine and
+    // dies with ENOENT on a fresh clone, and the merged schema that .valence/baseline.json records as
+    // "what the stores reviewed" would then have no source in the repo at all. Same rule as the §8 test
+    // mapping further down this file.
+    const resolved = resolve(root, path);
+    if (relative(root, resolved).startsWith('..')) throw new Error(`plugin ${path}: leaves the project directory`);
+    const fragment = readJson(resolved);
     const { namespace } = fragment;
     if (typeof namespace !== 'string' || !/^[a-z][a-zA-Z0-9]*$/.test(namespace) || PLUGIN_RESERVED.has(namespace)) {
       throw new Error(`plugin ${path}: invalid or reserved namespace "${namespace}"`);
