@@ -11,15 +11,15 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 14;
+const hostBridgeVersion = 15;
 
 final class AppInfo {
-  const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale, this.fontScale});
+  const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale, this.fontScale, this.builtins});
 
   factory AppInfo.fromJson(Object? j, [String f = 'AppInfo']) {
     final m = decodeObject(j, f);
-    decodeKeys(m, const {'platform', 'host', 'bridge', 'bundle', 'locale', 'fontScale'}, f);
-    return AppInfo(platform: decodeString(m['platform'], '$f.platform'), host: decodeInt(m['host'], '$f.host'), bridge: decodeInt(m['bridge'], '$f.bridge'), bundle: decodeInt(m['bundle'], '$f.bundle'), locale: decodeString(m['locale'], '$f.locale'), fontScale: m['fontScale'] == null ? null : decodeNum(m['fontScale'], '$f.fontScale'));
+    decodeKeys(m, const {'platform', 'host', 'bridge', 'bundle', 'locale', 'fontScale', 'builtins'}, f);
+    return AppInfo(platform: decodeString(m['platform'], '$f.platform'), host: decodeInt(m['host'], '$f.host'), bridge: decodeInt(m['bridge'], '$f.bridge'), bundle: decodeInt(m['bundle'], '$f.bundle'), locale: decodeString(m['locale'], '$f.locale'), fontScale: m['fontScale'] == null ? null : decodeNum(m['fontScale'], '$f.fontScale'), builtins: m['builtins'] == null ? null : decodeInt(m['builtins'], '$f.builtins'));
   }
 
   final String platform;
@@ -28,8 +28,9 @@ final class AppInfo {
   final int bundle;
   final String locale;
   final num? fontScale;
+  final int? builtins;
 
-  Map<String, Object?> toJson() => {'platform': platform, 'host': host, 'bridge': bridge, 'bundle': bundle, 'locale': locale, 'fontScale': fontScale};
+  Map<String, Object?> toJson() => {'platform': platform, 'host': host, 'bridge': bridge, 'bundle': bundle, 'locale': locale, 'fontScale': fontScale, 'builtins': builtins};
 }
 
 final class Row {
@@ -83,19 +84,20 @@ final class HttpResponse {
 }
 
 final class SyncStatus {
-  const SyncStatus({required this.pending, this.lastSyncedAt, required this.offline});
+  const SyncStatus({required this.pending, this.lastSyncedAt, required this.offline, this.reason});
 
   factory SyncStatus.fromJson(Object? j, [String f = 'SyncStatus']) {
     final m = decodeObject(j, f);
-    decodeKeys(m, const {'pending', 'lastSyncedAt', 'offline'}, f);
-    return SyncStatus(pending: decodeInt(m['pending'], '$f.pending'), lastSyncedAt: m['lastSyncedAt'] == null ? null : decodeInt(m['lastSyncedAt'], '$f.lastSyncedAt'), offline: decodeBool(m['offline'], '$f.offline'));
+    decodeKeys(m, const {'pending', 'lastSyncedAt', 'offline', 'reason'}, f);
+    return SyncStatus(pending: decodeInt(m['pending'], '$f.pending'), lastSyncedAt: m['lastSyncedAt'] == null ? null : decodeInt(m['lastSyncedAt'], '$f.lastSyncedAt'), offline: decodeBool(m['offline'], '$f.offline'), reason: m['reason'] == null ? null : decodeString(m['reason'], '$f.reason'));
   }
 
   final int pending;
   final int? lastSyncedAt;
   final bool offline;
+  final String? reason;
 
-  Map<String, Object?> toJson() => {'pending': pending, 'lastSyncedAt': lastSyncedAt, 'offline': offline};
+  Map<String, Object?> toJson() => {'pending': pending, 'lastSyncedAt': lastSyncedAt, 'offline': offline, 'reason': reason};
 }
 
 final class AppState {
@@ -114,12 +116,12 @@ final class AppState {
 }
 
 final class BundleStatus {
-  const BundleStatus({required this.serving, this.pending, this.trial, required this.reason, this.offered, this.checkedAt});
+  const BundleStatus({required this.serving, this.pending, this.trial, required this.reason, this.offered, this.checkedAt, this.urgent});
 
   factory BundleStatus.fromJson(Object? j, [String f = 'BundleStatus']) {
     final m = decodeObject(j, f);
-    decodeKeys(m, const {'serving', 'pending', 'trial', 'reason', 'offered', 'checkedAt'}, f);
-    return BundleStatus(serving: decodeInt(m['serving'], '$f.serving'), pending: m['pending'] == null ? null : decodeInt(m['pending'], '$f.pending'), trial: m['trial'] == null ? null : decodeInt(m['trial'], '$f.trial'), reason: decodeString(m['reason'], '$f.reason'), offered: m['offered'] == null ? null : decodeInt(m['offered'], '$f.offered'), checkedAt: m['checkedAt'] == null ? null : decodeInt(m['checkedAt'], '$f.checkedAt'));
+    decodeKeys(m, const {'serving', 'pending', 'trial', 'reason', 'offered', 'checkedAt', 'urgent'}, f);
+    return BundleStatus(serving: decodeInt(m['serving'], '$f.serving'), pending: m['pending'] == null ? null : decodeInt(m['pending'], '$f.pending'), trial: m['trial'] == null ? null : decodeInt(m['trial'], '$f.trial'), reason: decodeString(m['reason'], '$f.reason'), offered: m['offered'] == null ? null : decodeInt(m['offered'], '$f.offered'), checkedAt: m['checkedAt'] == null ? null : decodeInt(m['checkedAt'], '$f.checkedAt'), urgent: m['urgent'] == null ? null : decodeBool(m['urgent'], '$f.urgent'));
   }
 
   final int serving;
@@ -128,8 +130,9 @@ final class BundleStatus {
   final String reason;
   final int? offered;
   final int? checkedAt;
+  final bool? urgent;
 
-  Map<String, Object?> toJson() => {'serving': serving, 'pending': pending, 'trial': trial, 'reason': reason, 'offered': offered, 'checkedAt': checkedAt};
+  Map<String, Object?> toJson() => {'serving': serving, 'pending': pending, 'trial': trial, 'reason': reason, 'offered': offered, 'checkedAt': checkedAt, 'urgent': urgent};
 }
 
 final class Link {
@@ -927,7 +930,7 @@ abstract class ValenceBuiltins {
   /// `app.info`, from the package.
   Future<AppInfo> appInfo() async {
     final i = valence.appInfo();
-    return AppInfo(platform: i.platform, host: i.host, bridge: i.bridge, bundle: i.bundle, locale: i.locale, fontScale: i.fontScale);
+    return AppInfo(platform: i.platform, host: i.host, bridge: i.bridge, bundle: i.bundle, locale: i.locale, fontScale: i.fontScale, builtins: i.builtins);
   }
 
   /// `data.get`, from the package.
@@ -1017,7 +1020,7 @@ abstract class ValenceBuiltins {
   /// `sync.status`, from the package.
   Future<SyncStatus> syncStatus() async {
     final r = await valence.syncStatus();
-    return SyncStatus(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline);
+    return SyncStatus(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline, reason: r.reason);
   }
 
   /// `app.state`, from the package.
@@ -1028,8 +1031,8 @@ abstract class ValenceBuiltins {
 
   /// `bundle.status`, from the package.
   Future<BundleStatus> bundleStatus() async {
-    final s = valence.bundleStatus();
-    return BundleStatus(serving: s.serving, pending: s.pending, trial: s.trial, reason: s.reason.name, offered: s.offered, checkedAt: s.checkedAt);
+    final s = await valence.bundleStatusWithUrgency();
+    return BundleStatus(serving: s.serving, pending: s.pending, trial: s.trial, reason: s.reason.name, offered: s.offered, checkedAt: s.checkedAt, urgent: s.urgent);
   }
 
   /// `data.count`, from the package.

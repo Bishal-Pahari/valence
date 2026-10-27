@@ -10,6 +10,10 @@
   stamp naming something the fragment does not declare is an error. The example's haptics plugin now
   uses the published form, which is the shape to copy.
 
+## Unreleased: capability and status fields
+
+Schema 15 adds nullable builtins, persisted sync reason and signed pending urgency. Regenerate and ship a store build; declaring builtins also requires current optional params on declared built-ins. Earlier hosts and schemas keep working. Account changes clear the new sync observation.
+
 ## Unreleased: hardening the two newest trust boundaries
 
 Review of the combined feature merge found no broken security path in live development (R9) or native

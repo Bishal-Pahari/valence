@@ -95,10 +95,10 @@ const BUILTINS = {
     params: {},
     returns: {
       fields: { platform: 'string', host: 'int', bridge: 'int', bundle: 'int', locale: 'string' },
-      optional: { fontScale: 'num?' },
+      optional: { fontScale: 'num?', builtins: 'int?' },
     },
     call: (t, has) =>
-      `final i = valence.appInfo();\n        return ${t}(platform: i.platform, host: i.host, bridge: i.bridge, bundle: i.bundle, locale: i.locale${has('fontScale') ? ', fontScale: i.fontScale' : ''});`,
+      `final i = valence.appInfo();\n        return ${t}(platform: i.platform, host: i.host, bridge: i.bridge, bundle: i.bundle, locale: i.locale${has('fontScale') ? ', fontScale: i.fontScale' : ''}${has('builtins') ? ', builtins: i.builtins' : ''});`,
   },
   // §4.6. Both read state the host already keeps, so neither starts a request and a page may poll them.
   'app.state': {
@@ -111,10 +111,11 @@ const BUILTINS = {
     params: {},
     returns: {
       fields: { serving: 'int', pending: 'int?', trial: 'int?', reason: 'string', offered: 'int?', checkedAt: 'int?' },
+      optional: { urgent: 'bool?' },
     },
-    call: (t) =>
-      `final s = valence.bundleStatus();
-        return ${t}(serving: s.serving, pending: s.pending, trial: s.trial, reason: s.reason.name, offered: s.offered, checkedAt: s.checkedAt);`,
+    call: (t, has) =>
+      `final s = ${has('urgent') ? 'await valence.bundleStatusWithUrgency()' : 'valence.bundleStatus()'};
+        return ${t}(serving: s.serving, pending: s.pending, trial: s.trial, reason: s.reason.name, offered: s.offered, checkedAt: s.checkedAt${has('urgent') ? ', urgent: s.urgent' : ''});`,
   },
   'data.get': {
     params: { bucket: 'string', key: 'string' },
@@ -148,9 +149,9 @@ const BUILTINS = {
   },
   'sync.status': {
     params: {},
-    returns: { fields: { pending: 'int', lastSyncedAt: 'int?', offline: 'bool' } },
-    call: (t) =>
-      `final r = await valence.syncStatus();\n        return ${t}(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline);`,
+    returns: { fields: { pending: 'int', lastSyncedAt: 'int?', offline: 'bool' }, optional: { reason: 'string?' } },
+    call: (t, has) =>
+      `final r = await valence.syncStatus();\n        return ${t}(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline${has('reason') ? ', reason: r.reason' : ''});`,
   },
   'data.put': {
     params: { bucket: 'string', key: 'string', value: 'json?' },
@@ -1226,6 +1227,8 @@ function dartBuiltins(s) {
 // A schema may omit a built-in; it may not redefine one with a different shape, because the generated
 // delegation would then pass the wrong arguments to the runtime and nothing else would catch it.
 export function assertBuiltinShapes(s) {
+  const infoMethod = s.methods.find((m) => m.name === 'app.info');
+  const reportsBuiltins = s.types.find((t) => t.name === infoMethod?.returns.base)?.fields.some((f) => f.name === 'builtins');
   const show = (t) => (typeof t === 'string' ? t : `a type with {${Object.keys(t.fields).join(', ')}}${t.list ? '[]' : ''}`);
   for (const m of s.methods) {
     const want = builtinFor(m);
@@ -1235,6 +1238,13 @@ export function assertBuiltinShapes(s) {
     // type — the same rule as the return type's optional fields, and what lets the runtime add a param
     // (rule 5) without every app on the older shape failing codegen.
     const optionalParams = want.optionalParams ?? {};
+    if (reportsBuiltins) {
+      for (const name of Object.keys(optionalParams)) {
+        if (!(name in got)) {
+          throw new Error(`app.info declares builtins, so "${m.name}" must declare the current optional param "${name}"; update the schema or omit AppInfo.builtins to avoid reporting unsupported capabilities`);
+        }
+      }
+    }
     const requiredParams = Object.fromEntries(Object.entries(got).filter(([f]) => !(f in optionalParams)));
     const extraParams = Object.entries(got).filter(([f]) => f in optionalParams);
     if (canonical(requiredParams) !== canonical(want.params) || extraParams.some(([f, t]) => t !== optionalParams[f])) {

@@ -435,6 +435,44 @@ release AOT built with a dev define excludes the upstream URL and proxy implemen
 
 ## 4. Typed bridge
 
+### Schema 15 returned-field additions (R17)
+
+Schema 15 adds only nullable returned fields: `AppInfo.builtins: int?`,
+`SyncStatus.reason: string?`, and `BundleStatus.urgent: bool?`. Existing fields
+and method shapes retain their meanings. Older schemas omit these fields from
+generated delegations; newer pages on older hosts receive null/missing values.
+The store baseline remains unchanged until a store release records the new host.
+
+`builtins` reports the Valence built-in capability revision, currently 15,
+independently of the application's `bridge` schema number. Missing means unknown,
+so `(info.builtins ?? 0) >= 5` gates the `data.list.after` addition correctly even
+when an app's own schema number is larger. Existing method/event `has()` gates
+remain valid. A revision certifies built-in implementation support, not that an
+optional method is declared or enabled by this store build.
+Declaring `AppInfo.builtins` opts into current built-in parameter shapes:
+codegen refuses it if any declared built-in omits a supported optional parameter
+(currently `data.list.after` and `auth.setToken.account/discardPending`). This
+prevents reporting a revision whose grown params the strict dispatcher rejects.
+Methods may still be omitted; gate their presence with `has()` as before.
+
+`reason` is the last completed ordinary sync attempt's outcome, persisted beside
+the offline observation. Scoped attempts count too; it does not certify that all
+buckets succeeded. Busy/skipped runs and exceptions preserve the previous outcome.
+A migrated or never-attempted database returns null; no-server runs preserve it.
+Account switch/sign-out clears this observation with the other account-owned sync
+observations. It is an open string set; unknown reasons are not success. Existing
+anonymous-401 semantics are unchanged. An app needing an acknowledgement tied to
+one authenticated bucket must still track its explicit scoped check.
+
+`urgent` describes the currently pending bundle's signed manifest, never the
+pointer's offered bundle or the currently serving bundle. No pending bundle,
+failed re-verification or a concurrent pending change returns null. Both false
+and true are meaningful. Reading it verifies local manifest bytes and never
+downloads or activates anything. The synchronous Dart `bundleStatus()` API remains;
+generated schemas declaring urgency use additive `bundleStatusWithUrgency()`.
+Urgency is a UI hint, never permission to bypass trial, ready, rollback or user
+confirmation policy. Every pending update still emits `bundle.updateReady`.
+
 ### 4.1 IDL: `valence/bridge.schema.json`
 
 ```json
@@ -1491,7 +1529,7 @@ Firebase project** until the maintainer supplies the project configuration.
 
 - `data.getMany({bucket, keys: string[]}) -> Row[]` is a built-in at `since: 3`. It reads the active bundle's schema, returns live rows in first-requested-key order, omits missing keys and tombstones, and deduplicates keys. Empty input returns an empty list. More than 500 input keys fails with `E_PARAMS`; keys are bound SQL parameters, never SQL text. One batch crosses the bridge once, rather than paying a separate WebView round trip per key (about 15 ms in the test-app emulator measurement; not a performance guarantee).
 - `sync.status() -> {pending: int, lastSyncedAt: int?, offline: bool}` is a built-in at `since: 3`, with no network side effect. `pending` counts outbox operations, including deletes and repeated edits. `lastSyncedAt` is the epoch-millisecond time of the last successful **unscoped** sync, persisted in reserved host prefs, or null before one. `offline` describes the last attempted run's transport failure, not current connectivity; it is false before an attempt. Busy runs do not overwrite these observations. A scoped run cannot advance the global timestamp. `SyncResult.pending` is an optional nullable `int?` (§4.3), reporting remaining operations at return time, including busy/offline/no-server results.
-  - **`SyncStatus` carries no last *reason*, so an outcome a page wants to keep is the page's to persist.** The three fields say where the data stands, not why the last run ended as it did, and an authenticated 401 is the case that reads as healthy: `offline` is false because the request was answered, and `lastSyncedAt` still holds the older success. A page that redraws its status line from `sync.status()` alone therefore erases its own "sign in again" warning on the next navigation or cold start. The outcome arrives on `auth.expired` and in `SyncResult.reason`; persist it to prefs, and clear it only on a success the page asked for. Adding the last completed reason to `SyncStatus` is a future schema bump (a grown field is always nullable, §4.3).
+  - Schema 15 adds nullable SyncStatus.reason for the last completed ordinary attempt, scoped runs included. Older schemas omit it; apps needing an explicit authenticated-bucket receipt still persist their own outcome. See the R17 returned-field contract.
 - `ota.channel` defaults to `production` and must match `[A-Za-z0-9_-]+`. Codegen emits `valenceOtaChannel` and wires it into `valenceConfig.channel`; the updater follows that channel. Bundles remain channel-neutral. Changing a compiled host's channel needs a host build.
 - OTA `requires.bridge` defaults to `baseline.storeSchema.version`, falling back to the local schema version before any store baseline. Built-in and store builds default to the local schema version. An explicit `--requires-bridge` still wins. Building below the local version names the methods needing `has()` guards; it does not make unguarded calls safe.
 - `seedSchemas: {bucket: int[]}` optionally declares additional read-only schemas the project may seed. Current `data` schemas are implicitly declared. `seed --from` accepts legacy `<bucket>.json` and `<bucket>.v<N>.json` files with `{schema, rows}`. A versioned filename must match its payload; every pair must be declared, duplicates fail atomically, and multiple schemas coexist. Missing **current pairs** warn even if an older pair was seeded. Writable buckets remain schema 1 and cannot be declared in `seedSchemas`.
@@ -1593,3 +1631,5 @@ R12 regression rows: batch reads preserve requested order, deduplicate, isolate 
 R8 regression rows (§4.7): owning-view logical insets exclude keyboard and change after rotation; system font size and accessibility preferences are read independently of app theme; native Android zoom follows settings changes; repeated iOS root scaling does not compound; publication preserves navigation and nonce; initial/reload appearance delivery and typed unsubscribe; AppInfo.fontScale is optional and additive only at num?, and generated delegates compile with and without it.
 
 R5 regression rows: exact data-only sync hints only; no payload-supplied config, URLs, tokens or trial transitions; passive startup and explicit permission requests; registration gated on permission/APNs; cold-tap consumption and live-tap race; token rotation; JSON escaping and event cap; disabled-host E_UNSUPPORTED and generated strict nonce/params denials. Device delivery/image/silent-sync checks remain blocked until a Firebase project is supplied.
+
+R17 regression rows: independent app/built-in revisions; reporting-schema parameter coherence; nullable returned fields additive against schema 14; legacy delegation omission; persisted unauthorized/scoped-success outcomes, busy/error preservation and account clearing; signed pending urgency true/false, invalid signature/missing/stale sequence refusal and unchanged activation state.

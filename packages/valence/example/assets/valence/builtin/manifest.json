@@ -1,11 +1,11 @@
 {
   "format": 1,
   "appId": "com.getvalence.example",
-  "seq": 1793062826,
-  "version": "2026-10-27+1793062826",
+  "seq": 1793064246,
+  "version": "2026-10-27+1793064246",
   "floor": 0,
   "requires": {
-    "bridge": 14,
+    "bridge": 15,
     "data": {
       "plants": 1
     }
@@ -27,6 +27,6 @@
       "n": 1152
     }
   },
-  "createdAt": "2026-10-27T01:00:26.379Z",
+  "createdAt": "2026-10-27T01:24:06.993Z",
   "keyId": "k1"
 }

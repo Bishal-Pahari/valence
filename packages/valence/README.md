@@ -217,3 +217,5 @@ Use the generated `permissions.check`, `permissions.request`, `permissions.openS
 ## Local reminders
 
 Schema 11 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. iOS is experimental and untested. See [setup and adoption](https://getvalence.pages.dev/docs/guides/local-notifications/).
+
+Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent. Older hosts omit them. See [capability revisions and durable status](https://getvalence.pages.dev/docs/guides/capabilities-and-status/).

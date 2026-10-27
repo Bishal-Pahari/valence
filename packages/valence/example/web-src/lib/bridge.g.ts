@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 14;
+export const BRIDGE_VERSION = 15;
 
 export interface AppInfo {
   platform: string;
@@ -17,6 +17,7 @@ export interface AppInfo {
   bundle: number;
   locale: string;
   fontScale?: number | null;
+  builtins?: number | null;
 }
 
 export interface Row {
@@ -43,6 +44,7 @@ export interface SyncStatus {
   pending: number;
   lastSyncedAt?: number | null;
   offline: boolean;
+  reason?: string | null;
 }
 
 export interface AppState {
@@ -57,6 +59,7 @@ export interface BundleStatus {
   reason: string;
   offered?: number | null;
   checkedAt?: number | null;
+  urgent?: boolean | null;
 }
 
 export interface Link {

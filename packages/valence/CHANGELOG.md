@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased: capability and status fields
+
+Schema 15 adds nullable builtins, persisted sync reason and signed pending urgency. Regenerate and ship a store build; declaring builtins also requires current optional params on declared built-ins. Earlier hosts and schemas keep working. Account changes clear the new sync observation.
+
 ## Unreleased: dev-mode and plugin hardening
 
 - `Valence.emit` enforces the §4.2 256 KB envelope cap, so an oversized event — now possible because
