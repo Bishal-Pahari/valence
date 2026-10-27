@@ -179,6 +179,10 @@ Task snapshots are bound to the native account as well as the signed bundle: swi
 
 ## Offline tooling in 0.4
 
+Seed completion writes retry database locks without repeating the row import. Logs distinguish
+imported rows from a marker that could not be recorded; the next launch retries safely against
+the current cursor. [Seed recovery](docs/seed-recovery.md).
+
 `data.getMany` reads up to 500 keys in one bridge call; `sync.status` reports pending operations (including deletes) without a network call. Both are schema-3 additions: guard them with `has()`. `ota.channel` selects the host channel, and OTA builds now default to the recorded store bridge version; guard newer calls or explicitly raise `--requires-bridge`. `seedSchemas` plus `<bucket>.v<N>.json` seeds multiple declared schemas together. Test doubles can opt into generated `BridgeHandlersDefaults`.
 
 Run `node valence/valence.mjs doctor --tests` for mechanical checks and mapped unit tests. Broken bridge versions, incompatible local OTA requirements, database paths, PEM keys inside Git and invalid connection URLs fail with a fix. WARN means missing or unexecuted evidence; installed database adoption and device behavior still need a device run. [Full guide](https://getvalence.pages.dev/docs/guides/offline-tooling/).

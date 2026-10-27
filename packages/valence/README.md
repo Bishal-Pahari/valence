@@ -33,6 +33,10 @@ restoration identifier in Main.storyboard; iOS is experimental and untested.
 
 ## Setup
 
+Seed imports record completion separately from row insertion. A locked completion marker retries
+up to five times, one second apart; exhausted retries retain rows and leave the marker for the
+next launch. [Recovery and log meanings](../../docs/seed-recovery.md). No app codegen change is needed.
+
 For debug-only HMR, start your web dev server and run
 `flutter run --debug --dart-define=VALENCE_DEV_URL=http://10.0.2.2:5173`.
 The loopback proxy injects the normal bridge nonce and forwards HMR WebSockets. Release/profile
