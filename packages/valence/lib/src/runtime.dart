@@ -14,6 +14,7 @@ import 'appearance.dart';
 import 'log.dart';
 import 'manifest.dart';
 import 'native_http.dart';
+import 'restoration.dart';
 import 'secure.dart';
 import 'server.dart';
 import 'state.dart';
@@ -149,6 +150,28 @@ abstract interface class ValenceHostView {
 /// }
 /// ```
 final class Valence {
+  /// Task-local UI state. ValenceApp connects this to OS restoration (§4.7).
+  final restoration = ValenceRestoration();
+
+  /// `state.save`: small UI state only; never credentials or durable records.
+  void stateSave(Object? json) => restoration.save(json);
+
+  /// `state.restore`: the last task-local blob, or null in a fresh task.
+  Object? stateRestore() => restoration.restore();
+
+  /// Validates a restored task against secure account state before any route is loaded.
+  Future<void> prepareRestoration(int seq) async {
+    try {
+      restoration.bindAccount(await secure.authAccount());
+    } on BridgeError {
+      // Public/offline startup must survive a missing Keystore. The snapshot cannot be trusted,
+      // but the verified root page can still load without restoring anyone's route or draft.
+      restoration.clear();
+      _log('restoration: account could not be checked; starting with an empty task snapshot');
+    }
+    restoration.activate(seq);
+  }
+
   Valence._({
     required this.config,
     required this.state,
@@ -560,13 +583,22 @@ final class Valence {
   /// `secure.delete`.
   Future<void> secureDelete(String key) => secure.delete(key);
 
+  Future<void> _authTail = Future<void>.value();
+
   /// `auth.setToken`. A null [token] clears it. The host attaches it to every user-bucket request (§4.4).
   ///
   /// [account] is the app's own opaque id for the user. Recording a **different** one, or signing out
   /// with one recorded, is an account switch: it refuses to run over queued writes unless
   /// [discardPending] is set, and then clears every writable bucket before the new token is stored.
   /// An app that never passes [account] keeps the 0.3 behaviour — the token changes and no row moves.
-  Future<void> authSetToken(String? token, {String? account, bool discardPending = false}) async {
+  Future<void> authSetToken(String? token, {String? account, bool discardPending = false}) {
+    final result = _authTail.then((_) => _setAuthToken(token, account: account, discardPending: discardPending));
+    // A refused switch must not poison the queue for the user's next attempt.
+    _authTail = result.then<void>((_) {}, onError: (Object error, StackTrace stack) {});
+    return result;
+  }
+
+  Future<void> _setAuthToken(String? token, {String? account, required bool discardPending}) async {
     final next = (account == null || account.isEmpty) ? null : account;
     // `null` only. An empty string clears the token exactly as it did before R13 — a refresh loop that
     // yields '' on failure, or an app's uninitialised state field, must not be read as "this is a
@@ -580,6 +612,7 @@ final class Valence {
     final switching = recorded != null && (signOut || (next != null && next != recorded));
     if (!switching) {
       await _storeToken(token, signOut: signOut, next: next);
+      restoration.bindAccount(signOut ? null : next ?? recorded, adopt: recorded == null && !signOut);
       return;
     }
     await _switchAccount(token, from: recorded, to: signOut ? null : next, discardPending: discardPending);
@@ -639,7 +672,13 @@ final class Valence {
       // Inside the lease: a sync starting between the clear and the token write would pull the previous
       // account's rows straight back under the previous account's token, because the header is built
       // per request, and the new token would then be stored over them.
-      await _storeToken(token, signOut: to == null, next: to);
+      // Secure storage writes one key at a time. Remove A's bearer before recording B, then write
+      // B's bearer only after B's identity is durable. Every crash/failure between these writes leaves
+      // no token, never B's credentials under A's identity (which would also restore A's task draft).
+      await secure.setAuthToken(null);
+      await secure.setAuthAccount(to);
+      restoration.bindAccount(to);
+      await secure.setAuthToken(token);
     } finally {
       await sync.releaseLease();
     }
@@ -672,8 +711,7 @@ final class Valence {
       ValenceHttp(
         origins: config.httpOrigins,
         token: config.authToken ?? secure.authToken,
-        onUnauthorized: () =>
-            emit(eventScript('auth.expired', const <String, Object?>{})),
+        onUnauthorized: () => emit(eventScript('auth.expired', const <String, Object?>{})),
       ).request(url: url, method: method, headers: headers, body: body);
 
   /// `open.external`. Only `https:`, `mailto:` and `tel:` leave the app.

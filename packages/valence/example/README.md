@@ -55,3 +55,9 @@ The combined schema is now 13 (appearance remains since 7) and `http.origins` co
 ## R8 layout probe
 
 The signed page displays app.appearance and logical insets, pads content with the host variables, uses 48px buttons and exposes optional fontScale through app.info. Rotate, resize, change font size and toggle system dark mode without reloading. See [accessibility](../../../docs/accessibility.md). iOS remains experimental and untested.
+
+## Task restoration
+
+Schema 8 adds `state.save({json})` and `state.restore()` for a task-local UI blob (65,536 JSON UTF-8 bytes). ValenceApp restores the local path/query/hash after OS process reclamation. Explicit task closure starts fresh; a different bundle seq clears the snapshot. Save promptly and keep durable records in SQLite. iOS is experimental and untested. [Guide](https://getvalence.pages.dev/docs/guides/state-restoration/).
+
+Task snapshots are bound to the native account as well as the signed bundle: switching or signing out clears the route and draft, including stale OS snapshots. Refresh and first-account adoption retain the live draft.

@@ -126,6 +126,10 @@ export interface Methods {
     bucket: string;
     prefix?: string | null;
   }; returns: number };
+  'state.save': { params: {
+    json?: Json | null;
+  }; returns: void };
+  'state.restore': { params: Record<string, never>; returns: Json | null };
 }
 
 export interface Events {
@@ -177,6 +181,8 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'app.state': 6,
   'bundle.status': 6,
   'data.count': 5,
+  'state.save': 8,
+  'state.restore': 8,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {

@@ -153,6 +153,18 @@
       "since": 6,
       "params": {},
       "returns": "BundleStatus"
+    },
+    "state.save": {
+      "since": 8,
+      "params": {
+        "json": "json?"
+      },
+      "returns": "void"
+    },
+    "state.restore": {
+      "since": 8,
+      "params": {},
+      "returns": "json?"
     }
   },
   "events": {

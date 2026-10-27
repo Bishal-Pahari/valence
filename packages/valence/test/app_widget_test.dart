@@ -190,6 +190,40 @@ void main() {
     await tester.pump();
   }
 
+  testWidgets('URL changes record only safe local restoration routes',
+      (tester) async {
+    await mount(tester);
+    await io(tester);
+    final origin = runtime.server!.origin;
+    webview.controller.navigation
+        .urlChanged(UrlChange(url: '$origin/shelf/fern?q=green#care'));
+    expect(runtime.restoration.route, '/shelf/fern?q=green#care');
+    for (final url in [
+      'https://evil.invalid/',
+      '$origin/_host/alive',
+      '$origin/x%00y'
+    ]) {
+      webview.controller.navigation.urlChanged(UrlChange(url: url));
+      expect(runtime.restoration.route, '/shelf/fern?q=green#care');
+    }
+  });
+
+  testWidgets(
+      'an account switch invalidates an awaiting background route capture',
+      (tester) async {
+    await mount(tester);
+    await tester.runAsync(() => runtime.authSetToken('jwt-a', account: 'a'));
+    final controller = webview.controller;
+    controller.currentUrlGate = Completer<String?>();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.runAsync(() => runtime.authSetToken('jwt-b', account: 'b'));
+    controller.currentUrlGate!
+        .complete('${runtime.server!.origin}/shelf/a?draft=private');
+    await io(tester);
+    expect(runtime.restoration.route, '/');
+    expect(runtime.stateRestore(), isNull);
+  });
+
   testWidgets(
       'I-61: resume during startup changes state but starts no work or event',
       (tester) async {

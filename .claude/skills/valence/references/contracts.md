@@ -680,9 +680,10 @@ at the reserved key `valence.auth.account`. It is written only by this method an
     the token write would pull A's rows straight back, under A's token, because the header is built per
     request. Releasing the lease before the token is written reopens the whole hole on a resume.
   - **Clearing first and storing second**, in that order, because the failure between them has to be
-    the recoverable one. A write that fails after the clear leaves A's token and A's recorded id over no
-    data: the next sync re-pulls A's own rows, and B's next attempt is a switch again, which clears
-    again. Storing first and clearing second leaves B's token over A's rows, and nothing later notices.
+    the recoverable one. After clearing rows, delete the old token, record the new id, rebind task
+    restoration (§4.7), then write the new token. Interrupted writes leave the original credentials
+    or no bearer, never a new bearer under the old id. Retry sign-in to recover. Storing first and
+    clearing second leaves B's token over A's rows, and nothing later notices.
   - `sync.changed` is emitted for the cleared buckets, because a page showing A's list is now showing
     rows that are gone.
   - A bucket the app has **dropped** from `writable` since those rows were written is not in the set the
@@ -926,6 +927,48 @@ does not expose a page-callable system-settings setter. These signals describe O
 preferences; they do not certify the page as accessible. Semantic HTML, TalkBack
 testing, contrast, focus order and usable tap targets remain the app's job.
 
+## 4.7 Task state restoration (R7)
+
+Snapshots are bound to the native recorded account (§4.4) as well as the signed bundle seq.
+Before loading a restored route, compare its account fingerprint with secure storage; a mismatch
+clears both route and blob. A failed account read discards the snapshot and loads the verified root page; it is never treated as proof of an anonymous account. A successful switch
+or account-aware sign-out clears and rebinds the live snapshot before releasing the sync lease.
+Same-account refresh and first-account adoption retain the current draft; adoption stamps the new
+fingerprint. An older OS snapshot without that fingerprint cannot restore into a named account.
+The envelope stores only a SHA-256 fingerprint of the opaque id, never the id or bearer token.
+This does not clear the page's live DOM: the app must redraw account-owned UI after the switch.
+
+An account switch writes secure state in this order, inside the same sync lease: delete the old
+token, store the new account id (or delete it for sign-out), clear/rebind restoration, then store
+the new token. A failed write or process death can leave a recorded account without a token;
+retrying the sign-in repairs that state. It must never leave the new token under the old identity.
+Account-changing calls are serialized in the host, and a refusal does not block later attempts. An app refresh loop must cancel an outstanding refresh when the user changes, or pass the correct explicit account id; a refresh without an id cannot tell the host whose token it is. Interrupted secure writes can leave the new account recorded without a token; retry sign-in to repair it.
+
+
+`state.save({json: json?}) -> void` and `state.restore() -> json?` are additive at
+`since: 8`. Saving null clears the blob. The compact JSON UTF-8 encoding is at most
+65,536 bytes; excess is E_PARAMS without replacing the previous value. This is
+ephemeral UI state, never credentials or durable user data.
+
+ValenceApp enables Flutter OS state restoration itself. It records the same-origin
+route (path, query and hash) as navigation changes and captures it again on background.
+Only absolute relative paths up to 4,096 UTF-8 bytes are accepted: no authority,
+scheme, backslash, control characters, dot segments or reserved /_host/ paths,
+including encoded forms. No persisted origin or port is ever used to navigate.
+After OS process reclamation, the restored route is resolved against the newly
+bound loopback origin. The blob and route are tied to the served signed bundle seq;
+an update or rollback drops both before serving the new bundle. Normal signature,
+nonce, navigation and trial-ready checks still run; restoration never commits a trial.
+
+The state lives only in the OS task restoration snapshot, not prefs or state.json.
+A fresh task (including Android force-stop or removal from Recents) starts at /
+with null. Backgrounding alone retains the current page. state.restore returns the
+latest saved/restored blob repeatedly, including in the current process. OS snapshots
+are best effort; applications save small UI changes promptly, not only at shutdown.
+Android process reclamation is tested with Home then `adb shell am kill <appId>` and
+reopening the retained task. iOS uses Flutter restoration too but is experimental
+and untested; its app must opt into native state restoration as Flutter documents.
+
 ## 5. Data layer
 
 ### 5.1 SQLite schema (host, sqflite)
@@ -1166,6 +1209,12 @@ Everything here is silent when it is wrong: the call succeeds, the UI says "Set"
 - `node valence/valence.mjs doctor [--tests]` runs mechanical diagnostics without an AI session. It checks config, codegen freshness, built-in signature/files/host bridge/data compatibility, current seed coverage, baseline and stack report presence, declared `nativeValue` (at least two distinct §6 capabilities), resolved Flutter dependencies, and app test-matrix evidence. Rows are `PASS`, `WARN` (missing or unexecuted evidence), or `FAIL` (a check ran and failed); any failure exits nonzero. Missing evidence never passes. `nativeValue` is a declaration, not proof of device behavior. `.valence/test-matrix.json` maps stable layer IDs `bridge`, `loopback`, `updater`, `store-sync`, `integration` to app-relative Flutter `test/` or `integration_test/` files; doctor lists every ID. `--tests` executes mapped unit tests; integration rows stay WARN and need a separate device run. File mappings are evidence pointers, not proof that assertions cover the contract. Doctor does not certify store approval or emulator behavior.
 
 ## 8. Test matrix (minimum; all must pass before "done")
+
+R7: bounded multibyte JSON, null clearing, strict nonce/params delegation, task
+snapshot restore and fresh-task reset, same-bundle and native-account isolation (including stale OS snapshots and in-flight route captures), refresh/adoption retention, hostile restored
+routes (including encoded /_host/), rotated loopback port, unchanged trial checks;
+Android Home → am kill → retained-task reopen restores path/query/hash and blob,
+force-stop and explicit task removal start fresh.
 
 **R16 mechanical doctor.** Both CLI entry points use the same diagnostics. Every FAIL includes a `Fix:` line and exits nonzero, without rewriting files. Compare schema and generated host bridge versions; validate the recorded store schema; verify local OTA manifests and their files before comparing `requires.bridge` with the recorded store version. An OTA above that version is FAIL: rebuild with the store bridge floor and guard newer calls, or ship the new host first. Missing store evidence is WARN; historical OTA artifacts are checked too, so archive obsolete local releases outside `dist-ota` before rerunning. `host.database` is a plain file name (default `valence.db`), never a path: fail on separators, traversal or an invalid filename, and report `<appSupport>/<name>` with a WARN that actual installed location and legacy adoption need a device check. Never open or move a user's database from doctor. Inspect Git's tracked and untracked, non-ignored files for PEM private-key headers; fail without printing key material, including when the configured signing-key directory resolves inside Git through a link. Git unavailable is WARN, not PASS. Ignored files are outside this scan; this is a working-tree check, not a Git-history secret audit. Validate `web.connect` as HTTP(S) URLs without credentials, whitespace or CSP source syntax; paths remain supported and normalize to origins. Validate `http.origins` separately as exact HTTP(S) origins; browser CSP permission never grants native token access. R16 does not add bridge methods or change package versions.
 

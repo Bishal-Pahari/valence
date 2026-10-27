@@ -37,7 +37,7 @@ const TEMPLATES = join(import.meta.dirname, '..', 'templates');
 // Listed here rather than per test, because every new runtime capability has to land in exactly one place
 // for the "an older app still codegens" cases to keep meaning what they say.
 const SINCE_ABOVE_4 = {
-  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'auth.account'],
+  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account'],
   events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online'],
   types: ['SyncStatus', 'AppState', 'BundleStatus'],
 };
@@ -87,6 +87,23 @@ const editSchema = (root, fn) => {
   fn(s);
   writeFileSync(schemaFile(root), JSON.stringify(s));
 };
+
+test('task restoration is optional, shape-frozen and delegated to the package', () => {
+  const { root, cfg } = fixture({ latest: true });
+  const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
+  assert.equal(schema.version, 13);
+  assert.equal(schema.methods['state.save'].since, 8);
+  assert.equal(schema.methods['state.restore'].since, 8);
+  codegen({ root, cfg });
+  const ts = readFileSync(join(root, 'web', 'src', 'lib', 'valence', 'bridge.g.ts'), 'utf8');
+  assert.match(ts, /'state.save': 8/);
+  assert.match(ts, /'state.restore': 8/);
+  const dart = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(dart, /valence.stateSave\(p.json\)/);
+  assert.match(dart, /return valence.stateRestore\(\)/);
+  editSchema(root, (s) => (s.methods['state.save'].params.json = 'string?'));
+  assert.throws(() => codegen({ root, cfg }), /must stay/);
+});
 
 // ---------- keys ----------
 

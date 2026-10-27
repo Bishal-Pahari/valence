@@ -40,3 +40,5 @@ The spec is `valence` [contracts.md](https://github.com/Bishal-Pahari/valence/bl
 15. **Run `node valence/valence.mjs doctor --tests` before a release.** Fix every FAIL; keep missing or device-only evidence as WARN. `host.database` names a file under app support, never a path. Local OTA requirements must fit the recorded store bridge; archive obsolete local bundles rather than rewriting the baseline.
 
 Adaptive UI: use --valence-inset-top/right/bottom/left with 0px fallbacks and a width=device-width viewport. ValenceApp handles native Android text zoom; do not double-scale CSS. Subscribe to app.appearance during bootstrap, before ready(). Test semantic HTML with TalkBack and 200% text. See https://getvalence.pages.dev/docs/guides/accessibility/.
+
+Task restoration follows the recorded account: switch/sign-out clears route and blob; refresh/adoption retains the live draft. Redraw account-owned page UI after a switch; do not put secrets in state.save.

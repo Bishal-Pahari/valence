@@ -1,5 +1,6 @@
 // The built-in bridge methods' policy: the trust boundary that lives in the package rather than in the
 // generated marshalling. Contracts §4.2, §5.4, §5.5.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -94,6 +95,100 @@ void main() {
       expect(info.locale, isNotEmpty);
       expect(info.fontScale, 1);
     });
+  });
+
+  test('task drafts follow native account identity across refresh, switch and stale OS restore', () async {
+    final data = <String, String>{};
+    final v = await open(writableBuckets: {'shelf'}, secure: testSecure(data));
+    await v.prepareRestoration(10);
+    v.stateSave({'draft': 'private'});
+    await v.authSetToken('jwt-a', account: 'user-a');
+    expect(v.stateRestore(), {'draft': 'private'}, reason: 'first-account adoption keeps the draft');
+    v.restoration.observe('http://127.0.0.1:1234/shelf/a?draft=private', 'http://127.0.0.1:1234');
+    final snapshotA = v.restoration.snapshot();
+    expect(snapshotA, isNot(contains('user-a')));
+    expect(snapshotA, isNot(contains('jwt-a')));
+    await v.authSetToken('jwt-a2', account: 'user-a');
+    expect(v.stateRestore(), {'draft': 'private'});
+    await v.store.put('shelf', 'a', 1, opId: 'a');
+    await expectLater(v.authSetToken('jwt-b', account: 'user-b'),
+        throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.pending)));
+    expect(v.stateRestore(), {'draft': 'private'}, reason: 'refused switches change nothing');
+    await v.authSetToken('jwt-b', account: 'user-b', discardPending: true);
+    expect(v.stateRestore(), isNull);
+    expect(v.restoration.route, '/');
+    v.restoration.hydrate(snapshotA); // OS retained the pre-switch snapshot.
+    await v.prepareRestoration(10);
+    expect(v.stateRestore(), isNull);
+    expect(v.restoration.route, '/');
+    v.stateSave({'draft': 'B'});
+    final snapshotB = v.restoration.snapshot();
+    v.restoration.hydrate(snapshotB);
+    await v.prepareRestoration(10);
+    expect(v.stateRestore(), {'draft': 'B'}, reason: 'the same account can restore');
+    await v.authSetToken(null);
+    expect(v.stateRestore(), isNull);
+    v.restoration.hydrate(snapshotB);
+    await v.prepareRestoration(10);
+    expect(v.stateRestore(), isNull, reason: 'sign-out also refuses stale task snapshots');
+  });
+
+  test('failed account and token writes never pair a new bearer with the old task identity', () async {
+    for (final failKey in [secureAuthAccountKey, secureAuthTokenKey]) {
+      final data = <String, String>{secureAuthAccountKey: 'user-a', secureAuthTokenKey: 'jwt-a'};
+      var fail = true;
+      FlutterSecureStoragePlatform.instance = _WatchedSecureStorage(data, (key) async {
+        if (fail && key == failKey) throw PlatformException(code: 'write-failed');
+      });
+      final v = await open(writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
+      await v.prepareRestoration(10);
+      v.stateSave({'draft': 'A only'});
+      final snapshotA = v.restoration.snapshot();
+      await expectLater(v.authSetToken('jwt-b', account: 'user-b'), throwsA(isA<BridgeError>()));
+      expect(data[secureAuthTokenKey], isNull, reason: 'failed secure write leaves no credential');
+      expect(await v.sync.acquireLease(), isTrue, reason: 'the failed switch released the lease');
+      await v.sync.releaseLease();
+      v.restoration.hydrate(snapshotA);
+      await v.prepareRestoration(10);
+      if (data[secureAuthAccountKey] == 'user-b') {
+        expect(v.stateRestore(), isNull, reason: 'B identity cannot restore A draft even without a token');
+      } else {
+        expect(data[secureAuthAccountKey], 'user-a');
+        expect(v.stateRestore(), {'draft': 'A only'}, reason: 'no new identity or bearer was stored');
+      }
+      fail = false;
+      await v.authSetToken('jwt-b', account: 'user-b');
+      expect(data[secureAuthAccountKey], 'user-b');
+      expect(data[secureAuthTokenKey], 'jwt-b');
+      expect(v.stateRestore(), isNull);
+    }
+  });
+
+  test('overlapping account changes serialize identity reads', () async {
+    final data = <String, String>{secureAuthAccountKey: 'a', secureAuthTokenKey: 'jwt-a'};
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    var block = true;
+    FlutterSecureStoragePlatform.instance = _WatchedSecureStorage(data, (key) async {
+      if (block && key == secureAuthAccountKey) {
+        block = false;
+        entered.complete();
+        await release.future;
+      }
+    });
+    final v = await open(writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
+    final first = v.authSetToken('jwt-b', account: 'b');
+    await entered.future;
+    var secondDone = false;
+    final second = v.authSetToken('jwt-c', account: 'c').then((_) => secondDone = true);
+    await Future<void>.delayed(Duration.zero);
+    expect(secondDone, isFalse);
+    expect(data[secureAuthTokenKey], isNull);
+    release.complete();
+    await first;
+    await second;
+    expect(data[secureAuthAccountKey], 'c');
+    expect(data[secureAuthTokenKey], 'jwt-c');
   });
 
   test('sync status counts deletes, persists observations and leaves busy/scoped timestamps alone', () async {
@@ -625,6 +720,12 @@ void main() {
       final data = <String, String>{secureAuthAccountKey: 'user-a', secureAuthTokenKey: 'jwt-a'};
       FlutterSecureStoragePlatform.instance = _UnreadableAccount(data);
       final v = await open(writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
+      v.restoration.activate(10);
+      v.restoration.observe('http://127.0.0.1:1234/shelf/private', 'http://127.0.0.1:1234');
+      v.stateSave({'private': true});
+      await v.prepareRestoration(10);
+      expect(v.restoration.route, '/');
+      expect(v.stateRestore(), isNull, reason: 'an unreadable account discards the snapshot, not offline startup');
       await v.store.applyPullPage(
           bucket: 'shelf', schema: 1, rows: [{'k': 'a', 'v': 1, 'u': 4, 'd': 0}], maxUsnAfter: 4);
       await expectLater(

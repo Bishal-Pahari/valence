@@ -22,6 +22,14 @@
     <p class="sub">The web UI, served from the host's loopback server as a signed bundle.</p>
 
     <section>
+      <h2>Task restoration</h2>
+      <label>Draft <input id="draft" value="fern draft" /></label>
+      <button id="save-state">Save draft and route</button>
+      <button id="clear-state">Clear draft</button>
+      <pre id="restored"></pre>
+    </section>
+
+    <section>
       <h2>Host</h2>
       <pre id="info">reading app.info…</pre>
       <pre id="batch">reading data.getMany…</pre>
@@ -153,6 +161,21 @@
         document.getElementById('error').textContent = err ? String(err) : '';
       };
 
+      async function showRestored() {
+        const state = await call('state.restore');
+        if (state && typeof state.draft === 'string') document.getElementById('draft').value = state.draft;
+        document.getElementById('restored').textContent = location.pathname + location.search + location.hash + '\nstate.restore: ' + JSON.stringify(state);
+      }
+      document.getElementById('save-state').onclick = async () => {
+        history.pushState({}, '', '/shelf/fern?mode=draft#edit');
+        await call('state.save', { json: { draft: document.getElementById('draft').value } });
+        await showRestored();
+      };
+      document.getElementById('clear-state').onclick = async () => {
+        await call('state.save', { json: null });
+        await showRestored();
+      };
+
       async function refresh() {
         document.getElementById('status').textContent = 'sync.status: ' + JSON.stringify(await call('sync.status'));
         document.getElementById('batch').textContent = 'data.getMany: ' + JSON.stringify(await call('data.getMany', { bucket: 'plants', keys: ['fern', 'missing', 'fern'] }));
@@ -279,6 +302,7 @@
       (async () => {
         try {
           const info = await call('app.info');
+          await showRestored();
           hostBridge = info.bridge;
           document.getElementById('info').textContent = JSON.stringify(info, null, 2);
           await refresh();

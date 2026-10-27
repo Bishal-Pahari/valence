@@ -144,6 +144,16 @@ host with a stub native WebView; Android device verification remains a separate 
 
 `http.request` calls your own API natively, restricted to exact `http.origins` origins compiled into the host. It attaches the stored user token, returns redirects without following them, and supports bounded UTF-8 text bodies. New at schema 4; guard with `has()` on older hosts. An origin change needs codegen and a store build. Online HTTP does not replace offline sync: the [reference REST adapter](examples/rest-sync-adapter/) shows durable cursors, tombstones and idempotent pushes. [Guide](https://getvalence.pages.dev/docs/guides/your-backend/). Android is tested; iOS is experimental and untested.
 
+## Task restoration in 0.4
+
+Schema 8 adds `state.save({json})` and `state.restore()` for a task-local UI blob
+(65,536 bytes of JSON UTF-8). ValenceApp restores the local path, query and hash
+after OS process reclamation. Explicit task closure starts fresh; a different
+bundle seq discards the snapshot. Save promptly, and use SQLite for durable records.
+[Setup and limits](docs/state-restoration.md). iOS is experimental and untested.
+
+Task snapshots are bound to the native account as well as the signed bundle: switching or signing out clears the route and draft, including stale OS snapshots. Refresh and first-account adoption retain the live draft.
+
 ## License
 
 [MIT](LICENSE) © 2026 Bishal Pahari

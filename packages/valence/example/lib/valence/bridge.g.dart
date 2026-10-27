@@ -343,6 +343,20 @@ final class DataCountParams {
   Map<String, Object?> toJson() => {'bucket': bucket, 'prefix': prefix};
 }
 
+final class StateSaveParams {
+  const StateSaveParams({this.json});
+
+  factory StateSaveParams.fromJson(Object? j, [String f = 'StateSaveParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'json'}, f);
+    return StateSaveParams(json: m['json']);
+  }
+
+  final Object? json;
+
+  Map<String, Object?> toJson() => {'json': json};
+}
+
 abstract interface class BridgeHandlers {
   Future<void> appReady();
   Future<AppInfo> appInfo();
@@ -367,6 +381,8 @@ abstract interface class BridgeHandlers {
   Future<AppState> appState();
   Future<BundleStatus> bundleStatus();
   Future<int> dataCount(DataCountParams p);
+  Future<void> stateSave(StateSaveParams p);
+  Future<Object?> stateRestore();
 }
 
 /// Opt-in defaults for test doubles or partial hosts. Production hosts extend ValenceBuiltins.
@@ -417,6 +433,10 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<BundleStatus> bundleStatus() async => throw const BridgeError('E_UNSUPPORTED', 'bundle.status is not implemented');
   @override
   Future<int> dataCount(DataCountParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.count is not implemented');
+  @override
+  Future<void> stateSave(StateSaveParams p) async => throw const BridgeError('E_UNSUPPORTED', 'state.save is not implemented');
+  @override
+  Future<Object?> stateRestore() async => throw const BridgeError('E_UNSUPPORTED', 'state.restore is not implemented');
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
@@ -512,6 +532,13 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         return replyOk(id, r.toJson());
       case 'data.count':
         final r = await h.dataCount(DataCountParams.fromJson(p, 'p'));
+        return replyOk(id, r);
+      case 'state.save':
+        await h.stateSave(StateSaveParams.fromJson(p, 'p'));
+        return replyOk(id, null);
+      case 'state.restore':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.stateRestore();
         return replyOk(id, r);
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
@@ -671,5 +698,15 @@ abstract class ValenceBuiltins {
   /// `data.count`, from the package.
   Future<int> dataCount(DataCountParams p) async {
     return valence.dataCount(p.bucket, prefix: p.prefix);
+  }
+
+  /// `state.save`, from the package.
+  Future<void> stateSave(StateSaveParams p) async {
+    valence.stateSave(p.json);
+  }
+
+  /// `state.restore`, from the package.
+  Future<Object?> stateRestore() async {
+    return valence.stateRestore();
   }
 }

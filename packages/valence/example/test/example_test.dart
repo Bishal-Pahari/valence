@@ -318,22 +318,83 @@ void main() {
       expect(calls, 1, reason: 'refused calls never reach the network');
     }, _LocalHttpOverrides()),
   );
-  test('schema-3 reads and status delegate to the runtime and enforce strict input', () async {
-    final h = await handlers();
-    final batch = await dispatch(h, 'data.getMany', params: {'bucket': 'plants', 'keys': ['fern', 'missing', 'fern']});
-    expect(batch['ok'], isTrue);
-    expect((batch['v']! as List).map((r) => (r as Map)['key']), ['fern']);
-    await h.valence.store.put('shelf', 'a', 1, opId: 'one');
-    await h.valence.store.put('shelf', 'a', null, opId: 'two');
-    final status = await dispatch(h, 'sync.status');
-    expect((status['v']! as Map)['pending'], 2);
-    expect((status['v']! as Map)['lastSyncedAt'], isNull);
-    final invalid = await dispatch(h, 'data.getMany', params: {'bucket': 'plants', 'keys': [3]});
-    expect((invalid['e']! as Map)['code'], 'E_PARAMS');
-    final oversized = await dispatch(h, 'data.getMany', params: {'bucket': 'plants', 'keys': List.filled(501, 'fern')});
-    expect((oversized['e']! as Map)['code'], 'E_PARAMS');
-  });
+  test(
+    'schema-3 reads and status delegate to the runtime and enforce strict input',
+    () async {
+      final h = await handlers();
+      final batch = await dispatch(
+        h,
+        'data.getMany',
+        params: {
+          'bucket': 'plants',
+          'keys': ['fern', 'missing', 'fern'],
+        },
+      );
+      expect(batch['ok'], isTrue);
+      expect((batch['v']! as List).map((r) => (r as Map)['key']), ['fern']);
+      await h.valence.store.put('shelf', 'a', 1, opId: 'one');
+      await h.valence.store.put('shelf', 'a', null, opId: 'two');
+      final status = await dispatch(h, 'sync.status');
+      expect((status['v']! as Map)['pending'], 2);
+      expect((status['v']! as Map)['lastSyncedAt'], isNull);
+      final invalid = await dispatch(
+        h,
+        'data.getMany',
+        params: {
+          'bucket': 'plants',
+          'keys': [3],
+        },
+      );
+      expect((invalid['e']! as Map)['code'], 'E_PARAMS');
+      final oversized = await dispatch(
+        h,
+        'data.getMany',
+        params: {'bucket': 'plants', 'keys': List.filled(501, 'fern')},
+      );
+      expect((oversized['e']! as Map)['code'], 'E_PARAMS');
+    },
+  );
 
+  test(
+    'task state uses strict generated decoding and the existing nonce',
+    () async {
+      final h = await handlers();
+      expect((await dispatch(h, 'state.restore'))['v'], isNull);
+      expect(
+        (await dispatch(
+          h,
+          'state.save',
+          params: {
+            'json': {'draft': 'fern'},
+          },
+        ))['ok'],
+        isTrue,
+      );
+      expect((await dispatch(h, 'state.restore'))['v'], {'draft': 'fern'});
+      final denied = await dispatch(
+        h,
+        'state.save',
+        params: {'json': false},
+        withNonce: 'wrong',
+      );
+      expect((denied['e']! as Map)['code'], BridgeErrorCode.denied);
+      final bad = await dispatch(
+        h,
+        'state.save',
+        params: {'json': false, 'route': '//evil.invalid'},
+      );
+      expect((bad['e']! as Map)['code'], BridgeErrorCode.params);
+      final large = await dispatch(
+        h,
+        'state.save',
+        params: {'json': 'क' * 21845},
+      );
+      expect((large['e']! as Map)['code'], BridgeErrorCode.params);
+      expect((await dispatch(h, 'state.restore'))['v'], {'draft': 'fern'});
+      await dispatch(h, 'state.save', params: {'json': null});
+      expect((await dispatch(h, 'state.restore'))['v'], isNull);
+    },
+  );
 
   test('schema-6 lifecycle and update status delegate to the runtime', () async {
     final h = await handlers();

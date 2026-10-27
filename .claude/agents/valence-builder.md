@@ -40,6 +40,11 @@ Your job is the part that is genuinely this app's:
 - **`lib/main.dart`, about twenty lines.** Open the runtime with the generated `valenceConfig`, pass
   `hostBuild` (the Android `versionCode` or iOS `CFBundleVersion`), construct the handlers, and put
   `ValenceApp` at the root with `dispatch: (raw, nonce) => bridgeDispatch(handlers, raw, nonce: nonce)`.
+- **Task restoration (§4.7).** Keep `state.*` in the generated delegations. ValenceApp
+  supplies the OS restoration scope; do not add a prefs-based substitute. Set a
+  restorationIdentifier on the iOS FlutterViewController in Main.storyboard
+  (experimental and untested). Validate Android with Home → am kill → reopen the
+  retained task, then verify force-stop and task removal start fresh.
 - **`lib/valence/handlers.dart`: only this app's bridge methods**, in one class
   `extends ValenceBuiltins implements BridgeHandlers`. `ValenceBuiltins` is generated and already
   delegates `app.*`, `data.*`, `prefs.*`, `sync.*`, `open.external` and `bundle.*` to the runtime, so the

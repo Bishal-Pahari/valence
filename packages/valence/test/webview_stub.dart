@@ -41,6 +41,12 @@ class StubWebViewController extends PlatformWebViewController {
   JavaScriptMode? javaScriptMode;
   bool hasHistory = false;
   int backCount = 0;
+  Completer<String?>? currentUrlGate;
+
+  @override
+  Future<String?> currentUrl() async => currentUrlGate == null
+      ? loads.lastOrNull?.toString()
+      : await currentUrlGate!.future;
 
   @override
   Future<void> setJavaScriptMode(JavaScriptMode mode) async {
@@ -82,6 +88,7 @@ class StubNavigationDelegate extends PlatformNavigationDelegate {
   late NavigationRequestCallback request;
   late PageEventCallback started;
   late PageEventCallback finished;
+  late UrlChangeCallback urlChanged;
 
   @override
   Future<void> setOnNavigationRequest(
@@ -95,6 +102,10 @@ class StubNavigationDelegate extends PlatformNavigationDelegate {
   @override
   Future<void> setOnPageFinished(PageEventCallback callback) async =>
       finished = callback;
+
+  @override
+  Future<void> setOnUrlChange(UrlChangeCallback callback) async =>
+      urlChanged = callback;
 
   @override
   Future<void> setOnHttpError(HttpResponseErrorCallback callback) async {}

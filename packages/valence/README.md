@@ -11,6 +11,19 @@ gesture and console capture.
 
 Your app supplies two things: its generated config, and its own native bridge methods.
 
+Task snapshots are bound to the native account as well as the signed bundle: switching or signing out clears the route and draft, including stale OS snapshots. Refresh and first-account adoption retain the live draft.
+
+## Task restoration in 0.4
+
+Schema 8 adds `state.save({json})` and `state.restore()` for at most 65,536 JSON
+UTF-8 bytes of task-local UI state. ValenceApp installs its own RootRestorationScope
+and restores the local path/query/hash after OS process reclamation. A fresh task
+after explicit closure starts empty; an update or rollback clears the snapshot.
+Use SQLite for durable records and secure storage for secrets.
+[Guide](../../docs/state-restoration.md). The iOS FlutterViewController needs a
+restoration identifier in Main.storyboard; iOS is experimental and untested.
+
+
 ## Setup
 
 ```bash
