@@ -1,8 +1,13 @@
 {
   "format": 1,
   "appId": "com.getvalence.example",
+<<<<<<< HEAD
   "seq": 1793078870,
   "version": "2026-10-27+1793078870",
+=======
+  "seq": 1793076993,
+  "version": "2026-10-27+1793076993",
+>>>>>>> codex/r23
   "floor": 0,
   "requires": {
     "bridge": 14,
@@ -11,7 +16,11 @@
     }
   },
   "entry": "index.html",
+<<<<<<< HEAD
   "csp": "default-src 'self'; script-src 'self' 'sha256-YrQfy89RzW3+qKFGa9H1GGx1DumLYZn2Jyc/CERbuRg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://sync.example.invalid; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
+=======
+  "csp": "default-src 'self'; script-src 'self' 'sha256-6xsZHjMUgdU6QGg7mbHWwMR3JEs/c8PouEue5oHBBaQ='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://sync.example.invalid; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
+>>>>>>> codex/r23
   "urgent": false,
   "routes": [
     "/",
@@ -19,14 +28,23 @@
   ],
   "files": {
     "index.html": {
+<<<<<<< HEAD
       "h": "aae01a3e40fb37ba92c17143e6dba212fc21e2d93d8f0b623a3e5687cda57a2e",
       "n": 23307
+=======
+      "h": "708b581b10a298cc1bd2f3c1b3e5dc26ae8312f031ab72411e578338da9a963a",
+      "n": 23178
+>>>>>>> codex/r23
     },
     "share.png": {
       "h": "dae77b1f264e572c86c9714db5bc07f2002afd4f5d54b8e1f4d43239d2d6aff3",
       "n": 1152
     }
   },
+<<<<<<< HEAD
   "createdAt": "2026-10-27T05:27:50.322Z",
+=======
+  "createdAt": "2026-10-27T04:56:33.243Z",
+>>>>>>> codex/r23
   "keyId": "k1"
 }

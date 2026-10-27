@@ -20,7 +20,7 @@ const valenceConfig = ValenceConfig(
   writableBuckets: {'shelf'},
   dataSchemas: {'plants': 1},
   permissionKinds: {'camera', 'location', 'notifications', 'contacts', 'bluetooth', 'microphone', 'photos'},
-  httpOrigins: {'http://10.0.2.2:8787'},
+  httpOrigins: {'http://127.0.0.1:8787'},
   linkOrigins: {'https://links.example.invalid', 'valence-example://app'},
   seedSchemas: {},
 );

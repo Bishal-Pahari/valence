@@ -358,7 +358,7 @@
         await showAuth(lines.join('\n'));
       });
 
-      for (const [id, url] of [['http', 'http://10.0.2.2:8787/rpc'], ['http-denied', 'https://unlisted.invalid/']]) {
+      for (const [id, url] of [['http', 'http://127.0.0.1:8787/rpc'], ['http-denied', 'https://unlisted.invalid/']]) {
         document.getElementById(id).addEventListener('click', async () => {
           try {
             const response = await call('http.request', { url });
