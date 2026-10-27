@@ -123,6 +123,38 @@ void main() {
     expect(stateFile.existsSync(), isFalse);
   });
 
+  test(
+      'R17 urgency reads only the verified pending manifest without activation',
+      () async {
+    final state = ValenceState(installId: 'i', pending: 20);
+    final u = makeUpdater(state: state);
+    for (final urgent in [false, true]) {
+      final bundle = await signBundle(key, seq: 20, urgent: urgent);
+      bundle.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      expect(await u.pendingUrgent(20), urgent);
+      expect(state.pending, 20);
+      expect(state.trial, isNull);
+      File('${manifestsDir.path}/20.json.sig').writeAsStringSync('invalid');
+      expect(await u.pendingUrgent(20), isNull);
+    }
+    final valid = await signBundle(key, seq: 20, urgent: true);
+    valid.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+    state.floor = 21;
+    expect(await u.pendingUrgent(20), isNull);
+    state.floor = 0;
+    state.bad.add(20);
+    expect(await u.pendingUrgent(20), isNull);
+    state.bad.clear();
+    final wrongSeq = await signBundle(key, seq: 21, urgent: true);
+    File('${manifestsDir.path}/20.json').writeAsBytesSync(wrongSeq.bytes);
+    File('${manifestsDir.path}/20.json.sig')
+        .writeAsStringSync(wrongSeq.signature);
+    expect(await u.pendingUrgent(20), isNull);
+    expect(await u.pendingUrgent(21), isNull);
+    state.pending = null;
+    expect(await u.pendingUrgent(20), isNull);
+  });
+
   for (final reason in ['floor', 'bad']) {
     test('development refuses $reason current and builtin without changing activation state', () async {
       final old = await signBundle(key, seq: 10);

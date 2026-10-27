@@ -164,6 +164,7 @@ function fixture({ data = { calendar: 1 }, latest = false } = {}) {
     for (const t of SINCE_ABOVE_4.types) delete s.types[t];
     delete s.methods['data.list'].params.after;
     delete s.types.AppInfo.fontScale;
+    delete s.types.AppInfo.builtins;
     delete s.methods['auth.setToken'].params.account;
     delete s.methods['auth.setToken'].params.discardPending;
     delete s.types.SyncResult.pending;
@@ -197,7 +198,7 @@ const editSchema = (root, fn) => {
 test('task restoration is optional, shape-frozen and delegated to the package', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 14);
+  assert.equal(schema.version, 15);
   assert.equal(schema.methods['state.save'].since, 8);
   assert.equal(schema.methods['state.restore'].since, 8);
   codegen({ root, cfg });
@@ -979,7 +980,7 @@ test('§4.6 lifecycle and update status are built-ins, frozen by shape and dropp
   const dart = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8');
   assert.match(dart, /final s = valence\.appState\(\);/);
   assert.match(dart, /lifecycle: s\.lifecycle\.name/);
-  assert.match(dart, /final s = valence\.bundleStatus\(\);/);
+  assert.match(dart, /final s = await valence\.bundleStatusWithUrgency\(\);/);
   assert.match(dart, /reason: s\.reason\.name/);
   const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
   // sync.done carries the whole record rather than a copy of its fields, so a page reuses one type for
@@ -1026,7 +1027,7 @@ test('a built-in grows a param without breaking an app that has not taken it', (
   const withAfter = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
   assert.match(withAfter, /after: p\.after/, 'the template schema takes after, so the delegation passes it');
 
-  editSchema(root, (s) => delete s.methods['data.list'].params.after);
+  editSchema(root, (s) => { delete s.methods['data.list'].params.after; delete s.types.AppInfo.builtins; });
   assert.ok(codegen({ root, cfg }).written.length, 'an app on the old three-param shape still generates');
   const without = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
   assert.doesNotMatch(without, /after: p\.after/, 'and the delegation does not pass a param its schema lacks');
@@ -1198,6 +1199,39 @@ test('an app that already shipped a store build can take a built-in\'s new field
   // field a built-in happens to have grown.
   bad((s) => (s.types.Mine.reason = 'string?'), /"Mine" shipped in a store build and cannot change/);
   bad((s) => (s.types.Mine.a = 'int'), /"Mine" shipped in a store build and cannot change/);
+});
+
+test('schema 15 fields are nullable and additive against a recorded schema 14', () => {
+  const { root, cfg, key } = fixture({ latest: true });
+  editSchema(root, s => {
+    s.version = 14;
+    delete s.types.AppInfo.builtins;
+    delete s.types.SyncStatus.reason;
+    delete s.types.BundleStatus.urgent;
+  });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  codegen({ root, cfg });
+  const output = join(root, cfg.host.dir, 'lib/valence/bridge.g.dart');
+  assert.doesNotMatch(readFileSync(output, 'utf8'), /builtins: i.builtins|reason: r.reason[,)]|bundleStatusWithUrgency/);
+  editSchema(root, s => {
+    s.version = 15;
+    s.types.AppInfo.builtins = 'int?';
+    s.types.SyncStatus.reason = 'string?';
+    s.types.BundleStatus.urgent = 'bool?';
+  });
+  codegen({ root, cfg });
+  const dart = readFileSync(output, 'utf8');
+  assert.match(dart, /builtins: i.builtins/);
+  assert.match(dart, /reason: r.reason/);
+  assert.match(dart, /await valence.bundleStatusWithUrgency/);
+  assert.match(dart, /urgent: s.urgent/);
+  editSchema(root, s => { delete s.methods['data.list'].params.after; });
+  assert.throws(() => codegen({ root, cfg }), /declares builtins.*after/);
+  editSchema(root, s => { s.methods['data.list'].params.after = 'string?'; delete s.methods['auth.setToken'].params.account; });
+  assert.throws(() => codegen({ root, cfg }), /declares builtins.*account/);
+  editSchema(root, s => { s.methods['auth.setToken'].params.account = 'string?'; });
+  editSchema(root, s => { s.types.AppInfo.builtins = 'int'; });
+  assert.throws(() => codegen({ root, cfg }), /fields are not/);
 });
 
 test('fontScale is optional, additive against store AppInfo, and frozen by type', () => {
@@ -1803,7 +1837,7 @@ test('push builtins freeze permission and nullable initial-message shapes', () =
 test('push uses reserved schema 12 while older app-owned push shapes remain custom', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 14);
+  assert.equal(schema.version, 15);
   assert.equal(schema.methods['auth.account'].since, 13);
   for (const group of ['methods', 'events']) {
     for (const [name, def] of Object.entries(schema[group])) {
@@ -1817,6 +1851,7 @@ test('push uses reserved schema 12 while older app-owned push shapes remain cust
   assert.match(ts, /'push.initial': 12/);
   editSchema(root, (s) => {
     s.version = 11;
+    delete s.types.AppInfo.builtins;
     delete s.methods['share.image'];
     delete s.methods['auth.account'];
     delete s.methods['auth.setToken'].params.account;

@@ -80,6 +80,7 @@ final class ValenceBundleStatus {
     required this.reason,
     required this.offered,
     required this.checkedAt,
+    this.urgent,
   });
 
   /// The seq of the bundle on screen; 0 before one is served.
@@ -99,6 +100,9 @@ final class ValenceBundleStatus {
 
   /// When that check finished, epoch milliseconds, or null before the first one.
   final int? checkedAt;
+
+  /// Signed pending-bundle urgency; null when absent or not known.
+  final bool? urgent;
 }
 
 /// The canonical check order (§2.3) and the activation state machine (§2.4).
@@ -1015,6 +1019,18 @@ final class ValenceUpdater {
       );
     } on ValenceCheckFailure catch (f) {
       _log('update: manifest $seq on disk failed re-verification: $f');
+      return null;
+    }
+  }
+
+  /// Verifies local pending metadata without downloading or activating a bundle.
+  Future<bool?> pendingUrgent(int seq) async {
+    if (state.pending != seq || state.bad.contains(seq)) return null;
+    try {
+      final manifest = await _loadManifest(seq, enforceFloor: true);
+      if (state.pending != seq || manifest?.seq != seq) return null;
+      return manifest!.urgent;
+    } on FileSystemException {
       return null;
     }
   }

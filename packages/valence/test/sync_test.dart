@@ -47,6 +47,38 @@ void main() {
         clock: clock,
       );
 
+  test(
+      'R17 reason survives driver replacement, busy and errors; scoped recovery replaces it',
+      () async {
+    final cfg = testConfig(key, writableBuckets: {'shelf'})
+        .copyWith(authToken: () async => 'token');
+    final rejected =
+        syncWith(MockClient((_) async => http.Response('', 401)), config: cfg);
+    expect((await rejected.status()).reason, isNull);
+    expect((await rejected.run(readSchemas: {}, only: ['shelf'])).reason,
+        ValenceSyncReason.unauthorized);
+    final broken = syncWith(
+        MockClient((_) async => throw StateError('server fault')),
+        config: cfg);
+    expect((await broken.status()).reason, 'unauthorized');
+    await expectLater(
+        broken.run(readSchemas: {}, only: ['shelf']), throwsStateError);
+    expect((await broken.status()).reason, 'unauthorized');
+    await rejected.acquireLease();
+    expect((await broken.run(readSchemas: {})).reason, ValenceSyncReason.busy);
+    expect((await broken.status()).reason, 'unauthorized');
+    await rejected.releaseLease();
+    final recovered = syncWith(
+        MockClient((_) async =>
+            http.Response('{"rows":[],"max":0,"more":false}', 200)),
+        config: cfg);
+    await recovered.run(readSchemas: {}, only: ['shelf']);
+    expect((await recovered.status()).reason, 'ok');
+    expect((await recovered.status()).lastSyncedAt, isNull);
+    await store.hostPrefSet('valence.sync.reason', 'futureReason');
+    expect((await recovered.status()).reason, 'futureReason');
+  });
+
   group('the lease (§5.6)', () {
     test('one holder at a time', () async {
       final a = syncWith(MockClient((_) async => http.Response('{}', 200)));
