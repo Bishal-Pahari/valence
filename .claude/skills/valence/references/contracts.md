@@ -1139,7 +1139,17 @@ baseline, so changing/removing a fragment cannot bypass compatibility checks.
 `ValencePlugin` declares a namespace, its exact method set, and
 `invoke(Valence, method, Map<String, Object?> params) -> Future<Object?>`. The registry snapshots
 these declarations, rejects reserved/duplicate namespaces and invalid methods at construction,
-and fails missing handlers with `E_UNSUPPORTED`. Plugins return JSON values and can use generated
+and fails missing handlers with `E_UNSUPPORTED` when used directly. Generated `bridge.g.dart`
+emits `hostPluginNamespaces` (including event-only fragments) and `hostPluginMethods`.
+`ValenceBuiltins` constructs `ValencePluginRegistry.checked` with both sets: missing namespaces
+or exact method registrations throw `StateError` with a registration fix before the handlers
+can serve a page, in debug, profile and release builds. This is not an assertion removed by
+compilation. Extra registered methods remain unreachable through generated dispatch. Existing
+generated handlers and direct registry callers retain their old API until regeneration.
+Doctor's `native plugin registration` row names requirements as a warning, not proof that
+native instances were constructed; an app test must construct its real handlers before a store
+release. The check verifies declarations, not platform setup or successful plugin behavior.
+Plugins return JSON values and can use generated
 `BridgeEvents` scripts through the app's view wiring. They own native initialization, permissions
 and cleanup; the registry does not run background tasks or register callbacks. Native setup and
 any new capabilities require a store release. Use `has()` for older installed hosts.
@@ -1588,6 +1598,14 @@ USE_EXACT_ALARM by default. iOS installs the UNUserNotificationCenter delegate. 
 notification callback runs UI activation. iOS code paths are experimental and untested.
 
 ## 8. Test matrix (minimum; all must pass before "done")
+
+R19: generated requirements include event-only fragment namespaces and every plugin
+method; constructing real generated handlers without their plugin throws before
+dispatch; an installed namespace missing a declared method is rejected; extra native
+methods remain unreachable, nonce/strict decoding still precede invocation, and
+legacy direct registry users retain their API. Doctor reports configured requirements
+as WARN rather than claiming native registration ran. Validate matching plugin
+construction and invocation in the example host.
 
 R7: bounded multibyte JSON, null clearing, strict nonce/params delegation, task
 snapshot restore and fresh-task reset, same-bundle and native-account isolation (including stale OS snapshots and in-flight route captures), refresh/adoption retention, hostile restored

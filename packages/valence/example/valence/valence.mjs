@@ -854,10 +854,10 @@ export function loadPluginSchema(root, cfg) {
   }
   // Validate the combined IDL too: camel-case collisions and since bounds span fragments and app.
   assertBuiltinShapes(parseSchema(schema));
-  return { schema, owners };
+  return { schema, owners, namespaces };
 }
 
-export function parseSchema(schema, pluginMethods = new Set()) {
+export function parseSchema(schema, pluginMethods = new Set(), pluginNamespaces = new Set()) {
   const version = int(schema.version, 'schema.version', 1);
   const types = schema.types ?? {};
   const parseType = (t, where, allowVoid = false) => {
@@ -912,7 +912,7 @@ export function parseSchema(schema, pluginMethods = new Set()) {
   }
   const classNames = new Set(typeList.map((t) => t.name));
   for (const m of methods) if (classNames.has(pascal(m.name) + 'Params')) throw new Error(`${m.name}: params class name collides with a type`);
-  return { version, types: typeList, methods, events };
+  return { version, types: typeList, methods, events, pluginNamespaces: [...pluginNamespaces] };
 }
 
 // Which optional fields each built-in's returned type may gain, keyed by the type name this app gave it.
@@ -1173,6 +1173,11 @@ export function genDart(s) {
 // this and overrides only its own methods, which is what keeps main.dart to about twenty lines.
 function dartBuiltins(s) {
   const o = [
+    '/// Native plugin namespaces required by this app, including event-only fragments.',
+    `const hostPluginNamespaces = <String>{${s.pluginNamespaces.map((n) => `'${n}'`).join(', ')}};`,
+    '/// Exact native method registrations required by the merged schema.',
+    `const hostPluginMethods = <String>{${s.methods.filter((m) => m.plugin).map((m) => `'${m.name}'`).join(', ')}};`,
+    '',
     '/// The built-in bridge methods, implemented against the `valence` runtime.',
     '///',
     '/// Extend it and implement your own methods; the built-ins are inherited. The bodies here are only',
@@ -1189,7 +1194,8 @@ function dartBuiltins(s) {
     'abstract class ValenceBuiltins {',
     '  /// Wraps an open runtime.',
     '  ValenceBuiltins(this.valence, {List<ValencePlugin> plugins = const []})',
-    '      : plugins = ValencePluginRegistry(plugins);',
+    '      : plugins = ValencePluginRegistry.checked(plugins,',
+    '          requiredNamespaces: hostPluginNamespaces, requiredMethods: hostPluginMethods);',
     '',
     '  /// Store-compiled native handlers. Dispatch still uses the generated strict decoders.',
     '  final ValencePluginRegistry plugins;',
@@ -1378,8 +1384,8 @@ const normalize = (t) => t.replace(/\s+/g, '').replace(/,([)\]}])/g, '$1');
 
 export function codegen({ root, cfg, check = false }) {
   const p = paths(root, cfg);
-  const { schema: raw, owners } = loadPluginSchema(root, cfg);
-  const s = parseSchema(raw, owners);
+  const { schema: raw, owners, namespaces } = loadPluginSchema(root, cfg);
+  const s = parseSchema(raw, owners, namespaces);
   assertBuiltinShapes(s);
   assertAdditive(readBaseline(p).storeSchema, raw);
   const keyring = existsSync(p.keyring) ? readJson(p.keyring) : {};
@@ -1435,6 +1441,11 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
   const p = paths(root, cfg);
   const host = resolve(root, cfg.host.dir);
   await check('generated code', () => { codegen({ root, cfg, check: true }); });
+  await check('native plugin registration', () => {
+    const { namespaces, owners } = loadPluginSchema(root, cfg);
+    if (!namespaces.size) return;
+    return `required namespaces: ${[...namespaces].join(', ')}; methods: ${[...owners].join(', ') || '(none)'}; registration is checked when ValenceBuiltins is constructed, not by source inspection; construct the real app handlers in a host test before shipping`;
+  }, 'correct plugin fragments, run valence codegen, register their native instances and test construction of the real app handlers');
   await check('bridge version', () => {
     const schema = parseSchema(loadPluginSchema(root, cfg).schema);
     const generated = /\bconst hostBridgeVersion = (\d+);/.exec(readFileSync(p.dart, 'utf8'));

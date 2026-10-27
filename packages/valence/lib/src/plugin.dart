@@ -22,7 +22,6 @@ final class ValencePluginRegistry {
   /// Installs the built-in open group and refuses replacement or duplicate owners.
   ValencePluginRegistry([List<ValencePlugin> plugins = const []]) {
     _handlers['open.external'] = const ValenceOpenPlugin();
-    final namespaces = <String>{};
     for (final plugin in plugins) {
       final namespace = plugin.namespace;
       if (!_namespace.hasMatch(namespace) ||
@@ -30,7 +29,7 @@ final class ValencePluginRegistry {
         throw ArgumentError.value(
             namespace, 'namespace', 'invalid or reserved plugin namespace');
       }
-      if (!namespaces.add(namespace)) {
+      if (!_namespaces.add(namespace)) {
         throw ArgumentError('duplicate plugin namespace $namespace');
       }
       for (final method in plugin.methods) {
@@ -44,6 +43,28 @@ final class ValencePluginRegistry {
         _handlers[method] = plugin;
       }
     }
+  }
+
+  /// Checks generated schema requirements in every build mode before dispatch.
+  /// Extra native methods remain unreachable unless present in the schema.
+  factory ValencePluginRegistry.checked(
+    List<ValencePlugin> plugins, {
+    Set<String> requiredNamespaces = const {},
+    Set<String> requiredMethods = const {},
+  }) {
+    final registry = ValencePluginRegistry(plugins);
+    final missingNamespaces =
+        requiredNamespaces.difference(registry._namespaces);
+    final missingMethods =
+        requiredMethods.difference(registry._handlers.keys.toSet());
+    if (missingNamespaces.isNotEmpty || missingMethods.isNotEmpty) {
+      throw StateError(
+          'Native plugin registration does not match the generated schema: '
+          'missing namespaces [${missingNamespaces.join(', ')}], '
+          'missing methods [${missingMethods.join(', ')}]. '
+          'Register matching plugins in ValenceBuiltins(plugins: [...]) and rebuild the host.');
+    }
+    return registry;
   }
 
   /// Namespaces owned by the host, including planned native capabilities.
@@ -68,6 +89,7 @@ final class ValencePluginRegistry {
   static final _namespace = RegExp(r'^[a-z][a-zA-Z0-9]*$');
   static final _method = RegExp(r'^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)+$');
   final _handlers = <String, ValencePlugin>{};
+  final _namespaces = <String>{};
 
   /// Not a raw bridge dispatcher: never expose this directly to a WebView channel.
   Future<Object?> invoke(

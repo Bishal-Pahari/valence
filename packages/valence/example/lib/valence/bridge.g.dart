@@ -898,6 +898,11 @@ abstract final class BridgeEvents {
   static String pushTokenChanged({required String token}) => eventScript('push.tokenChanged', {'token': token});
 }
 
+/// Native plugin namespaces required by this app, including event-only fragments.
+const hostPluginNamespaces = <String>{'haptics'};
+/// Exact native method registrations required by the merged schema.
+const hostPluginMethods = <String>{'haptics.tap'};
+
 /// The built-in bridge methods, implemented against the `valence` runtime.
 ///
 /// Extend it and implement your own methods; the built-ins are inherited. The bodies here are only
@@ -914,7 +919,8 @@ abstract final class BridgeEvents {
 abstract class ValenceBuiltins {
   /// Wraps an open runtime.
   ValenceBuiltins(this.valence, {List<ValencePlugin> plugins = const []})
-      : plugins = ValencePluginRegistry(plugins);
+      : plugins = ValencePluginRegistry.checked(plugins,
+          requiredNamespaces: hostPluginNamespaces, requiredMethods: hostPluginMethods);
 
   /// Store-compiled native handlers. Dispatch still uses the generated strict decoders.
   final ValencePluginRegistry plugins;
