@@ -190,6 +190,73 @@ void main() {
     await tester.pump();
   }
 
+  if (const String.fromEnvironment('VALENCE_DEV_URL') != '') {
+    testWidgets(
+        'dev diagnostics identify bypasses without changing OTA evidence',
+        (tester) async {
+      // A previous signed run left an unconfirmed trial. Development must neither
+      // spend its remaining strike nor promote/commit it, even after ready/resume.
+      runtime.state
+        ..trial = trial.seq
+        ..serving = trial.seq
+        ..trialFails = 1;
+      await mount(tester, pending: true);
+      await io(tester);
+      final before = runtime.state.toJson();
+      final saved = File('${runtime.dir.path}/state.json').readAsStringSync();
+      final controller = webview.controller;
+      final host = tester.state(find.byType(ValenceApp)) as ValenceHostView;
+      await tester.runAsync(() async {
+        controller.navigation.started(runtime.server!.origin);
+        await runtime.appReady();
+        await runtime.applyUpdate();
+        await host.reloadPage();
+      });
+      await lifecycle(tester, AppLifecycleState.paused);
+      await lifecycle(tester, AppLifecycleState.resumed);
+      await io(tester);
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5200)));
+      await io(tester);
+      expect(runtime.state.toJson(), before);
+      expect(File('${runtime.dir.path}/state.json').readAsStringSync(), saved);
+      expect(controller.loads, hasLength(1));
+      expect(requests.where((url) => !url.startsWith('https://sync.test/')),
+          isEmpty);
+      expect(requests, isNotEmpty, reason: 'ordinary sync still runs');
+      expect(log.lines.where((line) => line.startsWith('serving bundle ')),
+          isEmpty);
+      expect(
+          log.has(
+              'dev: serving upstream ${Uri.parse(const String.fromEnvironment('VALENCE_DEV_URL')).origin}'),
+          isTrue);
+      for (final message in [
+        'OTA checks, trials, ready commits and bundle.applyUpdate are disabled',
+        'dev: handleReady skipped',
+        'dev: reloadPage skipped',
+        'dev: update check skipped',
+        'dev: bundle.applyUpdate skipped',
+      ]) {
+        expect(log.has(message), isTrue, reason: message);
+      }
+      expect(
+          log.lines
+              .where((line) => line.startsWith('dev: update check skipped'))
+              .length,
+          greaterThanOrEqualTo(3),
+          reason: 'startup, resume and periodic check');
+      expect(log.lines.join('\n'), isNot(contains(runtime.server!.nonce)));
+    });
+  } else {
+    testWidgets('signed startup retains bundle diagnostic without dev warnings',
+        (tester) async {
+      await mount(tester);
+      await io(tester);
+      expect(log.has('serving bundle ${builtin.seq} on '), isTrue);
+      expect(log.lines.where((line) => line.startsWith('dev:')), isEmpty);
+    });
+  }
+
   testWidgets('URL changes record only safe local restoration routes',
       (tester) async {
     await mount(tester);

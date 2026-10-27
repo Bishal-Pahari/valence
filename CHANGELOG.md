@@ -4,6 +4,13 @@
 
 Schema 15 adds nullable builtins, persisted sync reason and signed pending urgency. Regenerate and ship a store build; declaring builtins also requires current optional params on declared built-ins. Earlier hosts and schemas keep working. Account changes clear the new sync observation.
 
+## Unreleased: development mode identifies skipped OTA operations
+
+Debug hosts now log the upstream origin and disabled OTA behavior at startup. Calls to ready,
+signed reload, update checks and applyUpdate log their development bypass rather than appearing
+silent. Restart without VALENCE_DEV_URL to validate signed offline starts and rollback. No
+schema, package version or host setup changes are required.
+
 ## Unreleased: a published plugin installs without editing it
 
 - **A `plugins` entry can be `{path, since}`,** stamping each of a fragment's methods and events with
