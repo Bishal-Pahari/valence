@@ -26,6 +26,7 @@ void main() {
   late StubWebViewPlatform webview;
   late LogSpy log;
   late List<String> requests;
+  Future<http.Response> Function(http.Request)? respond;
   late List<String> launches;
   late List<String> platformCalls;
   late List<(String, String)> messages;
@@ -48,6 +49,7 @@ void main() {
     WebViewPlatform.instance = webview;
     log = LogSpy();
     requests = [];
+    respond = null;
     launches = [];
     platformCalls = [];
     messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -90,6 +92,7 @@ void main() {
       secure: testSecure({}),
       client: MockClient((request) async {
         requests.add(request.url.toString());
+        if (respond != null) return respond!(request);
         return request.url.host == 'sync.test'
             ? http.Response('{"rows":[],"max":0,"more":false}', 200)
             : http.Response('', 404);
@@ -256,6 +259,115 @@ void main() {
       expect(log.lines.where((line) => line.startsWith('dev:')), isEmpty);
     });
   }
+
+  Future<http.Response> serveTrial(http.Request request,
+      {bool validSignature = true}) async {
+    if (request.url.host == 'sync.test') {
+      return http.Response('{"rows":[],"max":0,"more":false}', 200);
+    }
+    final path = request.url.path;
+    if (path.endsWith('/channels/production.json')) {
+      return http.Response('{"seq":20,"rollout":100}', 200);
+    }
+    if (path.endsWith('/manifests/20.json')) {
+      return http.Response.bytes(trial.bytes, 200);
+    }
+    if (path.endsWith('/manifests/20.json.sig')) {
+      return http.Response(validSignature ? trial.signature : builtin.signature, 200);
+    }
+    final blob = trial.blobs[path.split('/').last];
+    return blob == null ? http.Response('', 404) : http.Response.bytes(blob, 200);
+  }
+
+  int pointerRequests() =>
+      requests.where((url) => url.endsWith('/channels/production.json')).length;
+
+  testWidgets('foreground reconnect replaces offline with verified pending without reloading',
+      (tester) async {
+    await mount(tester);
+    await io(tester);
+    final controller = webview.controller;
+    controller.navigation.finished(controller.loads.last.toString());
+    final status = runtime.bundleStatus();
+    expect(status.reason, ValenceBundleReason.offline);
+    final before = pointerRequests();
+    connectivity.add(['none']);
+    await io(tester);
+    expect(pointerRequests(), before);
+    respond = serveTrial;
+    connectivity.add(['none', 'wifi']);
+    await io(tester);
+    final after = runtime.bundleStatus();
+    expect(pointerRequests(), before + 1);
+    expect(after.reason, ValenceBundleReason.ready);
+    expect(after.checkedAt, greaterThan(status.checkedAt!));
+    expect(after.pending, trial.seq);
+    expect(runtime.manifest!.seq, builtin.seq);
+    expect(runtime.state.trial, isNull);
+    expect(controller.loads, hasLength(1));
+    expect(controller.scripts.where((s) => s.contains('bundle.updateReady')), hasLength(1));
+  });
+
+  testWidgets('live handovers coalesce concurrent update checks', (tester) async {
+    await mount(tester);
+    await io(tester);
+    final before = pointerRequests();
+    final gate = Completer<http.Response>();
+    addTearDown(() {
+      if (!gate.isCompleted) gate.complete(http.Response('', 404));
+    });
+    respond = (request) async => request.url.host == 'ota.test'
+        ? gate.future
+        : http.Response('{"rows":[],"max":0,"more":false}', 200);
+    connectivity.add(['mobile']);
+    await io(tester);
+    expect(pointerRequests(), before + 1);
+    connectivity.add(['wifi']);
+    await io(tester);
+    expect(pointerRequests(), before + 1);
+    gate.complete(http.Response('{"seq":10,"rollout":100}', 200));
+    await io(tester);
+    expect(runtime.bundleStatus().reason, ValenceBundleReason.uptodate);
+    // Even without an offline edge, a later live report retries a completed check.
+    connectivity.add(['mobile']);
+    await io(tester);
+    expect(pointerRequests(), before + 2);
+  });
+
+  testWidgets('background reconnect syncs but leaves the update check to resume',
+      (tester) async {
+    await mount(tester);
+    await io(tester);
+    await lifecycle(tester, AppLifecycleState.paused);
+    final before = pointerRequests();
+    final syncBefore = requests.where((url) => url.contains('sync.test')).length;
+    connectivity.add(['none']);
+    connectivity.add(['wifi']);
+    await io(tester);
+    expect(runtime.appState().online, isTrue);
+    expect(pointerRequests(), before);
+    expect(requests.where((url) => url.contains('sync.test')).length, greaterThan(syncBefore));
+    respond = serveTrial;
+    await lifecycle(tester, AppLifecycleState.resumed);
+    await io(tester);
+    expect(pointerRequests(), before + 1);
+    expect(runtime.state.pending, trial.seq);
+  });
+
+  testWidgets('reconnect still rejects an invalid signature without publishing pending',
+      (tester) async {
+    await mount(tester);
+    await io(tester);
+    respond = (request) => serveTrial(request, validSignature: false);
+    webview.controller.navigation.finished(webview.controller.loads.last.toString());
+    connectivity.add(['wifi']);
+    await io(tester);
+    expect(runtime.bundleStatus().reason, ValenceBundleReason.rejected);
+    expect(runtime.state.pending, isNull);
+    expect(runtime.manifest!.seq, builtin.seq);
+    expect(webview.controller.loads, hasLength(1));
+    expect(webview.controller.scripts.where((s) => s.contains('bundle.updateReady')), isEmpty);
+  });
 
   testWidgets('URL changes record only safe local restoration routes',
       (tester) async {

@@ -230,7 +230,7 @@ class _ValenceAppState extends State<ValenceApp>
   void _armTriggers() {
     // From here a resume is steady state, so it may run the triggers below (§3).
     _started = true;
-    // §2.3: on UI start, on resume, and every 30 minutes in the foreground. Never blocking the first paint.
+    // §2.3: start, resume, foreground interval and live connectivity reports. Never block first paint.
     unawaited(_checkForUpdate());
     unawaited(_syncNow());
     _updateTicker = Timer.periodic(
@@ -257,6 +257,12 @@ class _ValenceAppState extends State<ValenceApp>
     if (online) {
       _log('sync: connectivity came back');
       unawaited(_syncNow());
+      // Background sync may run here, but update discovery belongs to the foreground UI.
+      // Handover reports count too; the updater coalesces overlapping checks and keeps its data lease.
+      if (_valence.appState().lifecycle == ValenceLifecycle.foreground) {
+        _log('update: connectivity came back in the foreground');
+        unawaited(_checkForUpdate());
+      }
     }
   }
 
