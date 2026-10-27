@@ -7,15 +7,30 @@ seed, then run from the project root:
 node valence/valence.mjs dev --web-dir web --port 5173
 ```
 
-This runs `npm run dev -- --host 0.0.0.0 --port 5173 --strictPort` in `web/`. In another terminal,
+This runs `npm run dev -- --host 127.0.0.1 --port 5173 --strictPort` in `web/`. In another terminal,
 inside the Flutter host:
 
 ```sh
 flutter run --debug --dart-define=VALENCE_DEV_URL=http://10.0.2.2:5173
 ```
 
-On a physical Android phone, use `--device-host 192.168.1.20` to print a LAN command; replace
-the address with your computer's reachable address. Allow that port through your local firewall.
+For a physical Android phone on a trusted, isolated network, explicitly enable LAN mode:
+
+```sh
+node valence/valence.mjs dev --web-dir web --device-host 192.168.1.20 --allow-lan
+```
+
+Replace the address with your computer's reachable address and allow that port through your
+firewall. LAN mode binds `0.0.0.0` and prints a warning before starting the server.
+Without `--allow-lan`, only the exact emulator address `10.0.2.2`, `127.0.0.1` and
+`localhost` (case-insensitive) are accepted, and the server binds `127.0.0.1`.
+Other hostnames require the flag even if they currently resolve to a local address.
+
+**LAN mode grants server code the full native bridge over cleartext HTTP.** Anyone able to
+replace that traffic can access secure storage and SQLite or change authentication. Use a
+separate development app id, test accounts and test data. The flag acknowledges that trust;
+it adds no encryption or authentication. A manually supplied Flutter define bypasses the CLI
+guard and grants the same native privileges.
 `--web-dir` must contain a package.json with a `dev` script. The runner supports Vite-style
 arguments, including Vite-based frameworks. For another framework, start its server yourself
 and use the same Flutter define. Stop the dev command to stop its process tree.

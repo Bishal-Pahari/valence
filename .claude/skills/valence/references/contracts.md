@@ -409,7 +409,10 @@ Only `kDebugMode && String.fromEnvironment('VALENCE_DEV_URL') != ''` enables dev
 Profile and release ignore the define; the proxy branch and upstream URL are tree-shaken.
 The URL is an explicit developer trust grant, never config or manifest data: an HTTP(S) origin
 without credentials, query, fragment or a path. Use `http://10.0.2.2:5173` on Android emulators,
-or a reachable LAN origin. Use test accounts and data in development.
+or an explicitly trusted LAN origin. Dev-origin code receives the full native bridge,
+including secure storage, authentication changes and SQLite. Cleartext LAN traffic has
+no integrity: a network peer able to replace it can run code with those privileges.
+Use an isolated network, a separate development app id, test accounts and test data.
 
 The WebView still loads the owned loopback origin. A debug-only GET/HEAD proxy fetches the
 chosen server, injects the launch nonce before scripts, disables caching and proxies HMR
@@ -429,15 +432,25 @@ call in this mode is not evidence of trial commit or promotion. Restart without 
 signed offline starts and rollback. Diagnostics contain the origin only, never the nonce or tokens.
 
 `valence dev --web-dir web --port 5173` runs the local package's `dev` script with
-`--host 0.0.0.0 --port 5173 --strictPort` and prints the matching debug Flutter command.
-`--device-host` changes the printed emulator/LAN address. Package scripts are trusted local
-code. Stop the command to stop its child. Signing keys, baseline and codegen do not change.
+`--host 127.0.0.1 --port 5173 --strictPort` and prints the debug Flutter command with
+`http://10.0.2.2:5173`. Only exact `10.0.2.2`, `127.0.0.1` and case-insensitive
+`localhost` targets avoid the LAN grant. Other hostnames and IPv4 addresses require
+`--allow-lan` before the script starts. With that flag the runner binds `0.0.0.0`
+and warns that LAN mode grants cleartext server code the full native bridge. It
+names the selected origin, secure storage, SQLite and authentication risks. Hostnames
+are not trusted based on DNS resolution. `--device-host` changes the printed address;
+`--allow-lan` applies only to `dev`. Manual Flutter defines bypass this CLI guard and
+remain explicit developer trust grants; the runtime has no separate LAN permission.
+Package scripts are trusted local code. Stop the command to stop its child. Signing keys, baseline and codegen do not change.
 The initial CLI supports Vite-compatible dev arguments (including Vite-based frameworks);
 other frameworks can start their own server and use the printed Flutter define directly.
 
 R9 matrix: nonce before scripts; no-cache; HMR WebSocket round-trip; reserved host routes;
 denied methods, redirects and credential forwarding; dev does not commit or fail trials;
 release AOT built with a dev define excludes the upstream URL and proxy implementation.
+R21 regressions: default loopback binding and emulator command; off-device address/hostname
+refusal before child launch; explicit LAN opt-in through the wizard, all-interface binding
+and full-privilege warning; lookalike/malformed hosts rejected without an implicit DNS grant.
 
 
 ## 4. Typed bridge

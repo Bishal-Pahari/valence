@@ -7,6 +7,15 @@ signed reload, update checks and applyUpdate log their development bypass rather
 silent. Restart without VALENCE_DEV_URL to validate signed offline starts and rollback. No
 schema, package version or host setup changes are required.
 
+## Unreleased: explicit LAN development trust
+
+- `valence dev` now binds loopback by default. A LAN address or hostname requires
+  `--allow-lan`; that mode binds all interfaces and names the cleartext full-bridge
+  risk before starting. Add the flag to existing physical-device dev commands.
+  Manual Flutter defines remain explicit trust grants; release/profile exclusion
+  is unchanged. Refresh vendored tooling when upgrading.
+
+
 ## Unreleased: a published plugin installs without editing it
 
 - **A `plugins` entry can be `{path, since}`,** stamping each of a fragment's methods and events with
