@@ -482,8 +482,9 @@ the offline observation. Scoped attempts count too; it does not certify that all
 buckets succeeded. Busy/skipped runs and exceptions preserve the previous outcome.
 A migrated or never-attempted database returns null; no-server runs preserve it.
 Account switch/sign-out clears this observation with the other account-owned sync
-observations. It is an open string set; unknown reasons are not success. Existing
-anonymous-401 semantics are unchanged. An app needing an acknowledgement tied to
+observations. It is an open string set; unknown reasons are not success. An anonymous 401 is persisted as `failed` (?5.6), without emitting `auth.expired`;
+the stored reason and the returned result use the same lease-held classification.
+An app needing an acknowledgement tied to
 one authenticated bucket must still track its explicit scoped check.
 
 `urgent` describes the currently pending bundle's signed manifest, never the
@@ -1711,4 +1712,4 @@ R8 regression rows (§4.7): owning-view logical insets exclude keyboard and chan
 
 R5 regression rows: exact data-only sync hints only; no payload-supplied config, URLs, tokens or trial transitions; passive startup and explicit permission requests; registration gated on permission/APNs; cold-tap consumption and live-tap race; token rotation; JSON escaping and event cap; disabled-host E_UNSUPPORTED and generated strict nonce/params denials. Device delivery/image/silent-sync checks remain blocked until a Firebase project is supplied.
 
-R17 regression rows: independent app/built-in revisions; reporting-schema parameter coherence; nullable returned fields additive against schema 14; legacy delegation omission; persisted unauthorized/scoped-success outcomes, busy/error preservation and account clearing; signed pending urgency true/false, invalid signature/missing/stale sequence refusal and unchanged activation state.
+R17 regression rows: independent app/built-in revisions; reporting-schema parameter coherence; nullable returned fields additive against schema 14; legacy delegation omission; persisted unauthorized/failed/scoped-success outcomes, agreement with returned failures after driver replacement, busy/error preservation and account clearing; signed pending urgency true/false, invalid signature/missing/stale sequence refusal and unchanged activation state.

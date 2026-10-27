@@ -37,8 +37,10 @@ Account switch/sign-out clears it with the account's rows and other observations
 `unauthorized` can now reconstruct a sign-in warning after navigation. The string
 set is open: unknown values are not success. This is the last attempted scope,
 not an acknowledgement for every bucket. Keep an app-owned receipt if an error
-must stay visible until an explicit authenticated check succeeds. Anonymous-401
-handling is unchanged. Older hosts still need the documented prefs fallback.
+must stay visible until an explicit authenticated check succeeds. An anonymous
+401 is stored as `failed`, without emitting `auth.expired`; the stored reason
+matches the returned result. See [Sync outcomes](sync-outcomes.md).
+Older hosts still need the documented prefs fallback.
 
 ## Read the pending update's urgency
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased: native plugin registration checks
+
+Regenerated handlers reject missing plugin namespaces and exact native methods at startup
+in every build mode. Register the matching plugin instances, regenerate with matching
+tooling/runtime snapshots, test your real app handlers and rebuild the host. Doctor lists
+requirements as a warning; native setup and successful behavior still need testing.
+
+## Unreleased: development mode identifies skipped OTA operations
+
+Debug hosts now log the upstream origin and disabled OTA behavior at startup. Calls to ready,
+signed reload, update checks and applyUpdate log their development bypass rather than appearing
+silent. Restart without VALENCE_DEV_URL to validate signed offline starts and rollback. No
+schema, package version or host setup changes are required.
+
+## Unreleased: check for updates after reconnect
+
+- A live connectivity report while the app is foregrounded now retries the signed update check,
+  including Wi-Fi/cellular handovers. Concurrent checks coalesce; data requirements retain their lease
+  and verification. Background reconnects sync only and defer the update check to resume.
+- `bundle.status` describes the last completed attempt until another one completes. Read `offline` as
+  "could not check on the last attempt", rather than a claim about the current connection.
+- Upgrade the native host package to get the trigger; no schema bump or app handler change is needed.
+
 ## Unreleased: local native HTTP stays on loopback in the example
 
 - The example's native HTTP demo now uses `http://127.0.0.1:8787` with
@@ -21,22 +44,6 @@
 ## Unreleased: capability and status fields
 
 Schema 15 adds nullable builtins, persisted sync reason and signed pending urgency. Regenerate and ship a store build; declaring builtins also requires current optional params on declared built-ins. Earlier hosts and schemas keep working. Account changes clear the new sync observation.
-
-## Unreleased: development mode identifies skipped OTA operations
-
-Debug hosts now log the upstream origin and disabled OTA behavior at startup. Calls to ready,
-signed reload, update checks and applyUpdate log their development bypass rather than appearing
-silent. Restart without VALENCE_DEV_URL to validate signed offline starts and rollback. No
-schema, package version or host setup changes are required.
-
-## Unreleased: check for updates after reconnect
-
-- A live connectivity report while the app is foregrounded now retries the signed update check,
-  including Wi-Fi/cellular handovers. Concurrent checks coalesce; data requirements retain their lease
-  and verification. Background reconnects sync only and defer the update check to resume.
-- `bundle.status` describes the last completed attempt until another one completes. Read `offline` as
-  "could not check on the last attempt", rather than a claim about the current connection.
-- Upgrade the native host package to get the trigger; no schema bump or app handler change is needed.
 
 ## Unreleased: seed completion survives database locks
 

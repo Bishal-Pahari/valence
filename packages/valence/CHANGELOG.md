@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased: native plugin registration checks
+
+Regenerated handlers reject missing plugin namespaces and exact native methods at startup
+in every build mode. Register the matching plugin instances, regenerate with matching
+tooling/runtime snapshots, test your real app handlers and rebuild the host. Doctor lists
+requirements as a warning; native setup and successful behavior still need testing.
+
+## Unreleased: development mode identifies skipped OTA operations
+
+Debug hosts now log the upstream origin and disabled OTA behavior at startup. Calls to ready,
+signed reload, update checks and applyUpdate log their development bypass rather than appearing
+silent. Restart without VALENCE_DEV_URL to validate signed offline starts and rollback. No
+schema, package version or host setup changes are required.
+
 ## Unreleased: explicit LAN development trust
 
 - `valence dev` now binds loopback by default. A LAN address or hostname requires
