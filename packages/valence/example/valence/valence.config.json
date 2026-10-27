@@ -31,5 +31,11 @@
     "origins": [
       "http://10.0.2.2:8787"
     ]
+  },
+  "links": {
+    "origins": [
+      "https://links.example.invalid",
+      "valence-example://app"
+    ]
   }
 }

@@ -35,6 +35,7 @@ final class ValenceConfig {
     this.seedAsset = 'assets/valence/seed.db',
     this.authToken,
     this.httpOrigins = const {},
+    this.linkOrigins = const {},
   });
 
   /// The reverse-domain id a manifest must carry (canonical check 2).
@@ -111,6 +112,9 @@ final class ValenceConfig {
   /// Compiled from `http.origins`; empty denies every request. Never supplied by an OTA manifest.
   final Set<String> httpOrigins;
 
+  /// Exact HTTPS/custom-scheme origins accepted as local routes (§6.3).
+  final Set<String> linkOrigins;
+
   /// Copy with overrides. Handy in tests and for pointing a debug build at a local OTA host.
   ValenceConfig copyWith({
     String? otaBase,
@@ -124,6 +128,7 @@ final class ValenceConfig {
     int? pullPageLimit,
     Future<String?> Function()? authToken,
     Set<String>? httpOrigins,
+    Set<String>? linkOrigins,
   }) =>
       ValenceConfig(
         appId: appId,
@@ -146,5 +151,6 @@ final class ValenceConfig {
         seedAsset: seedAsset,
         authToken: authToken ?? this.authToken,
         httpOrigins: httpOrigins ?? this.httpOrigins,
+        linkOrigins: linkOrigins ?? this.linkOrigins,
       );
 }

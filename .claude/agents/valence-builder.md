@@ -107,3 +107,7 @@ Report in this order:
 3. deviations from the contracts, with sources;
 4. requests for the other layer;
 5. anything left unfinished, and why.
+
+## Deep links
+
+For apps accepting OS links, implement contracts ?6.3 native registrations and compiled `links.origins`; use the package listener and generated `onLink()`. Test cold/warm routing, query/hash preservation and denied origins. Record real domain verification separately from forced Android test approval.

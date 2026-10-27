@@ -170,6 +170,11 @@
       "since": 8,
       "params": {},
       "returns": "json?"
+    },
+    "link.initial": {
+      "since": 9,
+      "params": {},
+      "returns": "Link?"
     }
   },
   "events": {
@@ -218,6 +223,13 @@
         "highContrast": "bool",
         "reducedMotion": "bool"
       }
+    },
+    "link.opened": {
+      "since": 9,
+      "payload": {
+        "url": "string",
+        "path": "string"
+      }
     }
   },
   "types": {
@@ -262,6 +274,10 @@
       "reason": "string",
       "offered": "int?",
       "checkedAt": "int?"
+    },
+    "Link": {
+      "url": "string",
+      "path": "string"
     }
   }
 }

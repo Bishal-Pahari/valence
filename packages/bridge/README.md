@@ -109,3 +109,7 @@ Declare schema-7 app.appearance with bool darkMode, highContrast and reducedMoti
 
 Schema 8 adds `state.save({json})` and `state.restore()` for a task-local UI blob (65,536 JSON UTF-8 bytes). ValenceApp restores the local path/query/hash after OS process reclamation. Explicit task closure starts fresh; a different bundle seq clears the snapshot. Save promptly and keep durable records in SQLite. iOS is experimental and untested. [Guide](https://getvalence.pages.dev/docs/guides/state-restoration/).
 Guard `has("data.count")` to page `data.list` with `after`: pass the last key of the previous page and the scan resumes strictly after it, which is the only complete read of a bucket larger than `data.list`'s 500-row clamp. `has("data.list")` cannot gate `after` — it is a new parameter on a method that has existed since version 1, and a host older than version 5 rejects the unknown field with `E_PARAMS`. `call("data.count", {bucket, prefix})` returns the number of live rows without reading any of them.
+
+## Route OS links
+
+After `connect()`, install one `onLink()` subscription at the app root. It consumes `link.initial`, subscribes to `link.opened`, and defaults to a local `history.pushState` plus `popstate`. Pass `onLink(({path}) => router.navigate(path), reportError)` for your own router and call its returned cleanup on unmount. Import from your generated `bridge.g.ts`; unsupported hosts are a no-op. See [deep-link setup](../../docs/deep-links.md).

@@ -126,6 +126,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
 
   @override
   void dispose() {
+    unawaited(_valence.links.close());
     _readyTicker?.cancel();
     _updateTicker?.cancel();
     unawaited(_connectivity?.cancel());
@@ -310,6 +311,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     _valence.restoration.observe(url, _origin);
     _log('webview started $url');
     _pageLoaded = false;
+    _valence.links.beginPage();
     final state = _valence.state;
     // Armed only while serving a trial. A `current` page is not on probation, so a slow start costs it
     // nothing — and a ready timeout on a `current` page must count no failure at all.

@@ -1161,6 +1161,56 @@ Everything here is silent when it is wrong: the call succeeds, the UI says "Set"
 
 ---
 
+### 6.3 Deep links and local routing
+
+Schema 9 adds `link.initial() -> Link?` and `link.opened {url:string, path:string}`;
+`Link` has `url:string` and `path:string`. `links.origins` in the store configuration
+is an exact allowlist such as `["https://links.example.com", "myapp://app"]`.
+It defaults to empty. HTTPS and custom schemes with a host are supported; HTTP,
+credentials, ports on custom schemes, wildcards and executable/file schemes are denied.
+An OTA cannot expand this list. OS intent filters alone do not grant trust.
+
+The runtime instantiates app_links early on UI startup. It holds the latest accepted
+link until `link.initial()` is called, then consumes that pending link once. Subsequent
+links emit `link.opened`; a repeat tap on the same URL is a new event. Initial and
+stream delivery of the same launch intent are deduplicated only during startup.
+Links arriving before the page subscribes replace the pending link (latest wins).
+Each WebView page start re-arms the mailbox until that page calls `link.initial()`, retaining a pending link without replaying already consumed links.
+Background isolates do not start link listeners. Dispose cancels the subscription.
+
+The path is the URL's path (empty becomes `/`), query and fragment; the authority of
+a custom link is an allowlisted host, not a route segment. At most 8 KiB UTF-8 per URL.
+Reject malformed escapes, control characters, backslashes, encoded path separators,
+dot segments, network-path references and `/_host` paths. Links are untrusted input:
+they never invoke bridge methods, import tokens or grant authorization. The WebView
+navigation lock and bridge nonce remain unchanged.
+
+`onLink(handler?)` on the generated web client is installed after `connect()`. It
+subscribes before calling `link.initial`, skips unsupported hosts, and returns an
+unsubscribe function. A live event supersedes a pending initial reply. With no
+handler it validates the local path again, calls `history.pushState` within the
+current origin and dispatches `popstate`; a custom handler receives `{url,path}`.
+It never loads an external URL. Each page installs one subscription; SPA routers
+can supply their own handler. Call `ready()` on every painted destination.
+
+Android uses app_links with Flutter's deep-link handler disabled, a `singleTop`
+activity, BROWSABLE/DEFAULT VIEW filters for custom schemes and `autoVerify=true`
+HTTPS filters for App Links. `valence assetlinks --package <id> --fingerprints
+<SHA256,...> --out <directory>` writes `.well-known/assetlinks.json`, using the
+Android app-signing certificate (Play signing certificate for Play installs).
+`valence aasa --app-id <TEAMID.bundle.id> --out <directory>` writes
+`.well-known/apple-app-site-association` with `applinks` paths `*`. These generators
+do not upload files or alter native registrations. Serve them over HTTPS without
+redirects and with JSON content type. iOS additionally needs URL Types, associated
+domains entitlements, and `FlutterDeepLinkingEnabled=false`; it is experimental
+and untested. Custom schemes are interceptable by other apps; use verified HTTPS
+links for sensitive flows and authenticate any action separately.
+
+R6 matrix: cold/warm links, startup deduplication and repeated taps; unlisted and
+malformed links denied; query/hash retained; pending initial reply cannot overwrite
+a live event or navigate after unsubscribe; generated delegations; association-file
+validation; Android cold/warm intents and `pm verify-app-links`/`pm set-app-links`.
+
 ## 7. Store-policy rules (enforced by `valence bundle` and the reviewer)
 
 **The policy text** (retrieved 2026-10-14):

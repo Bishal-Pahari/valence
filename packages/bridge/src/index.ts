@@ -49,6 +49,77 @@ export const MAX_MESSAGE_BYTES = 262_144;
 /** True inside the Valence host, false in a normal browser. */
 export const inHost = (): boolean => typeof window !== 'undefined' && !!window.Valence;
 
+/** A validated external link and its local destination (contracts §6.3). */
+export interface AppLink {
+  url: string;
+  path: string;
+}
+
+/** Validates before passing untrusted native event data to a router. */
+function checkedLink(value: unknown): AppLink {
+  if (!value || typeof value !== 'object') throw new BridgeError('E_PARAMS', 'invalid link');
+  const { url, path } = value as Partial<AppLink>;
+  if (typeof url !== 'string' || typeof path !== 'string' ||
+      new TextEncoder().encode(url).length > 8192 || !path.startsWith('/') || path.startsWith('//') ||
+      /[\x00-\x20\x7f\\]/.test(path) || /%(?![0-9a-f]{2})/i.test(path)) {
+    throw new BridgeError('E_PARAMS', 'invalid link destination');
+  }
+  let decoded: string;
+  const pathname = path.split(/[?#]/, 1)[0]!;
+  try { decoded = decodeURIComponent(pathname); } catch { throw new BridgeError('E_PARAMS', 'invalid link escape'); }
+  if (/%2f|%5c/i.test(pathname) || /[\x00-\x20\x7f\\]/.test(decoded) ||
+      decoded.split('/').some((s) => s === '.' || s === '..') || decoded === '/_host' || decoded.startsWith('/_host/')) {
+    throw new BridgeError('E_DENIED', 'unsafe link destination');
+  }
+  return { url, path };
+}
+
+function routeLink(link: AppLink): void {
+  const target = new URL(link.path, window.location.origin);
+  if (target.origin !== window.location.origin) throw new BridgeError('E_DENIED', 'off-origin link');
+  window.history.pushState(null, '', link.path);
+  window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+}
+
+/**
+ * Subscribe after connect(), before requesting the pending cold-start link.
+ * Defaults to History API routing plus popstate. Return cleanup from your app's root effect.
+ * Errors go to onError (the default logs a fixed message without the link's contents).
+ */
+export function onLink(
+  handler: (link: AppLink) => void = routeLink,
+  onError: (error: unknown) => void = () => console.error('Valence link could not be routed'),
+): () => void {
+  return subscribeLink(handler, onError, 9);
+}
+
+function subscribeLink(
+  handler: ((link: AppLink) => void) | undefined,
+  onError: ((error: unknown) => void) | undefined,
+  since: number | undefined,
+): () => void {
+  const supported = since !== undefined && (inHost() ? hostBridge !== undefined && hostBridge >= since : 'link.initial' in shim);
+  if (!supported) return () => {};
+  installTransport();
+  let active = true;
+  let live = false;
+  const deliver = (value: unknown) => {
+    if (!active) return;
+    try { (handler ?? routeLink)(checkedLink(value)); }
+    catch (error) { (onError ?? (() => console.error('Valence link could not be routed')))(error); }
+  };
+  const receive = (value: never) => { live = true; deliver(value); };
+  const set = listeners.get('link.opened') ?? new Set();
+  set.add(receive);
+  listeners.set('link.opened', set);
+  void rawCall('link.initial', {}, since).then((value) => {
+    if (!live && value !== null) deliver(value);
+  }).catch((error: unknown) => {
+    if (active) (onError ?? (() => console.error('Valence initial link unavailable')))(error);
+  });
+  return () => { active = false; set.delete(receive); };
+}
+
 // One transport per page, shared by every createBridge() call: window.__valence is a single global, and
 // the host replies to whichever handler is installed. Keeping it module-level makes a second call harmless.
 const pending = new Map<number, { resolve(v: unknown): void; reject(e: BridgeError): void }>();
@@ -118,6 +189,8 @@ function rawCall(m: string, params: object, since: number | undefined): Promise<
 
 /** The typed surface `valence codegen` re-exports from bridge.g.ts. */
 export interface Bridge<M, E> {
+  /** Subscribe to deep links after connect(). Unsupported schemas/hosts are a no-op. */
+  onLink(handler?: (link: AppLink) => void, onError?: (error: unknown) => void): () => void;
   call<K extends keyof M & string>(m: K, ...args: Args<M, K>): Promise<Returns<M, K>>;
   /**
    * True when the host can serve this method, or emit this event. Call connect() first.
@@ -162,6 +235,7 @@ export function createBridge<M, E>(
 ): Bridge<M, E> {
   installTransport();
   return {
+    onLink: (handler, onError) => subscribeLink(handler, onError, (methodSince as Record<string, number>)['link.initial']),
     call: ((m: string, params: object = {}) => rawCall(m, params, methodSince[m as keyof M])) as Bridge<
       M,
       E

@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'config.dart';
 import 'appearance.dart';
 import 'log.dart';
+import 'links.dart';
 import 'manifest.dart';
 import 'native_http.dart';
 import 'restoration.dart';
@@ -25,6 +26,7 @@ import 'wire.dart';
 
 export 'config.dart' show ValenceConfig, ValenceSyncMode;
 export 'log.dart' show ValenceLogger, defaultValenceLogger;
+export 'links.dart' show ValenceLink, ValenceLinks;
 export 'manifest.dart'
     show
         ValenceCheckFailure,
@@ -209,6 +211,9 @@ final class Valence {
     // initialized" before a single frame. It is idempotent, and it returns an existing test binding
     // unchanged.
     WidgetsFlutterBinding.ensureInitialized();
+    final links = ValenceLinks(origins: config.linkOrigins, onOpened: (_) {});
+    // Capture the OS intent before directory lookup, seed import or widget creation.
+    if (Platform.isAndroid || Platform.isIOS) await links.start();
     final support = supportDir ?? await getApplicationSupportDirectory();
     final dir = Directory('${support.path}${Platform.pathSeparator}valence');
     await dir.create(recursive: true);
@@ -259,6 +264,8 @@ final class Valence {
       hostBuild: hostBuild,
       log: log,
     );
+    valence.links = links;
+    links.onOpened = (link) => valence.emit(eventScript('link.opened', {'url': link.url, 'path': link.path}));
     // The widget attaches later, so route the urgent-update callback through the runtime.
     updater.onUpdateReady = (seq) => valence.onUpdateReady?.call(seq);
     // §4.4: a rejected token is the page's problem to fix, so it has to reach the page. Buffered like
@@ -285,6 +292,12 @@ final class Valence {
 
   /// Keystore- and Keychain-backed storage for the bearer token and the page's own secrets (§4.4).
   final ValenceSecure secure;
+
+  /// Deep links captured on UI startup. Background workers do not start this listener.
+  late final ValenceLinks links;
+
+  /// Consumes the pending startup route and enables link.opened events (?6.3).
+  ValenceLink? linkInitial() => links.initial();
 
   /// `<appSupport>/valence/`. Excluded from device backups by platform setup.
   final Directory dir;

@@ -27,6 +27,8 @@ export 'src/runtime.dart'
         ValenceHttpResponse,
         ValenceLifecycle,
         ValenceLogger,
+        ValenceLink,
+        ValenceLinks,
         ValenceManifest,
         ValenceOutboxOp,
         ValenceRow,

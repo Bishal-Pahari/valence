@@ -132,6 +132,21 @@ final class BundleStatus {
   Map<String, Object?> toJson() => {'serving': serving, 'pending': pending, 'trial': trial, 'reason': reason, 'offered': offered, 'checkedAt': checkedAt};
 }
 
+final class Link {
+  const Link({required this.url, required this.path});
+
+  factory Link.fromJson(Object? j, [String f = 'Link']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'url', 'path'}, f);
+    return Link(url: decodeString(m['url'], '$f.url'), path: decodeString(m['path'], '$f.path'));
+  }
+
+  final String url;
+  final String path;
+
+  Map<String, Object?> toJson() => {'url': url, 'path': path};
+}
+
 final class DataGetParams {
   const DataGetParams({required this.bucket, required this.key});
 
@@ -383,6 +398,7 @@ abstract interface class BridgeHandlers {
   Future<int> dataCount(DataCountParams p);
   Future<void> stateSave(StateSaveParams p);
   Future<Object?> stateRestore();
+  Future<Link?> linkInitial();
 }
 
 /// Opt-in defaults for test doubles or partial hosts. Production hosts extend ValenceBuiltins.
@@ -437,6 +453,8 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<void> stateSave(StateSaveParams p) async => throw const BridgeError('E_UNSUPPORTED', 'state.save is not implemented');
   @override
   Future<Object?> stateRestore() async => throw const BridgeError('E_UNSUPPORTED', 'state.restore is not implemented');
+  @override
+  Future<Link?> linkInitial() async => throw const BridgeError('E_UNSUPPORTED', 'link.initial is not implemented');
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
@@ -540,6 +558,10 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.stateRestore();
         return replyOk(id, r);
+      case 'link.initial':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.linkInitial();
+        return replyOk(id, r?.toJson());
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
     }
@@ -560,6 +582,7 @@ abstract final class BridgeEvents {
   static String appLifecycle({required String state}) => eventScript('app.lifecycle', {'state': state});
   static String appOnline({required bool online}) => eventScript('app.online', {'online': online});
   static String appAppearance({required bool darkMode, required bool highContrast, required bool reducedMotion}) => eventScript('app.appearance', {'darkMode': darkMode, 'highContrast': highContrast, 'reducedMotion': reducedMotion});
+  static String linkOpened({required String url, required String path}) => eventScript('link.opened', {'url': url, 'path': path});
 }
 
 /// The built-in bridge methods, implemented against the `valence` runtime.
@@ -708,5 +731,11 @@ abstract class ValenceBuiltins {
   /// `state.restore`, from the package.
   Future<Object?> stateRestore() async {
     return valence.stateRestore();
+  }
+
+  /// `link.initial`, from the package.
+  Future<Link?> linkInitial() async {
+    final r = valence.linkInitial();
+    return r == null ? null : Link(url: r.url, path: r.path);
   }
 }

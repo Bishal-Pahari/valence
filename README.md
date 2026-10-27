@@ -206,3 +206,5 @@ package adopts such a database on open — `-wal` and `-shm` move with it, the `
 destination is never overwritten, and the move is logged. A locked open (a schema migration's
 `BEGIN EXCLUSIVE` against the WorkManager job the same launch fires) is retried; `backgroundSync` then
 reports `reason: "busy"` rather than failing the job.
+
+Deep links in 0.4: [setup and routing](docs/deep-links.md) covers store-compiled link origins, Android App Links, custom schemes, `onLink()` and website association generators. iOS is experimental and untested.

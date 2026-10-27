@@ -42,3 +42,5 @@ The spec is `valence` [contracts.md](https://github.com/Bishal-Pahari/valence/bl
 Adaptive UI: use --valence-inset-top/right/bottom/left with 0px fallbacks and a width=device-width viewport. ValenceApp handles native Android text zoom; do not double-scale CSS. Subscribe to app.appearance during bootstrap, before ready(). Test semantic HTML with TalkBack and 200% text. See https://getvalence.pages.dev/docs/guides/accessibility/.
 
 Task restoration follows the recorded account: switch/sign-out clears route and blob; refresh/adoption retains the live draft. Redraw account-owned page UI after a switch; do not put secrets in state.save.
+
+OS links use contracts ?6.3: store-compiled `links.origins`, matching native registrations and one generated `onLink()` subscription after `connect()`. Links are untrusted route input; authenticate actions separately.

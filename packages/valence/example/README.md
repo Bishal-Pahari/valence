@@ -61,3 +61,7 @@ The signed page displays app.appearance and logical insets, pads content with th
 Schema 8 adds `state.save({json})` and `state.restore()` for a task-local UI blob (65,536 JSON UTF-8 bytes). ValenceApp restores the local path/query/hash after OS process reclamation. Explicit task closure starts fresh; a different bundle seq clears the snapshot. Save promptly and keep durable records in SQLite. iOS is experimental and untested. [Guide](https://getvalence.pages.dev/docs/guides/state-restoration/).
 
 Task snapshots are bound to the native account as well as the signed bundle: switching or signing out clears the route and draft, including stale OS snapshots. Refresh and first-account adoption retain the live draft.
+
+## Deep-link demo
+
+The R6 surfaces were added at schema 9. This merged example reports schema 13 and accepts `valence-example://app` and `https://links.example.invalid`. Native Android filters and experimental iOS registrations are included. The page shows the routed path/query/hash and uses the wire protocol directly, matching the rest of this no-bundler demo. Production apps use `onLink()` from their generated client. See [setup](../../../docs/deep-links.md). The placeholder HTTPS domain cannot verify; forced approval tests delivery only.

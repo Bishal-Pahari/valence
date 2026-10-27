@@ -22,5 +22,8 @@
   "writable": [],
   "http": {
     "origins": []
+  },
+  "links": {
+    "origins": []
   }
 }

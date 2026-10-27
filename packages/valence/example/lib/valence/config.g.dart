@@ -18,5 +18,6 @@ const valenceConfig = ValenceConfig(
   writableBuckets: {'shelf'},
   dataSchemas: {'plants': 1},
   httpOrigins: {'http://10.0.2.2:8787'},
+  linkOrigins: {'https://links.example.invalid', 'valence-example://app'},
   seedSchemas: {},
 );

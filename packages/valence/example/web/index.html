@@ -34,6 +34,7 @@
       <pre id="info">reading app.info…</pre>
       <pre id="batch">reading data.getMany…</pre>
       <pre id="status">reading sync.status…</pre>
+      <pre id="link">No link received</pre>
     </section>
 
     <section>
@@ -105,6 +106,7 @@
       const nonce = document.querySelector('meta[name="valence-nonce"]')?.content ?? '';
       const pending = new Map();
       let nextId = 1;
+      let liveLink = false;
       window.__valence = {
         r(reply) {
           const p = pending.get(reply.id);
@@ -119,6 +121,10 @@
               top: css.getPropertyValue('--valence-inset-top'), bottom: css.getPropertyValue('--valence-inset-bottom'),
               left: css.getPropertyValue('--valence-inset-left'), right: css.getPropertyValue('--valence-inset-right'),
               scale: css.getPropertyValue('--valence-font-scale') });
+          }
+          if (name === 'link.opened') {
+            liveLink = true;
+            routeLink(payload);
           }
           if (name === 'sync.changed') void refresh();
           // §4.6. Logged rather than acted on, because the point of the three is that they *arrive*:
@@ -175,6 +181,16 @@
         await call('state.save', { json: null });
         await showRestored();
       };
+
+      function routeLink(link) {
+        if (!link) return;
+        const target = new URL(link.path, location.origin);
+        if (target.origin !== location.origin || !link.path.startsWith('/') || link.path.startsWith('//')) return;
+        history.pushState(null, '', link.path);
+        document.getElementById('link').textContent = 'Link route: ' + location.pathname + location.search + location.hash;
+        console.info('link routed: ' + location.pathname);
+        dispatchEvent(new PopStateEvent('popstate'));
+      }
 
       async function refresh() {
         document.getElementById('status').textContent = 'sync.status: ' + JSON.stringify(await call('sync.status'));
@@ -305,6 +321,9 @@
           await showRestored();
           hostBridge = info.bridge;
           document.getElementById('info').textContent = JSON.stringify(info, null, 2);
+          const initialLink = await call('link.initial');
+          // A newer intent may arrive while startup awaits any bridge reply.
+          if (!liveLink) routeLink(initialLink);
           await refresh();
           await showAuth();
           await showState();

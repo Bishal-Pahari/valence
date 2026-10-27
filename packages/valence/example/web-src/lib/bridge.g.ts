@@ -59,6 +59,11 @@ export interface BundleStatus {
   checkedAt?: number | null;
 }
 
+export interface Link {
+  url: string;
+  path: string;
+}
+
 export interface Methods {
   'app.ready': { params: Record<string, never>; returns: void };
   'app.info': { params: Record<string, never>; returns: AppInfo };
@@ -130,6 +135,7 @@ export interface Methods {
     json?: Json | null;
   }; returns: void };
   'state.restore': { params: Record<string, never>; returns: Json | null };
+  'link.initial': { params: Record<string, never>; returns: Link | null };
 }
 
 export interface Events {
@@ -154,6 +160,10 @@ export interface Events {
     darkMode: boolean;
     highContrast: boolean;
     reducedMotion: boolean;
+  };
+  'link.opened': {
+    url: string;
+    path: string;
   };
 }
 
@@ -183,6 +193,7 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'data.count': 5,
   'state.save': 8,
   'state.restore': 8,
+  'link.initial': 9,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
@@ -194,6 +205,7 @@ export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
   'app.lifecycle': 6,
   'app.online': 6,
   'app.appearance': 7,
+  'link.opened': 9,
 };
 
 /** Browser fallbacks for this app, so the same build also runs as the website. */
@@ -205,7 +217,7 @@ export type AppShim = Shim<Methods>;
  * `connect()` once at startup, then `has()` tells you whether a method or event added in a later
  * release exists on *this* host. `ready()` after the first meaningful paint commits an OTA bundle.
  */
-export const { call, has, on, ready, connect, installShim } = createBridge<Methods, Events>(
+export const { call, has, on, onLink, ready, connect, installShim } = createBridge<Methods, Events>(
   METHOD_SINCE,
   EVENT_SINCE,
 );

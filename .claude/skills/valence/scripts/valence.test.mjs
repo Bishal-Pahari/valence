@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { sign } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
+import { runInNewContext } from 'node:vm';
 import { execSync } from 'node:child_process';
 
 import {
@@ -22,9 +23,10 @@ import {
   bundle,
   keygen,
   codegen,
-  diagnose,
   pointer,
+  diagnose,
   loadConfig,
+  association,
   parseSchema,
   verifyBundle,
   loadSigningKey,
@@ -37,11 +39,88 @@ const TEMPLATES = join(import.meta.dirname, '..', 'templates');
 // Listed here rather than per test, because every new runtime capability has to land in exactly one place
 // for the "an older app still codegens" cases to keep meaning what they say.
 const SINCE_ABOVE_4 = {
-  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account'],
-  events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online'],
-  types: ['SyncStatus', 'AppState', 'BundleStatus'],
+  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial'],
+  events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online', 'link.opened'],
+  types: ['SyncStatus', 'AppState', 'BundleStatus', 'Link'],
 };
 const NOW = Date.UTC(2026, 9, 15);
+
+test('association generators validate identity/certificates, write the website layout and refuse overwrites', () => {
+  const out = mkdtempSync(join(tmpdir(), 'valence-links-'));
+  const fingerprint = Array(32).fill('ab').join(':');
+  const r = association({ kind: 'assetlinks', packageId: 'com.example.app', fingerprints: fingerprint, out });
+  const android = JSON.parse(readFileSync(r.file, 'utf8'));
+  assert.equal(android[0].target.package_name, 'com.example.app');
+  assert.deepEqual(android[0].target.sha256_cert_fingerprints, [fingerprint.toUpperCase()]);
+  assert.ok(r.file.endsWith(join('.well-known', 'assetlinks.json')));
+  assert.throws(() => association({ kind: 'assetlinks', packageId: 'com.example.app', fingerprints: fingerprint, out }), /EEXIST/);
+  for (const value of ['ab', fingerprint + ',oops', '', '../bad']) {
+    assert.throws(() => association({ kind: 'assetlinks', packageId: 'com.example.app', fingerprints: value, out }), /fingerprints/);
+  }
+  assert.throws(() => association({ kind: 'assetlinks', packageId: '../bad', fingerprints: fingerprint, out }), /applicationId/);
+  const aasa = association({ kind: 'aasa', appId: 'ABCDE12345.com.example.app', out });
+  assert.deepEqual(JSON.parse(readFileSync(aasa.file, 'utf8')).applinks.details, [{ appID: 'ABCDE12345.com.example.app', paths: ['*'] }]);
+  assert.throws(() => association({ kind: 'aasa', appId: 'com.example.app', out }), /TEAMID/);
+  assert.throws(() => association({ kind: 'aasa', appId: 'ABCDE12345.com.example.bad_app', out }), /TEAMID/);
+  const hyphenated = mkdtempSync(join(tmpdir(), 'valence-aasa-'));
+  const hyphen = association({ kind: 'aasa', appId: 'ABCDE12345.com.example.my-app', out: hyphenated });
+  assert.equal(JSON.parse(readFileSync(hyphen.file, 'utf8')).applinks.details[0].appID, 'ABCDE12345.com.example.my-app');
+  const other = mkdtempSync(join(tmpdir(), 'valence-links-cli-'));
+  execSync(`node "${join(import.meta.dirname, '../../../../bin/valence.mjs')}" aasa --app-id ABCDE12345.com.example.app --out "${other}"`, { stdio: 'pipe' });
+  assert.ok(existsSync(join(other, '.well-known', 'apple-app-site-association')));
+});
+
+
+test('the signed example keeps a live link newer than its delayed initial reply', async () => {
+  const html = readFileSync(join(import.meta.dirname, '../../../../packages/valence/example/web/index.html'), 'utf8');
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  for (const liveAt of [null, 'beforeInfo', 'duringInitial']) {
+    const sent = [], routed = [];
+    const location = new URL('http://127.0.0.1:18000/');
+    const elements = new Map();
+    const window = { Valence: { postMessage: (raw) => sent.push(JSON.parse(raw)) } };
+    const document = {
+      querySelector: () => ({ content: 'nonce' }),
+      getElementById(id) {
+        if (!elements.has(id)) elements.set(id, { addEventListener() {} });
+        return elements.get(id);
+      },
+    };
+    runInNewContext(script, {
+      window, document, location, URL,
+      history: { pushState: (_, __, path) => { routed.push(path); location.href = new URL(path, location).href; } },
+      console: { info() {} }, dispatchEvent() {}, PopStateEvent: class {},
+    });
+    const live = () => window.__valence.e('link.opened', { url: 'valence-example://app/warm', path: '/warm?q=1#x' });
+    if (liveAt === 'beforeInfo') live();
+    assert.equal(sent[0].m, 'app.info');
+    window.__valence.r({ id: sent[0].id, ok: true, v: { bridge: 13 } });
+    await flush();
+    assert.equal(sent[1].m, 'link.initial');
+    if (liveAt === 'duringInitial') live();
+    window.__valence.r({ id: sent[1].id, ok: true, v: { url: 'valence-example://app/cold', path: '/cold' } });
+    await flush();
+    assert.deepEqual(routed, [liveAt ? '/warm?q=1#x' : '/cold']);
+    live(); live();
+    assert.deepEqual(routed.slice(-2), ['/warm?q=1#x', '/warm?q=1#x']);
+  }
+});
+
+test('link origins compile into the native policy and built-in nullable shape stays frozen', () => {
+  const { root, cfg } = fixture({ latest: true });
+  cfg.links = { origins: ['https://links.example.com', 'myapp://app'] };
+  codegen({ root, cfg });
+  const generated = readFileSync(join(root, cfg.host.dir, 'lib/valence/config.g.dart'), 'utf8');
+  assert.match(generated, /linkOrigins: \{'https:\/\/links.example.com', 'myapp:\/\/app'\}/);
+  for (const value of ['http://example.com', 'javascript://app', 'https://example.com/x', 'myapp://app:80', 'https://example.com:443', 'https://u@example.com', 'https://*.example.com', 'https://EXAMPLE.COM', 'myapp://app\\evil']) {
+    cfg.links.origins = [value];
+    assert.throws(() => codegen({ root, cfg }), /links.origins/);
+  }
+  cfg.links.origins = [];
+  editSchema(root, (s) => { s.methods['link.initial'].returns = 'Link'; });
+  assert.throws(() => codegen({ root, cfg }), /must return/);
+});
 
 function fixture({ data = { calendar: 1 }, latest = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'mr-'));
