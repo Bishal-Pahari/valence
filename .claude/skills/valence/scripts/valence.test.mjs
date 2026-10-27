@@ -32,6 +32,7 @@ import {
   verifyBundle,
   loadSigningKey,
   VALENCE_VERSION,
+  PLUGIN_RESERVED,
   loadPluginSchema,
 } from './valence.mjs';
 
@@ -1567,7 +1568,9 @@ test(
   () => {
     const { root, cfg } = fixture({ latest: true });
     cfg.plugins = ['probe.json'];
-    writeFileSync(join(root, 'probe.json'), JSON.stringify(probePlugin()));
+    const plugin = probePlugin();
+    plugin.methods['probe.ping'] = { since: 1, params: {}, returns: 'void' };
+    writeFileSync(join(root, 'probe.json'), JSON.stringify(plugin));
     editSchema(root, (s) => {
       s.types.Empty = {};
       s.methods['x.edge'] = { since: 1, params: { blobs: 'json[]?', rows: 'Row[]?', type: 'string', empty: 'Empty?' }, returns: 'Row[]?' };
@@ -1667,10 +1670,13 @@ class _Probe implements ValencePlugin {
   @override
   String get namespace => 'probe';
   @override
-  Set<String> get methods => {'probe.read', 'probe.hidden'};
+  Set<String> get methods => {'probe.read', 'probe.hidden', 'probe.ping'};
   @override
   Future<Object?> invoke(Valence valence, String method, Map<String, Object?> params) async {
     calls++;
+    if (method == 'probe.ping') return 'not void';
+    if (params['key'] == 'denied') throw const BridgeError('E_DENIED', 'plugin denied');
+    if (params['key'] == 'params') throw const BridgeError('E_PARAMS', 'plugin params');
     if (params['key'] == 'none') return null;
     if (params['key'] == 'bad') return [{'label': 12, 'count': 1}];
     return [{'label': params['key'], 'count': 1}];
@@ -1700,7 +1706,10 @@ void main() {
     expect(plugin.calls, 0);
     expect((await send('probe.read', {'key': 'ok'}))['v'], [{'label': 'ok', 'count': 1}]);
     expect((await send('probe.read', {'key': 'none'}))['v'], isNull);
-    expect(code(await send('probe.read', {'key': 'bad'})), 'E_PARAMS');
+    expect(code(await send('probe.read', {'key': 'bad'})), 'E_INTERNAL');
+    expect(code(await send('probe.ping', {})), 'E_INTERNAL');
+    expect(code(await send('probe.read', {'key': 'denied'})), 'E_DENIED');
+    expect(code(await send('probe.read', {'key': 'params'})), 'E_PARAMS');
     final missing = jsonDecode(await bridgeDispatch(_PluginHandlers(runtime, null), '{"id":1,"n":"n1","m":"probe.read","p":{"key":"ok"}}', nonce: 'n1')) as Map<String, Object?>;
     expect(code(missing), 'E_UNSUPPORTED');
     expect(BridgeEvents.probeChanged(row: const ProbeRow(label: 'ok', count: 1)), contains('probe.changed'));
@@ -1711,6 +1720,11 @@ void main() {
   });
   test('the generated config is wired to the generated bridge version', () {
     expect(valenceConfig.bridgeVersion, hostBridgeVersion);
+  });
+
+  test('CLI and runtime reserve the same plugin namespaces', () {
+    expect(ValencePluginRegistry.reservedNamespaces,
+        unorderedEquals(${JSON.stringify([...PLUGIN_RESERVED])}));
   });
 
   test('a reply round-trips, escaping U+2028 and quotes', () async {

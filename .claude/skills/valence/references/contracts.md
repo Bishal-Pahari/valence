@@ -417,7 +417,9 @@ Use an isolated network, a separate development app id, test accounts and test d
 The WebView still loads the owned loopback origin. A debug-only GET/HEAD proxy fetches the
 chosen server, injects the launch nonce before scripts, disables caching and proxies HMR
 WebSockets. Reserved `/_host/` paths remain native. Redirects are refused. Neither request
-credentials nor native bearer tokens are forwarded. A frame-src/frame-ancestors CSP forbids
+credentials nor native bearer tokens are forwarded. The proxy allocates its HTTP client only
+after origin validation and closes the upstream WebSocket if the downstream upgrade fails.
+A frame-src/frame-ancestors CSP forbids
 subframes and workers, preventing dev service workers from persisting into a store build. Main-frame navigation retains the ordinary origin lock and strict bridge decoding.
 Hot updates retain the page and nonce; document reloads re-inject the same launch nonce.
 Dev pages cannot consume, commit or fail OTA trials; automatic OTA checks and applyUpdate
@@ -1124,6 +1126,21 @@ only methods in the merged schema have generated dispatch cases, after the exist
 strict parameter checks. Plugin results are decoded against their declared return type before
 replying. Message limits, navigation locks, signatures and reserved secrets remain mandatory.
 Plugins are trusted native code, with the same privileges as the host, not a sandbox.
+Invalid native return values are `E_INTERNAL`, not `E_PARAMS`: parameter decoding
+still fails before invocation, and a plugin's own `BridgeError` is preserved.
+Only the generated `bridge.g.ts` is checked against the merged schema. A plugin's
+separately published npm types are hand-maintained; codegen does not verify them.
+The CLI exports `PLUGIN_RESERVED`; generated-Dart tests compare it with
+`ValencePluginRegistry.reservedNamespaces` to catch drift between the packages.
+Refresh vendored tooling and regenerate when upgrading the runtime.
+
+The writable-bucket and dot-key checks live in `Valence.dataPut`, at the page
+boundary. Native code using `Valence.store.put` bypasses those checks and owns
+the resulting sync correctness. Ordinary `store.prefGet`/`prefSet` and
+`secure.get`/`set`/`delete` still reject the `valence.` prefix for native callers,
+and `openExternal` still enforces its scheme allowlist. Explicit host-pref/token
+APIs and the public database handle are privileged escape hatches, not a sandbox:
+a trusted plugin can bypass storage rules and must never expose them to the page.
 
 `valence.config.json.plugins` is an optional array of entries, each either a
 project-root-relative fragment path or `{path, since}`, where `since` maps every method and

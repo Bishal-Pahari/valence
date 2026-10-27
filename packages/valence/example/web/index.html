@@ -272,6 +272,10 @@
 
       document.getElementById('haptics').addEventListener('click', async () => {
         show(null);
+        if (!has('haptics.tap')) {
+          show(new Error('Haptics is unavailable on this host.'));
+          return;
+        }
         try {
           await call('haptics.tap');
         } catch (e) {

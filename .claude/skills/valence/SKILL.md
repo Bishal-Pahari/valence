@@ -41,6 +41,14 @@ server arguments and release exclusion. Use a separate development app id and te
 Return to a host without the define for signed-bundle, offline and rollback validation. Codegen
 and the generated bridge stay unchanged; native/schema changes still require a host rebuild.
 
+For native plugins, follow contracts §4.10: malformed native results are
+`E_INTERNAL`; argument decoding still precedes invocation. Only generated
+`bridge.g.ts` is schema-checked, not a plugin's hand-maintained npm types.
+Refresh vendored tooling with runtime upgrades; the generated-Dart gate compares
+the CLI and runtime reserved namespace sets. Plugins have host privileges:
+`store.put` bypasses the writable/dot-key page checks, while ordinary pref/secure
+APIs and `openExternal` keep their reserved-prefix and scheme checks.
+
 Arguments: `$ARGUMENTS`
 
 - `init`, or empty with no `valence/valence.config.json` in the project: set up the architecture (§Init).
