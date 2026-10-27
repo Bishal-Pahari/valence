@@ -273,20 +273,16 @@ void main() {
       return http.Response.bytes(trial.bytes, 200);
     }
     if (path.endsWith('/manifests/20.json.sig')) {
-      return http.Response(
-          validSignature ? trial.signature : builtin.signature, 200);
+      return http.Response(validSignature ? trial.signature : builtin.signature, 200);
     }
     final blob = trial.blobs[path.split('/').last];
-    return blob == null
-        ? http.Response('', 404)
-        : http.Response.bytes(blob, 200);
+    return blob == null ? http.Response('', 404) : http.Response.bytes(blob, 200);
   }
 
   int pointerRequests() =>
       requests.where((url) => url.endsWith('/channels/production.json')).length;
 
-  testWidgets(
-      'foreground reconnect replaces offline with verified pending without reloading',
+  testWidgets('foreground reconnect replaces offline with verified pending without reloading',
       (tester) async {
     await mount(tester);
     await io(tester);
@@ -309,12 +305,10 @@ void main() {
     expect(runtime.manifest!.seq, builtin.seq);
     expect(runtime.state.trial, isNull);
     expect(controller.loads, hasLength(1));
-    expect(controller.scripts.where((s) => s.contains('bundle.updateReady')),
-        hasLength(1));
+    expect(controller.scripts.where((s) => s.contains('bundle.updateReady')), hasLength(1));
   });
 
-  testWidgets('live handovers coalesce concurrent update checks',
-      (tester) async {
+  testWidgets('live handovers coalesce concurrent update checks', (tester) async {
     await mount(tester);
     await io(tester);
     final before = pointerRequests();
@@ -340,22 +334,19 @@ void main() {
     expect(pointerRequests(), before + 2);
   });
 
-  testWidgets(
-      'background reconnect syncs but leaves the update check to resume',
+  testWidgets('background reconnect syncs but leaves the update check to resume',
       (tester) async {
     await mount(tester);
     await io(tester);
     await lifecycle(tester, AppLifecycleState.paused);
     final before = pointerRequests();
-    final syncBefore =
-        requests.where((url) => url.contains('sync.test')).length;
+    final syncBefore = requests.where((url) => url.contains('sync.test')).length;
     connectivity.add(['none']);
     connectivity.add(['wifi']);
     await io(tester);
     expect(runtime.appState().online, isTrue);
     expect(pointerRequests(), before);
-    expect(requests.where((url) => url.contains('sync.test')).length,
-        greaterThan(syncBefore));
+    expect(requests.where((url) => url.contains('sync.test')).length, greaterThan(syncBefore));
     respond = serveTrial;
     await lifecycle(tester, AppLifecycleState.resumed);
     await io(tester);
@@ -363,24 +354,19 @@ void main() {
     expect(runtime.state.pending, trial.seq);
   });
 
-  testWidgets(
-      'reconnect still rejects an invalid signature without publishing pending',
+  testWidgets('reconnect still rejects an invalid signature without publishing pending',
       (tester) async {
     await mount(tester);
     await io(tester);
     respond = (request) => serveTrial(request, validSignature: false);
-    webview.controller.navigation
-        .finished(webview.controller.loads.last.toString());
+    webview.controller.navigation.finished(webview.controller.loads.last.toString());
     connectivity.add(['wifi']);
     await io(tester);
     expect(runtime.bundleStatus().reason, ValenceBundleReason.rejected);
     expect(runtime.state.pending, isNull);
     expect(runtime.manifest!.seq, builtin.seq);
     expect(webview.controller.loads, hasLength(1));
-    expect(
-        webview.controller.scripts
-            .where((s) => s.contains('bundle.updateReady')),
-        isEmpty);
+    expect(webview.controller.scripts.where((s) => s.contains('bundle.updateReady')), isEmpty);
   });
 
   testWidgets('URL changes record only safe local restoration routes',
