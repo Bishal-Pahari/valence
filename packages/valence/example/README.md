@@ -70,7 +70,7 @@ platform for Valence; **iOS is experimental and untested**.
 
 ## Native HTTP demo
 
-The combined schema is now 14 (appearance remains since 7) and `http.origins` compiles `http://10.0.2.2:8787` for emulator tests. Run the reference adapter in `examples/rest-sync-adapter/`, set its `ADAPTER_TOKEN` through the Login form, and tap `http.request`. `GET /rpc` returns authenticated status without echoing the token; the other button proves an unlisted origin is denied. No CORS headers are needed. This local HTTP endpoint is for tests; production uses HTTPS. The offline bundle and seed still work without that server.
+The combined schema is now 15 (appearance remains since 7) and `http.origins` compiles `http://10.0.2.2:8787` for emulator tests. Run the reference adapter in `examples/rest-sync-adapter/`, set its `ADAPTER_TOKEN` through the Login form, and tap `http.request`. `GET /rpc` returns authenticated status without echoing the token; the other button proves an unlisted origin is denied. No CORS headers are needed. This local HTTP endpoint is for tests; production uses HTTPS. The offline bundle and seed still work without that server.
 
 ## R8 layout probe
 
@@ -84,7 +84,7 @@ Task snapshots are bound to the native account as well as the signed bundle: swi
 
 ## Deep-link demo
 
-The R6 surfaces were added at schema 9. This merged example reports schema 14 and accepts `valence-example://app` and `https://links.example.invalid`. Native Android filters and experimental iOS registrations are included. The page shows the routed path/query/hash and uses the wire protocol directly, matching the rest of this no-bundler demo. Production apps use `onLink()` from their generated client. See [setup](../../../docs/deep-links.md). The placeholder HTTPS domain cannot verify; forced approval tests delivery only.
+The R6 surfaces were added at schema 9. This merged example reports schema 15 and accepts `valence-example://app` and `https://links.example.invalid`. Native Android filters and experimental iOS registrations are included. The page shows the routed path/query/hash and uses the wire protocol directly, matching the rest of this no-bundler demo. Production apps use `onLink()` from their generated client. See [setup](../../../docs/deep-links.md). The placeholder HTTPS domain cannot verify; forced approval tests delivery only.
 
 
 ## Permissions demo
@@ -103,3 +103,5 @@ The example schema is 13, with notification methods and events since 11 and noti
 Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** Add your own `android/app/google-services.json`, then `flutter run --dart-define=VALENCE_PUSH=true`. The Google services Gradle plugin is conditional on that file. The page checks/requests permission and reports registration without displaying the token. [Full setup](../../../docs/remote-push.md). The checked-in signed built-in bundle contains the push controls; it stays offline and reports E_UNSUPPORTED until configured. iOS hosts must target 15.0 or later for the Firebase dependencies.
 
 Native HTTP was added at schema 4; the example now inherits schema 13. `http.origins` compiles `http://10.0.2.2:8787` for emulator tests. Run the reference adapter in `examples/rest-sync-adapter/`, set its `ADAPTER_TOKEN` through the Login form, and tap `http.request`. `GET /rpc` returns authenticated status without echoing the token; the other button proves an unlisted origin is denied. No CORS headers are needed. This local HTTP endpoint is for tests; production uses HTTPS. The offline bundle and seed still work without that server.
+
+Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent. Older hosts omit them. See [capability revisions and durable status](https://getvalence.pages.dev/docs/guides/capabilities-and-status/).

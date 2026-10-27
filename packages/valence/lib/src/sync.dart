@@ -73,7 +73,7 @@ final class ValenceSyncResult {
 /// Local sync observations. [offline] is the last attempt, not current connectivity (§7.1).
 final class ValenceSyncStatus {
   /// Creates a local status snapshot.
-  const ValenceSyncStatus({required this.pending, required this.lastSyncedAt, required this.offline});
+  const ValenceSyncStatus({required this.pending, required this.lastSyncedAt, required this.offline, this.reason});
 
   /// Remaining operations, including deletes and repeated edits.
   final int pending;
@@ -83,6 +83,9 @@ final class ValenceSyncStatus {
 
   /// Whether the last attempted run had a transport failure; false before an attempt.
   final bool offline;
+
+  /// Last completed attempt, including scoped runs; null before one. An open string set.
+  final String? reason;
 }
 
 /// The prefs key holding the sync lease. Reserved: the bridge refuses `valence.*` from the page (§4.2).
@@ -139,11 +142,22 @@ final class ValenceSync {
   bool budgetExhausted = false;
 
   /// Reads persisted observations and current outbox depth without taking the sync lease.
-  Future<ValenceSyncStatus> status() async => ValenceSyncStatus(
-        pending: await store.pendingWrites(),
-        lastSyncedAt: int.tryParse(await store.hostPrefGet('valence.sync.lastSyncedAt') ?? ''),
-        offline: await store.hostPrefGet('valence.sync.offline') == 'true',
-      );
+  Future<ValenceSyncStatus> status() async {
+    final rows =
+        await store.db.query('prefs', where: 'key IN (?, ?, ?)', whereArgs: [
+      'valence.sync.lastSyncedAt',
+      'valence.sync.offline',
+      'valence.sync.reason',
+    ]);
+    final values = {for (final row in rows) row['key']: row['value']};
+    return ValenceSyncStatus(
+      pending: await store.pendingWrites(),
+      lastSyncedAt:
+          int.tryParse(values['valence.sync.lastSyncedAt'] as String? ?? ''),
+      offline: values['valence.sync.offline'] == 'true',
+      reason: values['valence.sync.reason'] as String?,
+    );
+  }
 
   /// Bytes of row payload this driver has applied. Used to budget §2.3 step 7.
   int bytesApplied = 0;
@@ -290,10 +304,25 @@ final class ValenceSync {
           _log('sync: offline pushing $bucket: $err');
         }
       }
-      await store.hostPrefSet('valence.sync.offline', offline.toString());
-      if (!offline && !_unauthorized && !_incomplete && only == null) {
-        await store.hostPrefSet('valence.sync.lastSyncedAt', _now().millisecondsSinceEpoch.toString());
-      }
+      final reason = _unauthorized
+          ? ValenceSyncReason.unauthorized
+          : offline
+              ? ValenceSyncReason.offline
+              : ValenceSyncReason.ok;
+      // Persist the outcome before releasing the lease: a later run must not be overwritten.
+      await store.db.transaction((txn) async {
+        final observations = {
+          'valence.sync.reason': reason.name,
+          'valence.sync.offline': offline.toString(),
+          if (!offline && !_unauthorized && !_incomplete && only == null)
+            'valence.sync.lastSyncedAt':
+                _now().millisecondsSinceEpoch.toString(),
+        };
+        for (final entry in observations.entries) {
+          await txn.insert('prefs', {'key': entry.key, 'value': entry.value},
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      });
     } finally {
       await releaseLease();
     }

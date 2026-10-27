@@ -305,6 +305,24 @@ void main() {
     },
   );
 
+  test(
+    'R17 nullable fields marshal through the generated dispatcher',
+    () async {
+      final h = await handlers();
+      final info = (await dispatch(h, 'app.info'))['v']! as Map;
+      expect(info['builtins'], 15);
+      expect(info['bridge'], 15);
+      expect(
+        ((await dispatch(h, 'sync.status'))['v']! as Map)['reason'],
+        isNull,
+      );
+      expect(
+        ((await dispatch(h, 'bundle.status'))['v']! as Map)['urgent'],
+        isNull,
+      );
+    },
+  );
+
   test('a message without the nonce is denied', () async {
     final h = await handlers();
     final reply = await dispatch(h, 'haptics.tap', withNonce: 'wrong');
