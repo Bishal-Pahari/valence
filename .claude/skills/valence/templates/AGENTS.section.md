@@ -45,5 +45,5 @@ Task restoration follows the recorded account: switch/sign-out clears route and 
 
 OS links use contracts ?6.3: store-compiled `links.origins`, matching native registrations and one generated `onLink()` subscription after `connect()`. Links are untrusted route input; authenticate actions separately.
 
-16. **Live development uses an explicit debug build.** `node valence/valence.mjs dev --web-dir <web app dir>` prints the Flutter `VALENCE_DEV_URL` define. Use a separate development app id and test accounts. Native/schema changes need a rebuild. Test signed OTA, rollback and offline launch again without the define; HMR does not exercise those paths. Release/profile builds ignore the define (contracts section 3.1).
+16. **Live development uses an explicit debug build.** `node valence/valence.mjs dev --web-dir <web app dir>` binds loopback and prints the emulator Flutter `VALENCE_DEV_URL` define. For a LAN target, require explicit `--allow-lan` and explain the cleartext full-bridge grant (contracts section 3.1). Use a separate development app id and test accounts. Native/schema changes need a rebuild. Test signed OTA, rollback and offline launch again without the define; HMR does not exercise those paths. Release/profile builds ignore the define (contracts section 3.1).
 

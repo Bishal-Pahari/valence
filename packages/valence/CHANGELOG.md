@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: explicit LAN development trust
+
+- `valence dev` now binds loopback by default. A LAN address or hostname requires
+  `--allow-lan`; that mode binds all interfaces and names the cleartext full-bridge
+  risk before starting. Add the flag to existing physical-device dev commands.
+  Manual Flutter defines remain explicit trust grants; release/profile exclusion
+  is unchanged. Refresh vendored tooling when upgrading.
+
+
 ## Unreleased: dev-mode and plugin hardening
 
 - `Valence.emit` enforces the §4.2 256 KB envelope cap, so an oversized event — now possible because
