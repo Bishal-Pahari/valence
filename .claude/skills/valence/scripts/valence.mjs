@@ -78,6 +78,17 @@ const BUILTINS = {
   },
   'badge.set': { params: { n: 'int' }, returns: 'bool', call: () => 'return valence.notifications.badge(p.n);' },
   'badge.clear': { params: {}, returns: 'bool', call: () => 'return valence.notifications.badge(0);' },
+
+  'push.token': { params: {}, returns: 'string?', call: () => 'return valence.pushToken();' },
+  'push.permission': {
+    params: { request: 'bool?' }, returns: 'string',
+    call: () => 'return valence.pushPermission(request: p.request ?? false);',
+  },
+  'push.initial': {
+    params: {},
+    returns: { nullable: true, fields: { id: 'string?', data: 'json', title: 'string?', body: 'string?', image: 'string?' } },
+    call: (t) => `final m = await valence.pushInitial();\n        return m == null ? null : ${t}(id: m.id, data: m.data, title: m.title, body: m.body, image: m.toJson()['image'] as String?);`,
+  },
   'app.ready': { params: {}, returns: 'void', call: () => 'await valence.appReady();' },
   'app.info': {
     params: {},
@@ -215,9 +226,8 @@ const BUILTINS = {
   },
 };
 
-// Before schema 11 notifications were app-owned. Preserve already-shipped custom method shapes;
-// only since-11+ declarations opt into the new runtime delegations.
-const builtinFor = (m) => /^(notify\.|badge\.)/.test(m.name) && m.since < 11 ? undefined : BUILTINS[m.name];
+// Preserve app-owned notification and push shapes predating the built-ins.
+const builtinFor = (m) => (/^(notify\.|badge\.)/.test(m.name) && m.since < 11) || (m.name.startsWith('push.') && m.since < 12) ? undefined : BUILTINS[m.name];
 
 const SEED_SQL = `
 CREATE TABLE kv (bucket TEXT NOT NULL, schema INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, usn INTEGER NOT NULL,

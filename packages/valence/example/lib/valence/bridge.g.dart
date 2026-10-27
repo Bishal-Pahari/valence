@@ -194,6 +194,24 @@ final class NotifyPending {
   Map<String, Object?> toJson() => {'id': id, 'title': title, 'body': body, 'payload': payload};
 }
 
+final class PushMessage {
+  const PushMessage({this.id, required this.data, this.title, this.body, this.image});
+
+  factory PushMessage.fromJson(Object? j, [String f = 'PushMessage']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'id', 'data', 'title', 'body', 'image'}, f);
+    return PushMessage(id: m['id'] == null ? null : decodeString(m['id'], '$f.id'), data: m['data'], title: m['title'] == null ? null : decodeString(m['title'], '$f.title'), body: m['body'] == null ? null : decodeString(m['body'], '$f.body'), image: m['image'] == null ? null : decodeString(m['image'], '$f.image'));
+  }
+
+  final String? id;
+  final Object? data;
+  final String? title;
+  final String? body;
+  final String? image;
+
+  Map<String, Object?> toJson() => {'id': id, 'data': data, 'title': title, 'body': body, 'image': image};
+}
+
 final class DataGetParams {
   const DataGetParams({required this.bucket, required this.key});
 
@@ -531,6 +549,20 @@ final class BadgeSetParams {
   Map<String, Object?> toJson() => {'n': n};
 }
 
+final class PushPermissionParams {
+  const PushPermissionParams({this.request});
+
+  factory PushPermissionParams.fromJson(Object? j, [String f = 'PushPermissionParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'request'}, f);
+    return PushPermissionParams(request: m['request'] == null ? null : decodeBool(m['request'], '$f.request'));
+  }
+
+  final bool? request;
+
+  Map<String, Object?> toJson() => {'request': request};
+}
+
 abstract interface class BridgeHandlers {
   Future<void> appReady();
   Future<AppInfo> appInfo();
@@ -569,6 +601,9 @@ abstract interface class BridgeHandlers {
   Future<void> notifyChannelsSet(NotifyChannelsSetParams p);
   Future<bool> badgeSet(BadgeSetParams p);
   Future<bool> badgeClear();
+  Future<String?> pushToken();
+  Future<String> pushPermission(PushPermissionParams p);
+  Future<PushMessage?> pushInitial();
 }
 
 /// Opt-in defaults for test doubles or partial hosts. Production hosts extend ValenceBuiltins.
@@ -647,6 +682,12 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<bool> badgeSet(BadgeSetParams p) async => throw const BridgeError('E_UNSUPPORTED', 'badge.set is not implemented');
   @override
   Future<bool> badgeClear() async => throw const BridgeError('E_UNSUPPORTED', 'badge.clear is not implemented');
+  @override
+  Future<String?> pushToken() async => throw const BridgeError('E_UNSUPPORTED', 'push.token is not implemented');
+  @override
+  Future<String> pushPermission(PushPermissionParams p) async => throw const BridgeError('E_UNSUPPORTED', 'push.permission is not implemented');
+  @override
+  Future<PushMessage?> pushInitial() async => throw const BridgeError('E_UNSUPPORTED', 'push.initial is not implemented');
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
@@ -791,6 +832,17 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.badgeClear();
         return replyOk(id, r);
+      case 'push.token':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.pushToken();
+        return replyOk(id, r);
+      case 'push.permission':
+        final r = await h.pushPermission(PushPermissionParams.fromJson(p, 'p'));
+        return replyOk(id, r);
+      case 'push.initial':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.pushInitial();
+        return replyOk(id, r?.toJson());
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
     }
@@ -815,6 +867,9 @@ abstract final class BridgeEvents {
   static String permissionsChanged({required List<PermissionState> permissions}) => eventScript('permissions.changed', {'permissions': permissions.map((e) => e.toJson()).toList()});
   static String notifyTapped({required int id, required String? payload, required String? action}) => eventScript('notify.tapped', {'id': id, 'payload': payload, 'action': action});
   static String notifyAction({required int id, required String? payload, required String? action}) => eventScript('notify.action', {'id': id, 'payload': payload, 'action': action});
+  static String pushReceived({required PushMessage message}) => eventScript('push.received', {'message': message.toJson()});
+  static String pushTapped({required PushMessage message}) => eventScript('push.tapped', {'message': message.toJson()});
+  static String pushTokenChanged({required String token}) => eventScript('push.tokenChanged', {'token': token});
 }
 
 /// The built-in bridge methods, implemented against the `valence` runtime.
@@ -1024,5 +1079,21 @@ abstract class ValenceBuiltins {
   /// `badge.clear`, from the package.
   Future<bool> badgeClear() async {
     return valence.notifications.badge(0);
+  }
+
+  /// `push.token`, from the package.
+  Future<String?> pushToken() async {
+    return valence.pushToken();
+  }
+
+  /// `push.permission`, from the package.
+  Future<String> pushPermission(PushPermissionParams p) async {
+    return valence.pushPermission(request: p.request ?? false);
+  }
+
+  /// `push.initial`, from the package.
+  Future<PushMessage?> pushInitial() async {
+    final m = await valence.pushInitial();
+    return m == null ? null : PushMessage(id: m.id, data: m.data, title: m.title, body: m.body, image: m.toJson()['image'] as String?);
   }
 }

@@ -134,6 +134,31 @@ void main() {
   });
 
   group('script building (§4.2)', () {
+    test('reply byte cap includes Unicode separator expansion', () {
+      final reply = jsonDecode(replyOk(1, '\u2028' * 60000)) as Map;
+      expect(reply['ok'], false);
+      expect((reply['e'] as Map)['code'], 'E_TOO_LARGE');
+    });
+    test('error reply cap includes escaped ids and messages and preserves safe correlation', () {
+      final hostile = '\u2028' * 60000;
+      for (final id in [hostile, 17]) {
+        final error = replyError(id, BridgeErrorCode.denied, hostile);
+        expect(utf8.encode(bridgeReplyScript(error)).length, lessThan(maxMessageBytes));
+        final reply = jsonDecode(error) as Map;
+        expect(reply['id'], id == 17 ? 17 : null);
+        expect((reply['e'] as Map)['code'], 'E_TOO_LARGE');
+      }
+    });
+    test('both event and reply scripts escape Unicode line separators without changing JSON', () {
+      const value = '\u2028\u2029";evil()';
+      for (final script in [eventScript('push.received', {'body': value}), bridgeReplyScript(replyOk(1, value))]) {
+        expect(script, contains(r'\u2028\u2029'));
+        expect(script, isNot(contains('\u2028')));
+        expect(script, isNot(contains('\u2029')));
+      }
+      final reply = bridgeReplyScript(replyOk(1, value));
+      expect((jsonDecode(reply.substring(reply.indexOf('(') + 1, reply.length - 1)) as Map)['v'], value);
+    });
     test('an event script goes through jsonEncode, so nothing is concatenated raw', () {
       expect(
         eventScript('sync.changed', {'buckets': ['plants']}),

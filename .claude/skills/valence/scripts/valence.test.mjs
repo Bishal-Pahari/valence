@@ -39,9 +39,9 @@ const TEMPLATES = join(import.meta.dirname, '..', 'templates');
 // Listed here rather than per test, because every new runtime capability has to land in exactly one place
 // for the "an older app still codegens" cases to keep meaning what they say.
 const SINCE_ABOVE_4 = {
-  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings', 'notify.permission', 'notify.schedule', 'notify.cancel', 'notify.pending', 'notify.initial', 'notify.channels.set', 'badge.set', 'badge.clear'],
-  events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online', 'link.opened', 'permissions.changed', 'notify.tapped', 'notify.action'],
-  types: ['SyncStatus', 'AppState', 'BundleStatus', 'Link', 'PermissionState', 'NotifyScheduled', 'NotifyPending'],
+  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings', 'notify.permission', 'notify.schedule', 'notify.cancel', 'notify.pending', 'notify.initial', 'notify.channels.set', 'badge.set', 'badge.clear', 'push.token', 'push.permission', 'push.initial'],
+  events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online', 'link.opened', 'permissions.changed', 'notify.tapped', 'notify.action', 'push.received', 'push.tapped', 'push.tokenChanged'],
+  types: ['SyncStatus', 'AppState', 'BundleStatus', 'Link', 'PermissionState', 'NotifyScheduled', 'NotifyPending', 'PushMessage'],
 };
 const NOW = Date.UTC(2026, 9, 15);
 
@@ -1513,4 +1513,48 @@ for (const since of [1, 10]) test(`schema-${since} custom notification names ret
   bundle({ root, cfg, key, store: true, now: NOW });
   editSchema(root, (s) => { s.methods['notify.schedule'].params.hour = 'string'; });
   assert.throws(() => codegen({ root, cfg }), /changed|additive|shipped/);
+});
+
+test('push builtins freeze permission and nullable initial-message shapes', () => {
+  const { root, cfg } = fixture({ latest: true });
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(dart, /Future<PushMessage\?> pushInitial\(\)/);
+  assert.match(dart, /valence.pushPermission\(request: p.request \?\? false\)/);
+  editSchema(root, (s) => { s.methods['push.initial'].returns = 'PushMessage'; });
+  assert.throws(() => codegen({ root, cfg }), /must return/);
+  editSchema(root, (s) => { s.methods['push.initial'].returns = 'PushMessage?'; s.methods['push.permission'].params.request = 'string?'; });
+  assert.throws(() => codegen({ root, cfg }), /must stay/);
+});
+
+test('push uses reserved schema 12 while older app-owned push shapes remain custom', () => {
+  const { root, cfg } = fixture({ latest: true });
+  const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
+  assert.equal(schema.version, 13);
+  assert.equal(schema.methods['auth.account'].since, 13);
+  for (const group of ['methods', 'events']) {
+    for (const [name, def] of Object.entries(schema[group])) {
+      if (name.startsWith('push.')) assert.equal(def.since, 12, name);
+    }
+  }
+  codegen({ root, cfg });
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  assert.match(ts, /'push.token': 12/);
+  assert.match(ts, /'push.permission': 12/);
+  assert.match(ts, /'push.initial': 12/);
+  editSchema(root, (s) => {
+    s.version = 11;
+    delete s.methods['auth.account'];
+    delete s.methods['auth.setToken'].params.account;
+    delete s.methods['auth.setToken'].params.discardPending;
+    for (const group of ['methods', 'events']) {
+      for (const name of Object.keys(s[group])) if (name.startsWith('push.')) delete s[group][name];
+    }
+    delete s.types.PushMessage;
+    s.methods['push.token'] = { since: 11, params: { provider: 'string' }, returns: 'bool' };
+  });
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(dart, /Future<bool> pushToken\(PushTokenParams p\)/);
+  assert.doesNotMatch(dart, /valence.pushToken\(/);
 });

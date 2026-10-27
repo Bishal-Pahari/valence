@@ -20,6 +20,8 @@ import 'restoration.dart';
 import 'permissions.dart';
 
 import 'notifications.dart';
+
+import 'push.dart';
 import 'secure.dart';
 import 'server.dart';
 import 'state.dart';
@@ -45,6 +47,8 @@ export 'native_http.dart' show ValenceHttp, ValenceHttpResponse;
 export 'permissions.dart' show ValencePermissions, ValencePermissionBackend, valencePermissionKinds;
 
 export 'notifications.dart' show ValenceNotifications, ValenceNotificationPlatform;
+
+export 'push.dart' show ValencePush, ValencePushMessage, ValencePushTransport;
 export 'secure.dart' show ValenceSecure, secureAuthTokenKey, secureAuthAccountKey;
 export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
@@ -209,6 +213,7 @@ final class Valence {
     Directory? supportDir,
     Directory? documentsDir,
     ValenceSecure? secure,
+    ValencePush? push,
     DatabaseFactory? databaseFactory,
     ValencePermissionBackend? permissionBackend,
 
@@ -300,6 +305,15 @@ final class Valence {
       await valence._notifications!.initialize();
     }
     await valence._importSeed();
+    valence.push = push;
+    if (push != null) {
+      await push.start(
+          emit: valence.emit,
+          sync: () async {
+            await valence.syncNow();
+          });
+    }
+
     return valence;
   }
 
@@ -329,6 +343,24 @@ final class Valence {
 
   /// Consumes the pending startup route and enables link.opened events (?6.3).
   ValenceLink? linkInitial() => links.initial();
+
+  /// Optional store-configured push adapter. Null means push is unsupported.
+  ValencePush? push;
+
+  ValencePush get _push =>
+      push ??
+      (throw const BridgeError(
+          BridgeErrorCode.unsupported, 'push is not configured'));
+
+  /// FCM registration token for the installation, never an authentication token.
+  Future<String?> pushToken() => _push.token();
+
+  /// Checks permission, requesting only on an explicit user action.
+  Future<String> pushPermission({bool request = false}) =>
+      _push.permission(request: request);
+
+  /// Consumes the pending startup notification tap after the page subscribes.
+  Future<ValencePushMessage?> pushInitial() => _push.initial();
 
   /// `<appSupport>/valence/`. Excluded from device backups by platform setup.
   final Directory dir;

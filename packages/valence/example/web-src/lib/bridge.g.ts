@@ -81,6 +81,14 @@ export interface NotifyPending {
   payload?: string | null;
 }
 
+export interface PushMessage {
+  id?: string | null;
+  data: Json;
+  title?: string | null;
+  body?: string | null;
+  image?: string | null;
+}
+
 export interface Methods {
   'app.ready': { params: Record<string, never>; returns: void };
   'app.info': { params: Record<string, never>; returns: AppInfo };
@@ -192,6 +200,11 @@ export interface Methods {
     n: number;
   }; returns: boolean };
   'badge.clear': { params: Record<string, never>; returns: boolean };
+  'push.token': { params: Record<string, never>; returns: string | null };
+  'push.permission': { params: {
+    request?: boolean | null;
+  }; returns: string };
+  'push.initial': { params: Record<string, never>; returns: PushMessage | null };
 }
 
 export interface Events {
@@ -234,6 +247,15 @@ export interface Events {
     payload?: string | null;
     action?: string | null;
   };
+  'push.received': {
+    message: PushMessage;
+  };
+  'push.tapped': {
+    message: PushMessage;
+  };
+  'push.tokenChanged': {
+    token: string;
+  };
 }
 
 export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
@@ -274,6 +296,9 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'notify.channels.set': 11,
   'badge.set': 11,
   'badge.clear': 11,
+  'push.token': 12,
+  'push.permission': 12,
+  'push.initial': 12,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
@@ -289,6 +314,9 @@ export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
   'permissions.changed': 10,
   'notify.tapped': 11,
   'notify.action': 11,
+  'push.received': 12,
+  'push.tapped': 12,
+  'push.tokenChanged': 12,
 };
 
 /** Browser fallbacks for this app, so the same build also runs as the website. */

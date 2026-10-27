@@ -1252,6 +1252,61 @@ malformed links denied; query/hash retained; pending initial reply cannot overwr
 a live event or navigate after unsubscribe; generated delegations; association-file
 validation; Android cold/warm intents and `pm verify-app-links`/`pm set-app-links`.
 
+### 6.4 Remote push (schema 12, opt-in)
+
+`ValencePush` wraps Firebase Messaging: FCM on Android, APNs through FCM on iOS
+(experimental and untested). A host initializes Firebase and passes a push instance
+to `Valence.open(push: ...)`. Without one, all `push.*` methods return
+`E_UNSUPPORTED`; Valence never initializes Firebase itself or calls messaging
+without an adapter. Firebase's own native auto-init is governed by the host's
+project configuration, separately from this bridge opt-in.
+
+| Method | Params | Returns |
+|---|---|---|
+| `push.token` | `{}` | `string?` (FCM registration token, also on iOS; null before APNs registration or when permission is not granted/provisional) |
+| `push.permission` | `{request: bool?}` | `string`: `notDetermined`, `denied`, `authorized`, `provisional`; omitted/false only checks, true requests alert/badge/sound permission |
+| `push.initial` | `{}` | `PushMessage?`, consumes the latest notification tap buffered before the page subscribes |
+
+All methods/events have `since: 12`. App-owned `push.*` declarations through schema 11 retain their custom shapes and handlers; only declarations at `since: 12` or later opt into the runtime delegations. `PushMessage` is
+`{id: string?, data: json, title: string?, body: string?, image: string?}`.
+`push.received` and `push.tapped` carry `{message: PushMessage}`;
+`push.tokenChanged` carries `{token: string}`. Subscribe before `push.initial`.
+The first initial call switches taps to live delivery; later calls return null.
+Received events are foreground-only and best effort. Token rotation is live;
+call `push.token` again after resume/reconnect and update your authenticated backend.
+Tokens identify installations, not users or authentication. Never log them.
+
+Incoming payloads are untrusted display/data values, never scripts, URLs to load,
+credentials, schemas, or bundle pointers. The bridge encodes them as JSON with the
+existing U+2028/U+2029 escaping and rejects oversized event envelopes (256 KiB).
+Success and error replies measure their JSON cap after separator escaping too.
+An oversized error returns a bounded `E_TOO_LARGE` envelope, retaining only a
+finite numeric correlation id (otherwise null), never echoing an oversized id.
+Images are HTTPS metadata only; the Dart bridge never fetches them. Android's FCM
+SDK displays a background notification image supplied in `android.notification.image`;
+foreground messages reach the page for an in-app presentation. iOS rich images
+require a Notification Service Extension using Firebase's extension helper and
+`mutable-content: 1`; that setup and all iOS delivery remain untested.
+
+A **data-only** message whose data is exactly `{"valence":"sync"}` requests the
+normal lease-protected sync, using store-compiled config and the native token.
+Foreground receipt calls the runtime's ordinary sync. The app's top-level,
+`@pragma('vm:entry-point')` Firebase background callback calls
+`ValencePush.handleBackground(data, hasNotification: ..., sync: ...)` with
+`Valence.backgroundSync(valenceConfig)`. It initializes the binding/plugin
+registrant, never opens the UI runtime, never closes SQLite, never activates a
+bundle, and never acknowledges a trial. Extra fields, notification messages and
+all other commands do nothing. Delivery is an OS best effort, subject to quotas,
+force-stop and battery restrictions; a push is a hint, never a correctness gate.
+Use Android high priority for a timely hint and APNs `content-available: 1`,
+`apns-push-type: background`, `apns-priority: 5` on iOS. A busy lease is not success.
+
+Native setup is a store release: Firebase project config, Android notification
+permission, Google Play services; iOS APNs key, Push Notifications and Remote
+notifications background capability with method swizzling enabled. No service
+account key belongs in an app or bundle. R5 device validation is **blocked: needs
+Firebase project** until the maintainer supplies the project configuration.
+
 ## 7. Store-policy rules (enforced by `valence bundle` and the reviewer)
 
 **The policy text** (retrieved 2026-10-14):
@@ -1392,3 +1447,5 @@ R12 regression rows: batch reads preserve requested order, deduplicate, isolate 
 | integration (`integration_test`, device or emulator) | **first launch opens the database and paints** — the store and sync rows above run on `sqflite_common_ffi`, which is more permissive than Android's `SQLiteDatabase` (it accepts `execute` for pragmas), so a green unit suite is not evidence the store opens on a phone; cold start in airplane mode renders the built-in bundle with seed data; a corrupt CAS file is detected the first time the server serves it, deleted, and re-downloaded by the next update check; a background sync followed by a UI bridge call (the database must still be open); background then resume after 10 minutes, the server is rebound and the page still works; **each §6 item the app ships actually works on the device** — a biometric prompt appears rather than throwing `no_fragment_activity`, and a reminder scheduled N seconds out really posts and reports `exact` or `inexact` rather than `ok`; **a scheduled window survives a clock change** (`cmd alarm set-time`, then the alarms are still there) **and a reboot**; **a re-arm does not cancel a notification already on screen**; **a widget snapshot reaches a placed widget**, and the provider resolves under the fully-qualified class name |
 
 R8 regression rows (§4.7): owning-view logical insets exclude keyboard and change after rotation; system font size and accessibility preferences are read independently of app theme; native Android zoom follows settings changes; repeated iOS root scaling does not compound; publication preserves navigation and nonce; initial/reload appearance delivery and typed unsubscribe; AppInfo.fontScale is optional and additive only at num?, and generated delegates compile with and without it.
+
+R5 regression rows: exact data-only sync hints only; no payload-supplied config, URLs, tokens or trial transitions; passive startup and explicit permission requests; registration gated on permission/APNs; cold-tap consumption and live-tap race; token rotation; JSON escaping and event cap; disabled-host E_UNSUPPORTED and generated strict nonce/params denials. Device delivery/image/silent-sync checks remain blocked until a Firebase project is supplied.

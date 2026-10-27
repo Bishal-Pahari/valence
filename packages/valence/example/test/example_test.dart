@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:valence/valence.dart';
+import 'package:valence/codegen.dart' show bridgeReplyScript;
 import 'package:valence_example/main.dart';
 import 'package:valence_example/valence/bridge.g.dart';
 import 'package:valence_example/valence/config.g.dart';
@@ -53,7 +54,7 @@ void main() {
 
   /// A real runtime on a temp directory, with the network mocked: the built-in handlers under test here
   /// are the generated delegations, so they have to reach the package for real.
-  Future<_Handlers> handlers({ValenceConfig? config}) async => _Handlers(
+  Future<_Handlers> handlers({ValenceConfig? config, ValencePush? push}) async => _Handlers(
     await Valence.open(
       // The OTA and sync hosts in the example config are .invalid, so nothing can leave the machine.
       config ?? valenceConfig,
@@ -67,6 +68,8 @@ void main() {
       ),
       supportDir: support,
       notificationPlatform: _Notifications(),
+
+      push: push,
     ),
   );
 
@@ -95,6 +98,31 @@ void main() {
     expect(valenceConfig.writableBuckets, {'shelf'});
     expect(valenceConfig.dataSchemas, {'plants': 1});
     expect(valenceConfig.channel, 'production');
+  });
+
+  test('push is explicitly unsupported without native setup and rejects untrusted params first', () async {
+    final h = await handlers();
+    for (final method in ['push.token', 'push.permission', 'push.initial']) {
+      final result = await dispatch(h, method);
+      expect((result['e'] as Map)['code'], 'E_UNSUPPORTED');
+    }
+    for (final params in [{'request': 'yes'}, {'request': true, 'url': 'https://evil.test'}]) {
+      final result = await dispatch(h, 'push.permission', params: params);
+      expect((result['e'] as Map)['code'], 'E_PARAMS');
+    }
+    final result = await dispatch(h, 'push.token', withNonce: 'wrong');
+    expect((result['e'] as Map)['code'], 'E_DENIED');
+  });
+
+  test('a bad nonce with a separator-heavy correlation id returns a bounded error script', () async {
+    final h = await handlers();
+    final raw = jsonEncode({'id': '\u2028' * 60000, 'n': 'wrong', 'm': 'push.token', 'p': {}});
+    expect(utf8.encode(raw).length, lessThan(maxMessageBytes));
+    final reply = await bridgeDispatch(h, raw, nonce: nonce);
+    expect(utf8.encode(bridgeReplyScript(reply)).length, lessThan(maxMessageBytes));
+    final result = jsonDecode(reply) as Map;
+    expect(result['id'], isNull);
+    expect((result['e'] as Map)['code'], 'E_TOO_LARGE');
   });
 
   test('the app’s own method reaches the dispatcher', () async {

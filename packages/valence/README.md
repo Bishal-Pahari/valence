@@ -173,6 +173,12 @@ Sync correctness: pull cursors advance only through returned rows, never push ec
 
 ValenceApp publishes --valence-inset-top/right/bottom/left CSS variables, applies Android system text zoom and emits schema-7 app.appearance snapshots. ValenceAppearance supports custom hosts. Add optional fontScale: "num?" to AppInfo and regenerate; older schemas still compile. Apply inset padding in HTML, without an extra native SafeArea. [Guide](../../docs/accessibility.md); iOS is experimental and untested.
 
+### Remote push
+
+Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** Initialize Firebase and pass `push: ValencePush()` to `Valence.open`; register a top-level background callback using `ValencePush.handleBackground` and `Valence.backgroundSync`. [Setup](https://getvalence.pages.dev/docs/guides/remote-push/).
+
+The Firebase native dependencies ship even when push is disabled; iOS hosts must target 15.0 or later. Firebase initialization remains opt-in. iOS is experimental and untested.
+
 `Valence.dataList(bucket, prefix:, limit:, after:)` pages past the 500-row clamp: `after` is the last key of the previous page and the scan resumes strictly after it, which is the only complete read of a bucket larger than the clamp. `Valence.dataCount(bucket, prefix:)` counts live rows without reading them. Both are exposed as the version-5 built-ins `data.list`'s `after` param and `data.count`. The store opens at `<applicationSupportDirectory>/<databaseName>` and adopts a 0.3 database left in the application documents directory, moving its `-wal` and `-shm` sidecars with it and never overwriting an existing destination. A `SQLITE_BUSY` open — a schema migration's `BEGIN EXCLUSIVE` racing the WorkManager job the same launch fires — is retried five times a second apart; `Valence.backgroundSync` then returns `ValenceSyncReason.busy` rather than throwing, while `Valence.open` rethrows, and a failed open is never cached.
 
 ## Deep links

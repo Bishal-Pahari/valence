@@ -113,6 +113,16 @@
       <button id="badge">Badge 3</button>
       <pre id="notify-result"></pre>
     </section>
+
+    <section>
+      <h2>Remote push</h2>
+      <p>Requires a Firebase-configured host. Permission is requested only when you tap.</p>
+      <button id="push-check">Check permission</button>
+      <button id="push-request">Allow notifications</button>
+      <button id="push-token">Check registration</button>
+      <pre id="push-result">Push device check blocked: needs Firebase project.</pre>
+    </section>
+
     </main>
     <!--
       A real app imports @getvalence/bridge through the generated web/lib/bridge.g.ts. This example talks
@@ -154,6 +164,9 @@
           if (name === 'permissions.changed') document.getElementById('permission-event').textContent = name + ': ' + JSON.stringify(payload);
 
           if (name.startsWith('notify.')) document.getElementById('notify-result').textContent = name + ': ' + JSON.stringify(payload);
+
+          if (name === 'push.tokenChanged') document.getElementById('push-result').textContent = 'Registration changed; update your backend.';
+          if (name === 'push.received' || name === 'push.tapped') document.getElementById('push-result').textContent = name + ': ' + JSON.stringify(payload.message);
           if (name === 'sync.changed') void refresh();
           // §4.6. Logged rather than acted on, because the point of the three is that they *arrive*:
           // app.lifecycle on the way out as well as in, app.online without asking, and sync.done after
@@ -365,6 +378,22 @@
         try { document.getElementById('notify-result').textContent = method + ': ' + JSON.stringify(await call(method, params())); }
         catch (e) { document.getElementById('notify-result').textContent = String(e); }
       });
+
+      for (const [id, method, params] of [
+        ['push-check', 'push.permission', {}],
+        ['push-request', 'push.permission', { request: true }],
+        ['push-token', 'push.token', {}],
+      ]) {
+        document.getElementById(id).addEventListener('click', async () => {
+          try {
+            const result = await call(method, params);
+            document.getElementById('push-result').textContent = method === 'push.token' ? (result ? 'Installation registered (token hidden).' : 'Not registered yet.') : result;
+          } catch (error) { document.getElementById('push-result').textContent = String(error); }
+        });
+      }
+      void call('push.initial').then((message) => {
+        if (message) document.getElementById('push-result').textContent = 'Initial tap: ' + JSON.stringify(message);
+      }).catch(() => {});
 
       (async () => {
         try {

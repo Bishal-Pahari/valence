@@ -175,6 +175,13 @@ ValenceApp draws edge-to-edge and publishes safe-area CSS variables on rotation 
 ## Local reminders
 
 Schema 11 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. iOS is experimental and untested. See [the guide](docs/local-notifications.md).
+
+### Remote push
+
+Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** See [setup and acceptance checks](docs/remote-push.md).
+
+The Firebase native dependencies ship even when push is disabled; iOS hosts must target 15.0 or later. Firebase initialization remains opt-in. iOS is experimental and untested.
+
 ### Lifecycle, connectivity and update status
 
 Bridge version 6 answers the three questions a page in a browser tab gets from the platform and a page in

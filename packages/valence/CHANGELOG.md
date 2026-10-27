@@ -15,6 +15,10 @@ Schema 8 adds `state.save({json})` and `state.restore()` for a task-local UI blo
 Schema 11 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. iOS is experimental and untested. Android hosts now need core library desugaring even when the feature is disabled, because the native plugin ships with the runtime. Existing custom notification IDs must be coordinated; pre-schema-11 custom methods retain their shipped shapes and app-owned handlers.
 
 
+## Unreleased - remote push
+
+Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** Existing hosts must add the additive schema, regenerate, configure Firebase and ship a store build. Unicode line separators are escaped in event/reply scripts without changing JSON values.
+
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
 ## Unreleased - native HTTP and REST adapter
@@ -119,3 +123,7 @@ Corrections an independent review found before this first release, each with a r
 ## Unreleased - adaptive layout and accessibility
 
 ValenceApp requests edge-to-edge layout, publishes system-bar/cutout inset CSS variables on load and metrics changes, follows Android system text zoom and emits schema-7 app.appearance snapshots. Add optional AppInfo.fontScale: "num?" and regenerate; old schemas remain supported. Existing pages must pad content/fixed controls using the variables and avoid double-scaling Android text. Custom hosts can pass their FlutterView to Valence.attach for matching font-scale reporting. iOS root-font scaling remains experimental and untested.
+
+Firebase dependencies now require iOS 15.0 or later, even with push disabled. Upgrade Runner/extension target settings; iOS remains experimental and untested.
+
+Bridge success and error reply caps now include Unicode separator escaping; oversized errors retain only safe numeric correlation ids.

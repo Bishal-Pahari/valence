@@ -253,6 +253,23 @@
       "since": 11,
       "params": {},
       "returns": "bool"
+    },
+    "push.token": {
+      "since": 12,
+      "params": {},
+      "returns": "string?"
+    },
+    "push.permission": {
+      "since": 12,
+      "params": {
+        "request": "bool?"
+      },
+      "returns": "string"
+    },
+    "push.initial": {
+      "since": 12,
+      "params": {},
+      "returns": "PushMessage?"
     }
   },
   "events": {
@@ -330,6 +347,24 @@
         "payload": "string?",
         "action": "string?"
       }
+    },
+    "push.received": {
+      "since": 12,
+      "payload": {
+        "message": "PushMessage"
+      }
+    },
+    "push.tapped": {
+      "since": 12,
+      "payload": {
+        "message": "PushMessage"
+      }
+    },
+    "push.tokenChanged": {
+      "since": 12,
+      "payload": {
+        "token": "string"
+      }
     }
   },
   "types": {
@@ -392,6 +427,13 @@
       "title": "string?",
       "body": "string?",
       "payload": "string?"
+    },
+    "PushMessage": {
+      "id": "string?",
+      "data": "json",
+      "title": "string?",
+      "body": "string?",
+      "image": "string?"
     }
   }
 }

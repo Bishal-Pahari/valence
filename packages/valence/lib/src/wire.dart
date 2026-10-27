@@ -101,7 +101,8 @@ List<T> decodeListOf<T>(Object? v, String f, T Function(Object? e, String p) eac
 /// catch — and a WebView death while a trial is on screen spends a strike, so a healthy bundle can be
 /// marked bad. The id is still in hand here, so it becomes an error the page can actually see (§4.2).
 String replyOk(Object? id, Object? v) {
-  final s = jsonEncode({'id': id, 'ok': true, 'v': v});
+  // Count the exact JSON inserted into JavaScript, including separator escapes.
+  final s = _escapeScriptSeparators(jsonEncode({'id': id, 'ok': true, 'v': v}));
   if (utf8.encode(s).length > maxMessageBytes) {
     return replyError(
       id,
@@ -113,12 +114,23 @@ String replyOk(Object? id, Object? v) {
 }
 
 /// Encodes a failed reply. Used by generated code.
-String replyError(Object? id, String code, String message) =>
-    jsonEncode({'id': id, 'ok': false, 'e': {'code': code, 'message': message}});
+String replyError(Object? id, String code, String message) {
+  final s = _escapeScriptSeparators(jsonEncode({'id': id, 'ok': false, 'e': {'code': code, 'message': message}}));
+  if (utf8.encode(s).length <= maxMessageBytes) return s;
+  // A malformed request can supply an arbitrary id before the nonce check.
+  // Preserve only finite numeric correlation ids in the bounded fallback.
+  return jsonEncode({
+    'id': id is num && id.isFinite ? id : null,
+    'ok': false,
+    'e': {'code': BridgeErrorCode.tooLarge, 'message': 'error reply is over the $maxMessageBytes byte bridge cap'},
+  });
+}
 
 /// Builds the script that delivers one event to the page. Used by generated code.
 String eventScript(String name, Object? payload) =>
-    'window.__valence&&window.__valence.e(${jsonEncode(name)},${jsonEncode(payload)})';
+    _escapeScriptSeparators('window.__valence&&window.__valence.e(${jsonEncode(name)},${jsonEncode(payload)})');
 
 /// Wraps a reply from the generated `bridgeDispatch` in the script the host passes to `runJavaScript`.
-String bridgeReplyScript(String reply) => 'window.__valence&&window.__valence.r($reply)';
+String bridgeReplyScript(String reply) => _escapeScriptSeparators('window.__valence&&window.__valence.r($reply)');
+
+String _escapeScriptSeparators(String script) => script.replaceAll('\u2028', r'\u2028').replaceAll('\u2029', r'\u2029');
