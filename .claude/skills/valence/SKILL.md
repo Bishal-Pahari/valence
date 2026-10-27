@@ -144,7 +144,10 @@ instances in `ValenceBuiltins(..., plugins: [...])`. Codegen merges fragments in
 the same strict dispatcher; keep runtime code in the packages. New capabilities
 need `since` above the store baseline and a store release. A published fragment
 declares no `since`; the app stamps it per entry, `{path, since: {"ns.method": N}}`. The framework example's
-`plugins/haptics` package is the runnable reference.
+`plugins/haptics` package is the runnable reference. After changing plugins, regenerate
+and test construction of the real app handlers. Generated namespace/method requirements
+reject missing registrations in every build mode; doctor's registration row lists
+requirements without executing Dart. Native setup still needs device validation.
 
 ### Phase 4: Build (two builder agents in parallel, with separate files)
 
