@@ -49,3 +49,5 @@ OS links use contracts ?6.3: store-compiled `links.origins`, matching native reg
 
 
 For grown-param gates and durable status, use the schema-15 capability/status guide: https://getvalence.pages.dev/docs/guides/capabilities-and-status/. Missing returned fields need nullish fallbacks.
+
+**Development validation:** `dev:` startup and bypass logs mean OTA checks, trials and commits are disabled. Restart without `VALENCE_DEV_URL` before testing signed offline starts or rollback.

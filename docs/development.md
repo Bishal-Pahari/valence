@@ -43,6 +43,11 @@ OTA checks, trial timers, `ready()` commits and `bundle.applyUpdate` are disable
 pending/trial/failure records are preserved. Ordinary sync remains available. A bad installed
 bundle or a floor above every available signed bundle must be fixed before development starts.
 
+Development startup logs `dev: serving upstream <origin>` and says OTA checks, trials, ready
+commits and `bundle.applyUpdate` are disabled. Each skipped ready, signed reload, update check
+or apply call also logs a `dev:` diagnostic. A successful call in this mode does not prove an
+OTA transition. Restart without `VALENCE_DEV_URL` for signed offline and rollback validation.
+
 Profile and release builds ignore `VALENCE_DEV_URL`, even when explicitly supplied. A compile-time
 `kDebugMode` guard removes the proxy and upstream URL from release AOT. Run Flutter without the
 define to return to signed-bundle testing. Validate offline starts and OTA rollback in that mode;

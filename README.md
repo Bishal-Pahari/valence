@@ -245,3 +245,8 @@ Deep links in 0.4: [setup and routing](docs/deep-links.md) covers store-compiled
 Schema 9 adds check/request/settings and resume change events for seven permission kinds. Enable only `permissions.kinds` in a store build, add native declarations, and regenerate; OTA cannot expand the allowlist. Permission grants are separate from feature implementations. See [Permissions](docs/permissions.md). iOS is experimental and untested.
 
 Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent. Older hosts omit them. See [capability revisions and durable status](https://getvalence.pages.dev/docs/guides/capabilities-and-status/).
+
+Development startup logs `dev: serving upstream <origin>` and says OTA checks, trials, ready
+commits and `bundle.applyUpdate` are disabled. Each skipped ready, signed reload, update check
+or apply call also logs a `dev:` diagnostic. A successful call in this mode does not prove an
+OTA transition. Restart without `VALENCE_DEV_URL` for signed offline and rollback validation.

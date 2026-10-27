@@ -105,3 +105,8 @@ Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permiss
 Native HTTP was added at schema 4; the example now inherits schema 13. `http.origins` compiles `http://10.0.2.2:8787` for emulator tests. Run the reference adapter in `examples/rest-sync-adapter/`, set its `ADAPTER_TOKEN` through the Login form, and tap `http.request`. `GET /rpc` returns authenticated status without echoing the token; the other button proves an unlisted origin is denied. No CORS headers are needed. This local HTTP endpoint is for tests; production uses HTTPS. The offline bundle and seed still work without that server.
 
 Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent. Older hosts omit them. See [capability revisions and durable status](https://getvalence.pages.dev/docs/guides/capabilities-and-status/).
+
+Development startup logs `dev: serving upstream <origin>` and says OTA checks, trials, ready
+commits and `bundle.applyUpdate` are disabled. Each skipped ready, signed reload, update check
+or apply call also logs a `dev:` diagnostic. A successful call in this mode does not prove an
+OTA transition. Restart without `VALENCE_DEV_URL` for signed offline and rollback validation.

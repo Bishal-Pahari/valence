@@ -999,6 +999,7 @@ final class Valence {
   /// `bundle.applyUpdate`. A full trial promotion, then a reload (§2.4).
   Future<void> applyUpdate() async {
     if (kDebugMode && const String.fromEnvironment('VALENCE_DEV_URL') != '') {
+      _log('dev: bundle.applyUpdate skipped; pending bundles are not promoted');
       return;
     }
     final seq = await updater.applyUpdate();

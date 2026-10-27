@@ -38,6 +38,8 @@ Tooling that ships with this skill (it is tested, so copy it rather than rewriti
 For live web development after init, use the CLI `node valence/valence.mjs dev --web-dir <web app dir>`
 and its printed Flutter debug command. Read contracts section 3.1 for the trust grant, supported
 server arguments and release exclusion. Use a separate development app id and test accounts.
+A `dev:` startup or bypass diagnostic means OTA trials and commits are disabled; restart without
+`VALENCE_DEV_URL` before validating signed offline starts or rollback.
 Return to a host without the define for signed-bundle, offline and rollback validation. Codegen
 and the generated bridge stay unchanged; native/schema changes still require a host rebuild.
 

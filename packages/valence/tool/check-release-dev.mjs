@@ -28,7 +28,10 @@ while (bytes.readUInt32LE(offset) === 0x02014b50) {
     const compressed = bytes.subarray(start, start + length);
     assert.ok(method === 0 || method === 8, 'unsupported ZIP compression');
     const data = method === 8 ? inflateRawSync(compressed) : compressed;
-    for (const needle of [sentinel, 'VALENCE_DEV_URL must be an HTTP(S) origin', 'development WebSocket handshake refused']) {
+    for (const needle of [sentinel, 'VALENCE_DEV_URL must be an HTTP(S) origin',
+      'development WebSocket handshake refused', 'dev: serving upstream',
+      'dev: handleReady skipped', 'dev: reloadPage skipped',
+      'dev: update check skipped', 'dev: bundle.applyUpdate skipped']) {
       assert.equal(data.includes(Buffer.from(needle)), false, `${name} includes dev code: ${needle}`);
     }
     checked++;
