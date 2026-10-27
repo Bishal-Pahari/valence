@@ -31,6 +31,7 @@ import {
   loadConfig,
   association,
   parseSchema,
+  loadPluginSchema,
   verifyBundle,
   loadSigningKey,
   VALENCE_VERSION,
@@ -204,6 +205,114 @@ test('task restoration is optional, shape-frozen and delegated to the package', 
   assert.match(dart, /return valence.stateRestore\(\)/);
   editSchema(root, (s) => (s.methods['state.save'].params.json = 'string?'));
   assert.throws(() => codegen({ root, cfg }), /must stay/);
+});
+
+const probePlugin = () => ({
+  namespace: 'probe', dartPackage: 'probe_native', npmPackage: '@example/probe', setup: 'README.md',
+  types: { ProbeRow: { label: 'string', count: 'int' } },
+  methods: { 'probe.read': { since: 2, params: { key: 'string' }, returns: 'ProbeRow[]?' } },
+  events: { 'probe.changed': { since: 2, payload: { row: 'ProbeRow' } } },
+});
+function pluginFixture() {
+  const f = fixture();
+  f.cfg.plugins = ['probe.json'];
+  writeFileSync(join(f.root, 'probe.json'), JSON.stringify(probePlugin()));
+  return f;
+}
+
+test('plugin fragments generate typed delegations and are frozen in the store baseline', () => {
+  const { root, cfg, key } = pluginFixture();
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart, /plugins.invoke\(valence, 'probe.read', p.toJson\(\)\)/);
+  assert.match(dart, /ProbeRow.fromJson/);
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  assert.match(ts, /'probe.read'/);
+  assert.match(ts, /'probe.changed'/);
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const baseline = JSON.parse(readFileSync(join(root, '.valence/baseline.json'), 'utf8'));
+  assert.deepEqual(baseline.storeSchema.methods['probe.read'], probePlugin().methods['probe.read']);
+  cfg.plugins = [];
+  assert.throws(() => codegen({ root, cfg }), /cannot be removed/);
+  assert.throws(() => bundle({ root, cfg, key, now: NOW + 1000 }), /cannot be removed/);
+});
+
+test('doctor includes plugin fragments in shipped baseline checks', async () => {
+  const { root, cfg, key } = pluginFixture();
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const rows = await diagnose({ root, cfg });
+  for (const name of ['generated code', 'bridge version', 'store baseline']) {
+    assert.ok(rows.some(([status, label]) => status === 'PASS' && label === name), JSON.stringify(rows));
+  }
+  // A removed or modified shipped fragment must still fail closed.
+  const fragment = probePlugin();
+  fragment.methods['probe.read'].returns = 'string';
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(fragment));
+  assert.ok((await diagnose({ root, cfg })).some(([status, name]) => status === 'FAIL' && name === 'store baseline'));
+  cfg.plugins = [];
+  assert.ok((await diagnose({ root, cfg })).some(([status, name]) => status === 'FAIL' && name === 'store baseline'));
+});
+
+test('plugin edits make codegen stale and cannot change shipped definitions', () => {
+  const { root, cfg, key } = pluginFixture();
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const plugin = probePlugin();
+  plugin.types.ProbeRow.count = 'string';
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(plugin));
+  assert.throws(() => codegen({ root, cfg }), /cannot change/);
+  assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW + 1000 }), /cannot change/);
+  // An unshipped addition is still caught by --check, before a store build.
+  delete plugin.types.ProbeRow.count;
+  plugin.types.ProbeRow.extra = 'bool';
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(plugin));
+  // Remove the local store record only in this throwaway fixture.
+  rmSync(join(root, '.valence/baseline.json'));
+  assert.throws(() => codegen({ root, cfg, check: true }), /stale/);
+});
+
+test('plugin conflicts, reserved namespaces, foreign references and malformed fragments fail closed', () => {
+  const { root, cfg } = pluginFixture();
+  const reject = (change, pattern) => {
+    const p = probePlugin();
+    change(p);
+    writeFileSync(join(root, 'probe.json'), JSON.stringify(p));
+    assert.throws(() => codegen({ root, cfg }), pattern);
+  };
+  reject(p => { p.namespace = 'auth'; }, /reserved namespace/);
+  reject(p => { p.version = 3; }, /unknown field/);
+  reject(p => { p.methods['probe.read'].returns = 'Row'; }, /unknown local type/);
+  reject(p => { p.methods['other.read'] = p.methods['probe.read']; }, /must use namespace/);
+  reject(p => { p.types.OtherRow = {}; }, /must use namespace/);
+  reject(p => { p.methods['probe.read'].since = 99; }, /since/);
+  reject(p => { p.methods = []; }, /must be an object/);
+  reject(p => { delete p.npmPackage; }, /npmPackage is required/);
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(probePlugin()));
+  cfg.plugins.push('probe.json');
+  assert.throws(() => loadPluginSchema(root, cfg), /duplicate plugin namespace/);
+  cfg.plugins.pop();
+  cfg.plugins = [join(root, 'probe.json')];
+  assert.throws(() => loadPluginSchema(root, cfg), /project-relative/);
+  cfg.plugins = ['probe.json'];
+  editSchema(root, s => { s.methods['probe.read'] = probePlugin().methods['probe.read']; });
+  assert.throws(() => codegen({ root, cfg }), /conflicts with the app/);
+});
+
+test('a new plugin method needs since above the shipped host', () => {
+  const { root, cfg, key } = fixture();
+  const shippedVersion = JSON.parse(readFileSync(schemaFile(root), 'utf8')).version;
+  bundle({ root, cfg, key, store: true, now: NOW });
+  cfg.plugins = ['probe.json'];
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(probePlugin()));
+  assert.throws(() => codegen({ root, cfg }), new RegExp(`needs since > ${shippedVersion}`));
+  const plugin = probePlugin();
+  plugin.methods['probe.read'].since = shippedVersion + 1;
+  plugin.events['probe.changed'].since = shippedVersion + 1;
+  editSchema(root, s => { s.version = shippedVersion + 1; });
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(plugin));
+  codegen({ root, cfg });
+  codegen({ root, cfg, check: true });
 });
 
 // ---------- keys ----------
@@ -1300,6 +1409,8 @@ test(
   { skip: !hasFlutter && 'flutter is not on PATH', timeout: 600_000 },
   () => {
     const { root, cfg } = fixture({ latest: true });
+    cfg.plugins = ['probe.json'];
+    writeFileSync(join(root, 'probe.json'), JSON.stringify(probePlugin()));
     editSchema(root, (s) => {
       s.types.Empty = {};
       s.methods['x.edge'] = { since: 1, params: { blobs: 'json[]?', rows: 'Row[]?', type: 'string', empty: 'Empty?' }, returns: 'Row[]?' };
@@ -1331,6 +1442,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  sqflite_common_ffi: ^2.4.4
 `;
 
 // Implements BridgeHandlers directly rather than extending the generated ValenceBuiltins: what is under
@@ -1338,13 +1450,17 @@ dev_dependencies:
 // example app covers the other direction — the built-ins reaching the package for real.
 const DART_TEST = `
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:valence/valence.dart';
 import 'package:valence_probe/valence/bridge.g.dart';
 import 'package:valence_probe/valence/config.g.dart';
 
 final class H with BridgeHandlersDefaults {
+  @override
+  Future<List<ProbeRow>?> probeRead(ProbeReadParams p) async => null;
   @override
   Future<void> appReady() async {}
   @override
@@ -1389,7 +1505,49 @@ Future<Map<String, Object?>> call(String raw) async =>
     jsonDecode(await bridgeDispatch(H(), raw, nonce: 'n1')) as Map<String, Object?>;
 String code(Map<String, Object?> r) => (r['e']! as Map)['code'] as String;
 
+class _Probe implements ValencePlugin {
+  int calls = 0;
+  @override
+  String get namespace => 'probe';
+  @override
+  Set<String> get methods => {'probe.read', 'probe.hidden'};
+  @override
+  Future<Object?> invoke(Valence valence, String method, Map<String, Object?> params) async {
+    calls++;
+    if (params['key'] == 'none') return null;
+    if (params['key'] == 'bad') return [{'label': 12, 'count': 1}];
+    return [{'label': params['key'], 'count': 1}];
+  }
+}
+class _PluginHandlers extends ValenceBuiltins implements BridgeHandlers {
+  _PluginHandlers(Valence runtime, _Probe? plugin) : super(runtime, plugins: [if (plugin != null) plugin]);
+  @override
+  Future<List<Row>?> xEdge(XEdgeParams p) async => null;
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  test('plugin delegation stays behind strict nonce/parameter decoding and decodes results', () async {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    final support = await Directory.systemTemp.createTemp('valence-plugin-probe');
+    final runtime = await Valence.open(valenceConfig, supportDir: support, log: (_) {});
+    final plugin = _Probe();
+    final h = _PluginHandlers(runtime, plugin);
+    Future<Map<String, Object?>> send(String method, Object? params, [String nonce = 'n1']) async =>
+        jsonDecode(await bridgeDispatch(h, jsonEncode({'id': 1, 'n': nonce, 'm': method, 'p': params}), nonce: 'n1')) as Map<String, Object?>;
+    expect(code(await send('probe.read', {'key': 'ok'}, 'wrong')), 'E_DENIED');
+    expect(code(await send('probe.read', {'key': 1})), 'E_PARAMS');
+    expect(code(await send('probe.read', {'key': 'ok', 'extra': true})), 'E_PARAMS');
+    expect(code(await send('probe.hidden', {})), 'E_UNKNOWN');
+    expect(plugin.calls, 0);
+    expect((await send('probe.read', {'key': 'ok'}))['v'], [{'label': 'ok', 'count': 1}]);
+    expect((await send('probe.read', {'key': 'none'}))['v'], isNull);
+    expect(code(await send('probe.read', {'key': 'bad'})), 'E_PARAMS');
+    final missing = jsonDecode(await bridgeDispatch(_PluginHandlers(runtime, null), '{"id":1,"n":"n1","m":"probe.read","p":{"key":"ok"}}', nonce: 'n1')) as Map<String, Object?>;
+    expect(code(missing), 'E_UNSUPPORTED');
+    expect(BridgeEvents.probeChanged(row: const ProbeRow(label: 'ok', count: 1)), contains('probe.changed'));
+  });
   test('new methods default to E_UNSUPPORTED through strict dispatch', () async {
     expect(code(await call('{"id":1,"n":"n1","m":"sync.status","p":{}}')), 'E_UNSUPPORTED');
     expect(code(await call('{"id":1,"n":"n1","m":"data.getMany","p":{"bucket":"calendar","keys":[3]}}')), 'E_PARAMS');

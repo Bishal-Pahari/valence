@@ -149,6 +149,21 @@ Newest first. One version for `create-valence`, `@getvalence/bridge` and the `va
 
 ## Unreleased
 
+### Reusable native plugins
+
+`doctor` checks the combined app/plugin schema against the store baseline, so
+a shipped plugin is accepted while changing or removing it still fails. After
+upgrading tooling or the bridge, regenerate and type-check with a matching
+CLI/bridge snapshot pair.
+
+`ValencePlugin` packages can contribute namespaced schema fragments, native
+handlers and setup notes, with matching npm types. Config `plugins` lists the
+fragments; codegen and bundle merge them before compatibility checks. Conflicts,
+reserved namespaces and changes to shipped definitions fail. Generated dispatch
+still checks the nonce and strictly decodes parameters/results. Native additions
+need a store build. The built-in open group uses the plugin API, and the example
+haptic handler is a separate local package. Existing wire shapes stay unchanged.
+
 ### Calling your own backend
 
 Call your API with `http.request` (schema 4): the host enforces compiled `http.origins` origins, attaches the stored token, and never follows redirects. Existing hosts need codegen and a store build to add the capability or origins. A reference Node REST-to-sync adapter demonstrates durable pagination, tombstones and idempotent pushes. iOS remains experimental and untested.

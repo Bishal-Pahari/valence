@@ -45,6 +45,11 @@ Your job is the part that is genuinely this app's:
   restorationIdentifier on the iOS FlutterViewController in Main.storyboard
   (experimental and untested). Validate Android with Home → am kill → reopen the
   retained task, then verify force-stop and task removal start fresh.
+
+- **Plugins (§4.7):** install their Dart/npm packages, list fragment paths in config
+  `plugins`, follow native setup notes, regenerate and register instances through
+  `ValenceBuiltins(..., plugins: [...])`. Keep their runtime code in their packages.
+  New native capabilities need a store release and `since` above the store baseline.
 - **`lib/valence/handlers.dart`: only this app's bridge methods**, in one class
   `extends ValenceBuiltins implements BridgeHandlers`. `ValenceBuiltins` is generated and already
   delegates `app.*`, `data.*`, `prefs.*`, `sync.*`, `open.external` and `bundle.*` to the runtime, so the

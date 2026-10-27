@@ -35,6 +35,8 @@ dependencies:
 
   valence:
     path: ../
+  valence_example_haptics:
+    path: plugins/haptics
 
 dev_dependencies:
   flutter_test:

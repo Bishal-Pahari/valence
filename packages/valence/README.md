@@ -32,6 +32,15 @@ The loopback proxy injects the normal bridge nonce and forwards HMR WebSockets. 
 builds exclude this path. Use a separate development app id and test accounts; the page has the
 full native bridge and SQLite access. See the [development guide](https://getvalence.pages.dev/docs/guides/development/).
 
+Native features can also come from a `ValencePlugin` package. List its schema
+fragment in config `plugins`, regenerate, and pass its instance to the generated
+`ValenceBuiltins(valence, plugins: [...])`. Generated strict decoding still owns
+the bridge boundary; the registry is not a WebView dispatcher. The plugin owns
+native setup, initialization and cleanup, and needs a store release. See
+[Writing a Valence plugin](https://getvalence.pages.dev/docs/guides/plugins/) and
+the example's `plugins/haptics` package. The built-in `open.external` uses this
+API too, with its existing scheme restrictions and reserved owner.
+
 ```bash
 flutter pub add valence
 npx valence codegen

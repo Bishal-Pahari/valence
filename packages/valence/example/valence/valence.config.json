@@ -52,5 +52,8 @@
   "notifications": {
     "enabled": true,
     "icon": "ic_stat_valence"
-  }
+  },
+  "plugins": [
+    "plugins/haptics/valence.plugin.json"
+  ]
 }

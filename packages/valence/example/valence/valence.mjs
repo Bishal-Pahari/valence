@@ -22,12 +22,13 @@ import { homedir } from 'node:os';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
-import { dirname, extname, join, relative, resolve, sep } from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 export const VALENCE_VERSION = '0.3.0'; // keep equal to package.json "version" (tested)
 const NATIVE = new Set(['.so', '.dex', '.jar', '.apk', '.aab', '.ipa', '.dylib', '.framework', '.a', '.o', '.class', '.exe', '.dll']);
 const PRIMS = new Set(['string', 'int', 'num', 'bool', 'json', 'void']);
 const CORE_METHODS = ['app.ready', 'app.info'];
+const PLUGIN_RESERVED = new Set('app data prefs sync open bundle secure auth permissions notify badge push link state http'.split(' '));
 const SPKI_ED25519 = Buffer.from('302a300506032b6570032100', 'hex');
 const HASH_RE = /^[0-9a-f]{64}$/;
 // A service worker can only take over the page by being registered from it, and every framework's helper
@@ -37,7 +38,7 @@ const SERVICE_WORKER_RE = /serviceWorker\s*\.\s*register\s*\(/;
 // Names that break the generated Dart (reserved words, built-in identifiers, Object members, generated members).
 const DART_RESERVED = new Set(`abstract as assert await break case catch class const continue covariant default deferred do dynamic else enum export extends extension external factory false final finally for Function get if implements import in interface is late library mixin new null operator part required rethrow return set static super switch this throw true try typedef var void while with yield hashCode runtimeType toString noSuchMethod toJson fromJson`.split(' '));
 // Type names that collide with Dart/TS builtins or with names the generator emits.
-const RESERVED_TYPES = new Set('Json Methods Events Object String Number Boolean Array Record Promise Map Set List Future Function Iterable Never Null Symbol BigInt Error Date Type Enum BridgeError BridgeHandlers BridgeHandlersDefaults BridgeEvents'.split(' '));
+const RESERVED_TYPES = new Set('Json Methods Events Object String Number Boolean Array Record Promise Map Set List Future Function Iterable Never Null Symbol BigInt Error Date Type Enum BridgeError BridgeHandlers BridgeHandlersDefaults BridgeEvents ValencePlugin ValencePluginRegistry ValenceOpenPlugin'.split(' '));
 // The methods the `valence` pub package implements. codegen emits a `ValenceBuiltins` base class whose
 // bodies delegate to the runtime, so the logic ships in the package and only the schema-shaped
 // marshalling is generated. A schema may leave any of them out; it may not redefine one with a different
@@ -176,7 +177,7 @@ const BUILTINS = {
   'open.external': {
     params: { url: 'string' },
     returns: 'void',
-    call: () => 'await valence.openExternal(p.url);',
+    call: () => "await plugins.invoke(valence, 'open.external', {'url': p.url});",
   },
   'bundle.applyUpdate': {
     params: {},
@@ -445,7 +446,8 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
   if (!existsSync(src)) throw new Error(`web build output not found: ${src}. Build the web app first.`);
   const entry = cfg.web.entry ?? 'index.html';
   const baseline = readBaseline(p);
-  const schema = readJson(p.schema);
+  const { schema } = loadPluginSchema(root, cfg);
+  if (!store) assertAdditive(baseline.storeSchema, schema);
   const keyring = readJson(p.keyring);
   const warnings = [];
   // `--store` is the only thing that writes `storeSchema`, and `storeSchema` is the only thing `codegen`'s
@@ -759,7 +761,56 @@ export async function seed({ root, cfg, from }) {
 
 // ---------- codegen ----------
 
-export function parseSchema(schema) {
+// Resolve fragments once, before either codegen or a store baseline is written. No package code runs.
+export function loadPluginSchema(root, cfg) {
+  const schema = readJson(paths(root, cfg).schema);
+  const owners = new Set();
+  const namespaces = new Set();
+  if (cfg.plugins !== undefined && !Array.isArray(cfg.plugins)) throw new Error('plugins must be an array of fragment paths');
+  const object = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  for (const path of cfg.plugins ?? []) {
+    if (typeof path !== 'string' || !path || isAbsolute(path)) throw new Error('plugin path must be a nonempty project-relative string');
+    const fragment = readJson(resolve(root, path));
+    const { namespace } = fragment;
+    if (typeof namespace !== 'string' || !/^[a-z][a-zA-Z0-9]*$/.test(namespace) || PLUGIN_RESERVED.has(namespace)) {
+      throw new Error(`plugin ${path}: invalid or reserved namespace "${namespace}"`);
+    }
+    if (namespaces.has(namespace)) throw new Error(`duplicate plugin namespace "${namespace}"`);
+    namespaces.add(namespace);
+    for (const key of Object.keys(fragment)) {
+      if (!['namespace', 'dartPackage', 'npmPackage', 'setup', 'types', 'methods', 'events'].includes(key)) throw new Error(`plugin ${path}: unknown field "${key}"`);
+    }
+    for (const key of ['dartPackage', 'npmPackage', 'setup']) {
+      if (typeof fragment[key] !== 'string' || !fragment[key].trim()) throw new Error(`plugin ${path}: ${key} is required`);
+    }
+    const prefix = namespace[0].toUpperCase() + namespace.slice(1);
+    for (const kind of ['types', 'methods', 'events']) {
+      if (fragment[kind] !== undefined && !object(fragment[kind])) throw new Error(`plugin ${path}: ${kind} must be an object`);
+      schema[kind] ??= {};
+      for (const [name, definition] of Object.entries(fragment[kind] ?? {})) {
+        const scoped = kind === 'types' ? name.startsWith(prefix) && /^[A-Z]/.test(name.slice(prefix.length)) : name.startsWith(namespace + '.');
+        if (!scoped) throw new Error(`plugin ${path}: ${kind} "${name}" must use namespace ${namespace} (types: ${prefix}...)`);
+        if (Object.hasOwn(schema[kind], name)) throw new Error(`plugin ${path}: ${kind} "${name}" conflicts with the app`);
+        if (!object(definition)) throw new Error(`plugin ${path}: invalid ${kind} "${name}"`);
+        // A fragment may reference its own named types only, never depend silently on an app type.
+        const fields = kind === 'types' ? definition : kind === 'methods' ? definition.params ?? {} : definition.payload ?? {};
+        const references = [...Object.values(fields), ...(kind === 'methods' ? [definition.returns] : [])];
+        for (const type of references) {
+          const base = typeof type === 'string' ? type.replace(/\?$/, '').replace(/\[\]$/, '') : '';
+          if (!PRIMS.has(base) && !Object.hasOwn(fragment.types ?? {}, base)) throw new Error(`plugin ${path}: unknown local type "${type}"`);
+        }
+        // defineProperty handles JSON keys such as __proto__ without mutating object prototypes.
+        Object.defineProperty(schema[kind], name, { value: definition, enumerable: true, configurable: true, writable: true });
+        if (kind === 'methods') owners.add(name);
+      }
+    }
+  }
+  // Validate the combined IDL too: camel-case collisions and since bounds span fragments and app.
+  assertBuiltinShapes(parseSchema(schema));
+  return { schema, owners };
+}
+
+export function parseSchema(schema, pluginMethods = new Set()) {
   const version = int(schema.version, 'schema.version', 1);
   const types = schema.types ?? {};
   const parseType = (t, where, allowVoid = false) => {
@@ -787,7 +838,7 @@ export function parseSchema(schema) {
   }
   const methods = Object.entries(schema.methods ?? {}).map(([name, m]) => {
     named(name, 'method');
-    return { name, since: int(m.since, `${name}.since`, 1, version), params: fields(m.params, name), returns: parseType(m.returns, `${name}.returns`, true) };
+    return { name, plugin: pluginMethods.has(name), since: int(m.since, `${name}.since`, 1, version), params: fields(m.params, name), returns: parseType(m.returns, `${name}.returns`, true) };
   });
   const events = Object.entries(schema.events ?? {}).map(([name, e]) => {
     named(name, 'event');
@@ -1090,7 +1141,11 @@ function dartBuiltins(s) {
     '/// ```',
     'abstract class ValenceBuiltins {',
     '  /// Wraps an open runtime.',
-    '  ValenceBuiltins(this.valence);',
+    '  ValenceBuiltins(this.valence, {List<ValencePlugin> plugins = const []})',
+    '      : plugins = ValencePluginRegistry(plugins);',
+    '',
+    '  /// Store-compiled native handlers. Dispatch still uses the generated strict decoders.',
+    '  final ValencePluginRegistry plugins;',
     '',
     '  /// The runtime every built-in delegates to.',
     '  final Valence valence;',
@@ -1098,7 +1153,7 @@ function dartBuiltins(s) {
   ];
   for (const m of s.methods) {
     const builtin = builtinFor(m);
-    if (!builtin) continue;
+    if (!builtin && !m.plugin) continue;
     const typeName = m.returns.base === 'void' || PRIMS.has(m.returns.base) ? '' : m.returns.base;
     const arg = m.params.length ? `${pascal(m.name)}Params p` : '';
     // Which of the built-in's optional fields this app actually declared, so the delegation passes those
@@ -1109,7 +1164,10 @@ function dartBuiltins(s) {
     const declaredParams = new Set(m.params.map((f) => f.name));
     o.push(`  /// \`${m.name}\`, from the package.`);
     o.push(`  Future<${dartType(m.returns)}> ${camel(m.name)}(${arg}) async {`);
-    for (const line of builtin.call(typeName, (f) => declared.has(f), (p) => declaredParams.has(p)).split('\n')) {
+    const params = m.params.length ? 'p.toJson()' : 'const <String, Object?>{}';
+    const invoke = `plugins.invoke(valence, '${m.name}', ${params})`;
+    const pluginCall = m.returns.base === 'void' ? `await ${invoke};` : `final r = await ${invoke};\nreturn ${dartDecode(m.returns, 'r', "'plugin result'")};`;
+    for (const line of (builtin ? builtin.call(typeName, (f) => declared.has(f), (p) => declaredParams.has(p)) : pluginCall).split('\n')) {
       o.push(line.startsWith('        ') ? `    ${line.trimStart()}` : `    ${line}`);
     }
     o.push('  }', '');
@@ -1264,8 +1322,8 @@ const normalize = (t) => t.replace(/\s+/g, '').replace(/,([)\]}])/g, '$1');
 
 export function codegen({ root, cfg, check = false }) {
   const p = paths(root, cfg);
-  const raw = readJson(p.schema);
-  const s = parseSchema(raw);
+  const { schema: raw, owners } = loadPluginSchema(root, cfg);
+  const s = parseSchema(raw, owners);
   assertBuiltinShapes(s);
   assertAdditive(readBaseline(p).storeSchema, raw);
   const keyring = existsSync(p.keyring) ? readJson(p.keyring) : {};
@@ -1322,7 +1380,7 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
   const host = resolve(root, cfg.host.dir);
   await check('generated code', () => { codegen({ root, cfg, check: true }); });
   await check('bridge version', () => {
-    const schema = parseSchema(readJson(p.schema));
+    const schema = parseSchema(loadPluginSchema(root, cfg).schema);
     const generated = /\bconst hostBridgeVersion = (\d+);/.exec(readFileSync(p.dart, 'utf8'));
     if (!generated || Number(generated[1]) !== schema.version) throw new Error('schema version differs from generated hostBridgeVersion');
   }, 'run valence codegen, rebuild the host and ship a store update for new native capabilities');
@@ -1335,7 +1393,7 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
     }
     int(baseline.storeSeq, 'baseline.storeSeq', 1);
     parseSchema(baseline.storeSchema);
-    assertAdditive(baseline.storeSchema, readJson(p.schema));
+    assertAdditive(baseline.storeSchema, loadPluginSchema(root, cfg).schema);
   }, 'restore the committed baseline from the store release; do not rebaseline to silence a failure');
   await check('OTA bridge compatibility', () => {
     const dir = join(p.ota, 'manifests');

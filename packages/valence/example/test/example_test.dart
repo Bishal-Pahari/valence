@@ -7,6 +7,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -18,11 +20,6 @@ import 'package:valence_example/valence/config.g.dart';
 
 class _Handlers extends AppHandlers {
   _Handlers(super.valence);
-
-  int taps = 0;
-
-  @override
-  Future<void> hapticsTap() async => taps++;
 }
 
 // Widget tests normally replace HttpClient with an unconditional HTTP 400.
@@ -41,6 +38,7 @@ void main() {
 
   const nonce = 'test-nonce';
   late Directory support;
+  var taps = 0;
 
   setUpAll(() {
     sqfliteFfiInit();
@@ -50,6 +48,12 @@ void main() {
   setUp(() async {
     support = await Directory.systemTemp.createTemp('valence-example');
     ValenceStore.resetCacheForTests();
+    taps = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'HapticFeedback.vibrate') taps++;
+          return null;
+        });
   });
 
   /// A real runtime on a temp directory, with the network mocked: the built-in handlers under test here
@@ -129,7 +133,7 @@ void main() {
     final h = await handlers();
     final reply = await dispatch(h, 'haptics.tap');
     expect(reply['ok'], isTrue);
-    expect(h.taps, 1);
+    expect(taps, 1);
   });
 
   test('link.initial delegates through the nonce-protected generated path', () async {
@@ -184,8 +188,7 @@ void main() {
     'the built-ins are inherited from ValenceBuiltins, not written here',
     () async {
       final h = await handlers();
-      // AppHandlers declares exactly one method; everything else comes from the generated base class, which
-      // delegates to the package. That is the whole point of the packaging change.
+    // AppHandlers registers its plugin; all adapters come from the generated base class.
       expect(h, isA<ValenceBuiltins>());
       expect(h, isA<BridgeHandlers>());
     },
@@ -196,7 +199,7 @@ void main() {
     final reply = await dispatch(h, 'haptics.tap', withNonce: 'wrong');
     expect(reply['ok'], isFalse);
     expect((reply['e']! as Map)['code'], BridgeErrorCode.denied);
-    expect(h.taps, 0, reason: 'the handler must not run');
+    expect(taps, 0, reason: 'the handler must not run');
   });
 
   test('an unknown method is E_UNKNOWN', () async {

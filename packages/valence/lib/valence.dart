@@ -8,6 +8,7 @@
 /// the last one is generated into `lib/valence/config.g.dart` by `valence codegen`.
 library;
 
+export 'src/plugin.dart' show ValencePlugin, ValencePluginRegistry, ValenceOpenPlugin;
 export 'src/app.dart' show ValenceApp, ValenceDispatch, valenceLifecycleFor, valenceOnline;
 export 'src/appearance.dart' show ValenceAppearance;
 export 'src/runtime.dart'

@@ -277,6 +277,76 @@ void main() {
     expect(await v.dataGet('plants', 'fern'), 'new');
   });
 
+  group('native plugins (section 4.7)', () {
+    test(
+        'reserved owners, duplicate owners and cross-namespace methods fail at registration',
+        () {
+      expect(
+          () => ValencePluginRegistry([
+                _Plugin('auth', {'auth.read'})
+              ]),
+          throwsArgumentError);
+      expect(
+          () => ValencePluginRegistry([
+                _Plugin('open', {'open.external'})
+              ]),
+          throwsArgumentError);
+      expect(
+          () => ValencePluginRegistry([
+                _Plugin('probe', {'probe.read'}),
+                _Plugin('probe', {'probe.more'})
+              ]),
+          throwsArgumentError);
+      expect(
+          () => ValencePluginRegistry([
+                _Plugin('probe', {'secure.get'})
+              ]),
+          throwsArgumentError);
+      expect(
+          () => ValencePluginRegistry([
+                _Plugin('probe', {'probe..read'})
+              ]),
+          throwsArgumentError);
+    });
+
+    test(
+        'registration snapshots the method set and missing methods are unsupported',
+        () async {
+      final v = await open();
+      final methods = {'probe.read'};
+      final plugin = _Plugin('probe', methods);
+      final registry = ValencePluginRegistry([plugin]);
+      methods.add('probe.hidden');
+      expect(
+          await registry.invoke(v, 'probe.read', {'key': 'k'}), {'key': 'k'});
+      expect(
+          () => registry.invoke(v, 'probe.hidden', {}),
+          throwsA(isA<BridgeError>()
+              .having((e) => e.code, 'code', 'E_UNSUPPORTED')));
+      expect(() => registry.invoke(v, 'probe.absent', {}),
+          throwsA(isA<BridgeError>()));
+    });
+
+    test('the built-in open plugin preserves scheme and parameter restrictions',
+        () async {
+      final v = await open();
+      final registry = ValencePluginRegistry();
+      for (final url in [
+        'javascript:alert(1)',
+        'file:///tmp/secret',
+        'http://evil.test',
+        'data:text/html,x'
+      ]) {
+        await expectLater(registry.invoke(v, 'open.external', {'url': url}),
+            throwsDenied('accepts https'));
+      }
+      await expectLater(
+          registry.invoke(v, 'open.external', {'url': 42}),
+          throwsA(
+              isA<BridgeError>().having((e) => e.code, 'code', 'E_PARAMS')));
+    });
+  });
+
   group('data.put is only for writable buckets (§5.5)', () {
     test('a read-only bucket is refused with E_DENIED', () async {
       final v = await open(dataSchemas: {'plants': 1});
@@ -1056,6 +1126,18 @@ final class _ScriptSpy implements ValenceHostView {
 
   @override
   Future<void> handleReady() async {}
+}
+
+final class _Plugin implements ValencePlugin {
+  _Plugin(this.namespace, this.methods);
+  @override
+  final String namespace;
+  @override
+  final Set<String> methods;
+  @override
+  Future<Object?> invoke(
+          Valence valence, String method, Map<String, Object?> params) async =>
+      params;
 }
 
 /// The in-memory secure storage the tests use, with a hook that runs *during* a write.

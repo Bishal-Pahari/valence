@@ -72,11 +72,6 @@
       "params": {},
       "returns": "void"
     },
-    "haptics.tap": {
-      "since": 1,
-      "params": {},
-      "returns": "void"
-    },
     "secure.get": {
       "since": 2,
       "params": {

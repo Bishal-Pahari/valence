@@ -128,6 +128,13 @@ Spawn the `valence-docs-scout` agent with `run_in_background: true`. Its prompt:
 4. **Add the two runtimes.** In the web app, `@getvalence/bridge` (the wizard declares it in `package.json`; run the install). The Flutter one is `flutter pub add valence`, which the host builder does in Phase 4 because the project may not exist yet.
    - They are versioned independently of this CLI. `flutter pub upgrade valence` and `npm update @getvalence/bridge` are how a host or bridge fix reaches an app — **nothing in `lib/valence/` or `<web lib>/` is ever hand-patched.**
 
+For native plugins, read contracts §4.7. Install the Dart and npm types packages,
+list fragment paths in config `plugins`, follow native setup notes and register
+instances in `ValenceBuiltins(..., plugins: [...])`. Codegen merges fragments into
+the same strict dispatcher; keep runtime code in the packages. New capabilities
+need `since` above the store baseline and a store release. The framework example's
+`plugins/haptics` package is the runnable reference.
+
 ### Phase 4: Build (two builder agents in parallel, with separate files)
 
 Spawn two `valence-builder` agents in a single message. **Each one owns only its listed paths.** Each prompt contains:

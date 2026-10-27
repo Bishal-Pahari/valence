@@ -574,7 +574,6 @@ abstract interface class BridgeHandlers {
   Future<void> prefsSet(PrefsSetParams p);
   Future<void> openExternal(OpenExternalParams p);
   Future<void> bundleApplyUpdate();
-  Future<void> hapticsTap();
   Future<String?> secureGet(SecureGetParams p);
   Future<void> secureSet(SecureSetParams p);
   Future<void> secureDelete(SecureDeleteParams p);
@@ -604,6 +603,7 @@ abstract interface class BridgeHandlers {
   Future<String?> pushToken();
   Future<String> pushPermission(PushPermissionParams p);
   Future<PushMessage?> pushInitial();
+  Future<void> hapticsTap();
 }
 
 /// Opt-in defaults for test doubles or partial hosts. Production hosts extend ValenceBuiltins.
@@ -628,8 +628,6 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<void> openExternal(OpenExternalParams p) async => throw const BridgeError('E_UNSUPPORTED', 'open.external is not implemented');
   @override
   Future<void> bundleApplyUpdate() async => throw const BridgeError('E_UNSUPPORTED', 'bundle.applyUpdate is not implemented');
-  @override
-  Future<void> hapticsTap() async => throw const BridgeError('E_UNSUPPORTED', 'haptics.tap is not implemented');
   @override
   Future<String?> secureGet(SecureGetParams p) async => throw const BridgeError('E_UNSUPPORTED', 'secure.get is not implemented');
   @override
@@ -688,6 +686,8 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<String> pushPermission(PushPermissionParams p) async => throw const BridgeError('E_UNSUPPORTED', 'push.permission is not implemented');
   @override
   Future<PushMessage?> pushInitial() async => throw const BridgeError('E_UNSUPPORTED', 'push.initial is not implemented');
+  @override
+  Future<void> hapticsTap() async => throw const BridgeError('E_UNSUPPORTED', 'haptics.tap is not implemented');
 }
 
 /// Decodes one message from the JS channel, checks the per-launch [nonce] the host served in the entry page,
@@ -738,10 +738,6 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
       case 'bundle.applyUpdate':
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         await h.bundleApplyUpdate();
-        return replyOk(id, null);
-      case 'haptics.tap':
-        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
-        await h.hapticsTap();
         return replyOk(id, null);
       case 'secure.get':
         final r = await h.secureGet(SecureGetParams.fromJson(p, 'p'));
@@ -843,6 +839,10 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.pushInitial();
         return replyOk(id, r?.toJson());
+      case 'haptics.tap':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        await h.hapticsTap();
+        return replyOk(id, null);
       default:
         throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');
     }
@@ -887,7 +887,11 @@ abstract final class BridgeEvents {
 /// ```
 abstract class ValenceBuiltins {
   /// Wraps an open runtime.
-  ValenceBuiltins(this.valence);
+  ValenceBuiltins(this.valence, {List<ValencePlugin> plugins = const []})
+      : plugins = ValencePluginRegistry(plugins);
+
+  /// Store-compiled native handlers. Dispatch still uses the generated strict decoders.
+  final ValencePluginRegistry plugins;
 
   /// The runtime every built-in delegates to.
   final Valence valence;
@@ -937,7 +941,7 @@ abstract class ValenceBuiltins {
 
   /// `open.external`, from the package.
   Future<void> openExternal(OpenExternalParams p) async {
-    await valence.openExternal(p.url);
+    await plugins.invoke(valence, 'open.external', {'url': p.url});
   }
 
   /// `bundle.applyUpdate`, from the package.
@@ -1095,5 +1099,10 @@ abstract class ValenceBuiltins {
   Future<PushMessage?> pushInitial() async {
     final m = await valence.pushInitial();
     return m == null ? null : PushMessage(id: m.id, data: m.data, title: m.title, body: m.body, image: m.toJson()['image'] as String?);
+  }
+
+  /// `haptics.tap`, from the package.
+  Future<void> hapticsTap() async {
+    await plugins.invoke(valence, 'haptics.tap', const <String, Object?>{});
   }
 }

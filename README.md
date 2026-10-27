@@ -118,6 +118,14 @@ node valence/valence.mjs keygen | codegen [--check] | bundle [--builtin|--store]
 
 ## Repository
 
+Native extensions can be shared as **Valence plugins**: a Dart `ValencePlugin`, a
+namespaced schema fragment, native setup notes and matching npm types. Declare
+fragment paths in `valence.config.json.plugins`, run codegen, and register native
+instances in `ValenceBuiltins(valence, plugins: [...])`. Strict decoding and the
+store baseline cover the merged schema. Native additions require a store release.
+See [Writing a plugin](docs/writing-plugins.md) and the runnable
+[haptics package](packages/valence/example/plugins/haptics/).
+
 | Path | |
 |---|---|
 | [contracts.md](.claude/skills/valence/references/contracts.md) | The spec: formats, protocols, state machine, policy rules, test matrix |
