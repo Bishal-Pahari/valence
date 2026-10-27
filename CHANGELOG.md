@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: local native HTTP stays on loopback in the example
+
+- The example's native HTTP demo now uses `http://127.0.0.1:8787` with
+  `adb reverse tcp:8787 tcp:8787`. Regenerate and rebuild the host when copying this
+  config change, and rebuild its signed web bundle for the matching button URL.
+  A release-device probe confirmed that Android's loopback-only network security
+  XML does not block native Dart HTTP to a compiled cleartext origin. Those origins
+  can receive the host token in release builds; use HTTPS for remote APIs.
+
 ## Unreleased: a published plugin installs without editing it
 
 - **A `plugins` entry can be `{path, since}`,** stamping each of a fragment's methods and events with
