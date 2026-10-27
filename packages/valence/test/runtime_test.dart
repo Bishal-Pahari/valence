@@ -1413,6 +1413,19 @@ void main() {
       expect(spy.events, ['sync.done']);
     });
 
+    test('R26 server failure reaches sync.now and sync.done without expiring auth', () async {
+      final v = await open(dataSchemas: {'plants': 1},
+          client: MockClient((_) async => http.Response('', 401)));
+      final spy = _ScriptSpy();
+      v.attach(spy);
+      final result = await v.syncNow();
+      expect(result.reason, ValenceSyncReason.failed);
+      expect(spy.events, contains('sync.done'));
+      expect(spy.events, isNot(contains('auth.expired')));
+      expect(spy.scripts.last, contains('"reason":"failed"'));
+      expect((await v.syncStatus()).lastSyncedAt, isNull);
+    });
+
     test(
         "data.put's own push reports itself, because the page's writes are most of an outbox",
         () async {
