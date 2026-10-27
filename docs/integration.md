@@ -2,97 +2,124 @@
 
 ## In plain terms
 
-The nine finished feature branches now run together on `codex/integration` in
-both repositories. Account-safe task restoration, accessibility, deep links,
-permissions, local reminders, push, live development, native plugins and image
-sharing share one generated bridge. This is a local integration candidate for
-review; `packages` and the test-app snapshots were not changed.
+Nine pending branches run together on `codex/integration` in both repositories.
+R19 adds native plugin registration checks to the earlier eight-branch candidate:
+a missing plugin or exact method fails at handler construction in every build mode.
+Persisted sync failures, reconnect checks, seed recovery, plugin error mapping,
+loopback HTTP defaults, development diagnostics and LAN trust remain intact.
+This is an integration candidate for improver acceptance.
 
-Code base: `e879260366282c9f504057423d54f682dcb10c81`.
-Site base: `f59fbc1568c895d4cd35d385733175397beeef6a`.
-Tested implementation: code `a49a529`, site `ac08d67`.
+Code base: `ebb0793d576c74c6841686298c9ad828479f02b7`.
+Site base: `afe2366c75670aa31811e0b2681fdc313f5d8751`.
+Tested implementation: code `992a2e6`, site `7b559e6`; later report commits are documentation only.
+The earlier R8/R7/R6/R3/R4/R5/R9/R10/R14 integration is already in both bases.
+Package versions are unchanged. Template/example schema stays 15: appearance since
+7, restoration 8, links 9, permissions 10, reminders 11, push 12, account support
+13 and image sharing 14. R19 adds no wire surface. The schema-1 store baseline remains intact.
 
 ## Merge order and source commits
 
 | Order | Branch | Code source | Code merge | Site source | Site merge |
 |---|---|---|---|---|---|
-| 1 | codex/r8 | 003215c | 6bd072b | 2959842 | 4c5d462 |
-| 2 | codex/r7 | 969b1a4 | 972c39d | 965b8eb | c008513 |
-| 3 | codex/r6 | 5b64e06 | 6d3af32 | 388cd9d | e6cf7c6 |
-| 4 | codex/r3 | db669dd | 0cb6363 | f45ccf2 | 4ed48c0 |
-| 5 | codex/r4 | 588f876 | 1404594 | d8e5dd7 | aaee33e |
-| 6 | codex/r5 | 3cc1c0f | dd80dd3 | 57a44b5 | e3d2b40 |
-| 7 | codex/r9 | 0c1b0fb | 01a89c0 | 2913b4d | cbf19d1 |
-| 8 | codex/r10 | f3fcd0d | 90b40dc | b905b74 | 06d431f |
-| 9 | codex/r14 | fa6e16c | bfa4153 | fa5e816 | 8e66a80 |
+| 1 | codex/r17 | a992285 | 12a349e | 971e5a9 | b2485c0 |
+| 2 | codex/r19 | a49246a | 93ec043 | 0ca0392 | 87a2104 |
+| 3 | codex/r20 | f8f3f1f | 59b1fae | 98cbad0 | 8e7a380 |
+| 4 | codex/r21 | 92221ea | f48484b | d3d0e2b | e552c84 |
+| 5 | codex/r22 | b2e5a40 | b559e7b | e84efa7 | 1f8f866 |
+| 6 | codex/r23 | 373d29f | 7d327c3 | 0bcc440 | adc3412 |
+| 7 | codex/r24 | 23a2783 | 52fc7ce | fcb04f2 | 0287745 |
+| 8 | codex/r25 | 52fd6e5 | b5ec252 | 9f614ee | fbd4d4e |
+| 9 | codex/r26 | 7c43658 | d927cda | 1437672 | b1698b9 |
 
-The combined template/example report schema **14**. Appearance stays since 7;
-state since 8; links since 9; permissions since 10; reminders/badges since 11;
-push since 12; account support since 13; image sharing since 14. R9/R10 add no
-base-schema surface. The example's genuine schema-1 store baseline stays intact.
-No package release versions changed.
+R19 documentation follow-ups were carried from its own branches after the ordered
+implementation merges: code `ebbd5e0` via `992a2e6`, site `7c31ed4` via `7b559e6`.
+These add installation-workflow and machine-documentation instructions only;
+the integration trees were byte-identical before and after those carry merges.
+Combined sync/spec corrections are in `1bca9b1`; workflow/machine refinements
+first landed as `a5117e0` / `0302bb8` before being copied to the R19 branches.
 
-## Conflict decisions
+The previous candidate `c0d8aa8` / `31046b0` is retained in both repositories on
+`codex/integration-before-r19`, including its earlier merge ledger and gate history.
 
-Security takes precedence over convenience. Preserve R7's serialized account
-operations and fail-closed secure-write sequence: clear writable rows under the
-sync lease, delete the old token, record the new identity, invalidate restoration,
-then store the new token. Keep R8's owning Flutter view when attaching the widget,
-R3's detach-based permission denial and R4's queued notification flush.
+## Decisions and conflict resolution
 
-Preserve app-owned notification methods below since 11, push methods below 12,
-and image sharing below 14. Plugin delegation still runs after nonce and strict
-parameter decoding. Combined review found that the new `share` namespace was
-missing from plugin reservations: a plugin could claim `share.image` yet generated
-code would call the core implementation. Both registries now reserve `share`;
-CLI and runtime regressions cover refusal.
+Security first, then user data: R19 generates required namespaces and exact method
+names. A namespace check alone would accept an installed plugin version missing
+a declared method. Event-only fragments must still register their owner. The
+checked runtime factory throws an ordinary StateError, not a stripped assertion.
+Older generated code and direct registry callers retain their original constructor;
+extra native methods remain unreachable through generated dispatch.
 
-Move the example's haptic declaration entirely into R10's plugin fragment, retaining
-its since-1 shape. Merge config allowlists and all event handlers, regenerate the
-bridge, synchronize the example CLI, and sign the combined example rather than
-choosing one branch's generated files. Fix branch-local test assumptions about
-schema 13 and startup call order without removing their assertions. Give the
-colliding contract sections unique numbers: accessibility 4.7, restoration 4.8,
-permissions 4.9, plugins 4.10 and sharing 4.11; update active documentation links.
+Preserve nonce and strict parameter checks before invocation, R22 malformed-return
+E_INTERNAL mapping and deliberate plugin errors. The compiled regression now expects
+R19 startup refusal while retaining R22 malformed-value and deliberate E_DENIED/
+E_PARAMS checks. Doctor lists requirements as WARN: source inspection cannot prove
+which native instances an app constructs. Test construction of real app handlers.
+Native initialization, permissions and successful platform behavior remain separate.
+
+R17 and R26 share one lease-held failure classification and atomic observation
+write. Authenticated rejection outranks transport failure, then incomplete server
+responses, then success. Persisted and returned outcomes agree, including anonymous
+401, and failed/scoped runs preserve prior success timestamps. Keep their previously
+combined source and regressions rather than choosing either conflict side. Account
+clearing, outbox contents and cursors retain their existing protections.
+
+Preserve all docs/changelog sections, R18 app-owned plugin stamps and own-property/
+integer checks, R20 diagnostics, R21 LAN trust and R24 widget regressions. Regenerate
+from the combined source CLI and copy it byte-for-byte into the example. Resolve
+generated conflicts from source rather than hand-editing output. The previous
+combined signed example is retained only after matching every source file's hash,
+size and CAS bytes: seq 1793115254, floor 0, two files. Embedded debug/release
+manifest and signature bytes also match source. HTTP remains loopback-only. Clean
+the test-matrix table separator and retain the complete R17 regression row.
 
 ## Gates
 
 | Gate | Result |
 |---|---|
-| Root `npm test` | 85 passed, zero failed/skipped; generated Dart and strict TypeScript ran |
-| Runtime `flutter test` | 489 passed |
-| Define-enabled dev proxy suite | 7 passed |
-| Runtime `dart analyze --fatal-infos .` | No issues, including example/plugin |
-| Example `flutter test` | 24 passed |
-| Bridge tests | 29 passed |
-| Bridge strict/verbatim TypeScript, build, pack dry run | Passed |
-| Generated example strict/verbatim TypeScript | Passed |
-| Example source and vendored `codegen --check` | Fresh |
-| Signed example verification | Passed; seq 1793062826, two files |
+| Root npm test | 92 passed, zero failed/skipped; generated Dart and strict TS ran; final workflow-doc rerun also passed |
+| Runtime flutter test | 528 passed, no rerun needed |
+| Runtime dart analyze --fatal-infos . | No issues |
+| Example flutter test | 26 passed |
+| Define-enabled development proxy tests | 10 passed |
+| Define-enabled development widget regression | 1 passed |
+| Bridge tests | 29 passed, zero skips |
+| Bridge strict/verbatim TypeScript and pack dry run | Passed |
+| Generated example and dev-web strict/verbatim TypeScript | Passed |
+| Source/vendored codegen --check and CLI equality | Fresh, zero writes; identical CLIs |
+| Signed source, CAS and built-in verification | Passed; seq 1793115254, two files |
 | Runtime pub publish dry run | Zero warnings |
-| Site build and SEO/link checks | 37 pages passed |
-| Debug/release APK and release exclusion | Both built; manifests match signed source; dev URL/proxy strings absent from all 3 release AOT libraries |
+| Site build and SEO/link checks | Final machine-doc build: 41 pages passed |
+| Debug/release APKs | Both built; embedded signed manifest/signature match source |
+| Release AOT inspection | Dev URL/proxy and all five diagnostics excluded from all 3 libraries; plugin registration diagnostic retained; actual R23 synthetic token/response sentinels absent |
+| Both worktrees diff --check | Clean |
 
-Android builds emitted existing KGP compatibility warnings for app_badge_plus and
-firebase_core plus deprecation notes; these did not fail either build. No dependency
-versions were changed to suppress them. The release APK is 51,455,784 bytes.
+The direct-file TypeScript invocation initially needed the current compiler's
+`--ignoreConfig` flag; rerunning with that flag passed. No error was suppressed.
+Android builds emitted existing plugin Kotlin migration notices. No dependency
+versions changed to hide them. No test skip or device pass is inferred from a build.
 
-Independent security review rechecked the combined account/restoration/widget,
-permission, appearance, notification and development guards plus legacy and
-plugin dispatch. No confirmed behavioral defect remains after the namespace fix.
-Focused review checks passed (runtime subsets 10 and 4, account/widget regression
-1, generator subset 7 and updated namespace regression 1). One additional reviewer
-Flutter launch failed before execution because Windows held sqlite3.dll open;
-the full runtime gate and subsequent define-enabled tests passed separately.
+## Review checklist and evidence limits
 
-## Evidence limits
+Independent review found no confirmed defects in R19, the integration or site docs.
+It separately passed 8 focused plugin/compiled-Dart tests, 1 generated client test,
+5 native-plugin tests, 16 incomplete-sync regressions, 1 persisted-reason regression,
+codegen freshness and fatal-info Dart analysis. It reviewed standalone R19 source;
+executable checks ran on integration.
 
-Read both complete app findings and newest reports read-only: Kundalini iteration
-11 and app-a iteration 10. App-a F-32 still describes a mismatched supplied
-CLI/bridge snapshot pair; these local generated-code gates do not prove those
-snapshots were repackaged. R17's returned-field additions remain separate work.
+The canonical verification order, manifest/download/message caps, nonce/navigation
+locks, reserved owners, atomic state, key handling and account protections remain
+in their existing implementations. The final diff against the previous integration
+contains R19 and documentation refinements; the previous eight branches' runtime
+behavior and combined failure regressions are unchanged. Native setup and successful
+platform behavior are outside the declaration check.
 
-No new emulator session. Earlier individual-branch Android evidence is historical;
-the integrated device acceptance matrix has not run. Push delivery still needs
-the maintainer's Firebase project. iOS remains experimental and untested.
-No pushes, publications, shared-branch merges or writes to test-app repositories.
+Inputs read-only: both apps' VALENCE_FINDINGS.md, Kundalini iteration 12 and app-a
+iteration 11. App-a's matched snapshots resolve F-32; Kundalini's F-52 describes
+an earlier mismatched pair. Snapshot replacement, retention/tombstone storage and
+migration desugaring friction remain outside R19. No supplied snapshot was modified.
+
+No new emulator session. Earlier Android evidence is historical; the integrated
+device acceptance matrix remains separate. Firebase delivery needs the maintainer
+project. iOS is experimental and untested. No test-app/other-worktree writes,
+shared-branch commits/merges, pushes, publications or deployments occurred.
