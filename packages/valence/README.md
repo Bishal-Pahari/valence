@@ -33,6 +33,10 @@ restoration identifier in Main.storyboard; iOS is experimental and untested.
 
 ## Setup
 
+Seed imports record completion separately from row insertion. A locked completion marker retries
+up to five times, one second apart; exhausted retries retain rows and leave the marker for the
+next launch. [Recovery and log meanings](../../docs/seed-recovery.md). No app codegen change is needed.
+
 For debug-only HMR, `valence dev` binds loopback by default. A physical-device LAN
 target requires `--allow-lan`, which acknowledges a cleartext full-bridge trust grant;
 it provides no encryption or authentication. Start your web dev server and run

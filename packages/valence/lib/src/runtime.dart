@@ -489,14 +489,16 @@ final class Valence {
     final stamp = '$hostBuild.${asset.lengthInBytes}';
     final done =
         await store.hostPrefGet(_seedStamp) == stamp && seedFile.existsSync();
-    if (!done) {
-      try {
-        await seedFile.writeAsBytes(asset.buffer.asUint8List(), flush: true);
-      } on Object catch (e) {
-        _log(
-            'seed: could not write $seedPath ($e); the app starts with an empty store');
-        return;
-      }
+    if (done) {
+      _log('seed: skipped; completion marker matches host build and asset length');
+      return;
+    }
+    try {
+      await seedFile.writeAsBytes(asset.buffer.asUint8List(), flush: true);
+    } on Object catch (e) {
+      _log('seed: could not write $seedPath ($e); existing store retained; '
+          'the next launch will retry');
+      return;
     }
     try {
       final counts = await store
@@ -508,10 +510,28 @@ final class Valence {
       });
       final moved = counts.values.fold<int>(0, (a, b) => a + b);
       if (moved > 0) _log('seed: imported $counts');
-      // Stamped only after a clean import, so a crash mid-import retries on the next launch.
-      await store.hostPrefSet(_seedStamp, stamp);
     } on Object catch (e) {
-      _log('seed: import failed: $e');
+      _log('seed: import incomplete: $e; earlier pairs may have committed; '
+          'completion marker unchanged; the next launch will retry');
+      return;
+    }
+    // Retry only the marker, never a row import that already committed. The bound and delay match
+    // _openStore; non-lock errors cannot be healed by waiting. A failed marker is safe to retry next
+    // launch because importSeed checks each pair's current cursor, not the seed's older snapshot.
+    for (var attempt = 0;; attempt++) {
+      try {
+        await store.hostPrefSet(_seedStamp, stamp);
+        if (attempt > 0) _log('seed: completion marker recorded after retry');
+        return;
+      } on Object catch (e) {
+        if (attempt >= 4 || !isDatabaseLocked(e)) {
+          _log('seed: rows imported; completion marker not recorded: $e; '
+              'existing rows retained; the next launch will retry');
+          return;
+        }
+        _log('seed: completion marker database locked; retrying in one second');
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
     }
   }
 
