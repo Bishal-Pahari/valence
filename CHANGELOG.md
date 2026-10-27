@@ -10,6 +10,38 @@ The iOS path is experimental and untested. Package versions are unchanged.
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
+## Unreleased: account switching is safe
+
+Schema version 13. `auth.setToken` takes two more params and `auth.account()` is new, because a token is
+replaced far more often than a user changes and the host could not tell the two apart.
+
+- **`auth.setToken(token, {account})`** records your own opaque id for the user beside the token. The
+  same id again is a refresh and does nothing else. A **different** id, or `auth.setToken(null)` with an
+  id recorded, is an account switch.
+- **A switch refuses to run over queued writes.** It throws the new **`E_PENDING`** and changes nothing —
+  not the token, not the id, not a row. The host attaches whatever token is stored at the moment it makes
+  the request, so a switch over a full outbox would have pushed user A's rows under user B's credentials
+  from a background sync minutes later. `{discardPending: true}` is the only way past, and it deletes
+  those writes unsent.
+- **A switch clears every writable bucket** — rows, `max_usn` cursor and the whole outbox, in one
+  transaction, under the sync lease, *before* the new token is stored — and emits `sync.changed` for
+  them. Read-only buckets, prefs and your own `secure.*` keys are untouched. The wipe is local: no
+  tombstone is pushed, so user A's rows stay on your server.
+- **Nothing changes for an app that does not pass `account`.** Sign-out keeps the 0.3 behaviour exactly
+  (the token goes, the rows stay), and the first call that names an id when none is recorded *adopts* it
+  and clears nothing — otherwise upgrading would wipe the data of the user holding the phone.
+- **`null` is the sign-out; an empty string is not.** `auth.setToken('')` clears the token and no data,
+  exactly as before. And check your `auth.expired` handler before you adopt `account`: if it signs the
+  user out, that call becomes a wipe of the user who is about to log straight back in. Refresh the
+  token instead, which is what the 401 rule has always asked for.
+- **Gate the params on `has('auth.account')`,** never on `app.info().bridge`. They are params, so they
+  have no `since` of their own, and an older host rejects them with `E_PARAMS`. `valence codegen` refuses
+  to emit them without `auth.account` declared beside them.
+
+**What you must do:** nothing, unless your app can be used by more than one person on one device. Then
+add the two params and `auth.account` to `valence/bridge.schema.json` at your next version, regenerate,
+and pass `account` on sign-in.
+
 ## Unreleased: lifecycle, connectivity and update status
 
 Bridge version 6. Three events and two methods for the three questions a page in a browser tab answers
@@ -36,6 +68,34 @@ from the platform and a page in the host cannot.
   `rejected` means a published release is unservable on every device and is worth an alert of your own;
   `waitingForData` is a healthy state that can last for days on an offline device, and is the one four
   hosts mistook for "no update".
+- **`bundle.updateReady` now fires for every pending bundle,** not only one released with `--urgent`.
+  It is the push signal that pairs with `bundle.status()`, and `bundle.applyUpdate` has never required
+  `urgent`, so gating the event on the flag left a page with nothing but polling — and polling on
+  resume races the update check, which finishes a few hundred milliseconds after the read. The result
+  was that a page learned about an update on the resume *after* the one that found it.
+  **What you must do:** nothing, unless you relied on the event meaning "urgent". Read
+  `bundle.status()` on mount and re-read it on `bundle.updateReady`; `urgent` is now purely the
+  release's request to be offered mid-session, which your page decides how to honour.
+- **A data-cap stop reports `toobig`, not `waitingForData`.** When the configured `dataSizeCap` ran out
+  *inside* a pair's pull rather than before it, `bundle.status().reason` blamed unavailable data for
+  what was the app's own limit — and sent you to inspect a server that was answering correctly.
+- **`has()` now answers for events too, not only methods.** `on()` for an event an older host has never
+  heard of subscribes happily and then never fires: nothing throws, nothing logs, and the feature behind
+  the listener quietly stops happening. Gate the *feature*, not the subscription. On the web `has()` is
+  false for every event, since there is no host to emit one, so one branch covers both an old host and
+  the website build. **What you must do:** regenerate — `bridge.g.ts` now passes `EVENT_SINCE` to
+  `createBridge` alongside `METHOD_SINCE`, and that second argument is **required**. Upgrading the
+  package without regenerating is a build error naming the file to regenerate, rather than `has()`
+  quietly answering `false` for every event on every host.
+- **Two new `codegen` refusals, both closing a silent gate.** Declaring `data.list`'s `after` without
+  also declaring `data.count` is refused: the sibling *is* the gate, so without it `has('data.count')`
+  is false on every host you will ever ship — including the ones that accept the cursor — and a page
+  following the docs never pages at all. And one name may no longer be both a method and an event,
+  because `has()` resolves a name to one answer and would otherwise report `false` for an event your
+  host really does emit.
+- **`data.list`'s `after` cursor advances past an empty first key.** `''` is a valid key — `data.put`
+  refuses only `.` and `..` — and the host was reading `after: ''` as "no cursor", so a bucket whose
+  first key was empty returned that same row on every page and could never be read completely.
 
 **What you have to change in your own host:** nothing, if you leave the schema alone. To take the five,
 add them to `bridge.schema.json` with `since: 6`, raise `version` to 6 and regenerate — the `valence`
@@ -235,8 +295,12 @@ store release, because `lib/` changed.
   an explicit `limit`. **`has('data.list')` cannot gate `after`** — it is a new
   *parameter* on a method that has existed since version 1, so it is true on a
   host that will reject the unknown field with `E_PARAMS`. Gate on
-  `has('data.count')`, which ships in the same version, or on
-  `app.info().bridge >= 5`.
+  `has('data.count')`, the sibling method that ships in the same version.
+  **Not on `app.info().bridge >= 5`:** that field is your app's *own* schema
+  `version`, which you number yourself, so it is already above 5 in any app
+  that has added five methods of its own — and the comparison is then true on
+  exactly the hosts that reject the param. A grown param's only honest gate is
+  a sibling method or event at the same version.
 - **A built-in can now grow an optional *param*,** not just an optional returned
   field. Before this, a built-in's params were compared literally, so adding one
   would have failed the next `codegen` in every existing app — and `--rebaseline`,

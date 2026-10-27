@@ -10,7 +10,7 @@ Every UI change to a native app normally waits on App Store and Play review, and
 - **Over-the-air UI updates**: the web build is shipped as a signed bundle. Phones verify it, try it, and roll back automatically if it fails to start.
 - **Offline first**: data lives in native SQLite, starts from a seed bundled in the app, and updates incrementally ("give me everything after update #1234"). Corrections to bundled data are just newer rows.
 - **A typed bridge**: one schema generates the Dart host interface and the TypeScript client, so web and native can't drift apart.
-- **Bring your own login**: your web app authenticates against your own API and hands the host the token. The host keeps it in the Android Keystore — not in the database — and sends `Authorization: Bearer` on every sync of the user's data, including the background runs the page is not awake for. The page can replace or clear the token, and never read it back.
+- **Bring your own login**: your web app authenticates against your own API and hands the host the token. The host keeps it in the Android Keystore — not in the database — and sends `Authorization: Bearer` on every sync of the user's data, including the background runs the page is not awake for. The page can replace or clear the token, and never read it back. Name the account the token belongs to and the host will not sign a second user in over the first one's unsent writes, and clears their rows when the account really changes.
 - **Two packages, not generated code**: the Flutter host is [`valence`](https://pub.dev/packages/valence) on pub.dev and the web client is [`@getvalence/bridge`](https://www.npmjs.com/package/@getvalence/bridge) on npm. Your `main.dart` is about twenty lines; a fix to the runtime arrives with an ordinary update instead of being hand-applied to every app.
 
 ## How it works
@@ -130,6 +130,10 @@ node valence/valence.mjs keygen | codegen [--check] | bundle [--builtin|--store]
 
 ## Status
 
+The runtime includes [host widget tests](docs/host-widget-tests.md) for startup/resume, navigation
+locks, bridge nonce forwarding, buffered events, trial-ready timeouts and disposal. They pump the real
+host with a stub native WebView; Android device verification remains a separate gate.
+
 **0.4 beta, package-first.** The runtime is no longer generated per app: `valence` (pub.dev) is the whole Flutter host and `@getvalence/bridge` (npm) is the whole web client, both with their own test suites, and `valence codegen` emits only the typed, app-specific half and imports the rest. Moving from 0.3 is [one documented pass](docs/migrating-from-0.3.md) that keeps your data, your update state and your signing key.
 
 **Android is tested. iOS is experimental and untested** — its rules are implemented and specified, but there is no Apple hardware here, so nothing about them is claimed as verified.
@@ -152,7 +156,7 @@ node valence/valence.mjs keygen | codegen [--check] | bundle [--builtin|--store]
 
 `data.getMany` reads up to 500 keys in one bridge call; `sync.status` reports pending operations (including deletes) without a network call. Both are schema-3 additions: guard them with `has()`. `ota.channel` selects the host channel, and OTA builds now default to the recorded store bridge version; guard newer calls or explicitly raise `--requires-bridge`. `seedSchemas` plus `<bucket>.v<N>.json` seeds multiple declared schemas together. Test doubles can opt into generated `BridgeHandlersDefaults`.
 
-Run `node valence/valence.mjs doctor --tests` for mechanical checks and mapped unit tests. WARN means missing or unexecuted evidence; device behavior still needs a device run. [Full guide](https://getvalence.pages.dev/docs/guides/offline-tooling/).
+Run `node valence/valence.mjs doctor --tests` for mechanical checks and mapped unit tests. Broken bridge versions, incompatible local OTA requirements, database paths, PEM keys inside Git and invalid connection URLs fail with a fix. WARN means missing or unexecuted evidence; installed database adoption and device behavior still need a device run. [Full guide](https://getvalence.pages.dev/docs/guides/offline-tooling/).
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
@@ -168,7 +172,9 @@ worked. `app.state()` returns both, for a page that mounted after the transition
 the whole `SyncResult` after every run the host made on its own, `changed: 0` included — which
 `sync.changed` never could, and most runs move nothing. `bundle.status()` names why the last update
 check stopped, from a closed set of eleven: `rejected` means a release no device will take, and
-`waitingForData` is the healthy stall four hosts read as "no update".
+`waitingForData` is the healthy stall four hosts read as "no update". Drive it from
+`bundle.updateReady`, which fires for **every** pending bundle rather than only an `--urgent` one —
+polling on resume races the check, so a page otherwise hears about an update one resume late.
 [Full guide](https://getvalence.pages.dev/docs/guides/lifecycle/).
 
 ### Reading a bucket bigger than 500 rows
@@ -178,8 +184,10 @@ the last key of the previous page and resumes strictly after it — a complete r
 it a bucket past the clamp had none, and a truncated list is indistinguishable from a short one: a stored
 key outside the first page reads as a key the device has never held. `data.count` reports how many live
 rows a bucket holds without reading any of them. Both are version 5; `after` is a new *param* on a
-since-1 method, so gate it on `has("data.count")` or `app.info().bridge >= 5` rather than
-`has("data.list")`. A built-in may now grow an optional param the same way it may grow an optional
+since-1 method, so gate it on `has("data.count")`, the sibling that ships with it, rather than on
+`has("data.list")`. Not on `app.info().bridge >= 5` either: that is the app's **own** schema version,
+so it is already above 5 in any app that has added five methods of its own, and the comparison is true
+on the very hosts that reject the param. A built-in may now grow an optional param the same way it may grow an optional
 returned field, additive against a recorded store baseline.
 
 The database lives at `<applicationSupportDirectory>/<databaseName>`; `host.database` names the file and
