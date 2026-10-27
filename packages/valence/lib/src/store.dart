@@ -590,7 +590,6 @@ final class ValenceStore {
   /// which a `data.put` lands between the two — and that write would then be deleted unsent by a call
   /// whose whole contract is that it refuses to do exactly that.
   Future<(int, int)> clearWritable(Set<String> buckets, {required bool discardPending}) async {
-    if (buckets.isEmpty) return (0, 0);
     var rows = 0;
     var ops = 0;
     final marks = List.filled(buckets.length, '?').join(', ');
@@ -607,8 +606,15 @@ final class ValenceStore {
           );
         }
       }
-      rows = await txn.delete('kv', where: 'bucket IN ($marks)', whereArgs: names);
-      await txn.delete('bucket', where: 'name IN ($marks)', whereArgs: names);
+      // Only the bucket-named deletes are conditional: `bucket IN ()` is not SQL. The outbox check
+      // above, the outbox delete and the freshness reset below are not about any particular bucket,
+      // and skipping the lot when the set is empty is how a host that dropped its last writable
+      // bucket could switch account over queued writes without ever seeing E_PENDING — and push them
+      // under the new account's token the day the bucket came back.
+      if (buckets.isNotEmpty) {
+        rows = await txn.delete('kv', where: 'bucket IN ($marks)', whereArgs: names);
+        await txn.delete('bucket', where: 'name IN ($marks)', whereArgs: names);
+      }
       ops = await txn.delete('outbox');
       // The freshness observations describe the account that just left. Left behind, sync.status()
       // answers 'synced a minute ago' over the new account's empty buckets, before it has ever synced.

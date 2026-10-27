@@ -19,7 +19,11 @@ while (bytes.readUInt32LE(offset) === 0x02014b50) {
   const commentLength = bytes.readUInt16LE(offset + 32);
   const local = bytes.readUInt32LE(offset + 42);
   const name = bytes.toString('utf8', offset + 46, offset + 46 + nameLength);
-  if (/^lib\/[^/]+\/libapp\.so$/.test(name)) {
+  // An APK keeps the AOT libraries at lib/<abi>/, an app bundle at base/lib/<abi>/ (and a split config
+  // at <split>/lib/<abi>/). The artefact submitted to Play is the bundle, so matching only the APK
+  // layout means `checked` stays 0 there — it fails closed rather than passing, but it cannot check the
+  // thing you actually ship.
+  if (/^(?:[^/]+\/)?lib\/[^/]+\/libapp\.so$/.test(name)) {
     const start = local + 30 + bytes.readUInt16LE(local + 26) + bytes.readUInt16LE(local + 28);
     const compressed = bytes.subarray(start, start + length);
     assert.ok(method === 0 || method === 8, 'unsupported ZIP compression');

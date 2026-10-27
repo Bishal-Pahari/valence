@@ -4,6 +4,57 @@
 
 Schema 15 adds nullable builtins, persisted sync reason and signed pending urgency. Regenerate and ship a store build; declaring builtins also requires current optional params on declared built-ins. Earlier hosts and schemas keep working. Account changes clear the new sync observation.
 
+## Unreleased: hardening the two newest trust boundaries
+
+Review of the combined feature merge found no broken security path in live development (R9) or native
+plugins (R10) — release builds really do exclude the dev server, and a plugin really cannot redefine a
+built-in. These are the gaps around them.
+
+- **An event over the 256 KB cap is now dropped instead of sent.** Replies were measured and events were
+  not, because every built-in payload is small and host-bounded. Plugins made an event payload arbitrary,
+  and an oversized one kills the WebView — which, if a trial bundle is on screen, spends one of its
+  strikes and can get a healthy bundle marked bad.
+- **A plugin fragment path must stay inside the project.** `..` was accepted, so a build could depend on
+  a file outside the repo and the reviewed schema recorded in `.valence/baseline.json` would have no
+  source in it.
+- **The dev-server guard now has a test.** Release exclusion rests on each read of `VALENCE_DEV_URL`
+  being a `kDebugMode` compile-time constant. Removing one left every suite green, with the dev proxy
+  live in the release snapshot; a package test now fails instead, and the release workflow says to run
+  `check-release-dev.mjs` against the artefact you submit.
+- `check-release-dev.mjs` also reads app bundles (`base/lib/<abi>/libapp.so`), not just APKs. It is the
+  bundle you upload to Play.
+
+## Unreleased: three more ways an account switch could leak across accounts
+
+All three are §4.4 hardening, found by review of the account work. None needs an app change.
+
+- **A `data.put` during a switch is now refused** with `E_INTERNAL`, for the whole transition including
+  the wait for the sync lease. The lease ordered a switch against sync and nothing ordered it against a
+  local write, so a write from the outgoing account's page could commit after the clear and be pushed
+  under the incoming account's token. A write already running is now allowed to finish before the clear
+  rather than after it. If you fire writes while awaiting `auth.setToken`, disable the form for the
+  duration and make a refused write again afterwards — nothing was stored.
+- **The `E_PENDING` guard no longer depends on having a writable bucket.** A host whose `writable` set
+  had become empty skipped the outbox check entirely, so a switch succeeded silently over queued writes
+  and kept them — to be pushed under the new account's token the day a writable bucket came back.
+- **The account id is written before the token on every path**, not just on a switch. On an adoption the
+  old order could lose the id and keep the token, which made the next sign-in as somebody else look like
+  another adoption rather than a switch — leaving the first account's rows and queued writes in place
+  under the second account's token.
+
+## Unreleased: the bridge tarball is built from its own source
+
+`@getvalence/bridge` ships compiled output (`dist/`), which is build output and not in git. Nothing made
+`npm pack` or `npm publish` rebuild it, so either could tarball a stale `dist/` under a current version
+number — two different APIs behind one version string. A `prepack` hook now runs the build, so the
+published package always matches the source it claims to be.
+
+If you ever saw `TS2554: Expected 1 arguments, but got 2` inside your generated `bridge.g.ts`, that was
+this: your installed bridge predated event gating while your generated file expected it. Upgrade the
+package rather than silencing the error — JavaScript drops the extra argument, which would leave `has()`
+answering `false` for every event on every host. The release recipe no longer needs a separate
+`npm run build`.
+
 ## Unreleased: task restoration
 
 Task restoration now checks the native account before loading a restored route, clears drafts on account switch/sign-out and refuses late route captures from the previous account. Refresh and first-account adoption keep the live draft.

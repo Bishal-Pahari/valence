@@ -42,7 +42,7 @@ Add fontScale: "num?" to your schema's AppInfo type and regenerate. Existing fie
 signature stay unchanged. Older hosts omit it; use (await call('app.info')).fontScale ?? 1.
 Old app schemas can leave the field out. A host update needs a store build.
 
-Add app.appearance at since above your shipped bridge version (the combined template is version 13; appearance remains since 7),
+Add app.appearance at since above your shipped bridge version (the combined template is version 14; appearance remains since 7),
 with payload {darkMode: "bool", highContrast: "bool", reducedMotion: "bool"}. Subscribe during
 bootstrap before ready().
 
