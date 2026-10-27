@@ -772,6 +772,31 @@ test('ota.channel validates and codegen emits a named constant wired to the host
   assert.throws(() => loadConfig(root), /ota.channel/);
 });
 
+test('doctor names plugin requirements without claiming native registration was executed', async () => {
+  const { root, cfg } = pluginFixture();
+  codegen({ root, cfg });
+  const rows = await diagnose({ root, cfg });
+  const row = rows.find(([, name]) => name === 'native plugin registration');
+  assert.equal(row[0], 'WARN');
+  assert.match(row[2], /probe.*probe.read.*construct the real app handlers/);
+  const plain = fixture();
+  codegen(plain);
+  assert.equal((await diagnose(plain)).find(([, name]) => name === 'native plugin registration')[0], 'PASS');
+});
+
+test('codegen requires event-only plugin namespaces without adding wire methods', () => {
+  const { root, cfg } = pluginFixture();
+  const fragment = probePlugin();
+  fragment.methods = {};
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(fragment));
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart, /const hostPluginNamespaces = <String>\{'probe'\}/);
+  assert.match(dart, /const hostPluginMethods = <String>\{\}/);
+  assert.match(dart, /ValencePluginRegistry.checked\(plugins,/);
+  assert.match(dart, /requiredNamespaces: hostPluginNamespaces, requiredMethods: hostPluginMethods/);
+});
+
 test('doctor reports absent evidence as warnings, compatibility errors as failures and mapped execution honestly', async () => {
   const { root, cfg, key } = fixture({ latest: true });
   codegen({ root, cfg });
@@ -1637,8 +1662,9 @@ void main() {
     expect((await send('probe.read', {'key': 'ok'}))['v'], [{'label': 'ok', 'count': 1}]);
     expect((await send('probe.read', {'key': 'none'}))['v'], isNull);
     expect(code(await send('probe.read', {'key': 'bad'})), 'E_PARAMS');
-    final missing = jsonDecode(await bridgeDispatch(_PluginHandlers(runtime, null), '{"id":1,"n":"n1","m":"probe.read","p":{"key":"ok"}}', nonce: 'n1')) as Map<String, Object?>;
-    expect(code(missing), 'E_UNSUPPORTED');
+    expect(hostPluginNamespaces, {'probe'});
+    expect(hostPluginMethods, {'probe.read'});
+    expect(() => _PluginHandlers(runtime, null), throwsStateError);
     expect(BridgeEvents.probeChanged(row: const ProbeRow(label: 'ok', count: 1)), contains('probe.changed'));
   });
   test('new methods default to E_UNSUPPORTED through strict dispatch', () async {

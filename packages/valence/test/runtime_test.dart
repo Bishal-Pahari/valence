@@ -356,6 +356,45 @@ void main() {
 
   group('native plugins (section 4.10)', () {
     test(
+        'schema requirements reject absent namespaces and incomplete method sets',
+        () {
+      expect(
+          () =>
+              ValencePluginRegistry.checked([], requiredNamespaces: {'probe'}),
+          throwsA(isA<StateError>().having((e) => e.message, 'fix',
+              contains('ValenceBuiltins(plugins: [...]'))));
+      expect(
+          () => ValencePluginRegistry.checked([
+                _Plugin('probe', {'probe.read'})
+              ], requiredNamespaces: {
+                'probe'
+              }, requiredMethods: {
+                'probe.read',
+                'probe.write'
+              }),
+          throwsA(isA<StateError>().having(
+              (e) => e.message, 'missing method', contains('probe.write'))));
+      expect(
+          () => ValencePluginRegistry.checked([_Plugin('other', {})],
+              requiredNamespaces: {'eventsOnly'}),
+          throwsStateError);
+      ValencePluginRegistry.checked([
+        _Plugin('probe', {'probe.read', 'probe.hidden'}),
+        _Plugin('eventsOnly', {})
+      ], requiredNamespaces: {
+        'probe',
+        'eventsOnly'
+      }, requiredMethods: {
+        'probe.read'
+      });
+      ValencePluginRegistry.checked([]);
+      // The implicit built-in owner is not an app plugin requirement.
+      expect(
+          () => ValencePluginRegistry.checked([], requiredNamespaces: {'open'}),
+          throwsStateError);
+    });
+
+    test(
         'reserved owners, duplicate owners and cross-namespace methods fail at registration',
         () {
       expect(
