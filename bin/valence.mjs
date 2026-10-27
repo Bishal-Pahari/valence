@@ -37,7 +37,7 @@ const NPX = `npx ${NPM}@latest`;
 const SKILL_SRC = join(PKG, '.claude', 'skills', 'valence');
 const AGENTS_SRC = join(PKG, '.claude', 'agents');
 const AGENT_PREFIX = 'valence-';
-const CLI = new Set(['keygen', 'codegen', 'bundle', 'verify', 'pointer', 'seed', 'version', 'assetlinks', 'aasa']);
+const CLI = new Set(['dev', 'keygen', 'codegen', 'bundle', 'verify', 'pointer', 'seed', 'version', 'assetlinks', 'aasa']);
 // The two published runtimes the generated code imports. Their version is deliberately independent of
 // this CLI's: a fix to a runtime ships with "flutter pub upgrade" or "npm update", with no new wizard.
 // A test keeps it equal to both packages/*/ versions in this repo.
@@ -47,7 +47,7 @@ const HOST_PKG = 'valence';
 // pnpm, yarn and bun all take "add"; npm is the odd one.
 const PM_ADD = { npm: 'install', pnpm: 'add', yarn: 'add', bun: 'add' };
 // String options of both the wizard and valence.mjs, so the command word is found wherever it appears.
-const STRING_OPTS = Object.fromEntries('root web host app-id ota sync key-dir channel seq rollout from manifest files key floor requires-bridge package fingerprints out'.split(' ').map((k) => [k, { type: 'string' }]));
+const STRING_OPTS = Object.fromEntries('root web host app-id ota sync key-dir channel seq rollout from manifest files key floor requires-bridge package fingerprints out web-dir port device-host'.split(' ').map((k) => [k, { type: 'string' }]));
 // example/ and examples/ hold plugin demo apps, which must not be taken for the host.
 const SKIP_DIRS = new Set(['node_modules', 'build', 'dist', 'out', 'android', 'ios', 'valence', 'vendor', 'target', 'example', 'examples']);
 const APP_ID_RE = /^[a-zA-Z]\w*(\.[a-zA-Z]\w*)+$/;
@@ -582,7 +582,7 @@ const HELP = `${bold('Valence')} ${VALENCE_VERSION}
                                     then launch Claude Code to build the Flutter host
   ${NPX} update    update the vendored CLI, skill and agents to this version
   ${NPX} doctor    quick health check (full audit: claude "/valence doctor")
-  ${NPX} <command> keygen | codegen | bundle | verify | pointer | seed | version | assetlinks | aasa
+  ${NPX} <command> dev | keygen | codegen | bundle | verify | pointer | seed | version | assetlinks | aasa
 
 Options for init
   -y, --yes          accept detected defaults, no prompts

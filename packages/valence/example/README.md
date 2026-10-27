@@ -19,6 +19,14 @@ the [`valence`](https://pub.dev/packages/valence) package. This app is the part 
 
 ## Run it
 
+For the R9 live-development demo, run `npm install` in `dev-web`, then from this example root
+run `node ../../../.claude/skills/valence/scripts/valence.mjs dev --web-dir dev-web`.
+In another terminal run the printed Flutter command. Tap the counter, edit `dev-web/message.js`
+and verify the label changes while the counter stays put. The HMR callback also writes a native
+preference through the generated typed bridge and logs its success. The alias in `vite.config.mjs`
+uses this repository's bridge source; an adopter uses the ordinary npm package. Stop the dev
+server and rebuild without the define for signed-bundle tests. iOS remains untested.
+
 ```sh
 flutter pub get
 flutter test              # the wiring tests
@@ -82,3 +90,5 @@ The example schema is 13, with notification methods and events since 11 and noti
 ## Remote push demo
 
 Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** Add your own `android/app/google-services.json`, then `flutter run --dart-define=VALENCE_PUSH=true`. The Google services Gradle plugin is conditional on that file. The page checks/requests permission and reports registration without displaying the token. [Full setup](../../../docs/remote-push.md). The checked-in signed built-in bundle contains the push controls; it stays offline and reports E_UNSUPPORTED until configured. iOS hosts must target 15.0 or later for the Firebase dependencies.
+
+Native HTTP was added at schema 4; the example now inherits schema 13. `http.origins` compiles `http://10.0.2.2:8787` for emulator tests. Run the reference adapter in `examples/rest-sync-adapter/`, set its `ADAPTER_TOKEN` through the Login form, and tap `http.request`. `GET /rpc` returns authenticated status without echoing the token; the other button proves an unlisted origin is denied. No CORS headers are needed. This local HTTP endpoint is for tests; production uses HTTPS. The offline bundle and seed still work without that server.

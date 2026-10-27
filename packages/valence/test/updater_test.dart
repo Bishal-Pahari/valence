@@ -113,6 +113,35 @@ void main() {
     );
   }
 
+  test('development schema context leaves pending, trial and crash evidence unchanged', () async {
+    final builtin = await signBundle(key, seq: 10);
+    final state = ValenceState(installId: 'i', pending: 30, trial: 20, serving: 20, trialFails: 1);
+    final u = makeUpdater(state: state, assets: builtin.asAssets('assets/valence/builtin'));
+    final before = jsonEncode(state.toJson());
+    expect((await u.developmentManifest()).seq, 10);
+    expect(jsonEncode(state.toJson()), before);
+    expect(stateFile.existsSync(), isFalse);
+  });
+
+  for (final reason in ['floor', 'bad']) {
+    test('development refuses $reason current and builtin without changing activation state', () async {
+      final old = await signBundle(key, seq: 10);
+      final newer = await signBundle(key, seq: 30);
+      manifestsDir.createSync(recursive: true);
+      File('${manifestsDir.path}/10.json').writeAsBytesSync(old.bytes);
+      File('${manifestsDir.path}/10.json.sig').writeAsStringSync(old.signature);
+      final state = ValenceState(installId: 'i', current: 10,
+          floor: reason == 'floor' ? 20 : 0, bad: reason == 'bad' ? [10] : []);
+      final before = jsonEncode(state.toJson());
+      final refused = makeUpdater(state: state, assets: old.asAssets('assets/valence/builtin'));
+      await expectLater(refused.developmentManifest(), throwsStateError);
+      final fallback = makeUpdater(state: state, assets: newer.asAssets('assets/valence/builtin'));
+      expect((await fallback.developmentManifest()).seq, 30);
+      expect(jsonEncode(state.toJson()), before);
+      expect(stateFile.existsSync(), isFalse);
+    });
+  }
+
   // ===========================================================================
   group('§2.3 step 1, the pointer', () {
     test('the compiled channel selects the beta pointer URL', () async {

@@ -49,6 +49,10 @@ const quiet = async (fn) => {
   }
 };
 
+test('dev options before the command pass through to the CLI', async () => {
+  await assert.doesNotReject(() => quiet(() => run(['--web-dir', 'web', '--port', '5173', '--device-host', 'localhost', 'dev', '--help'])));
+});
+
 test('detects the web app, package manager, Flutter host and app id', () => {
   const { root } = project();
   const [web, ...rest] = detectWeb(root);

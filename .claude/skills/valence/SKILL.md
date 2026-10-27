@@ -25,7 +25,7 @@ Tooling that ships with this skill (it is tested, so copy it rather than rewriti
 
 | File | Use |
 |---|---|
-| `${CLAUDE_SKILL_DIR}/scripts/valence.mjs` | Zero-dependency CLI: `keygen`, `codegen`, `bundle`, `verify`, `pointer`, `seed`, `version` |
+| `${CLAUDE_SKILL_DIR}/scripts/valence.mjs` | Zero-dependency CLI: `dev`, `keygen`, `codegen`, `bundle`, `verify`, `pointer`, `seed`, `version` |
 | `scripts/valence.test.mjs` (framework repo only, not shipped in the npm package) | The CLI's own tests, including compiling the generated Dart. Run them when you change `valence.mjs`. |
 | `${CLAUDE_SKILL_DIR}/templates/` | `bridge.schema.json` (starter IDL), `valence.config.json`, `AGENTS.section.md` (the hand-off rules) |
 | **the two published runtimes** | `valence` on pub.dev is the whole Flutter host; `@getvalence/bridge` on npm is the whole web client. **Add them, never write them.** codegen emits only the app-specific half and imports the rest, so a fix ships with an upgrade instead of being hand-applied to every app. |
@@ -34,6 +34,12 @@ Tooling that ships with this skill (it is tested, so copy it rather than rewriti
 **If a named agent type isn't installed**, spawn `general-purpose` instead and paste the body of the matching agent file at the top of its prompt.
 
 ## Mode
+
+For live web development after init, use the CLI `node valence/valence.mjs dev --web-dir <web app dir>`
+and its printed Flutter debug command. Read contracts section 3.1 for the trust grant, supported
+server arguments and release exclusion. Use a separate development app id and test accounts.
+Return to a host without the define for signed-bundle, offline and rollback validation. Codegen
+and the generated bridge stay unchanged; native/schema changes still require a host rebuild.
 
 Arguments: `$ARGUMENTS`
 

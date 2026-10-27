@@ -26,6 +26,12 @@ restoration identifier in Main.storyboard; iOS is experimental and untested.
 
 ## Setup
 
+For debug-only HMR, start your web dev server and run
+`flutter run --debug --dart-define=VALENCE_DEV_URL=http://10.0.2.2:5173`.
+The loopback proxy injects the normal bridge nonce and forwards HMR WebSockets. Release/profile
+builds exclude this path. Use a separate development app id and test accounts; the page has the
+full native bridge and SQLite access. See the [development guide](https://getvalence.pages.dev/docs/guides/development/).
+
 ```bash
 flutter pub add valence
 npx valence codegen

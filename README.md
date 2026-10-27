@@ -91,6 +91,11 @@ It's safe to run again: it never overwrites your config, your schema or files yo
 
 ## Use it in Claude Code
 
+For live development inside the native host, run `node valence/valence.mjs dev --web-dir web`.
+It starts a Vite-compatible server and prints a debug-only Flutter command. HMR keeps the bridge
+on its owned loopback origin; release builds exclude the proxy even with a dev define.
+Use test accounts and a separate development app id. [Development guide](docs/development.md).
+
 ```
 /valence init      # detect your web app, add the host package, keys, bridge, offline store, tests
 /valence release   # build, sign and stage an OTA bundle; prints upload commands, uploads only after you confirm

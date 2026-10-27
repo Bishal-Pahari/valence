@@ -402,6 +402,37 @@ If the web app has modal state of its own it wants the gesture for, the host can
 
 ---
 
+
+### 3.1 Debug development server (R9)
+
+Only `kDebugMode && String.fromEnvironment('VALENCE_DEV_URL') != ''` enables development.
+Profile and release ignore the define; the proxy branch and upstream URL are tree-shaken.
+The URL is an explicit developer trust grant, never config or manifest data: an HTTP(S) origin
+without credentials, query, fragment or a path. Use `http://10.0.2.2:5173` on Android emulators,
+or a reachable LAN origin. Use test accounts and data in development.
+
+The WebView still loads the owned loopback origin. A debug-only GET/HEAD proxy fetches the
+chosen server, injects the launch nonce before scripts, disables caching and proxies HMR
+WebSockets. Reserved `/_host/` paths remain native. Redirects are refused. Neither request
+credentials nor native bearer tokens are forwarded. A frame-src/frame-ancestors CSP forbids
+subframes and workers, preventing dev service workers from persisting into a store build. Main-frame navigation retains the ordinary origin lock and strict bridge decoding.
+Hot updates retain the page and nonce; document reloads re-inject the same launch nonce.
+Dev pages cannot consume, commit or fail OTA trials; automatic OTA checks and applyUpdate
+are disabled. A verified current or built-in bundle above the floor supplies the schema context.
+Sync remains available. Use a separate development app id to isolate local data and accounts.
+
+`valence dev --web-dir web --port 5173` runs the local package's `dev` script with
+`--host 0.0.0.0 --port 5173 --strictPort` and prints the matching debug Flutter command.
+`--device-host` changes the printed emulator/LAN address. Package scripts are trusted local
+code. Stop the command to stop its child. Signing keys, baseline and codegen do not change.
+The initial CLI supports Vite-compatible dev arguments (including Vite-based frameworks);
+other frameworks can start their own server and use the printed Flutter define directly.
+
+R9 matrix: nonce before scripts; no-cache; HMR WebSocket round-trip; reserved host routes;
+denied methods, redirects and credential forwarding; dev does not commit or fail trials;
+release AOT built with a dev define excludes the upstream URL and proxy implementation.
+
+
 ## 4. Typed bridge
 
 ### 4.1 IDL: `valence/bridge.schema.json`

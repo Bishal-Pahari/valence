@@ -23,6 +23,9 @@ import {
   bundle,
   keygen,
   codegen,
+
+  devPlan,
+  diagnose,
   pointer,
   diagnose,
   loadConfig,
@@ -120,6 +123,25 @@ test('link origins compile into the native policy and built-in nullable shape st
   cfg.links.origins = [];
   editSchema(root, (s) => { s.methods['link.initial'].returns = 'Link'; });
   assert.throws(() => codegen({ root, cfg }), /must return/);
+});
+
+test('dev plans a Vite server and debug-only emulator/LAN commands without changing files', () => {
+  const root = mkdtempSync(join(tmpdir(), 'valence-dev-'));
+  try {
+    mkdirSync(join(root, 'ui'));
+    const pkg = JSON.stringify({ scripts: { dev: 'vite' } });
+    writeFileSync(join(root, 'ui/package.json'), pkg);
+    const cfg = { host: { dir: 'mobile' } };
+    const plan = devPlan({ root, cfg, webDir: 'ui' });
+    assert.deepEqual(plan.args, ['run', 'dev', '--', '--host', '0.0.0.0', '--port', '5173', '--strictPort']);
+    assert.match(plan.command, /flutter run --debug --dart-define=VALENCE_DEV_URL=http:\/\/10.0.2.2:5173/);
+    assert.match(devPlan({ root, cfg, webDir: 'ui', deviceHost: '192.168.1.2', port: '6000' }).command, /192.168.1.2:6000/);
+    for (const port of ['80', '65536', '5173 & echo unsafe', '-1']) assert.throws(() => devPlan({ root, cfg, webDir: 'ui', port }));
+    for (const deviceHost of ['x/path', 'x:80', 'x;echo', 'user@x']) assert.throws(() => devPlan({ root, cfg, webDir: 'ui', deviceHost }));
+    assert.equal(readFileSync(join(root, 'ui/package.json'), 'utf8'), pkg);
+    writeFileSync(join(root, 'ui/package.json'), '{}');
+    assert.throws(() => devPlan({ root, cfg, webDir: 'ui' }), /dev script/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 function fixture({ data = { calendar: 1 }, latest = false } = {}) {
