@@ -194,6 +194,12 @@ as pure functions, so a host that builds its own WebView uses the same ones the 
 A page should persist on `background`: `detached` is reported for completeness and usually never
 delivered, because the engine is tearing down. `app.online` is interface state and never reachability.
 
+Foreground live-interface reports also retry the signed update check, including handovers, through the
+existing coalescing and data-lease path. Background reports sync only; resume checks for updates.
+`bundleStatus().reason == offline` describes the attempt at `checkedAt` until another check completes,
+not current reachability. No new bridge schema or generated host code is needed.
+[Update checks after reconnect](../../docs/update-reconnect.md).
+
 ## Batch reads and sync observations
 
 `Valence.dataGetMany(bucket, keys)` returns distinct live rows in requested order (maximum 500 input keys), using the active manifest schema. `Valence.syncStatus()` reads current outbox depth, last successful unscoped sync time and the last attempt's transport failure. It does not probe connectivity. Generated schema-3 built-ins expose these as `data.getMany` and `sync.status`; `ValenceSyncResult.pending` counts remaining operations. The runtime constrains `path_provider_android` to >=2.2.17 <2.3.0 temporarily for pre-JNI compatibility (U-7, checked 2026-10-21); no app override is needed.

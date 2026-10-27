@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: check for updates after reconnect
+
+- A live connectivity report while the app is foregrounded now retries the signed update check,
+  including Wi-Fi/cellular handovers. Concurrent checks coalesce; data requirements retain their lease
+  and verification. Background reconnects sync only and defer the update check to resume.
+- `bundle.status` describes the last completed attempt until another one completes. Read `offline` as
+  "could not check on the last attempt", rather than a claim about the current connection.
+- Upgrade the native host package to get the trigger; no schema bump or app handler change is needed.
+
 ## Unreleased: local native HTTP stays on loopback in the example
 
 - The example's native HTTP demo now uses `http://127.0.0.1:8787` with
