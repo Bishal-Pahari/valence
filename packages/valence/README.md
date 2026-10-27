@@ -217,3 +217,8 @@ Use the generated `permissions.check`, `permissions.request`, `permissions.openS
 ## Local reminders
 
 Schema 11 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. iOS is experimental and untested. See [setup and adoption](https://getvalence.pages.dev/docs/guides/local-notifications/).
+
+Development startup logs `dev: serving upstream <origin>` and says OTA checks, trials, ready
+commits and `bundle.applyUpdate` are disabled. Each skipped ready, signed reload, update check
+or apply call also logs a `dev:` diagnostic. A successful call in this mode does not prove an
+OTA transition. Restart without `VALENCE_DEV_URL` for signed offline and rollback validation.

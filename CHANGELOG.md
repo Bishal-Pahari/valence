@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased: development mode identifies skipped OTA operations
+
+Debug hosts now log the upstream origin and disabled OTA behavior at startup. Calls to ready,
+signed reload, update checks and applyUpdate log their development bypass rather than appearing
+silent. Restart without VALENCE_DEV_URL to validate signed offline starts and rollback. No
+schema, package version or host setup changes are required.
+
 ## Unreleased: a published plugin installs without editing it
 
 - **A `plugins` entry can be `{path, since}`,** stamping each of a fragment's methods and events with

@@ -78,8 +78,9 @@ class ValenceApp extends StatefulWidget {
 class _ValenceAppState extends State<ValenceApp>
     with WidgetsBindingObserver
     implements ValenceHostView {
-  static const _devMode =
-      kDebugMode && String.fromEnvironment('VALENCE_DEV_URL') != '';
+  static const _devUrl =
+      kDebugMode ? String.fromEnvironment('VALENCE_DEV_URL') : '';
+  static const _devMode = kDebugMode && _devUrl != '';
 
   WebViewController? _controller;
   Object? _error;
@@ -173,7 +174,13 @@ class _ValenceAppState extends State<ValenceApp>
       _valence.bound(server, manifest);
       await _valence.prepareRestoration(manifest.seq);
       _origin = server.origin;
-      _log('serving bundle ${manifest.seq} on ${server.origin}');
+      if (_devMode) {
+        _log('dev: serving upstream ${Uri.parse(_devUrl).origin} on ${server.origin}; '
+            'OTA checks, trials, ready commits and bundle.applyUpdate are disabled '
+            '(signed schema context ${manifest.seq})');
+      } else {
+        _log('serving bundle ${manifest.seq} on ${server.origin}');
+      }
 
       final controller = WebViewController();
       await _setTextZoom(controller);
@@ -393,7 +400,10 @@ class _ValenceAppState extends State<ValenceApp>
 
   @override
   Future<void> handleReady() async {
-    if (_devMode) return;
+    if (_devMode) {
+      _log('dev: handleReady skipped; app.ready does not commit a trial');
+      return;
+    }
     final state = _valence.state;
     final trial = state.trial;
     // It commits only if app.ready comes from the page that is serving the trial. A ready() from a
@@ -434,7 +444,10 @@ class _ValenceAppState extends State<ValenceApp>
 
   @override
   Future<void> reloadPage() async {
-    if (_devMode) return;
+    if (_devMode) {
+      _log('dev: reloadPage skipped; signed bundle reload is disabled');
+      return;
+    }
     // Step 4 only. `applyUpdate` has already promoted the trial and set `serving`, so re-running the
     // UI-start transitions would make step 2's crash check true by construction and spend a strike on the
     // bundle this reload is about to show (§2.4).
@@ -608,7 +621,10 @@ class _ValenceAppState extends State<ValenceApp>
   }
 
   Future<void> _checkForUpdate() async {
-    if (_devMode) return;
+    if (_devMode) {
+      _log('dev: update check skipped; OTA discovery is disabled');
+      return;
+    }
     try {
       await _valence.updater.checkForUpdate();
     } on Object catch (e) {

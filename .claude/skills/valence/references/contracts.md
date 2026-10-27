@@ -421,6 +421,13 @@ Dev pages cannot consume, commit or fail OTA trials; automatic OTA checks and ap
 are disabled. A verified current or built-in bundle above the floor supplies the schema context.
 Sync remains available. Use a separate development app id to isolate local data and accounts.
 
+Development startup logs the upstream origin and explicitly says OTA checks, trials, ready commits
+and `bundle.applyUpdate` are disabled. It must not label the development page as a served signed
+bundle; the verified bundle supplies schema context only. Each bypassed `handleReady`, `reloadPage`,
+update check and `applyUpdate` logs a `dev:` line naming the skipped operation. A resolved bridge
+call in this mode is not evidence of trial commit or promotion. Restart without the define to test
+signed offline starts and rollback. Diagnostics contain the origin only, never the nonce or tokens.
+
 `valence dev --web-dir web --port 5173` runs the local package's `dev` script with
 `--host 0.0.0.0 --port 5173 --strictPort` and prints the matching debug Flutter command.
 `--device-host` changes the printed emulator/LAN address. Package scripts are trusted local
