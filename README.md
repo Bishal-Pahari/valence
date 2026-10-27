@@ -260,3 +260,5 @@ Development startup logs `dev: serving upstream <origin>` and says OTA checks, t
 commits and `bundle.applyUpdate` are disabled. Each skipped ready, signed reload, update check
 or apply call also logs a `dev:` diagnostic. A successful call in this mode does not prove an
 OTA transition. Restart without `VALENCE_DEV_URL` for signed offline and rollback validation.
+
+Sync outcomes are an open string set: `ok`, `busy`, `offline`, `unauthorized`, `failed`. A non-200 or invalid protocol response reports `failed`, including a 401 sent to a request without a bearer token. Only a bearer-bearing 401 expires authentication. Partial changes remain applied, queued writes remain available for retry, and incomplete runs never advance the last successful unscoped timestamp. Treat every non-`ok` outcome as incomplete, even when `changed` is positive. See contracts section 5.6.

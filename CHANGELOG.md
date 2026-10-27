@@ -46,6 +46,15 @@ schema, package version or host setup changes are required.
 - A matching completion marker and extracted seed now skip the unchanged import on later
   launches. Upgrade the Flutter runtime and ship a host build; no schema or codegen change.
 
+## Unreleased: failed syncs report failure
+
+- Server and protocol failures now return `SyncResult.reason: "failed"`, including
+  anonymous 401, HTTP 403/500 and invalid response bodies. A token-bearing 401 still
+  reports `unauthorized`. Partial changes remain applied and unacknowledged writes
+  stay queued; an incomplete run never advances the last successful sync timestamp.
+  No schema bump is needed: the reason field is an open string set. Freshness UI
+  should treat every non-`ok` reason as incomplete.
+
 ## Unreleased: a published plugin installs without editing it
 
 - **A `plugins` entry can be `{path, since}`,** stamping each of a fragment's methods and events with
