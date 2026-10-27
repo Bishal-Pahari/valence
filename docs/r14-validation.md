@@ -1,4 +1,40 @@
-# R14 validation - 2026-10-22
+# R14 validation - 2026-10-27 refresh
+
+## Current refresh
+
+Merged code `packages` e879260366282c9f504057423d54f682dcb10c81 and site
+`packages` f59fbc1568c895d4cd35d385733175397beeef6a into `codex/r14`
+(merge commits 42c048d and fa5e816). Preserve schema 14/share.image since 14
+and upstream auth.account since 13. Keep the real schema-1 store baseline;
+integrate the earlier reserved surfaces before distributing this host.
+
+Resolved source conflicts by retaining account and image-sharing declarations,
+regenerated both bridge outputs, synchronized the example's vendored CLI, and
+rebuilt the signed example bundle (seq 1793062168, two files). The stale vendored
+CLI would otherwise regenerate a custom handler instead of the sharing built-in.
+Package versions remain unchanged.
+
+Fresh gates: root 67 tests, zero skipped (generated Dart and TypeScript exercised);
+runtime 412 tests; example 17 tests; bridge 21 tests; clean fatal-info Dart
+analysis; strict/verbatim bridge and generated TypeScript; bridge build/pack dry
+run; clean example codegen; signed bundle verification; zero-warning pub dry run;
+29-page site build with SEO/link checks; debug APK built and its embedded manifest
+matched the signed source.
+
+Independent review found no R14 defect and separately ran 13 sharing tests,
+one generated-dispatch/platform-marshalling test, one compatibility/codegen test,
+codegen freshness and signature/file verification. Inherited risk: upstream's
+account switch can persist a token before its identity on a secure-write failure.
+Merge R7 first and retain its serialized fail-closed account writes during integration.
+
+Both full app findings and newest reports were read read-only: Kundalini iteration
+11 and app-a iteration 10. Preserve Kundalini's custom since-3 sharing shape.
+App-a F-32 still reproduces in its supplied snapshot pair; this branch's compiling
+generated bridge does not prove that the harness snapshots were replaced.
+No new emulator check; the Android evidence below is historical. iOS remains
+experimental and untested.
+
+## Historical validation - 2026-10-22
 
 In plain terms: the page can share a small PNG/JPEG it renders, or an image already
 in its signed bundle, with a caption. The host validates the input and opens native
