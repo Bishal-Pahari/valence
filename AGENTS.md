@@ -55,7 +55,7 @@ One version for everything: `create-valence`, `@getvalence/bridge` and the `vale
 The three are published separately and in this order, because the later ones depend on the earlier:
 
 ```
-cd packages/bridge && npm run build && npm publish --access public   # @getvalence/bridge
+cd packages/bridge && npm publish --access public                    # @getvalence/bridge (prepack builds dist/)
 cd packages/valence && flutter pub publish                           # valence
 npm publish --otp=<code>                                             # create-valence
 ```

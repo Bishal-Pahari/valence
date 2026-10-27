@@ -164,6 +164,30 @@ test('the runtime version the wizard declares matches the two packages in this r
   assert.equal(pubspec.match(/^version: (.+)$/m)[1].trim(), declared, 'packages/valence');
 });
 
+test('packing the bridge rebuilds dist, so a tarball can never ship stale compiled types', () => {
+  // K F-52: packages/bridge ships `files: ["dist"]`, and dist/ is gitignored build output. From
+  // 2026-10-17 to 2026-10-27 nobody ran `npm run build` there, so every `npm pack` — the release
+  // recipe's and the test harness's — tarballed a ten-day-old dist under the current version. An app
+  // generated against the new codegen got `createBridge(METHOD_SINCE, EVENT_SINCE)` and a package
+  // declaring one parameter: a TS2554 in generated code, and silently `has(<any event>) === false`
+  // at runtime if it was suppressed. A `prepack` hook is what makes the build un-skippable; this
+  // test is what stops the hook being dropped again.
+  const bridge = join(PKG, 'packages', 'bridge');
+  const dts = join(bridge, 'dist', 'index.d.ts');
+  write(dts, 'export declare const STALE: true;\n');
+  const dest = mkdtempSync(join(tmpdir(), 'mrw-pack-'));
+  execSync('npm pack --pack-destination ' + JSON.stringify(dest), { cwd: bridge, stdio: 'pipe' });
+  const version = JSON.parse(readFileSync(join(bridge, 'package.json'), 'utf8')).version;
+  // The basename, not the full path: tar reads "C:" in an absolute Windows path as a remote host.
+  execSync(`tar -xzf getvalence-bridge-${version}.tgz`, { cwd: dest, stdio: 'pipe' });
+  const packed = readFileSync(join(dest, 'package', 'dist', 'index.d.ts'), 'utf8');
+  assert.doesNotMatch(packed, /STALE/, 'npm pack shipped the stale dist it found instead of rebuilding it');
+  assert.match(packed, /export declare function createBridge/, 'packed types are not the bridge');
+  // The surface the generated bridge.g.ts actually calls, which is what F-52 was missing.
+  assert.match(packed, /eventSince/, 'packed types predate event gating');
+  assert.doesNotMatch(readFileSync(dts, 'utf8'), /STALE/, 'prepack left the working dist stale');
+});
+
 test('the npm package ships the wizard, skill and agents, and no tests', () => {
   const [{ files }] = JSON.parse(execSync('npm pack --dry-run --json', { cwd: PKG, encoding: 'utf8' }));
   const paths = files.map((f) => f.path);

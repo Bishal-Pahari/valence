@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased: the bridge tarball is built from its own source
+
+`@getvalence/bridge` ships compiled output (`dist/`), which is build output and not in git. Nothing made
+`npm pack` or `npm publish` rebuild it, so either could tarball a stale `dist/` under a current version
+number — two different APIs behind one version string. A `prepack` hook now runs the build, so the
+published package always matches the source it claims to be.
+
+If you ever saw `TS2554: Expected 1 arguments, but got 2` inside your generated `bridge.g.ts`, that was
+this: your installed bridge predated event gating while your generated file expected it. Upgrade the
+package rather than silencing the error — JavaScript drops the extra argument, which would leave `has()`
+answering `false` for every event on every host. The release recipe no longer needs a separate
+`npm run build`.
+
 ## Unreleased: task restoration
 
 Task restoration now checks the native account before loading a restored route, clears drafts on account switch/sign-out and refuses late route captures from the previous account. Refresh and first-account adoption keep the live draft.
