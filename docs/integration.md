@@ -87,9 +87,9 @@ are restored here. Source and vendored CLI remain byte-identical.
 | Generated example strict/verbatim TypeScript | Passed |
 | Source and vendored codegen --check | Fresh, no writes |
 | Built-in signature and CAS verification | Passed, seq 1793115254, two files |
-| Runtime pub publish dry run | Pending clean final commit |
+| Runtime pub publish dry run | Zero warnings from clean commit 92d704f |
 | Site build and SEO/link checks | 41 pages passed |
-| Debug/release APK, embedded manifests and dev exclusion | Pending fresh combined artifact check |
+| Debug/release APK, embedded manifests and dev exclusion | Both built; signed manifest/signature bytes match source; upstream URL, proxy, diagnostic probe and all five new dev log markers absent from all 3 release AOT libraries |
 | Both worktrees diff --check | Clean |
 
 The initial combined runtime run failed one existing JS-channel widget test because a
@@ -113,8 +113,8 @@ R21 CLI denial happens before child startup, and the process regression checks
 actual loopback/LAN binding arguments through the wizard. Plugin reservations
 remain checked across CLI and runtime; cleanup does not
 change proxy credentials/navigation/CSP. Atomic state and account transition
-protections remain intact. Improver acceptance is still required; this is not
-a substitute for improver acceptance. A separate read-only review of the combined delta
+protections remain intact. Improver acceptance remains pending.
+A separate read-only review of the combined delta
 confirmed the prior sync implementation/tests, updater, R24 reconnect paths and signed
 assets were preserved, and found no code defect.
 
