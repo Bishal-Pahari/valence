@@ -542,7 +542,7 @@ Error codes. **The set is closed:** add to it here rather than inventing one per
     - **A grown param's only gate is a sibling name, and `codegen` requires it.** A param has no `since` of its own, so the one thing a page can read is another *method or event* that arrived in the same version — `has('data.count')` for `after`. So a built-in that grows a param ships alongside a name at that version, **and the runtime records which name that is**: an app that declares `after` without declaring `data.count` is refused, because otherwise the one gate this section permits answers `false` on every host that app will ever ship, including the ones that accept the cursor, and a page following this advice never pages at all. The check is in `assertBuiltinShapes`, not `assertAdditive`, because the trap needs no store baseline — a schema can be born with the param and without the sibling.
     - **Which is also why a grown param requires the schema `version` to rise with it.** `assertAdditive` refuses a built-in that gains a param while `version` stays at the shipped number: the sibling needs a version to arrive at, and the recorded store baseline needs to see the change.
   - **A key `.` or `..` is refused by `data.put` with `E_PARAMS`.** They are the two values `encodeURIComponent` leaves untouched, so a server that maps a key into a URL path sees them resolve away as dot segments and the write lands on the collection or the root. A server that rejects the batch for it then rejects the **same** queued write on every later run, because push replays the outbox (§5.5): one bad key and nothing in that bucket syncs again, with no method the page could use to clear it. Refusing at the trust boundary is what keeps that out of the outbox; a server-side check is defence in depth, not the fix.
-- **So the bridge is not the path for bytes.** There is no blob, no file handle and no shared scratch directory, and base64 adds a third again on top. Native bytes reach the page over the loopback server's reserved `/_host/` prefix (§3). Bytes going the other way — an image to share, a file to upload — are **regenerated host-side from parameters**: the page sends what to draw, or a key the host already holds, and the host produces the bytes. There is deliberately no inbound HTTP path. The server is GET and HEAD only (§3), the nonce is checked by `bridgeDispatch` and never on HTTP, and the port is not a secret — so a `PUT /_host/…` would let any app on the device write into app-private storage unauthenticated.
+- **Large byte payloads stay outside the bridge.** The bounded exception is `share.image` (section 4.7): at most 128 KiB of inline PNG/JPEG bytes or an active signed bundle image key. There is no blob, no file handle and no shared scratch directory, and base64 adds a third again on top. Native bytes reach the page over the loopback server's reserved `/_host/` prefix (§3). Outside that bounded exception, bytes going the other way — an image to share, a file to upload — are **regenerated host-side from parameters**: the page sends what to draw, or a key the host already holds, and the host produces the bytes. There is deliberately no inbound HTTP path. The server is GET and HEAD only (§3), the nonce is checked by `bridgeDispatch` and never on HTTP, and the port is not a secret — so a `PUT /_host/…` would let any app on the device write into app-private storage unauthenticated.
 - **A method that does take bytes validates in this order,** because the page is untrusted and "a share method" is otherwise a way to write attacker-chosen bytes to disk under an attacker-chosen name: cap the *encoded* length before decoding; decode; check the magic bytes against the type the method claims; require the file name to be a plain leaf matching an explicit pattern; write into a scratch directory the host wipes before each use.
 
 **The host is a trust boundary.**
@@ -1080,6 +1080,50 @@ The built-in `open.external` delegates through this same registry to `ValenceOpe
 which calls the existing scheme-restricted runtime method. Applications cannot replace it.
 Its wire shape and `since` do not change. Android is tested; iOS is experimental and untested.
 
+### 4.7 Sharing an image (R14, schema 14)
+
+`share.image` is `since: 14`, with optional string params `bytes`, `path`, `fileName`,
+`caption`, returning a string. Exactly one of `bytes` (canonical standard padded base64,
+no data URL) or `path` (relative POSIX key in the **active verified manifest**) is required.
+Inline bytes are capped at 128 KiB decoded; encoded length is checked before decoding.
+The entire JSON envelope still obeys §4.2's 256 KiB cap. A bundle image is capped at 5 MiB,
+including the actual bounded CAS read, and its size and SHA-256 are checked again before use.
+The page's path is never joined to a directory: the host looks up the manifest entry and
+uses only its lowercase 64-character hash. Missing, unsafe, reserved and off-bundle paths
+are `E_DENIED`; missing or corrupt CAS data is `E_INTERNAL` without exposing paths.
+
+PNG signature or JPEG SOI magic is required; SVG and other formats are refused with
+`E_PARAMS`. This identifies the format, not image validity: the native recipient decodes it.
+`fileName`, if present, must match `^[A-Za-z0-9][A-Za-z0-9_-]{0,79}\.(png|jpg|jpeg)$`
+and its extension must match the detected format. Otherwise the host supplies `image.png`
+or `image.jpg`. Caption is at most 4096 UTF-8 bytes; no caller-controlled MIME or native path.
+Bad argument combinations, base64 and names return `E_PARAMS`; size violations return
+`E_TOO_LARGE`. Concurrent sharing is refused with `E_DENIED`, and the guard resets on errors.
+
+The package uses `share_plus` to open the Android share sheet (`ACTION_SEND`, temporary
+content URI permission), sharing a **copy** rather than the CAS file. The host wipes its
+fixed `valence-share` scratch child before each valid use, without touching the cache root
+or following a scratch-directory symlink. The plugin may retain its own temporary
+copy in the app cache until the OS or plugin evicts it; it must not contain credentials. Empty captions
+are omitted. The receiving app may ignore the caption. The string result is `selected`
+(target chosen, **not proof of delivery**), `dismissed`, or `unavailable` (no reliable outcome).
+Do not retry `unavailable` automatically. Native failures return a generic `E_INTERNAL`.
+The iOS activity-controller path uses a host-owned popover anchor and remains experimental
+and untested. No storage permission is needed and no native code arrives in an OTA.
+
+Earlier apps used `share.image` as a custom method. A declaration with `since < 14` keeps
+its custom signature and handler, even after a schema version bump. Never rewrite a shipped
+method to adopt the new signature: keep it or use a separate app-specific method name.
+Only `since >= 14` selects and enforces the new package built-in.
+
+The regression matrix for this capability is: runtime tests for both byte caps,
+canonical base64, format/name/caption checks, exactly one source, busy/reset,
+active-manifest-only lookup, traversal/reserved/URL denial, bounded CAS reads,
+missing files and changed size/hash; generated-dispatch tests for strict params,
+nonce denial and actual native-plugin marshalling; codegen tests for frozen schema-14
+shape and preserved custom pre-14 handlers; Android example checks for inline and
+bundle sharing with a caption, without claiming delivery. iOS remains untested.
+
 ## 5. Data layer
 
 ### 5.1 SQLite schema (host, sqflite)
@@ -1222,7 +1266,7 @@ Ship at least **two** of these in the host before the first store submission:
 | offline-first cold start | — | none; the built-in bundle and the seed are it |
 | local notifications driven by synced data | `flutter_local_notifications` + `connectivity_plus`, resolved **together** (see §6.1 and the SKILL.md baseline) | requesting `POST_NOTIFICATIONS` at runtime, `RECEIVE_BOOT_COMPLETED` and the plugin's three receivers, core library desugaring, a notification channel created at init, and the timezone setup in §6.1 |
 | a home-screen widget fed by a snapshot (§5.6) | `home_widget` **0.10.0** — `^0.8.x` fails the Android build inside the plugin's own Kotlin (`Cannot inline bytecode built with JVM target 11 into bytecode that is being built with JVM target 1.8`) | an `AppWidgetProvider`, a layout, an `appwidget-provider` XML and a manifest receiver on Android; a widget extension and an App Group on iOS (see §6.2) |
-| native share and haptics | `share_plus`, plus Flutter's own `HapticFeedback` | none for text; an image is **not** sent across the bridge (§4.2) — the page sends what to draw and the host renders it |
+| native share and haptics | `share_plus` inside `valence`, plus Flutter's own `HapticFeedback` | schema-14 `share.image` accepts bounded inline PNG/JPEG bytes or an active signed bundle image, with a caption; no storage permission. See section 4.7 |
 | biometric lock | `local_auth` | `MainActivity` must extend **`FlutterFragmentActivity`**, not `FlutterActivity`, or every `authenticate()` throws `PlatformException(no_fragment_activity)` |
 
 **Versions live in SKILL.md §Stack baseline, with their dates and their sources** — that is the only table a docs-scout maintains, and the only one that can say how stale it is. The one pin named here is `home_widget`, because §6 is where a reader meets the package and `^0.8.x` costs two Gradle runs to diagnose.

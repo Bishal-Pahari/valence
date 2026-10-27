@@ -34,6 +34,11 @@ preference through the generated typed bridge and logs its success. The alias in
 uses this repository's bridge source; an adopter uses the ordinary npm package. Stop the dev
 server and rebuild without the define for signed-bundle tests. iOS remains untested.
 
+The schema-14 example has two image-sharing buttons: one sends small inline PNG
+bytes and the other names `share.png` in the signed bundle. Both include a caption.
+The result reports target selection, dismissal or an unavailable outcome; no
+delivery is claimed. The iOS path is experimental and untested.
+
 ```sh
 flutter pub get
 flutter test              # the wiring tests

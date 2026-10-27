@@ -219,6 +219,13 @@ const BUILTINS = {
     returns: { fields: { url: 'string', path: 'string' }, nullable: true },
     call: (t) => `final r = valence.linkInitial();\n        return r == null ? null : ${t}(url: r.url, path: r.path);`,
   },
+  'share.image': {
+    // Earlier apps used this name for custom sharing; preserve their shipped handlers.
+    minSince: 14,
+    params: { bytes: 'string?', path: 'string?', fileName: 'string?', caption: 'string?' },
+    returns: 'string',
+    call: () => 'return valence.shareImage(bytes: p.bytes, path: p.path, fileName: p.fileName, caption: p.caption);',
+  },
   'http.request': {
     params: { url: 'string', method: 'string?', headers: 'json?', body: 'string?' },
     returns: { fields: { status: 'int', headers: 'json', body: 'string' } },
@@ -228,7 +235,7 @@ const BUILTINS = {
 };
 
 // Preserve app-owned notification and push shapes predating the built-ins.
-const builtinFor = (m) => (/^(notify\.|badge\.)/.test(m.name) && m.since < 11) || (m.name.startsWith('push.') && m.since < 12) ? undefined : BUILTINS[m.name];
+const builtinFor = (m) => m.since < (BUILTINS[m.name]?.minSince ?? 1) || (/^(notify\.|badge\.)/.test(m.name) && m.since < 11) || (m.name.startsWith('push.') && m.since < 12) ? undefined : BUILTINS[m.name];
 
 const SEED_SQL = `
 CREATE TABLE kv (bucket TEXT NOT NULL, schema INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, usn INTEGER NOT NULL,

@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 13;
+const hostBridgeVersion = 14;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale, this.fontScale});
@@ -563,6 +563,23 @@ final class PushPermissionParams {
   Map<String, Object?> toJson() => {'request': request};
 }
 
+final class ShareImageParams {
+  const ShareImageParams({this.bytes, this.path, this.fileName, this.caption});
+
+  factory ShareImageParams.fromJson(Object? j, [String f = 'ShareImageParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'bytes', 'path', 'fileName', 'caption'}, f);
+    return ShareImageParams(bytes: m['bytes'] == null ? null : decodeString(m['bytes'], '$f.bytes'), path: m['path'] == null ? null : decodeString(m['path'], '$f.path'), fileName: m['fileName'] == null ? null : decodeString(m['fileName'], '$f.fileName'), caption: m['caption'] == null ? null : decodeString(m['caption'], '$f.caption'));
+  }
+
+  final String? bytes;
+  final String? path;
+  final String? fileName;
+  final String? caption;
+
+  Map<String, Object?> toJson() => {'bytes': bytes, 'path': path, 'fileName': fileName, 'caption': caption};
+}
+
 abstract interface class BridgeHandlers {
   Future<void> appReady();
   Future<AppInfo> appInfo();
@@ -603,6 +620,7 @@ abstract interface class BridgeHandlers {
   Future<String?> pushToken();
   Future<String> pushPermission(PushPermissionParams p);
   Future<PushMessage?> pushInitial();
+  Future<String> shareImage(ShareImageParams p);
   Future<void> hapticsTap();
 }
 
@@ -686,6 +704,8 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<String> pushPermission(PushPermissionParams p) async => throw const BridgeError('E_UNSUPPORTED', 'push.permission is not implemented');
   @override
   Future<PushMessage?> pushInitial() async => throw const BridgeError('E_UNSUPPORTED', 'push.initial is not implemented');
+  @override
+  Future<String> shareImage(ShareImageParams p) async => throw const BridgeError('E_UNSUPPORTED', 'share.image is not implemented');
   @override
   Future<void> hapticsTap() async => throw const BridgeError('E_UNSUPPORTED', 'haptics.tap is not implemented');
 }
@@ -839,6 +859,9 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.pushInitial();
         return replyOk(id, r?.toJson());
+      case 'share.image':
+        final r = await h.shareImage(ShareImageParams.fromJson(p, 'p'));
+        return replyOk(id, r);
       case 'haptics.tap':
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         await h.hapticsTap();
@@ -1099,6 +1122,11 @@ abstract class ValenceBuiltins {
   Future<PushMessage?> pushInitial() async {
     final m = await valence.pushInitial();
     return m == null ? null : PushMessage(id: m.id, data: m.data, title: m.title, body: m.body, image: m.toJson()['image'] as String?);
+  }
+
+  /// `share.image`, from the package.
+  Future<String> shareImage(ShareImageParams p) async {
+    return valence.shareImage(bytes: p.bytes, path: p.path, fileName: p.fileName, caption: p.caption);
   }
 
   /// `haptics.tap`, from the package.

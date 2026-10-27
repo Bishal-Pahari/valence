@@ -12,6 +12,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'config.dart';
 import 'appearance.dart';
+
+import 'image_share.dart';
 import 'log.dart';
 import 'links.dart';
 import 'manifest.dart';
@@ -45,18 +47,30 @@ export 'manifest.dart'
         isReservedBundlePath,
         isSafeBundlePath;
 export 'native_http.dart' show ValenceHttp, ValenceHttpResponse;
-export 'permissions.dart' show ValencePermissions, ValencePermissionBackend, valencePermissionKinds;
+export 'permissions.dart'
+    show ValencePermissions, ValencePermissionBackend, valencePermissionKinds;
 
-export 'notifications.dart' show ValenceNotifications, ValenceNotificationPlatform;
+export 'notifications.dart'
+    show ValenceNotifications, ValenceNotificationPlatform;
 
 export 'push.dart' show ValencePush, ValencePushMessage, ValencePushTransport;
-export 'secure.dart' show ValenceSecure, secureAuthTokenKey, secureAuthAccountKey;
-export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestPath;
+export 'secure.dart'
+    show ValenceSecure, secureAuthTokenKey, secureAuthAccountKey;
+export 'server.dart'
+    show ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
 export 'store.dart'
-    show ValenceOutboxOp, ValenceRow, ValenceStore, defaultListLimit, isDatabaseLocked, maxListLimit;
-export 'sync.dart' show ValenceSync, ValenceSyncReason, ValenceSyncResult, ValenceSyncStatus;
-export 'updater.dart' show ValenceBundleReason, ValenceBundleStatus, ValenceUpdater;
+    show
+        ValenceOutboxOp,
+        ValenceRow,
+        ValenceStore,
+        defaultListLimit,
+        isDatabaseLocked,
+        maxListLimit;
+export 'sync.dart'
+    show ValenceSync, ValenceSyncReason, ValenceSyncResult, ValenceSyncStatus;
+export 'updater.dart'
+    show ValenceBundleReason, ValenceBundleStatus, ValenceUpdater;
 export 'wire.dart' show BridgeError, BridgeErrorCode, maxMessageBytes;
 
 /// What `app.info` reports.
@@ -182,7 +196,8 @@ final class Valence {
       // Public/offline startup must survive a missing Keystore. The snapshot cannot be trusted,
       // but the verified root page can still load without restoring anyone's route or draft.
       restoration.clear();
-      _log('restoration: account could not be checked; starting with an empty task snapshot');
+      _log(
+          'restoration: account could not be checked; starting with an empty task snapshot');
     }
     restoration.activate(seq);
   }
@@ -217,7 +232,6 @@ final class Valence {
     ValencePush? push,
     DatabaseFactory? databaseFactory,
     ValencePermissionBackend? permissionBackend,
-
     ValenceNotificationPlatform? notificationPlatform,
   }) async {
     // `open` is awaited in `main()` **before** `runApp`, and `runApp` is what would otherwise create the
@@ -239,7 +253,8 @@ final class Valence {
     // dataExtractionRules/fullBackupContent. See the package README; a plugin would be the upgrade path.
 
     // The database lives *outside* valence/, because it holds user data and should be backed up.
-    final store = await _openStore(config, support, documentsDir, log, databaseFactory);
+    final store =
+        await _openStore(config, support, documentsDir, log, databaseFactory);
     if (!store.isWal) {
       log('store: journal_mode is "${store.journalMode}", not wal; the concurrency the data layer '
           'assumes is not available on this filesystem');
@@ -253,7 +268,9 @@ final class Valence {
     // that already had one.
     final sync = ValenceSync(
       store: store,
-      config: config.authToken == null ? config.copyWith(authToken: keystore.authToken) : config,
+      config: config.authToken == null
+          ? config.copyWith(authToken: keystore.authToken)
+          : config,
       client: client,
       log: log,
     );
@@ -282,16 +299,19 @@ final class Valence {
       log: log,
     );
     valence.links = links;
-    links.onOpened = (link) => valence.emit(eventScript('link.opened', {'url': link.url, 'path': link.path}));
+    links.onOpened = (link) => valence
+        .emit(eventScript('link.opened', {'url': link.url, 'path': link.path}));
     // The widget attaches later, so route the urgent-update callback through the runtime.
     updater.onUpdateReady = (seq) => valence.onUpdateReady?.call(seq);
     // §4.4: a rejected token is the page's problem to fix, so it has to reach the page. Buffered like
     // every other event, which matters here because a cold start's first sync beats the entry page.
-    sync.onUnauthorized = () => valence.emit(eventScript('auth.expired', const <String, Object?>{}));
+    sync.onUnauthorized = () =>
+        valence.emit(eventScript('auth.expired', const <String, Object?>{}));
     valence.permissions = ValencePermissions(
       kinds: config.permissionKinds,
       isForeground: () =>
-          valence._view != null && WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed,
+          valence._view != null &&
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed,
       backend: permissionBackend,
       log: log,
     );
@@ -378,11 +398,16 @@ final class Valence {
   final _notificationEvents = <String>[];
 
   /// Store-build opt-in. OTA configuration cannot enable native notification handling.
-  ValenceNotifications get notifications => _notifications ??
-      (throw const BridgeError(BridgeErrorCode.unsupported, 'local notifications are disabled in this host'));
+  ValenceNotifications get notifications =>
+      _notifications ??
+      (throw const BridgeError(BridgeErrorCode.unsupported,
+          'local notifications are disabled in this host'));
 
   void _notificationEmit(String script) {
-    if (_view != null) { emit(script); return; }
+    if (_view != null) {
+      emit(script);
+      return;
+    }
     if (_notificationEvents.length == 16) _notificationEvents.removeAt(0);
     _notificationEvents.add(script);
   }
@@ -401,15 +426,21 @@ final class Valence {
   void attach(ValenceHostView view, {FlutterView? flutterView}) {
     _view = view;
     _flutterView = flutterView;
-    for (final script in _notificationEvents) { view.runScript(script); }
+    for (final script in _notificationEvents) {
+      view.runScript(script);
+    }
     _notificationEvents.clear();
   }
 
   FlutterView? _flutterView;
 
   double get _fontScale {
-    final view = _flutterView ?? WidgetsBinding.instance.platformDispatcher.implicitView;
-    return view == null ? 1 : ValenceAppearance.fromMediaQuery(MediaQueryData.fromView(view)).fontScale;
+    final view =
+        _flutterView ?? WidgetsBinding.instance.platformDispatcher.implicitView;
+    return view == null
+        ? 1
+        : ValenceAppearance.fromMediaQuery(MediaQueryData.fromView(view))
+            .fontScale;
   }
 
   /// Detaches only the view being disposed, so it cannot authorize permission prompts.
@@ -425,7 +456,8 @@ final class Valence {
     // The server can delete a rotted CAS file and answer 500, but it cannot re-fetch one: §2.3 step 1
     // stops on `pointer.seq <= current`, so a bundle that is already current never reaches step 6. The
     // updater has to be told where to look (§2.4, "CAS integrity is re-checked lazily").
-    updater.repairFrom = () => (manifest: manifest, corrupt: server.corruptHashes);
+    updater.repairFrom =
+        () => (manifest: manifest, corrupt: server.corruptHashes);
   }
 
   /// §5.2: imports the bundled seed on first launch **and after a host upgrade**, not on every launch.
@@ -443,25 +475,30 @@ final class Valence {
     try {
       asset = await rootBundle.load(config.seedAsset);
     } on Object catch (e) {
-      _log('seed: no bundled seed at ${config.seedAsset} ($e); the app starts with an empty store');
+      _log(
+          'seed: no bundled seed at ${config.seedAsset} ($e); the app starts with an empty store');
       return;
     }
     // The host build plus the asset length: the build alone misses a seed changed by an OTA-era rebuild
     // at the same version, and the length alone misses a same-size replacement across an upgrade.
     final stamp = '$hostBuild.${asset.lengthInBytes}';
-    final done = await store.hostPrefGet(_seedStamp) == stamp && seedFile.existsSync();
+    final done =
+        await store.hostPrefGet(_seedStamp) == stamp && seedFile.existsSync();
     if (!done) {
       try {
         await seedFile.writeAsBytes(asset.buffer.asUint8List(), flush: true);
       } on Object catch (e) {
-        _log('seed: could not write $seedPath ($e); the app starts with an empty store');
+        _log(
+            'seed: could not write $seedPath ($e); the app starts with an empty store');
         return;
       }
     }
     try {
-      final counts = await store.importSeed(seedPath, config.dataSchemas, additionalSchemas: {
+      final counts = await store
+          .importSeed(seedPath, config.dataSchemas, additionalSchemas: {
         for (final e in config.seedSchemas.entries)
-          if (config.dataSchemas.containsKey(e.key) && !config.writableBuckets.contains(e.key))
+          if (config.dataSchemas.containsKey(e.key) &&
+              !config.writableBuckets.contains(e.key))
             e.key: e.value,
       });
       final moved = counts.values.fold<int>(0, (a, b) => a + b);
@@ -497,7 +534,8 @@ final class Valence {
   bool _online = true;
 
   /// `app.state`. The current values of the `app.lifecycle` and `app.online` events (§4.6).
-  ValenceAppState appState() => ValenceAppState(lifecycle: _lifecycle, online: _online);
+  ValenceAppState appState() =>
+      ValenceAppState(lifecycle: _lifecycle, online: _online);
 
   /// Records a lifecycle transition and emits `app.lifecycle` if it is a change. Called by [ValenceApp].
   void noteLifecycle(ValenceLifecycle lifecycle) {
@@ -566,7 +604,8 @@ final class Valence {
   }
 
   /// `data.get`.
-  Future<Object?> dataGet(String bucket, String key) => store.get(bucket, schemaFor(bucket), key);
+  Future<Object?> dataGet(String bucket, String key) =>
+      store.get(bucket, schemaFor(bucket), key);
 
   /// `data.getMany`, using the active bundle's schema just like [dataGet].
   Future<List<ValenceRow>> dataGetMany(String bucket, List<String> keys) =>
@@ -578,8 +617,10 @@ final class Valence {
   /// `data.list`. The host clamps `limit`, rather than trusting the page (§4.2).
   ///
   /// [after] resumes strictly after that key, which is how a page reads a bucket larger than the clamp.
-  Future<List<ValenceRow>> dataList(String bucket, {String? prefix, int? limit, String? after}) =>
-      store.list(bucket, schemaFor(bucket), prefix: prefix, limit: limit, after: after);
+  Future<List<ValenceRow>> dataList(String bucket,
+          {String? prefix, int? limit, String? after}) =>
+      store.list(bucket, schemaFor(bucket),
+          prefix: prefix, limit: limit, after: after);
 
   /// `data.count`. Live rows only, resolved against the same schema as [dataList].
   Future<int> dataCount(String bucket, {String? prefix}) =>
@@ -600,7 +641,8 @@ final class Valence {
     // every later run, because push is replayed from the outbox: one bad key and no write in that bucket
     // ever reaches the server again, with no method the page could use to clear it (§5.5).
     if (key == '.' || key == '..') {
-      throw BridgeError(BridgeErrorCode.params, '"$key" is not a usable key; a server cannot address it');
+      throw BridgeError(BridgeErrorCode.params,
+          '"$key" is not a usable key; a server cannot address it');
     }
     await store.put(bucket, key, value, opId: ValenceState.newInstallId());
     // Fire and forget: a local write is durable the moment the transaction commits, and the page must not
@@ -641,15 +683,21 @@ final class Valence {
     try {
       final moved = <String>[];
       final schemas = _manifest?.requiresData ?? config.dataSchemas;
-      for (final bucket in {...result.buckets, ...schemas.keys, ...config.writableBuckets}) {
-        final schema = config.writableBuckets.contains(bucket) ? 1 : schemas[bucket] ?? 1;
+      for (final bucket in {
+        ...result.buckets,
+        ...schemas.keys,
+        ...config.writableBuckets
+      }) {
+        final schema =
+            config.writableBuckets.contains(bucket) ? 1 : schemas[bucket] ?? 1;
         final usn = await store.maxUsn(bucket, schema);
         if (_lastSeenUsn[bucket] != usn) {
           _lastSeenUsn[bucket] = usn;
           moved.add(bucket);
         }
       }
-      if (moved.isNotEmpty) emit(eventScript('sync.changed', {'buckets': moved}));
+      if (moved.isNotEmpty)
+        emit(eventScript('sync.changed', {'buckets': moved}));
       // Every completed run, `changed: 0`, `busy` and `unauthorized` included — that is the whole point:
       // "nothing moved" is the answer a freshness line needs and the one `sync.changed` never sends.
       emit(eventScript('sync.done', {'result': result.toJson()}));
@@ -689,14 +737,18 @@ final class Valence {
   /// with one recorded, is an account switch: it refuses to run over queued writes unless
   /// [discardPending] is set, and then clears every writable bucket before the new token is stored.
   /// An app that never passes [account] keeps the 0.3 behaviour — the token changes and no row moves.
-  Future<void> authSetToken(String? token, {String? account, bool discardPending = false}) {
-    final result = _authTail.then((_) => _setAuthToken(token, account: account, discardPending: discardPending));
+  Future<void> authSetToken(String? token,
+      {String? account, bool discardPending = false}) {
+    final result = _authTail.then((_) =>
+        _setAuthToken(token, account: account, discardPending: discardPending));
     // A refused switch must not poison the queue for the user's next attempt.
-    _authTail = result.then<void>((_) {}, onError: (Object error, StackTrace stack) {});
+    _authTail =
+        result.then<void>((_) {}, onError: (Object error, StackTrace stack) {});
     return result;
   }
 
-  Future<void> _setAuthToken(String? token, {String? account, required bool discardPending}) async {
+  Future<void> _setAuthToken(String? token,
+      {String? account, required bool discardPending}) async {
     final next = (account == null || account.isEmpty) ? null : account;
     // `null` only. An empty string clears the token exactly as it did before R13 — a refresh loop that
     // yields '' on failure, or an app's uninitialised state field, must not be read as "this is a
@@ -707,13 +759,18 @@ final class Valence {
     // app upgrading to this shape with its current user signed in, and wiping there would destroy the
     // data of the user holding the phone. Signing out counts only once an id is recorded, so no app gets
     // a wipe it did not ask for by upgrading its host.
-    final switching = recorded != null && (signOut || (next != null && next != recorded));
+    final switching =
+        recorded != null && (signOut || (next != null && next != recorded));
     if (!switching) {
       await _storeToken(token, signOut: signOut, next: next);
-      restoration.bindAccount(signOut ? null : next ?? recorded, adopt: recorded == null && !signOut);
+      restoration.bindAccount(signOut ? null : next ?? recorded,
+          adopt: recorded == null && !signOut);
       return;
     }
-    await _switchAccount(token, from: recorded, to: signOut ? null : next, discardPending: discardPending);
+    await _switchAccount(token,
+        from: recorded,
+        to: signOut ? null : next,
+        discardPending: discardPending);
   }
 
   /// Writes the token, and the recorded id when the call named one.
@@ -722,7 +779,8 @@ final class Valence {
   /// second wipe of data that is already gone. On a switch the new id replaces it; on a refresh it is
   /// unchanged; an app that passes no id at all leaves whatever was recorded alone, which is what makes
   /// a Dart-side refresh loop calling authSetToken(newToken) harmless.
-  Future<void> _storeToken(String? token, {required bool signOut, required String? next}) async {
+  Future<void> _storeToken(String? token,
+      {required bool signOut, required String? next}) async {
     await secure.setAuthToken(token);
     if (signOut) {
       await secure.setAuthAccount(null);
@@ -755,16 +813,26 @@ final class Valence {
       );
     }
     try {
-      final (rows, ops) = await store.clearWritable(config.writableBuckets, discardPending: discardPending);
-      _log('auth: account switch from "$from" to ${to == null ? 'signed out' : '"$to"'} cleared $rows '
+      final (rows, ops) = await store.clearWritable(config.writableBuckets,
+          discardPending: discardPending);
+      _log(
+          'auth: account switch from "$from" to ${to == null ? 'signed out' : '"$to"'} cleared $rows '
           'row(s) and $ops queued write(s) from ${config.writableBuckets.length} writable bucket(s)');
       // A writable bucket the app has since dropped from its config keeps its rows here, because the
       // clear can only name the buckets it is told about. Say so: those rows belong to the account that
       // just left, and the page can still read them.
-      final known = {...config.writableBuckets, ...config.dataSchemas.keys, ...?_manifest?.requiresData.keys};
-      final orphans = [for (final b in (await store.allPairs()).keys) if (!known.contains(b)) b];
+      final known = {
+        ...config.writableBuckets,
+        ...config.dataSchemas.keys,
+        ...?_manifest?.requiresData.keys
+      };
+      final orphans = [
+        for (final b in (await store.allPairs()).keys)
+          if (!known.contains(b)) b
+      ];
       if (orphans.isNotEmpty) {
-        _log('auth: ${orphans.join(', ')} hold rows and are in neither "writable" nor "data"; the switch '
+        _log(
+            'auth: ${orphans.join(', ')} hold rows and are in neither "writable" nor "data"; the switch '
             'could not clear them, so the previous account is still readable there');
       }
       // Inside the lease: a sync starting between the clear and the token write would pull the previous
@@ -786,7 +854,8 @@ final class Valence {
       _lastSeenUsn[bucket] = 0;
     }
     if (config.writableBuckets.isNotEmpty) {
-      emit(eventScript('sync.changed', {'buckets': config.writableBuckets.toList()}));
+      emit(eventScript(
+          'sync.changed', {'buckets': config.writableBuckets.toList()}));
     }
   }
 
@@ -809,26 +878,39 @@ final class Valence {
       ValenceHttp(
         origins: config.httpOrigins,
         token: config.authToken ?? secure.authToken,
-        onUnauthorized: () => emit(eventScript('auth.expired', const <String, Object?>{})),
+        onUnauthorized: () =>
+            emit(eventScript('auth.expired', const <String, Object?>{})),
       ).request(url: url, method: method, headers: headers, body: body);
+
+  late final _imageShare =
+      ValenceImageShare(manifest: () => manifest, casDir: updater.casDir);
+
+  /// `share.image`: bounded PNG/JPEG bytes or an active signed bundle path (§4.7).
+  Future<String> shareImage(
+          {String? bytes, String? path, String? fileName, String? caption}) =>
+      _imageShare.share(
+          bytes: bytes, path: path, fileName: fileName, caption: caption);
 
   /// `open.external`. Only `https:`, `mailto:` and `tel:` leave the app.
   Future<void> openExternal(String url) async {
     final uri = Uri.tryParse(url);
-    if (uri == null || !const {'https', 'mailto', 'tel'}.contains(uri.scheme.toLowerCase())) {
+    if (uri == null ||
+        !const {'https', 'mailto', 'tel'}.contains(uri.scheme.toLowerCase())) {
       throw BridgeError(
         BridgeErrorCode.denied,
         'open.external accepts https, mailto and tel only, not "$url"',
       );
     }
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      throw BridgeError(BridgeErrorCode.internal, 'nothing on this device could open $url');
+      throw BridgeError(
+          BridgeErrorCode.internal, 'nothing on this device could open $url');
     }
   }
 
   /// `bundle.applyUpdate`. A full trial promotion, then a reload (§2.4).
   Future<void> applyUpdate() async {
-    if (kDebugMode && const String.fromEnvironment('VALENCE_DEV_URL') != '') return;
+    if (kDebugMode && const String.fromEnvironment('VALENCE_DEV_URL') != '')
+      return;
     final seq = await updater.applyUpdate();
     if (seq == null) return;
     await _view?.reloadPage();
@@ -852,10 +934,12 @@ final class Valence {
   ///
   /// This is the only path from native bytes to the page: the bridge carries JSON only, capped at
   /// [maxMessageBytes] in each direction (§4.2).
-  Future<String> publishHostFile(List<int> bytes, {required String contentType}) {
+  Future<String> publishHostFile(List<int> bytes,
+      {required String contentType}) {
     final server = _server;
     if (server == null) {
-      throw BridgeError(BridgeErrorCode.internal, 'the loopback server is not bound yet');
+      throw BridgeError(
+          BridgeErrorCode.internal, 'the loopback server is not bound yet');
     }
     return server.publishHostFile(bytes, contentType: contentType);
   }
@@ -880,7 +964,8 @@ final class Valence {
     final support = supportDir ?? await getApplicationSupportDirectory();
     final ValenceStore store;
     try {
-      store = await _openStore(config, support, documentsDir, log, databaseFactory);
+      store =
+          await _openStore(config, support, documentsDir, log, databaseFactory);
     } on Object catch (e) {
       // A background run that cannot even open the store has not observed anything, and the UI isolate
       // holding the file is itself about to sync. `busy` is the honest answer and the one the page's
@@ -894,7 +979,9 @@ final class Valence {
     final keystore = secure ?? ValenceSecure(log: log);
     final sync = ValenceSync(
       store: store,
-      config: config.authToken == null ? config.copyWith(authToken: keystore.authToken) : config,
+      config: config.authToken == null
+          ? config.copyWith(authToken: keystore.authToken)
+          : config,
       client: client,
       log: log,
     );
@@ -921,7 +1008,8 @@ final class Valence {
     ValenceLogger log,
     DatabaseFactory? factory,
   ) async {
-    final path = '${support.path}${Platform.pathSeparator}${config.databaseName}';
+    final path =
+        '${support.path}${Platform.pathSeparator}${config.databaseName}';
     if (!File(path).existsSync()) {
       await _adoptLegacyDatabase(path, config.databaseName, documentsDir, log);
     }
@@ -1003,5 +1091,6 @@ final class Valence {
   }
 
   /// Reads one asset as bytes. Used for the built-in bundle and the seed.
-  static Future<Uint8List> readAsset(String key) async => (await rootBundle.load(key)).buffer.asUint8List();
+  static Future<Uint8List> readAsset(String key) async =>
+      (await rootBundle.load(key)).buffer.asUint8List();
 }

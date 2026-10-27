@@ -1,5 +1,12 @@
 # valence
 
+`Valence.shareImage` backs schema-14 `share.image`: bounded PNG/JPEG bytes or an
+active signed bundle image, plus a caption. The runtime checks paths, size, magic
+and bundle integrity before opening native sharing. Results report selection,
+dismissal or an unavailable outcome, never delivery. See
+[image sharing](https://getvalence.pages.dev/docs/guides/image-sharing/).
+iOS sharing remains experimental and untested.
+
 The Flutter host runtime for [Valence](https://getvalence.pages.dev): your web app runs inside a native
 app as a **signed over-the-air bundle**, on top of an **offline-first SQLite** store with incremental sync
 and a **typed bridge**. UI changes ship without an app-store review; the native shell is reviewed rarely.

@@ -65,6 +65,10 @@ Details and exact policy quotes are in [contracts.md §7](.claude/skills/valence
 
 ## Quick start
 
+Share a PNG or JPEG through the native sheet with schema-14 `share.image`, from
+small inline bytes or the active signed bundle, with an optional caption.
+[Image sharing and limits](docs/image-sharing.md). Older custom sharing handlers remain compatible.
+
 From your project root:
 
 ```

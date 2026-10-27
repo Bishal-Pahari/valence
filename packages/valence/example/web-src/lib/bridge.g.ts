@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 13;
+export const BRIDGE_VERSION = 14;
 
 export interface AppInfo {
   platform: string;
@@ -204,6 +204,12 @@ export interface Methods {
     request?: boolean | null;
   }; returns: string };
   'push.initial': { params: Record<string, never>; returns: PushMessage | null };
+  'share.image': { params: {
+    bytes?: string | null;
+    path?: string | null;
+    fileName?: string | null;
+    caption?: string | null;
+  }; returns: string };
   'haptics.tap': { params: Record<string, never>; returns: void };
 }
 
@@ -298,6 +304,7 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'push.token': 12,
   'push.permission': 12,
   'push.initial': 12,
+  'share.image': 14,
   'haptics.tap': 1,
 };
 

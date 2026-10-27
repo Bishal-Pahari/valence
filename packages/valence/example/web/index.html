@@ -123,6 +123,15 @@
       <pre id="push-result">Push device check blocked: needs Firebase project.</pre>
     </section>
 
+
+    <section>
+      <h2>Share an image</h2>
+      <p>Share a PNG from the signed bundle or a small inline image, with a caption.</p>
+      <button id="share-bundle">Share bundle image</button>
+      <button id="share-inline">Share inline image</button>
+      <pre id="share-result"></pre>
+    </section>
+
     </main>
     <!--
       A real app imports @getvalence/bridge through the generated web/lib/bridge.g.ts. This example talks
@@ -394,6 +403,16 @@
       void call('push.initial').then((message) => {
         if (message) document.getElementById('push-result').textContent = 'Initial tap: ' + JSON.stringify(message);
       }).catch(() => {});
+
+      for (const id of ['share-bundle', 'share-inline']) {
+        document.getElementById(id).addEventListener('click', async () => {
+          try {
+            const source = id === 'share-bundle' ? { path: 'share.png' } : { bytes: 'iVBORw0KGgoAAAANSUhEUgAAAUAAAAC0CAIAAABqhmJGAAAER0lEQVR4nO3TsY1gNxBEwYtGISlOJXcyZMn7Pg+NHU6zgAqAj5j+9fvf/4Clfo2/APhjBgyLGTAsZsCwmAHDYgYMixkwLGbAsJgBw2IGDIsZMCxmwLCYAcNiBgyLGTAsZsCwmAHDYgYMixkwLGbAsJgBw2IGDIsZMCxmwLCYAcNiBgyLGTAsZsCwmAHDYgYMixnwc/76+5+fN17dyoCfY8BNDPg5BtzEgJ9jwE0M+DkG3MSAn2PATQz4OQbcxICfY8BNDPg5BtzEgJ9jwE0M+DkG3MSAn2PATQz4OQbcxICfY8BNDPg5BtzEgJ9jwE0M+DkG3MSAn2PATQz4OQbcxICfY8BNDPg5BtzEgJ9jwE0M+DkG3MSAn2PATQz4OQbcxIDPFFx/QQIfAz5TcP0FCXwM+EzB9Rck8DHgMwXXX5DAx4DPFFx/QQIfAz5TcP0FCXwM+EzB9Rck8DHgMwXXX5DAx4DPFFx/QQIfAz5TcP0FCXwM+EzB9Uu4ISHFgM8UnI6EGxJSDPhMwelIuCEhxYDPFJyOhBsSUgz4TMHpSLghIcWAzxScjoQbElIM+EzB6Ui4ISHFgM8UnI6EGxJSDPhMwelIuCEhxYDPFJyOhBsSUgz4TMHpSLghIcWAzxScjoQbElIM+EzB6Ui4ISHFgM8UnI6EGxJSDPhMwelIuCEhxYDPFJyOhBsSUgz4TMHpSLghIcWAzxScjoQbElIM+EzB6Ui4ISHFgM8UnI6EGxJSfnTABf8uQcJVDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEj50QEDWQYMixkwLGbAsJgBw2IGDIsZMCxmwLCYAcNiBgyLGTAsZsCwmAHDYgYMixkwLGbAsJgBw2IGDIsZMCxmwLCYAcNiBgyLGTAsZsCwmAHDYgYMixkwLGbAsJgBw2IGDIv9D9t/qE4MeS1wAAAAAElFTkSuQmCC' };
+            const result = await call('share.image', { ...source, fileName: 'valence.png', caption: 'Valence image sharing' });
+            document.getElementById('share-result').textContent = result + ' (selection is not delivery)';
+          } catch (e) { document.getElementById('share-result').textContent = String(e); }
+        });
+      }
 
       (async () => {
         try {

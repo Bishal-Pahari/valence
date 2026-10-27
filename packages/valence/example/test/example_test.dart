@@ -5,6 +5,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -28,7 +29,10 @@ class _LocalHttpOverrides extends HttpOverrides {}
 
 class _Notifications extends ValenceNotificationPlatform {
   @override
-  Future<NotificationResponse?> initialize(String icon, void Function(NotificationResponse) respond) async => null;
+  Future<NotificationResponse?> initialize(
+    String icon,
+    void Function(NotificationResponse) respond,
+  ) async => null;
   @override
   Future<bool> permission({required bool request}) async => false;
 }
@@ -58,7 +62,10 @@ void main() {
 
   /// A real runtime on a temp directory, with the network mocked: the built-in handlers under test here
   /// are the generated delegations, so they have to reach the package for real.
-  Future<_Handlers> handlers({ValenceConfig? config, ValencePush? push}) async => _Handlers(
+  Future<_Handlers> handlers({
+    ValenceConfig? config,
+    ValencePush? push,
+  }) async => _Handlers(
     await Valence.open(
       // The OTA and sync hosts in the example config are .invalid, so nothing can leave the machine.
       config ?? valenceConfig,
@@ -104,30 +111,47 @@ void main() {
     expect(valenceConfig.channel, 'production');
   });
 
-  test('push is explicitly unsupported without native setup and rejects untrusted params first', () async {
-    final h = await handlers();
-    for (final method in ['push.token', 'push.permission', 'push.initial']) {
-      final result = await dispatch(h, method);
-      expect((result['e'] as Map)['code'], 'E_UNSUPPORTED');
-    }
-    for (final params in [{'request': 'yes'}, {'request': true, 'url': 'https://evil.test'}]) {
-      final result = await dispatch(h, 'push.permission', params: params);
-      expect((result['e'] as Map)['code'], 'E_PARAMS');
-    }
-    final result = await dispatch(h, 'push.token', withNonce: 'wrong');
-    expect((result['e'] as Map)['code'], 'E_DENIED');
-  });
+  test(
+    'push is explicitly unsupported without native setup and rejects untrusted params first',
+    () async {
+      final h = await handlers();
+      for (final method in ['push.token', 'push.permission', 'push.initial']) {
+        final result = await dispatch(h, method);
+        expect((result['e'] as Map)['code'], 'E_UNSUPPORTED');
+      }
+      for (final params in [
+        {'request': 'yes'},
+        {'request': true, 'url': 'https://evil.test'},
+      ]) {
+        final result = await dispatch(h, 'push.permission', params: params);
+        expect((result['e'] as Map)['code'], 'E_PARAMS');
+      }
+      final result = await dispatch(h, 'push.token', withNonce: 'wrong');
+      expect((result['e'] as Map)['code'], 'E_DENIED');
+    },
+  );
 
-  test('a bad nonce with a separator-heavy correlation id returns a bounded error script', () async {
-    final h = await handlers();
-    final raw = jsonEncode({'id': '\u2028' * 60000, 'n': 'wrong', 'm': 'push.token', 'p': {}});
-    expect(utf8.encode(raw).length, lessThan(maxMessageBytes));
-    final reply = await bridgeDispatch(h, raw, nonce: nonce);
-    expect(utf8.encode(bridgeReplyScript(reply)).length, lessThan(maxMessageBytes));
-    final result = jsonDecode(reply) as Map;
-    expect(result['id'], isNull);
-    expect((result['e'] as Map)['code'], 'E_TOO_LARGE');
-  });
+  test(
+    'a bad nonce with a separator-heavy correlation id returns a bounded error script',
+    () async {
+      final h = await handlers();
+      final raw = jsonEncode({
+        'id': '\u2028' * 60000,
+        'n': 'wrong',
+        'm': 'push.token',
+        'p': {},
+      });
+      expect(utf8.encode(raw).length, lessThan(maxMessageBytes));
+      final reply = await bridgeDispatch(h, raw, nonce: nonce);
+      expect(
+        utf8.encode(bridgeReplyScript(reply)).length,
+        lessThan(maxMessageBytes),
+      );
+      final result = jsonDecode(reply) as Map;
+      expect(result['id'], isNull);
+      expect((result['e'] as Map)['code'], 'E_TOO_LARGE');
+    },
+  );
 
   test('the app’s own method reaches the dispatcher', () async {
     final h = await handlers();
@@ -136,17 +160,23 @@ void main() {
     expect(taps, 1);
   });
 
-  test('link.initial delegates through the nonce-protected generated path', () async {
-    final h = await handlers();
-    h.valence.links.receive('valence-example://app/shelf?q=1#note');
-    final denied = await dispatch(h, 'link.initial', withNonce: 'wrong');
-    expect((denied['e']! as Map)['code'], BridgeErrorCode.denied);
-    final accepted = await dispatch(h, 'link.initial');
-    expect(accepted['v'], {'url': 'valence-example://app/shelf?q=1#note', 'path': '/shelf?q=1#note'});
-    expect((await dispatch(h, 'link.initial'))['v'], isNull);
-    h.valence.links.receive('https://unlisted.invalid/');
-    expect((await dispatch(h, 'link.initial'))['v'], isNull);
-  });
+  test(
+    'link.initial delegates through the nonce-protected generated path',
+    () async {
+      final h = await handlers();
+      h.valence.links.receive('valence-example://app/shelf?q=1#note');
+      final denied = await dispatch(h, 'link.initial', withNonce: 'wrong');
+      expect((denied['e']! as Map)['code'], BridgeErrorCode.denied);
+      final accepted = await dispatch(h, 'link.initial');
+      expect(accepted['v'], {
+        'url': 'valence-example://app/shelf?q=1#note',
+        'path': '/shelf?q=1#note',
+      });
+      expect((await dispatch(h, 'link.initial'))['v'], isNull);
+      h.valence.links.receive('https://unlisted.invalid/');
+      expect((await dispatch(h, 'link.initial'))['v'], isNull);
+    },
+  );
 
   test(
     'app.info marshals system font scale and appearance uses the generated event',
@@ -170,25 +200,107 @@ void main() {
     },
   );
 
+  test(
+    'notification built-ins reach the runtime through strict dispatch',
+    () async {
+      final h = await handlers();
+      expect((await dispatch(h, 'notify.permission'))['v'], false);
+      expect(
+        (await dispatch(
+          h,
+          'notify.schedule',
+          params: {
+            'id': 42,
+            'title': 'Demo',
+            'at': DateTime.now().millisecondsSinceEpoch + 60000,
+          },
+        ))['v'],
+        {'id': 42, 'timing': 'blocked'},
+      );
+      expect((await dispatch(h, 'notify.initial'))['v'], null);
+      final invalid = await dispatch(
+        h,
+        'notify.schedule',
+        params: {'id': 42, 'title': 'Demo', 'at': 5, 'extra': true},
+      );
+      expect((invalid['e']! as Map)['code'], BridgeErrorCode.params);
+      final denied = await dispatch(h, 'notify.permission', withNonce: 'wrong');
+      expect((denied['e']! as Map)['code'], BridgeErrorCode.denied);
+    },
+  );
 
-  test('notification built-ins reach the runtime through strict dispatch', () async {
-    final h = await handlers();
-    expect((await dispatch(h, 'notify.permission'))['v'], false);
-    expect((await dispatch(h, 'notify.schedule', params: {
-      'id': 42, 'title': 'Demo', 'at': DateTime.now().millisecondsSinceEpoch + 60000,
-    }))['v'], {'id': 42, 'timing': 'blocked'});
-    expect((await dispatch(h, 'notify.initial'))['v'], null);
-    final invalid = await dispatch(h, 'notify.schedule', params: {'id': 42, 'title': 'Demo', 'at': 5, 'extra': true});
-    expect((invalid['e']! as Map)['code'], BridgeErrorCode.params);
-    final denied = await dispatch(h, 'notify.permission', withNonce: 'wrong');
-    expect((denied['e']! as Map)['code'], BridgeErrorCode.denied);
-  });
+  test(
+    'image sharing enforces strict generated decoding, nonce and package validation',
+    () async {
+      final h = await handlers();
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      Map<Object?, Object?>? sent;
+      messenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        (_) async => support.path,
+      );
+      messenger.setMockMethodCallHandler(
+        const MethodChannel('dev.fluttercommunity.plus/share'),
+        (call) async {
+          sent = call.arguments as Map<Object?, Object?>;
+          expect(call.method, 'share');
+          return 'dev.test.target';
+        },
+      );
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          null,
+        );
+        messenger.setMockMethodCallHandler(
+          const MethodChannel('dev.fluttercommunity.plus/share'),
+          null,
+        );
+      });
+      const image =
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
+      for (final p in [
+        <String, Object?>{'bytes': 42},
+        {'bytes': image, 'mime': 'image/png'},
+      ]) {
+        final reply = await dispatch(h, 'share.image', params: p);
+        expect((reply['e'] as Map)['code'], 'E_PARAMS');
+      }
+      final badNonce = await dispatch(
+        h,
+        'share.image',
+        params: {'bytes': image},
+        withNonce: 'wrong',
+      );
+      expect((badNonce['e'] as Map)['code'], 'E_DENIED');
+      final badPath = await dispatch(
+        h,
+        'share.image',
+        params: {'path': '../secret.png'},
+      );
+      expect((badPath['e'] as Map)['code'], 'E_DENIED');
+      expect(sent, isNull);
+      final reply = await dispatch(
+        h,
+        'share.image',
+        params: {'bytes': image, 'caption': 'Example'},
+      );
+      expect(reply['ok'], isTrue, reason: '$reply');
+      expect(reply['v'], 'selected');
+      expect(sent!['mimeTypes'], ['image/png']);
+      expect(sent!['text'], 'Example');
+      final file = File((sent!['paths'] as List).single as String);
+      expect(await file.readAsBytes(), base64Decode(image));
+      expect(file.uri.pathSegments.last, 'image.png');
+    },
+  );
 
   test(
     'the built-ins are inherited from ValenceBuiltins, not written here',
     () async {
       final h = await handlers();
-    // AppHandlers registers its plugin; all adapters come from the generated base class.
+      // AppHandlers registers its plugin; all adapters come from the generated base class.
       expect(h, isA<ValenceBuiltins>());
       expect(h, isA<BridgeHandlers>());
     },
@@ -473,7 +585,11 @@ void main() {
     final status = await dispatch(h, 'bundle.status');
     final v = status['v']! as Map;
     expect(v['pending'], 77);
-    expect(v['serving'], 0, reason: 'no host widget has bound a manifest in a unit test');
+    expect(
+      v['serving'],
+      0,
+      reason: 'no host widget has bound a manifest in a unit test',
+    );
     expect(v['trial'], isNull);
     // Nothing has checked, so the honest answer is "idle" rather than a claim about freshness.
     expect(v['reason'], 'idle');
@@ -487,13 +603,22 @@ void main() {
 
   test('sync.done carries the whole SyncResult the reply would carry', () {
     // One type for the reply and the event, so a page renders a freshness line from either.
-    const result = ValenceSyncResult(['shelf'], 2, false, ValenceSyncReason.ok, 0);
+    const result = ValenceSyncResult(
+      ['shelf'],
+      2,
+      false,
+      ValenceSyncReason.ok,
+      0,
+    );
     expect(
       BridgeEvents.syncDone(result: SyncResult.fromJson(result.toJson())),
       'window.__valence&&window.__valence.e("sync.done",{"result":{"buckets":["shelf"],"changed":2,'
-          '"offline":false,"reason":"ok","pending":0}})',
+      '"offline":false,"reason":"ok","pending":0}})',
     );
-    expect(BridgeEvents.appLifecycle(state: 'background'), contains('{"state":"background"}'));
+    expect(
+      BridgeEvents.appLifecycle(state: 'background'),
+      contains('{"state":"background"}'),
+    );
     expect(BridgeEvents.appOnline(online: false), contains('{"online":false}'));
   });
 
@@ -504,20 +629,47 @@ void main() {
     );
     expect(BridgeEvents.bundleUpdateReady(seq: 42), contains('{"seq":42}'));
   });
-  test('permissions use strict generated dispatch and the store allowlist', () async {
-    final h = await handlers(config: valenceConfig.copyWith(permissionKinds: {}));
-    final denied = await dispatch(h, 'permissions.check', params: {'kind': 'camera'});
-    expect((denied['e']! as Map)['code'], BridgeErrorCode.denied);
-    final unknown = await dispatch(h, 'permissions.check', params: {'kind': 'sql'});
-    expect((unknown['e']! as Map)['code'], BridgeErrorCode.params);
-    final invalid = await dispatch(h, 'permissions.request', params: {'kind': 'camera', 'force': true});
-    expect((invalid['e']! as Map)['code'], BridgeErrorCode.params);
-    final nonce = await dispatch(h, 'permissions.request', params: {'kind': 'camera'}, withNonce: 'bad');
-    expect((nonce['e']! as Map)['code'], BridgeErrorCode.denied);
-    final inactive = await dispatch(h, 'permissions.openSettings');
-    expect((inactive['e']! as Map)['code'], BridgeErrorCode.denied);
-    expect(BridgeEvents.permissionsChanged(permissions: [const PermissionState(kind: 'camera', status: 'granted')]),
-      contains('"permissions":[{"kind":"camera","status":"granted"}]'));
-  });
-
+  test(
+    'permissions use strict generated dispatch and the store allowlist',
+    () async {
+      final h = await handlers(
+        config: valenceConfig.copyWith(permissionKinds: {}),
+      );
+      final denied = await dispatch(
+        h,
+        'permissions.check',
+        params: {'kind': 'camera'},
+      );
+      expect((denied['e']! as Map)['code'], BridgeErrorCode.denied);
+      final unknown = await dispatch(
+        h,
+        'permissions.check',
+        params: {'kind': 'sql'},
+      );
+      expect((unknown['e']! as Map)['code'], BridgeErrorCode.params);
+      final invalid = await dispatch(
+        h,
+        'permissions.request',
+        params: {'kind': 'camera', 'force': true},
+      );
+      expect((invalid['e']! as Map)['code'], BridgeErrorCode.params);
+      final nonce = await dispatch(
+        h,
+        'permissions.request',
+        params: {'kind': 'camera'},
+        withNonce: 'bad',
+      );
+      expect((nonce['e']! as Map)['code'], BridgeErrorCode.denied);
+      final inactive = await dispatch(h, 'permissions.openSettings');
+      expect((inactive['e']! as Map)['code'], BridgeErrorCode.denied);
+      expect(
+        BridgeEvents.permissionsChanged(
+          permissions: [
+            const PermissionState(kind: 'camera', status: 'granted'),
+          ],
+        ),
+        contains('"permissions":[{"kind":"camera","status":"granted"}]'),
+      );
+    },
+  );
 }

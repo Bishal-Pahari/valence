@@ -21,11 +21,14 @@ typedef ValenceDispatch = Future<String> Function(String raw, String nonce);
 ///
 /// Top-level and pure on purpose: [ValenceApp] needs a WebView platform to build at all, so the mapping
 /// and the dedupe it feeds are the half of this that a unit test can reach.
-ValenceLifecycle valenceLifecycleFor(AppLifecycleState state) => switch (state) {
+ValenceLifecycle valenceLifecycleFor(AppLifecycleState state) =>
+    switch (state) {
       AppLifecycleState.resumed => ValenceLifecycle.foreground,
       AppLifecycleState.inactive => ValenceLifecycle.inactive,
       // Android delivers hidden and then paused for one backgrounding. One transition, so one event.
-      AppLifecycleState.hidden || AppLifecycleState.paused => ValenceLifecycle.background,
+      AppLifecycleState.hidden ||
+      AppLifecycleState.paused =>
+        ValenceLifecycle.background,
       AppLifecycleState.detached => ValenceLifecycle.detached,
     };
 
@@ -34,7 +37,8 @@ ValenceLifecycle valenceLifecycleFor(AppLifecycleState state) => switch (state) 
 /// connectivity_plus reports a list, and a device on Wi-Fi and VPN at once has two entries — so a check
 /// written against `results.first` calls a working device offline whenever the VPN sorts first. This is
 /// interface state and never reachability.
-bool valenceOnline(List<ConnectivityResult> results) => results.any((r) => r != ConnectivityResult.none);
+bool valenceOnline(List<ConnectivityResult> results) =>
+    results.any((r) => r != ConnectivityResult.none);
 
 /// The host widget: the loopback server, the WebView, the navigation lock, the back gesture, the ready
 /// timer and the lifecycle triggers (contracts §2.4, §3, §4.2, §7).
@@ -71,8 +75,11 @@ class ValenceApp extends StatefulWidget {
   State<ValenceApp> createState() => _ValenceAppState();
 }
 
-class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver implements ValenceHostView {
-  static const _devMode = kDebugMode && String.fromEnvironment('VALENCE_DEV_URL') != '';
+class _ValenceAppState extends State<ValenceApp>
+    with WidgetsBindingObserver
+    implements ValenceHostView {
+  static const _devMode =
+      kDebugMode && String.fromEnvironment('VALENCE_DEV_URL') != '';
 
   WebViewController? _controller;
   Object? _error;
@@ -118,7 +125,8 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _valence.attach(this);
-    _valence.onUpdateReady = (seq) => runScript(eventScript('bundle.updateReady', {'seq': seq}));
+    _valence.onUpdateReady =
+        (seq) => runScript(eventScript('bundle.updateReady', {'seq': seq}));
   }
 
   @override
@@ -170,10 +178,12 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       final controller = WebViewController();
       await _setTextZoom(controller);
       await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
-      await controller.addJavaScriptChannel('Valence', onMessageReceived: _onBridgeMessage);
+      await controller.addJavaScriptChannel('Valence',
+          onMessageReceived: _onBridgeMessage);
       // Without this, a JavaScript error during the bundle's bootstrap produces nothing at all — no log,
       // no onWebResourceError, just a dark rectangle — while the host is working correctly (§3).
-      await controller.setOnConsoleMessage((m) => _log('webview[${m.level.name}] ${m.message}'));
+      await controller.setOnConsoleMessage(
+          (m) => _log('webview[${m.level.name}] ${m.message}'));
       await controller.setNavigationDelegate(
         NavigationDelegate(
           onNavigationRequest: _onNavigationRequest,
@@ -184,11 +194,14 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
               _valence.restoration.observe(change.url!, _origin);
             }
           },
-          onHttpError: (e) => _log('webview http ${e.response?.statusCode} for ${e.request?.uri}'),
-          onWebResourceError: (e) => _log('webview resource error ${e.errorCode}: ${e.description}'),
+          onHttpError: (e) => _log(
+              'webview http ${e.response?.statusCode} for ${e.request?.uri}'),
+          onWebResourceError: (e) =>
+              _log('webview resource error ${e.errorCode}: ${e.description}'),
         ),
       );
-      await controller.loadRequest(Uri.parse('${server.origin}${_valence.restoration.route}'));
+      await controller.loadRequest(
+          Uri.parse('${server.origin}${_valence.restoration.route}'));
       if (!mounted) return;
       setState(() => _controller = controller);
       if (_pageLoaded) _publishAppearance(forceEvent: true);
@@ -213,8 +226,10 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     // §2.3: on UI start, on resume, and every 30 minutes in the foreground. Never blocking the first paint.
     unawaited(_checkForUpdate());
     unawaited(_syncNow());
-    _updateTicker = Timer.periodic(_valence.config.updateInterval, (_) => unawaited(_checkForUpdate()));
-    _connectivity = Connectivity().onConnectivityChanged.listen(_onConnectivity);
+    _updateTicker = Timer.periodic(
+        _valence.config.updateInterval, (_) => unawaited(_checkForUpdate()));
+    _connectivity =
+        Connectivity().onConnectivityChanged.listen(_onConnectivity);
     // The stream only reports *changes*, so without this a page that asks `app.state()` on a cold start
     // reads the optimistic default rather than an answer (§4.6).
     unawaited(_readConnectivity());
@@ -304,12 +319,15 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   bool _isOurOrigin(Uri uri) {
     if (_origin.isEmpty) return false;
     final ours = Uri.parse(_origin);
-    return uri.scheme == ours.scheme && uri.host == ours.host && uri.port == ours.port;
+    return uri.scheme == ours.scheme &&
+        uri.host == ours.host &&
+        uri.port == ours.port;
   }
 
   static bool _isHostPath(String path) {
     final segments = normaliseRequestPath(path);
-    return segments == null || (segments.isNotEmpty && segments.first == '_host');
+    return segments == null ||
+        (segments.isNotEmpty && segments.first == '_host');
   }
 
   // ---------------------------------------------------------------------------
@@ -383,12 +401,14 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     // already been given up on — by then `trial` is null, and without the guard `null == null` would
     // commit `current = null`.
     if (trial == null || state.serving != trial) {
-      _log('ready: app.ready from a page that is not serving a trial; nothing to commit');
+      _log(
+          'ready: app.ready from a page that is not serving a trial; nothing to commit');
       return;
     }
     final manifest = _valence.manifest;
     if (manifest == null || manifest.seq != trial) {
-      _log('ready: app.ready for trial $trial but the served manifest is ${manifest?.seq}; not committing');
+      _log(
+          'ready: app.ready for trial $trial but the served manifest is ${manifest?.seq}; not committing');
       return;
     }
     _stopReadyTimer();
@@ -407,7 +427,8 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     _buffered.add(script);
     if (_buffered.length > _maxBuffered) {
       _buffered.removeAt(0);
-      _log('event: the buffer is full at $_maxBuffered; dropping the oldest undelivered event');
+      _log(
+          'event: the buffer is full at $_maxBuffered; dropping the oldest undelivered event');
     }
   }
 
@@ -470,7 +491,8 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       case AppLifecycleState.hidden:
         // The ready timer counts foreground time, so it pauses with the app.
         _readyClock.stop();
-        if (state == AppLifecycleState.hidden || state == AppLifecycleState.paused) {
+        if (state == AppLifecycleState.hidden ||
+            state == AppLifecycleState.paused) {
           unawaited(_captureRoute());
         }
     }
@@ -483,8 +505,12 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     final accountRevision = _valence.restoration.accountRevision;
     try {
       final url = await controller?.currentUrl();
-      if (mounted && seq == _valence.manifest?.seq && controller == _controller && origin == _origin &&
-          accountRevision == _valence.restoration.accountRevision && url != null) {
+      if (mounted &&
+          seq == _valence.manifest?.seq &&
+          controller == _controller &&
+          origin == _origin &&
+          accountRevision == _valence.restoration.accountRevision &&
+          url != null) {
         _valence.restoration.observe(url, origin);
       }
     } on Object catch (e) {
@@ -520,7 +546,9 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     await _reclaimPort();
     final permissions = await _valence.permissions.refresh();
     if (!mounted) return;
-    if (permissions.isNotEmpty) runScript(eventScript('permissions.changed', {'permissions': permissions}));
+    if (permissions.isNotEmpty)
+      runScript(
+          eventScript('permissions.changed', {'permissions': permissions}));
     runScript(eventScript('app.resumed', const <String, Object?>{}));
     unawaited(_checkForUpdate());
     await _syncNow();
@@ -535,7 +563,8 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     final server = _valence.server;
     if (server == null) return;
     if (await _isOurServerAlive(server)) return;
-    _log('resume: the loopback socket was reclaimed; rebinding port ${server.port}');
+    _log(
+        'resume: the loopback socket was reclaimed; rebinding port ${server.port}');
     await server.close();
     final manifest = _valence.manifest;
     if (manifest == null) return;
@@ -552,10 +581,12 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     final samePort = rebound.port == server.port;
     _origin = rebound.origin;
     if (samePort) {
-      _log('resume: reclaimed port ${rebound.port}, keeping the nonce and the page');
+      _log(
+          'resume: reclaimed port ${rebound.port}, keeping the nonce and the page');
       return;
     }
-    _log('resume: could not reclaim port ${server.port}; moved to ${rebound.port} and reloading');
+    _log(
+        'resume: could not reclaim port ${server.port}; moved to ${rebound.port} and reloading');
     _pageLoaded = false;
     await _controller?.loadRequest(Uri.parse(rebound.origin));
   }
@@ -563,7 +594,8 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   Future<bool> _isOurServerAlive(ValenceServer server) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
     try {
-      final req = await client.getUrl(Uri.parse('${server.origin}/_host/alive'));
+      final req =
+          await client.getUrl(Uri.parse('${server.origin}/_host/alive'));
       final res = await req.close();
       await res.drain<void>();
       return res.headers.value('x-valence') == 'alive';
@@ -682,7 +714,8 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
     }
     final controller = _controller;
     if (controller == null) {
-      return widget.loading ?? const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return widget.loading ??
+          const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     // Android users expect back to go back, and a Scaffold holding a WebViewWidget pops its only route
     // instead — so the first swipe from any sub-screen closes the app. It is the most common complaint
@@ -701,11 +734,13 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
                 ? SystemUiOverlayStyle.light
                 : SystemUiOverlayStyle.dark)
             .copyWith(
-              statusBarColor: Colors.transparent,
-              systemNavigationBarColor: Colors.transparent,
-              systemNavigationBarIconBrightness: (_appearance ?? _systemAppearance()).darkMode
-                  ? Brightness.light : Brightness.dark,
-            ),
+          statusBarColor: Colors.transparent,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarIconBrightness:
+              (_appearance ?? _systemAppearance()).darkMode
+                  ? Brightness.light
+                  : Brightness.dark,
+        ),
         child: Scaffold(body: WebViewWidget(controller: controller)),
       ),
     );

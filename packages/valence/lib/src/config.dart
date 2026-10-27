@@ -36,9 +36,7 @@ final class ValenceConfig {
     this.authToken,
     this.httpOrigins = const {},
     this.linkOrigins = const {},
-
     this.permissionKinds = const {},
-
     this.notificationsEnabled = false,
     this.notificationIcon = 'ic_stat_valence',
   });
@@ -143,7 +141,6 @@ final class ValenceConfig {
     Future<String?> Function()? authToken,
     Set<String>? httpOrigins,
     Set<String>? linkOrigins,
-
     Set<String>? permissionKinds,
   }) =>
       ValenceConfig(
@@ -168,9 +165,7 @@ final class ValenceConfig {
         authToken: authToken ?? this.authToken,
         httpOrigins: httpOrigins ?? this.httpOrigins,
         linkOrigins: linkOrigins ?? this.linkOrigins,
-
         permissionKinds: permissionKinds ?? this.permissionKinds,
-
         notificationsEnabled: notificationsEnabled,
         notificationIcon: notificationIcon,
       );

@@ -45,11 +45,14 @@ void main() {
     ValenceSecure? secure,
   }) =>
       Valence.open(
-        config ?? testConfig(key, writableBuckets: writableBuckets, dataSchemas: dataSchemas),
+        config ??
+            testConfig(key,
+                writableBuckets: writableBuckets, dataSchemas: dataSchemas),
         hostBuild: 42,
         log: (log ?? LogSpy()).call,
-        client:
-            client ?? MockClient((_) async => http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200)),
+        client: client ??
+            MockClient((_) async => http.Response(
+                jsonEncode({'rows': [], 'max': 0, 'more': false}), 200)),
         supportDir: support,
         secure: secure ?? testSecure({}),
       );
@@ -61,7 +64,9 @@ void main() {
       );
 
   group('app.info', () {
-    test('uses the attached view nonlinear scale at 16px, rather than the raw factor', () async {
+    test(
+        'uses the attached view nonlinear scale at 16px, rather than the raw factor',
+        () async {
       final binding = TestWidgetsFlutterBinding.instance;
       final system = binding.platformDispatcher;
       final oldMetrics = system.onMetricsChanged;
@@ -80,16 +85,22 @@ void main() {
       v.attach(_ScriptSpy(), flutterView: view);
       expect(nonlinear.textScaleFactor, 2);
       expect(v.appInfo().fontScale, 1.75);
-      expect(v.appInfo().fontScale,
-          ValenceAppearance.fromMediaQuery(MediaQueryData.fromView(view)).fontScale);
+      expect(
+          v.appInfo().fontScale,
+          ValenceAppearance.fromMediaQuery(MediaQueryData.fromView(view))
+              .fontScale);
     });
-
 
     test('notification capability cannot be enabled by page calls', () async {
       final v = await open();
-      expect(() => v.notifications, throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.unsupported)));
+      expect(
+          () => v.notifications,
+          throwsA(isA<BridgeError>()
+              .having((e) => e.code, 'code', BridgeErrorCode.unsupported)));
     });
-    test('it reports the platform, the host build, the bridge version and the locale', () async {
+    test(
+        'it reports the platform, the host build, the bridge version and the locale',
+        () async {
       final v = await open();
       final info = v.appInfo();
       expect(info.platform, Platform.operatingSystem);
@@ -102,23 +113,30 @@ void main() {
     });
   });
 
-  test('task drafts follow native account identity across refresh, switch and stale OS restore', () async {
+  test(
+      'task drafts follow native account identity across refresh, switch and stale OS restore',
+      () async {
     final data = <String, String>{};
     final v = await open(writableBuckets: {'shelf'}, secure: testSecure(data));
     await v.prepareRestoration(10);
     v.stateSave({'draft': 'private'});
     await v.authSetToken('jwt-a', account: 'user-a');
-    expect(v.stateRestore(), {'draft': 'private'}, reason: 'first-account adoption keeps the draft');
-    v.restoration.observe('http://127.0.0.1:1234/shelf/a?draft=private', 'http://127.0.0.1:1234');
+    expect(v.stateRestore(), {'draft': 'private'},
+        reason: 'first-account adoption keeps the draft');
+    v.restoration.observe(
+        'http://127.0.0.1:1234/shelf/a?draft=private', 'http://127.0.0.1:1234');
     final snapshotA = v.restoration.snapshot();
     expect(snapshotA, isNot(contains('user-a')));
     expect(snapshotA, isNot(contains('jwt-a')));
     await v.authSetToken('jwt-a2', account: 'user-a');
     expect(v.stateRestore(), {'draft': 'private'});
     await v.store.put('shelf', 'a', 1, opId: 'a');
-    await expectLater(v.authSetToken('jwt-b', account: 'user-b'),
-        throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.pending)));
-    expect(v.stateRestore(), {'draft': 'private'}, reason: 'refused switches change nothing');
+    await expectLater(
+        v.authSetToken('jwt-b', account: 'user-b'),
+        throwsA(isA<BridgeError>()
+            .having((e) => e.code, 'code', BridgeErrorCode.pending)));
+    expect(v.stateRestore(), {'draft': 'private'},
+        reason: 'refused switches change nothing');
     await v.authSetToken('jwt-b', account: 'user-b', discardPending: true);
     expect(v.stateRestore(), isNull);
     expect(v.restoration.route, '/');
@@ -130,36 +148,51 @@ void main() {
     final snapshotB = v.restoration.snapshot();
     v.restoration.hydrate(snapshotB);
     await v.prepareRestoration(10);
-    expect(v.stateRestore(), {'draft': 'B'}, reason: 'the same account can restore');
+    expect(v.stateRestore(), {'draft': 'B'},
+        reason: 'the same account can restore');
     await v.authSetToken(null);
     expect(v.stateRestore(), isNull);
     v.restoration.hydrate(snapshotB);
     await v.prepareRestoration(10);
-    expect(v.stateRestore(), isNull, reason: 'sign-out also refuses stale task snapshots');
+    expect(v.stateRestore(), isNull,
+        reason: 'sign-out also refuses stale task snapshots');
   });
 
-  test('failed account and token writes never pair a new bearer with the old task identity', () async {
+  test(
+      'failed account and token writes never pair a new bearer with the old task identity',
+      () async {
     for (final failKey in [secureAuthAccountKey, secureAuthTokenKey]) {
-      final data = <String, String>{secureAuthAccountKey: 'user-a', secureAuthTokenKey: 'jwt-a'};
+      final data = <String, String>{
+        secureAuthAccountKey: 'user-a',
+        secureAuthTokenKey: 'jwt-a'
+      };
       var fail = true;
-      FlutterSecureStoragePlatform.instance = _WatchedSecureStorage(data, (key) async {
-        if (fail && key == failKey) throw PlatformException(code: 'write-failed');
+      FlutterSecureStoragePlatform.instance =
+          _WatchedSecureStorage(data, (key) async {
+        if (fail && key == failKey)
+          throw PlatformException(code: 'write-failed');
       });
-      final v = await open(writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
+      final v = await open(
+          writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
       await v.prepareRestoration(10);
       v.stateSave({'draft': 'A only'});
       final snapshotA = v.restoration.snapshot();
-      await expectLater(v.authSetToken('jwt-b', account: 'user-b'), throwsA(isA<BridgeError>()));
-      expect(data[secureAuthTokenKey], isNull, reason: 'failed secure write leaves no credential');
-      expect(await v.sync.acquireLease(), isTrue, reason: 'the failed switch released the lease');
+      await expectLater(v.authSetToken('jwt-b', account: 'user-b'),
+          throwsA(isA<BridgeError>()));
+      expect(data[secureAuthTokenKey], isNull,
+          reason: 'failed secure write leaves no credential');
+      expect(await v.sync.acquireLease(), isTrue,
+          reason: 'the failed switch released the lease');
       await v.sync.releaseLease();
       v.restoration.hydrate(snapshotA);
       await v.prepareRestoration(10);
       if (data[secureAuthAccountKey] == 'user-b') {
-        expect(v.stateRestore(), isNull, reason: 'B identity cannot restore A draft even without a token');
+        expect(v.stateRestore(), isNull,
+            reason: 'B identity cannot restore A draft even without a token');
       } else {
         expect(data[secureAuthAccountKey], 'user-a');
-        expect(v.stateRestore(), {'draft': 'A only'}, reason: 'no new identity or bearer was stored');
+        expect(v.stateRestore(), {'draft': 'A only'},
+            reason: 'no new identity or bearer was stored');
       }
       fail = false;
       await v.authSetToken('jwt-b', account: 'user-b');
@@ -170,22 +203,28 @@ void main() {
   });
 
   test('overlapping account changes serialize identity reads', () async {
-    final data = <String, String>{secureAuthAccountKey: 'a', secureAuthTokenKey: 'jwt-a'};
+    final data = <String, String>{
+      secureAuthAccountKey: 'a',
+      secureAuthTokenKey: 'jwt-a'
+    };
     final entered = Completer<void>();
     final release = Completer<void>();
     var block = true;
-    FlutterSecureStoragePlatform.instance = _WatchedSecureStorage(data, (key) async {
+    FlutterSecureStoragePlatform.instance =
+        _WatchedSecureStorage(data, (key) async {
       if (block && key == secureAuthAccountKey) {
         block = false;
         entered.complete();
         await release.future;
       }
     });
-    final v = await open(writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
+    final v = await open(
+        writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
     final first = v.authSetToken('jwt-b', account: 'b');
     await entered.future;
     var secondDone = false;
-    final second = v.authSetToken('jwt-c', account: 'c').then((_) => secondDone = true);
+    final second =
+        v.authSetToken('jwt-c', account: 'c').then((_) => secondDone = true);
     await Future<void>.delayed(Duration.zero);
     expect(secondDone, isFalse);
     expect(data[secureAuthTokenKey], isNull);
@@ -196,15 +235,19 @@ void main() {
     expect(data[secureAuthTokenKey], 'jwt-c');
   });
 
-  test('sync status counts deletes, persists observations and leaves busy/scoped timestamps alone', () async {
+  test(
+      'sync status counts deletes, persists observations and leaves busy/scoped timestamps alone',
+      () async {
     var requests = 0;
     var unreachable = false;
     final client = MockClient((_) async {
       requests++;
       if (unreachable) throw const SocketException('offline');
-      return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+      return http.Response(
+          jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
     });
-    final v = await open(dataSchemas: {'plants': 1}, writableBuckets: {'shelf'}, client: client);
+    final v = await open(
+        dataSchemas: {'plants': 1}, writableBuckets: {'shelf'}, client: client);
     final fresh = await v.syncStatus();
     expect(fresh.lastSyncedAt, isNull);
     expect(fresh.offline, isFalse);
@@ -232,25 +275,36 @@ void main() {
     final successful = await v.syncStatus();
     expect(successful.lastSyncedAt, isNotNull);
     expect(successful.offline, isFalse);
-    final reopened = await open(dataSchemas: {'plants': 1}, writableBuckets: {'shelf'}, client: client);
+    final reopened = await open(
+        dataSchemas: {'plants': 1}, writableBuckets: {'shelf'}, client: client);
     expect((await reopened.syncStatus()).lastSyncedAt, successful.lastSyncedAt);
     expect((await reopened.syncStatus()).pending, 0);
   });
 
-  test('HTTP and protocol failures cannot advance last successful sync', () async {
-    var response = http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
-    final v = await open(dataSchemas: {'plants': 1}, client: MockClient((_) async => response));
+  test('HTTP and protocol failures cannot advance last successful sync',
+      () async {
+    var response =
+        http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+    final v = await open(
+        dataSchemas: {'plants': 1}, client: MockClient((_) async => response));
     await v.syncNow();
     const previous = '123';
     await v.store.hostPrefSet('valence.sync.lastSyncedAt', previous);
-    for (final bad in [http.Response('', 500), http.Response('not JSON', 200),
-      http.Response('{"rows":[]}', 200), http.Response('{"rows":[3],"max":1,"more":false}', 200)]) {
+    for (final bad in [
+      http.Response('', 500),
+      http.Response('not JSON', 200),
+      http.Response('{"rows":[]}', 200),
+      http.Response('{"rows":[3],"max":1,"more":false}', 200)
+    ]) {
       response = bad;
       await v.syncNow();
       expect((await v.syncStatus()).lastSyncedAt, 123);
     }
-    final push = await open(writableBuckets: {'shelf'}, client: MockClient((req) async =>
-      http.Response(req.method == 'POST' ? '{}' : '{"rows":[],"max":0,"more":false}', 200)));
+    final push = await open(
+        writableBuckets: {'shelf'},
+        client: MockClient((req) async => http.Response(
+            req.method == 'POST' ? '{}' : '{"rows":[],"max":0,"more":false}',
+            200)));
     await push.store.put('shelf', 'a', 1, opId: 'malformed-push');
     await push.store.hostPrefSet('valence.sync.lastSyncedAt', previous);
     await push.syncNow();
@@ -258,20 +312,42 @@ void main() {
     expect((await push.syncStatus()).pending, 1);
   });
 
-  test('fresh runtime imports current and additional declared seed schemas', () async {
+  test('fresh runtime imports current and additional declared seed schemas',
+      () async {
     final seed = await openTestStore();
-    await seed.applyPullPage(bucket: 'plants', schema: 1,
-      rows: [{'k': 'fern', 'v': 'old', 'u': 1, 'd': 0}], maxUsnAfter: 1);
-    await seed.applyPullPage(bucket: 'plants', schema: 2,
-      rows: [{'k': 'fern', 'v': 'new', 'u': 1, 'd': 0}], maxUsnAfter: 1);
+    await seed.applyPullPage(
+        bucket: 'plants',
+        schema: 1,
+        rows: [
+          {'k': 'fern', 'v': 'old', 'u': 1, 'd': 0}
+        ],
+        maxUsnAfter: 1);
+    await seed.applyPullPage(
+        bucket: 'plants',
+        schema: 2,
+        rows: [
+          {'k': 'fern', 'v': 'new', 'u': 1, 'd': 0}
+        ],
+        maxUsnAfter: 1);
     await seed.db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
     final bytes = File(seed.path).readAsBytesSync();
-    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    messenger.setMockMessageHandler('flutter/assets', (_) async => ByteData.sublistView(Uint8List.fromList(bytes)));
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMessageHandler('flutter/assets',
+        (_) async => ByteData.sublistView(Uint8List.fromList(bytes)));
     addTearDown(() => messenger.setMockMessageHandler('flutter/assets', null));
     final base = testConfig(key, dataSchemas: {'plants': 2});
-    final v = await open(config: ValenceConfig(appId: base.appId, keyring: base.keyring,
-      bridgeVersion: base.bridgeVersion, dataSchemas: {'plants': 2}, seedSchemas: {'plants': [1]}));
+    final v = await open(
+        config: ValenceConfig(
+            appId: base.appId,
+            keyring: base.keyring,
+            bridgeVersion: base.bridgeVersion,
+            dataSchemas: {
+          'plants': 2
+        },
+            seedSchemas: {
+          'plants': [1]
+        }));
     expect(await v.store.get('plants', 1, 'fern'), 'old');
     expect(await v.store.get('plants', 2, 'fern'), 'new');
     expect(await v.dataGet('plants', 'fern'), 'new');
@@ -350,13 +426,15 @@ void main() {
   group('data.put is only for writable buckets (§5.5)', () {
     test('a read-only bucket is refused with E_DENIED', () async {
       final v = await open(dataSchemas: {'plants': 1});
-      expect(() => v.dataPut('plants', 'fern', {'x': 1}), throwsDenied('not a writable bucket'));
+      expect(() => v.dataPut('plants', 'fern', {'x': 1}),
+          throwsDenied('not a writable bucket'));
       expect(await v.dataGet('plants', 'fern'), isNull);
     });
 
     test('an unknown bucket is refused too', () async {
       final v = await open();
-      expect(() => v.dataPut('nope', 'k', {'x': 1}), throwsDenied('not a writable bucket'));
+      expect(() => v.dataPut('nope', 'k', {'x': 1}),
+          throwsDenied('not a writable bucket'));
     });
 
     test('a writable bucket is written at schema 1, with usn -1', () async {
@@ -382,7 +460,9 @@ void main() {
       expect(v.schemaFor('shelf'), 1);
     });
 
-    test('a read-only bucket falls back to the configured schema with no manifest', () async {
+    test(
+        'a read-only bucket falls back to the configured schema with no manifest',
+        () async {
       final v = await open(dataSchemas: {'plants': 3});
       expect(v.schemaFor('plants'), 3);
     });
@@ -410,21 +490,26 @@ void main() {
       expect(v.schemaFor('plants'), 2);
     });
 
-    test('an undeclared bucket is E_PARAMS with advice, not a silent empty read', () async {
+    test(
+        'an undeclared bucket is E_PARAMS with advice, not a silent empty read',
+        () async {
       final v = await open();
       expect(
         () => v.schemaFor('mystery'),
         throwsA(
           isA<BridgeError>()
               .having((e) => e.code, 'code', BridgeErrorCode.params)
-              .having((e) => e.message, 'message', contains('valence.config.json')),
+              .having(
+                  (e) => e.message, 'message', contains('valence.config.json')),
         ),
       );
     });
   });
 
   group('data.list clamps host-side (§4.2)', () {
-    test('the default and the maximum are applied by the host, not trusted from the page', () async {
+    test(
+        'the default and the maximum are applied by the host, not trusted from the page',
+        () async {
       // Seeded through one pull page, not 600 `put`s: a put fires an unawaited sync each time, and 600 of
       // those against the shared lease timed this test out under full-suite load.
       final v = await open(dataSchemas: {'places': 1});
@@ -432,7 +517,13 @@ void main() {
         bucket: 'places',
         schema: 1,
         rows: [
-          for (var i = 0; i < 600; i++) {'k': 'k${i.toString().padLeft(4, '0')}', 'v': i, 'u': i + 1, 'd': 0},
+          for (var i = 0; i < 600; i++)
+            {
+              'k': 'k${i.toString().padLeft(4, '0')}',
+              'v': i,
+              'u': i + 1,
+              'd': 0
+            },
         ],
         maxUsnAfter: 600,
       );
@@ -440,7 +531,9 @@ void main() {
       expect((await v.dataList('places', limit: 1000000)).length, maxListLimit);
     });
 
-    test('after pages past the clamp, and data.count answers the size question for free', () async {
+    test(
+        'after pages past the clamp, and data.count answers the size question for free',
+        () async {
       // Seeded through one pull page rather than 600 `put`s: a put fires a background sync each time, and
       // the catalogue this models is read-only anyway.
       final v = await open(dataSchemas: {'places': 1});
@@ -448,30 +541,43 @@ void main() {
         bucket: 'places',
         schema: 1,
         rows: [
-          for (var i = 0; i < 600; i++) {'k': 'k${i.toString().padLeft(4, '0')}', 'v': i, 'u': i + 1, 'd': 0},
+          for (var i = 0; i < 600; i++)
+            {
+              'k': 'k${i.toString().padLeft(4, '0')}',
+              'v': i,
+              'u': i + 1,
+              'd': 0
+            },
         ],
         maxUsnAfter: 600,
       );
-      expect(await v.dataCount('places'), 600, reason: 'a number the clamped list could never report');
+      expect(await v.dataCount('places'), 600,
+          reason: 'a number the clamped list could never report');
       expect(await v.dataCount('places', prefix: 'k05'), 100);
 
       final first = await v.dataList('places', limit: maxListLimit);
-      final rest = await v.dataList('places', limit: maxListLimit, after: first.last.key);
+      final rest = await v.dataList('places',
+          limit: maxListLimit, after: first.last.key);
       expect(first.length + rest.length, 600);
-      expect({...first.map((r) => r.key), ...rest.map((r) => r.key)}.length, 600);
+      expect(
+          {...first.map((r) => r.key), ...rest.map((r) => r.key)}.length, 600);
       // The presence question the clamp used to answer wrongly: a key in the tail is found, not absent.
       expect(rest.map((r) => r.key), contains('k0599'));
     });
 
-    test('data.count resolves the bucket the same way every other read does', () async {
+    test('data.count resolves the bucket the same way every other read does',
+        () async {
       final v = await open(dataSchemas: {'plants': 1});
       expect(await v.dataCount('plants'), 0);
-      expect(() => v.dataCount('nope'), throwsA(isA<BridgeError>()), reason: 'an undeclared bucket, as data.get');
+      expect(() => v.dataCount('nope'), throwsA(isA<BridgeError>()),
+          reason: 'an undeclared bucket, as data.get');
     });
   });
 
   group('data.put refuses a key no server can address (§4.2, §5.5)', () {
-    test('"." and ".." never reach the outbox, so push cannot be wedged by one bad write', () async {
+    test(
+        '"." and ".." never reach the outbox, so push cannot be wedged by one bad write',
+        () async {
       // These are the two keys `encodeURIComponent` leaves alone, so a server mapping a key into a URL
       // path sees them resolve away as dot segments. A server that then rejects the batch — as the
       // reference adapter does — rejects the *same* queued write on every later run, because push replays
@@ -481,7 +587,8 @@ void main() {
       for (final key in ['.', '..']) {
         await expectLater(
           v.dataPut('shelf', key, {'x': 1}),
-          throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.params)),
+          throwsA(isA<BridgeError>()
+              .having((e) => e.code, 'code', BridgeErrorCode.params)),
           reason: key,
         );
       }
@@ -518,9 +625,12 @@ void main() {
       expect(await v.prefsGet('valenceish'), 'ok');
     });
 
-    test('the store refuses the prefix too, so an app’s own settings method cannot be a way round it', () async {
+    test(
+        'the store refuses the prefix too, so an app’s own settings method cannot be a way round it',
+        () async {
       final v = await open();
-      await expectLater(v.store.prefSet('valence.sync.lease', '1'), throwsA(isA<BridgeError>()));
+      await expectLater(v.store.prefSet('valence.sync.lease', '1'),
+          throwsA(isA<BridgeError>()));
       // The runtime writes its own keys through the unchecked entry point.
       await v.store.hostPrefSet('valence.sync.lease', '1');
       expect(await v.store.hostPrefGet('valence.sync.lease'), '1');
@@ -540,7 +650,8 @@ void main() {
         'not a url at all',
         '',
       ]) {
-        expect(() => v.openExternal(url), throwsDenied('https, mailto and tel'), reason: url);
+        expect(() => v.openExternal(url), throwsDenied('https, mailto and tel'),
+            reason: url);
       }
     });
 
@@ -548,10 +659,15 @@ void main() {
       // They then reach url_launcher, which has no platform implementation under flutter_test, so the
       // assertion is that the *scheme check* passed rather than that the OS opened anything.
       final v = await open();
-      for (final url in ['https://example.com', 'mailto:a@b.c', 'tel:+15551234']) {
+      for (final url in [
+        'https://example.com',
+        'mailto:a@b.c',
+        'tel:+15551234'
+      ]) {
         await expectLater(
           v.openExternal(url),
-          throwsA(isNot(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.denied))),
+          throwsA(isNot(isA<BridgeError>()
+              .having((e) => e.code, 'code', BridgeErrorCode.denied))),
           reason: url,
         );
       }
@@ -559,7 +675,8 @@ void main() {
 
     test('the scheme check is case-insensitive', () async {
       final v = await open();
-      expect(() => v.openExternal('JAVASCRIPT:alert(1)'), throwsDenied('https, mailto and tel'));
+      expect(() => v.openExternal('JAVASCRIPT:alert(1)'),
+          throwsDenied('https, mailto and tel'));
     });
   });
 
@@ -568,19 +685,22 @@ void main() {
       final v = await open();
       expect(
         () => v.publishHostFile([1, 2, 3], contentType: 'image/png'),
-        throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.internal)),
+        throwsA(isA<BridgeError>()
+            .having((e) => e.code, 'code', BridgeErrorCode.internal)),
       );
     });
   });
 
   group('sync.now', () {
-    test('it follows the configured schemas when nothing is being served', () async {
+    test('it follows the configured schemas when nothing is being served',
+        () async {
       final seen = <String>[];
       final v = await open(
         dataSchemas: {'plants': 2},
         client: MockClient((req) async {
           seen.add(req.url.toString());
-          return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+          return http.Response(
+              jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
         }),
       );
       final result = await v.syncNow();
@@ -590,12 +710,16 @@ void main() {
   });
 
   group('open (§5.1, §5.2)', () {
-    test('it creates the valence directory and leaves the database outside it', () async {
+    test('it creates the valence directory and leaves the database outside it',
+        () async {
       final v = await open();
       expect(v.dir.path, endsWith('valence'));
       expect(v.dir.existsSync(), isTrue);
       // The database holds user data and should be backed up, so it lives outside the excluded directory.
-      expect(File('${support.path}${Platform.pathSeparator}valence.db').existsSync(), isTrue);
+      expect(
+          File('${support.path}${Platform.pathSeparator}valence.db')
+              .existsSync(),
+          isTrue);
     });
 
     test('a missing seed asset is logged, not fatal', () async {
@@ -611,7 +735,8 @@ void main() {
   });
 
   group('secure.* and auth.* reach the keystore (§4.4)', () {
-    test('the page can set, read and delete its own keys but not the host’s', () async {
+    test('the page can set, read and delete its own keys but not the host’s',
+        () async {
       final data = <String, String>{};
       final v = await open(secure: testSecure(data));
       await v.secureSet('refresh', 'r-1');
@@ -641,7 +766,8 @@ void main() {
         secure: testSecure({}),
         client: MockClient((req) async {
           seen.add(req.headers);
-          return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+          return http.Response(
+              jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
         }),
       );
       // This is the wiring R1 is about: the page sets a token through the bridge and the *host's own*
@@ -652,7 +778,8 @@ void main() {
       expect(seen.every((h) => h['authorization'] == 'Bearer jwt-1'), isTrue);
     });
 
-    test('an app’s own authToken callback still wins over the stored one', () async {
+    test('an app’s own authToken callback still wins over the stored one',
+        () async {
       final seen = <Map<String, String>>[];
       final v = await open(
         config: ValenceConfig(
@@ -666,26 +793,43 @@ void main() {
         secure: testSecure({secureAuthTokenKey: 'from-the-page'}),
         client: MockClient((req) async {
           seen.add(req.headers);
-          return http.Response(jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
+          return http.Response(
+              jsonEncode({'rows': [], 'max': 0, 'more': false}), 200);
         }),
       );
       await v.syncNow();
       expect(seen.single['authorization'], 'Bearer from-dart');
     });
 
-    test('an account switch clears the user data, and a refresh does not (§4.4)', () async {
+    test(
+        'an account switch clears the user data, and a refresh does not (§4.4)',
+        () async {
       final data = <String, String>{};
-      final v = await open(writableBuckets: {'shelf'}, dataSchemas: {'plants': 1}, secure: testSecure(data));
+      final v = await open(
+          writableBuckets: {'shelf'},
+          dataSchemas: {'plants': 1},
+          secure: testSecure(data));
       // A read-only bucket and a writable one, both with rows and a cursor.
       await v.store.applyPullPage(
-          bucket: 'plants', schema: 1, rows: [{'k': 'fern', 'v': 1, 'u': 7, 'd': 0}], maxUsnAfter: 7);
+          bucket: 'plants',
+          schema: 1,
+          rows: [
+            {'k': 'fern', 'v': 1, 'u': 7, 'd': 0}
+          ],
+          maxUsnAfter: 7);
       await v.store.applyPullPage(
-          bucket: 'shelf', schema: 1, rows: [{'k': 'a', 'v': 1, 'u': 4, 'd': 0}], maxUsnAfter: 4);
+          bucket: 'shelf',
+          schema: 1,
+          rows: [
+            {'k': 'a', 'v': 1, 'u': 4, 'd': 0}
+          ],
+          maxUsnAfter: 4);
 
       // Nothing recorded yet, so the first id is an adoption: an app upgrading with its user signed in.
       await v.authSetToken('jwt-a', account: 'user-a');
       expect(await v.authAccount(), 'user-a');
-      expect(await v.dataGet('shelf', 'a'), 1, reason: 'adoption clears nothing');
+      expect(await v.dataGet('shelf', 'a'), 1,
+          reason: 'adoption clears nothing');
 
       // A refresh of the same account is a new token and nothing else.
       await v.authSetToken('jwt-a2', account: 'user-a');
@@ -698,17 +842,24 @@ void main() {
       await v.authSetToken('jwt-b', account: 'user-b');
       expect(await v.authAccount(), 'user-b');
       expect(data[secureAuthTokenKey], 'jwt-b');
-      expect(await v.dataGet('shelf', 'a'), isNull, reason: 'B must not see A rows on a shared phone');
-      expect(await v.store.maxUsn('shelf', 1), 0, reason: "A's cursor says nothing about B's history");
-      expect(await v.dataGet('plants', 'fern'), 1, reason: 'the public bucket is the same for everyone');
+      expect(await v.dataGet('shelf', 'a'), isNull,
+          reason: 'B must not see A rows on a shared phone');
+      expect(await v.store.maxUsn('shelf', 1), 0,
+          reason: "A's cursor says nothing about B's history");
+      expect(await v.dataGet('plants', 'fern'), 1,
+          reason: 'the public bucket is the same for everyone');
       expect(await v.store.maxUsn('plants', 1), 7);
-      expect(view.events, ['sync.changed'], reason: 'the page is showing rows that are gone');
+      expect(view.events, ['sync.changed'],
+          reason: 'the page is showing rows that are gone');
       expect(view.scripts.single, contains('"shelf"'));
     });
 
-    test('a switch over queued writes is refused, and discardPending is the only way past (§4.4)', () async {
+    test(
+        'a switch over queued writes is refused, and discardPending is the only way past (§4.4)',
+        () async {
       final data = <String, String>{};
-      final v = await open(writableBuckets: {'shelf'}, secure: testSecure(data));
+      final v =
+          await open(writableBuckets: {'shelf'}, secure: testSecure(data));
       await v.authSetToken('jwt-a', account: 'user-a');
       await v.store.put('shelf', 'note', {'t': 'mine'}, opId: 'op-1');
       expect(await v.store.pendingWrites(), 1);
@@ -724,42 +875,57 @@ void main() {
       expect(data[secureAuthTokenKey], 'jwt-a');
       expect(await v.authAccount(), 'user-a');
       expect(await v.dataGet('shelf', 'note'), {'t': 'mine'});
-      expect(await v.sync.acquireLease(), isTrue, reason: 'the refusal released the lease it took');
+      expect(await v.sync.acquireLease(), isTrue,
+          reason: 'the refusal released the lease it took');
       await v.sync.releaseLease();
 
       await v.authSetToken('jwt-b', account: 'user-b', discardPending: true);
-      expect(await v.store.pendingWrites(), 0, reason: 'deleted unsent, which is what the flag means');
+      expect(await v.store.pendingWrites(), 0,
+          reason: 'deleted unsent, which is what the flag means');
       expect(await v.dataGet('shelf', 'note'), isNull);
       expect(await v.authAccount(), 'user-b');
     });
 
-    test('signing out clears the same, but only for an app that records an account (§4.4)', () async {
+    test(
+        'signing out clears the same, but only for an app that records an account (§4.4)',
+        () async {
       final v = await open(writableBuckets: {'shelf'}, secure: testSecure({}));
       await v.store.applyPullPage(
-          bucket: 'shelf', schema: 1, rows: [{'k': 'a', 'v': 1, 'u': 4, 'd': 0}], maxUsnAfter: 4);
+          bucket: 'shelf',
+          schema: 1,
+          rows: [
+            {'k': 'a', 'v': 1, 'u': 4, 'd': 0}
+          ],
+          maxUsnAfter: 4);
 
       // The 0.3 shape: no account anywhere, so logout keeps the rows exactly where they are.
       await v.authSetToken('jwt-x');
       await v.authSetToken(null);
       expect(await v.authHasToken(), isFalse);
-      expect(await v.dataGet('shelf', 'a'), 1, reason: 'no app gets a wipe it did not ask for');
+      expect(await v.dataGet('shelf', 'a'), 1,
+          reason: 'no app gets a wipe it did not ask for');
 
       await v.authSetToken('jwt-a', account: 'user-a');
       await v.store.put('shelf', 'note', {'t': 'mine'}, opId: 'op-1');
       await expectLater(
         v.authSetToken(null),
-        throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.pending)),
+        throwsA(isA<BridgeError>()
+            .having((e) => e.code, 'code', BridgeErrorCode.pending)),
       );
-      expect(await v.authHasToken(), isTrue, reason: 'a refused sign-out changed nothing');
+      expect(await v.authHasToken(), isTrue,
+          reason: 'a refused sign-out changed nothing');
 
       await v.authSetToken(null, discardPending: true);
       expect(await v.authHasToken(), isFalse);
-      expect(await v.authAccount(), isNull, reason: 'the next sign-in is an adoption, not a second wipe');
+      expect(await v.authAccount(), isNull,
+          reason: 'the next sign-in is an adoption, not a second wipe');
       expect(await v.dataGet('shelf', 'a'), isNull);
       expect(await v.store.pendingWrites(), 0);
     });
 
-    test('the new token is stored under the same lease that cleared the data (§4.4)', () async {
+    test(
+        'the new token is stored under the same lease that cleared the data (§4.4)',
+        () async {
       // The window this closes: the clear finishes, the lease is released, and a sync fired by a resume
       // or by returning connectivity pulls the previous account's rows straight back — with the previous
       // account's token, because the header is built per request — and the new token is then written
@@ -777,32 +943,50 @@ void main() {
         heldAtTokenWrite = !free;
       });
       FlutterSecureStoragePlatform.instance = watcher;
-      v = await open(writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
+      v = await open(
+          writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
       await v.authSetToken('jwt-a', account: 'user-a');
-      expect(heldAtTokenWrite, isFalse, reason: 'an ordinary sign-in takes no lease');
+      expect(heldAtTokenWrite, isFalse,
+          reason: 'an ordinary sign-in takes no lease');
       await v.authSetToken('jwt-b', account: 'user-b');
-      expect(heldAtTokenWrite, isTrue, reason: 'the switch wrote the token before releasing');
+      expect(heldAtTokenWrite, isTrue,
+          reason: 'the switch wrote the token before releasing');
       expect(data[secureAuthTokenKey], 'jwt-b');
-      expect(await v.sync.acquireLease(), isTrue, reason: 'and the lease is released at the end');
+      expect(await v.sync.acquireLease(), isTrue,
+          reason: 'and the lease is released at the end');
       await v.sync.releaseLease();
     });
 
-    test('an unreadable account id fails the call rather than reading as "none recorded"', () async {
+    test(
+        'an unreadable account id fails the call rather than reading as "none recorded"',
+        () async {
       // Every other secure read fails open, because the alternative is failing a sync over a bucket
       // that was never authenticated. This one cannot: "absent" is the answer that means *no account
       // has ever been recorded*, which turns the next sign-in into an adoption — B's token stored over
       // A's rows and A's outbox, silently, on exactly the devices whose Keystore is in a bad state.
-      final data = <String, String>{secureAuthAccountKey: 'user-a', secureAuthTokenKey: 'jwt-a'};
+      final data = <String, String>{
+        secureAuthAccountKey: 'user-a',
+        secureAuthTokenKey: 'jwt-a'
+      };
       FlutterSecureStoragePlatform.instance = _UnreadableAccount(data);
-      final v = await open(writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
+      final v = await open(
+          writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
       v.restoration.activate(10);
-      v.restoration.observe('http://127.0.0.1:1234/shelf/private', 'http://127.0.0.1:1234');
+      v.restoration.observe(
+          'http://127.0.0.1:1234/shelf/private', 'http://127.0.0.1:1234');
       v.stateSave({'private': true});
       await v.prepareRestoration(10);
       expect(v.restoration.route, '/');
-      expect(v.stateRestore(), isNull, reason: 'an unreadable account discards the snapshot, not offline startup');
+      expect(v.stateRestore(), isNull,
+          reason:
+              'an unreadable account discards the snapshot, not offline startup');
       await v.store.applyPullPage(
-          bucket: 'shelf', schema: 1, rows: [{'k': 'a', 'v': 1, 'u': 4, 'd': 0}], maxUsnAfter: 4);
+          bucket: 'shelf',
+          schema: 1,
+          rows: [
+            {'k': 'a', 'v': 1, 'u': 4, 'd': 0}
+          ],
+          maxUsnAfter: 4);
       await expectLater(
         v.authSetToken('jwt-b', account: 'user-b'),
         throwsA(isA<BridgeError>()
@@ -818,18 +1002,31 @@ void main() {
       // uninitialised state field, must not read as "a different person is holding the phone".
       final v = await open(writableBuckets: {'shelf'}, secure: testSecure({}));
       await v.store.applyPullPage(
-          bucket: 'shelf', schema: 1, rows: [{'k': 'a', 'v': 1, 'u': 4, 'd': 0}], maxUsnAfter: 4);
+          bucket: 'shelf',
+          schema: 1,
+          rows: [
+            {'k': 'a', 'v': 1, 'u': 4, 'd': 0}
+          ],
+          maxUsnAfter: 4);
       await v.authSetToken('jwt-a', account: 'user-a');
       await v.authSetToken('');
       expect(await v.authHasToken(), isFalse);
-      expect(await v.dataGet('shelf', 'a'), 1, reason: 'only null is the sign-out');
+      expect(await v.dataGet('shelf', 'a'), 1,
+          reason: 'only null is the sign-out');
       expect(await v.authAccount(), 'user-a');
     });
 
-    test('a switch will not clear underneath a sync that holds the lease (§5.6)', () async {
+    test(
+        'a switch will not clear underneath a sync that holds the lease (§5.6)',
+        () async {
       final v = await open(writableBuckets: {'shelf'}, secure: testSecure({}));
       await v.store.applyPullPage(
-          bucket: 'shelf', schema: 1, rows: [{'k': 'a', 'v': 1, 'u': 4, 'd': 0}], maxUsnAfter: 4);
+          bucket: 'shelf',
+          schema: 1,
+          rows: [
+            {'k': 'a', 'v': 1, 'u': 4, 'd': 0}
+          ],
+          maxUsnAfter: 4);
       await v.authSetToken('jwt-a', account: 'user-a');
       // A push in flight has already read the old token and its acknowledgements would land after the
       // wipe, re-creating the rows of the account that just left.
@@ -838,14 +1035,16 @@ void main() {
         v.authSetToken('jwt-b', account: 'user-b'),
         throwsA(isA<BridgeError>()
             .having((e) => e.code, 'code', BridgeErrorCode.internal)
-            .having((e) => e.message, 'message', contains('a sync is running'))),
+            .having(
+                (e) => e.message, 'message', contains('a sync is running'))),
       );
       expect(await v.dataGet('shelf', 'a'), 1);
       expect(await v.authAccount(), 'user-a');
       await v.sync.releaseLease();
       await v.authSetToken('jwt-b', account: 'user-b');
       expect(await v.dataGet('shelf', 'a'), isNull);
-      expect(await v.sync.acquireLease(), isTrue, reason: 'and the switch released what it took');
+      expect(await v.sync.acquireLease(), isTrue,
+          reason: 'and the switch released what it took');
     });
 
     test('a 401 is emitted to the page as auth.expired', () async {
@@ -861,7 +1060,8 @@ void main() {
       expect(
         view.scripts.first,
         'window.__valence&&window.__valence.e("auth.expired",{})',
-        reason: 'built through jsonEncode by the same helper as every other event',
+        reason:
+            'built through jsonEncode by the same helper as every other event',
       );
       // And the run still reports itself: "the token was rejected" is exactly the outcome a freshness
       // line has to show, and sync.changed alone has no way to say it (§4.6).
@@ -875,7 +1075,8 @@ void main() {
     // job while the UI isolate holds `BEGIN EXCLUSIVE` for the schema upgrade. `busy_timeout` does not
     // cover it, because the lock is refused before the connection that would wait on it exists.
 
-    test('open retries until the lock clears rather than failing the launch', () async {
+    test('open retries until the lock clears rather than failing the launch',
+        () async {
       final locking = LockingDatabaseFactory(databaseFactoryFfi, locks: 2);
       final log = LogSpy();
 
@@ -889,12 +1090,15 @@ void main() {
         databaseFactory: locking,
       );
 
-      expect(locking.attempts, 3, reason: 'two refusals, then the open that worked');
-      expect(await v.syncStatus(), isNotNull, reason: 'a usable store, not a half-open one');
+      expect(locking.attempts, 3,
+          reason: 'two refusals, then the open that worked');
+      expect(await v.syncStatus(), isNotNull,
+          reason: 'a usable store, not a half-open one');
       expect(log.has('the database is locked by another isolate'), isTrue);
     });
 
-    test('open gives up and rethrows once the budget is spent, because an app with no store cannot start',
+    test(
+        'open gives up and rethrows once the budget is spent, because an app with no store cannot start',
         () async {
       await expectLater(
         Valence.open(
@@ -904,23 +1108,28 @@ void main() {
           supportDir: support,
           documentsDir: support,
           secure: testSecure({}),
-          databaseFactory: LockingDatabaseFactory(databaseFactoryFfi, locks: 99),
+          databaseFactory:
+              LockingDatabaseFactory(databaseFactoryFfi, locks: 99),
         ),
         throwsA(isA<DatabaseException>()),
       );
     });
 
-    test('a failed open is not cached, so the next call sees a database that is now fine', () async {
+    test(
+        'a failed open is not cached, so the next call sees a database that is now fine',
+        () async {
       // Caching the rejection would leave every later call in the isolate failing against a healthy file.
       final locking = LockingDatabaseFactory(databaseFactoryFfi, locks: 1);
       final path = '${support.path}${Platform.pathSeparator}valence.db';
-      await expectLater(ValenceStore.open(path, factory: locking), throwsA(isA<DatabaseException>()));
+      await expectLater(ValenceStore.open(path, factory: locking),
+          throwsA(isA<DatabaseException>()));
 
       final store = await ValenceStore.open(path, factory: locking);
       expect(await store.prefGet('anything'), isNull);
     });
 
-    test('backgroundSync reports busy instead of throwing, so WorkManager does not record a failure',
+    test(
+        'backgroundSync reports busy instead of throwing, so WorkManager does not record a failure',
         () async {
       final log = LogSpy();
 
@@ -936,7 +1145,8 @@ void main() {
 
       expect(result.reason, ValenceSyncReason.busy);
       expect(result.changed, 0);
-      expect(result.offline, isFalse, reason: 'nothing was attempted, so nothing observed the network');
+      expect(result.offline, isFalse,
+          reason: 'nothing was attempted, so nothing observed the network');
       expect(log.has('the UI isolate holds the database'), isTrue);
     });
 
@@ -947,7 +1157,10 @@ void main() {
       // The message match is anchored, because `toString()` appends the failing SQL and its arguments —
       // and those can come from the page. A loose `contains` would read an unrelated failure of
       // `data.put(bucket, 'database is locked', v)` as a lock, and retry instead of surfacing it.
-      expect(isDatabaseLocked(NotLockedDatabaseException("UNIQUE constraint failed", "database is locked")), isFalse,
+      expect(
+          isDatabaseLocked(NotLockedDatabaseException(
+              "UNIQUE constraint failed", "database is locked")),
+          isFalse,
           reason: 'the phrase appears only in a page-supplied argument');
     });
   });
@@ -957,23 +1170,32 @@ void main() {
     test('the five platform states are the four the page sees', () {
       // The mapping is the contract, not an implementation detail: a page switching on the value has to
       // be able to cover it, and "hidden" and "paused" are one backgrounding, not two.
-      expect(valenceLifecycleFor(AppLifecycleState.resumed), ValenceLifecycle.foreground);
-      expect(valenceLifecycleFor(AppLifecycleState.inactive), ValenceLifecycle.inactive);
-      expect(valenceLifecycleFor(AppLifecycleState.hidden), ValenceLifecycle.background);
-      expect(valenceLifecycleFor(AppLifecycleState.paused), ValenceLifecycle.background);
-      expect(valenceLifecycleFor(AppLifecycleState.detached), ValenceLifecycle.detached);
+      expect(valenceLifecycleFor(AppLifecycleState.resumed),
+          ValenceLifecycle.foreground);
+      expect(valenceLifecycleFor(AppLifecycleState.inactive),
+          ValenceLifecycle.inactive);
+      expect(valenceLifecycleFor(AppLifecycleState.hidden),
+          ValenceLifecycle.background);
+      expect(valenceLifecycleFor(AppLifecycleState.paused),
+          ValenceLifecycle.background);
+      expect(valenceLifecycleFor(AppLifecycleState.detached),
+          ValenceLifecycle.detached);
     });
 
     test('online means any interface that is not none', () {
       // A device on Wi-Fi and VPN at once reports two, and a check written against the first entry calls
       // it offline whenever the VPN sorts first.
       expect(valenceOnline([ConnectivityResult.wifi]), isTrue);
-      expect(valenceOnline([ConnectivityResult.none, ConnectivityResult.vpn]), isTrue);
+      expect(valenceOnline([ConnectivityResult.none, ConnectivityResult.vpn]),
+          isTrue);
       expect(valenceOnline([ConnectivityResult.none]), isFalse);
-      expect(valenceOnline([]), isFalse, reason: 'no interfaces at all is not online');
+      expect(valenceOnline([]), isFalse,
+          reason: 'no interfaces at all is not online');
     });
 
-    test('app.state answers before any event has been emitted, and optimistically', () async {
+    test(
+        'app.state answers before any event has been emitted, and optimistically',
+        () async {
       // A page only ever runs while the app is on screen, and a host whose connectivity plugin has not
       // answered yet must not claim the device is offline: the cost of that error is a UI that refuses
       // to try on a working network.
@@ -982,7 +1204,8 @@ void main() {
       expect(v.appState().online, isTrue);
     });
 
-    test('only a change emits, which is what makes the two events countable', () async {
+    test('only a change emits, which is what makes the two events countable',
+        () async {
       final v = await open();
       final spy = _ScriptSpy();
       v.attach(spy);
@@ -1004,7 +1227,9 @@ void main() {
       expect(spy.scripts[2], contains('"online":false'));
     });
 
-    test('a state event with no page is dropped, not queued, and app.state keeps the truth', () async {
+    test(
+        'a state event with no page is dropped, not queued, and app.state keeps the truth',
+        () async {
       // The §4.2 buffer is for one-shot events. These two are state: queueing them would be an unbounded
       // list — a host whose entry page never loads, on a device moving between networks — holding
       // transitions that are stale by the time anything reads them.
@@ -1025,14 +1250,16 @@ void main() {
       expect(spy.events, ['app.lifecycle']);
     });
 
-    test('every completed run reports itself, sync.changed before sync.done', () async {
+    test('every completed run reports itself, sync.changed before sync.done',
+        () async {
       final v = await open(dataSchemas: {'plants': 1});
       final spy = _ScriptSpy();
       v.attach(spy);
       final result = await v.syncNow();
       // The mock server has nothing, so this is the run sync.changed alone could never report.
       expect(result.changed, 0);
-      expect(spy.events, ['sync.changed', 'sync.done'], reason: 'refetch first, then the freshness line');
+      expect(spy.events, ['sync.changed', 'sync.done'],
+          reason: 'refetch first, then the freshness line');
       expect(spy.scripts.last, contains('"changed":0'));
       expect(spy.scripts.last, contains('"reason":"ok"'));
 
@@ -1042,7 +1269,9 @@ void main() {
       expect(spy.events, ['sync.done']);
     });
 
-    test("data.put's own push reports itself, because the page's writes are most of an outbox", () async {
+    test(
+        "data.put's own push reports itself, because the page's writes are most of an outbox",
+        () async {
       // The push goes straight through Valence.syncNow and never passes a host-widget trigger, so a host
       // that reported only its own triggers would leave the freshness line untouched by the page's writes.
       final v = await open(writableBuckets: {'notes'});
@@ -1056,7 +1285,8 @@ void main() {
       expect(spy.events, contains('sync.done'));
     });
 
-    test('bundle.status before any check says idle rather than "up to date"', () async {
+    test('bundle.status before any check says idle rather than "up to date"',
+        () async {
       // The distinction the page needs: nothing has been asked yet, so claiming freshness would be a
       // guess. serving is 0 because the host widget has not bound a manifest in a unit test.
       final v = await open();
@@ -1069,7 +1299,8 @@ void main() {
       expect(s.trial, isNull);
     });
 
-    test('bundle.status reports the live activation state and the last check', () async {
+    test('bundle.status reports the live activation state and the last check',
+        () async {
       final v = await open(config: testConfig(key, otaBase: ''));
       v.state.pending = 31;
       v.state.trial = 30;
@@ -1082,10 +1313,13 @@ void main() {
       expect(s.checkedAt, isNotNull);
     });
 
-    test('a SyncResult crosses the bridge the same way in a reply and in sync.done', () async {
+    test(
+        'a SyncResult crosses the bridge the same way in a reply and in sync.done',
+        () async {
       // sync.done carries the whole record, including the two fields a schema may not declare: an app's
       // handler reads what it knows about and an older host simply never sends them (§4.3).
-      const result = ValenceSyncResult(['notes'], 3, false, ValenceSyncReason.busy, 7);
+      const result =
+          ValenceSyncResult(['notes'], 3, false, ValenceSyncReason.busy, 7);
       expect(result.toJson(), {
         'buckets': ['notes'],
         'changed': 3,
@@ -1099,7 +1333,8 @@ void main() {
 
 /// A host view that records the event scripts the runtime emits.
 final class _NonlinearDispatcher extends TestPlatformDispatcher {
-  _NonlinearDispatcher(ui.PlatformDispatcher dispatcher) : super(platformDispatcher: dispatcher);
+  _NonlinearDispatcher(ui.PlatformDispatcher dispatcher)
+      : super(platformDispatcher: dispatcher);
 
   @override
   double get textScaleFactor => 2;
@@ -1116,7 +1351,8 @@ final class _ScriptSpy implements ValenceHostView {
   bool pageLoaded = true;
 
   /// The names of the events emitted, in order. The shape is fixed by §4.2's wire table.
-  List<String> get events => [for (final s in scripts) s.split('.e("')[1].split('"')[0]];
+  List<String> get events =>
+      [for (final s in scripts) s.split('.e("')[1].split('"')[0]];
 
   @override
   void runScript(String script) => scripts.add(script);
@@ -1150,7 +1386,10 @@ final class _WatchedSecureStorage extends TestFlutterSecureStoragePlatform {
   final Future<void> Function(String key) _onWrite;
 
   @override
-  Future<void> write({required String key, required String value, required Map<String, String> options}) async {
+  Future<void> write(
+      {required String key,
+      required String value,
+      required Map<String, String> options}) async {
     await _onWrite(key);
     return super.write(key: key, value: value, options: options);
   }
@@ -1161,7 +1400,8 @@ final class _UnreadableAccount extends TestFlutterSecureStoragePlatform {
   _UnreadableAccount(super.data);
 
   @override
-  Future<String?> read({required String key, required Map<String, String> options}) async {
+  Future<String?> read(
+      {required String key, required Map<String, String> options}) async {
     if (key == secureAuthAccountKey) throw PlatformException(code: 'Invalid');
     return super.read(key: key, options: options);
   }

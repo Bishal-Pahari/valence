@@ -25,7 +25,6 @@ import {
   codegen,
 
   devPlan,
-  diagnose,
   pointer,
   diagnose,
   loadConfig,
@@ -43,7 +42,7 @@ const TEMPLATES = join(import.meta.dirname, '..', 'templates');
 // Listed here rather than per test, because every new runtime capability has to land in exactly one place
 // for the "an older app still codegens" cases to keep meaning what they say.
 const SINCE_ABOVE_4 = {
-  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings', 'notify.permission', 'notify.schedule', 'notify.cancel', 'notify.pending', 'notify.initial', 'notify.channels.set', 'badge.set', 'badge.clear', 'push.token', 'push.permission', 'push.initial'],
+  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings', 'notify.permission', 'notify.schedule', 'notify.cancel', 'notify.pending', 'notify.initial', 'notify.channels.set', 'badge.set', 'badge.clear', 'push.token', 'push.permission', 'push.initial', 'share.image'],
   events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online', 'link.opened', 'permissions.changed', 'notify.tapped', 'notify.action', 'push.received', 'push.tapped', 'push.tokenChanged'],
   types: ['SyncStatus', 'AppState', 'BundleStatus', 'Link', 'PermissionState', 'NotifyScheduled', 'NotifyPending', 'PushMessage'],
 };
@@ -1144,6 +1143,30 @@ test('fontScale is optional, additive against store AppInfo, and frozen by type'
   assert.throws(() => codegen({ root, cfg }), /fields are not/);
 });
 
+test('schema-14 image sharing delegates strictly and preserves older custom handlers', () => {
+  const { root, cfg } = fixture({ latest: true });
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  codegen({ root, cfg });
+  const dartPath = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
+  assert.match(readFileSync(dartPath, 'utf8'), /return valence\.shareImage\(bytes: p\.bytes, path: p\.path, fileName: p\.fileName, caption: p\.caption\);/);
+  assert.match(readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8'), /'share.image': 14/);
+  for (const mutate of [
+    (s) => (s.methods['share.image'].params.bytes = 'json?'),
+    (s) => (s.methods['share.image'].returns = 'bool'),
+  ]) {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), /implemented by the valence package/);
+  }
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => {
+    s.methods['share.image'] = { since: 3, params: { base64: 'string' }, returns: 'void' };
+  });
+  codegen({ root, cfg });
+  assert.doesNotMatch(readFileSync(dartPath, 'utf8'), /valence\.shareImage/);
+  assert.match(readFileSync(dartPath, 'utf8'), /Future<void> shareImage\(ShareImageParams p\)/);
+});
+
 test('a second --store build cannot quietly rewrite the schema the stores reviewed', () => {
   const { root, cfg, key } = fixture();
   codegen({ root, cfg });
@@ -1212,7 +1235,7 @@ test('schema validation catches names that would break the generated code', () =
     assert.throws(() => parseSchema(s), re);
   };
   bad((s) => (s.methods['data.get'].returns = 'Nope'), /unknown type/);
-  bad((s) => (s.methods['data.get'].since = base.version + 1), /since/);
+  bad((s) => (s.methods['data.get'].since = s.version + 1), /since/);
   bad((s) => delete s.methods['app.info'], /must define app.info/);
   bad((s) => (s.methods['data.get'].params.key = 'void'), /void/);
   bad((s) => (s.methods['data.get'].params.default = 'string'), /reserved field/);
