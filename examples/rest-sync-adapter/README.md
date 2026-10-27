@@ -27,12 +27,15 @@ refresh and writes, which favors clarity over throughput. Requests and upstream 
 limited to 1 MiB; pushes accept every operation within that byte cap, including backlogs above
 200 operations. Larger datasets need a paged snapshot and a bounded push design before deployment.
 
-Point a test app at `sync.base: "http://10.0.2.2:8787"`, `writable: ["items"]` and call
+Run `adb reverse tcp:8787 tcp:8787` on Android. Point a test app at
+`sync.base: "http://127.0.0.1:8787"`, `writable: ["items"]` and call
 `auth.setToken` with `ADAPTER_TOKEN`. There is no `items` entry in `data`: writable buckets always
-use schema 1. For native online RPC also add `"http": {"origins": ["http://10.0.2.2:8787"], …}`
+use schema 1. For native online RPC also add `"http": {"origins": ["http://127.0.0.1:8787"], …}`
 and regenerate the host. `GET /rpc` returns only `{native: true, authenticated: true}` to exercise
-`http.request` with no CORS headers or token reflection. Android's emulator uses `10.0.2.2` to
-reach the machine; physical devices need a separately secured endpoint. iOS is untested.
+`http.request` with no CORS headers or token reflection. Forward loopback on an emulator or a
+USB-connected physical device. Use HTTPS for remote services: an explicitly configured HTTP
+origin can receive the token in release builds too, regardless of Android's network security
+XML. iOS is untested.
 
 The adapter compares the REST snapshot with durable rows, assigns a new USN only to changes,
 and retains a deletion as `{k, v: null, u, d: 1}`. A pull is ordered by USN; when there is another
