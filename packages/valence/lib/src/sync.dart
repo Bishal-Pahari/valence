@@ -241,6 +241,7 @@ final class ValenceSync {
     final touched = <String>[];
     var changed = 0;
     var offline = false;
+    late final ValenceSyncReason reason;
     try {
       final wanted = only?.toSet();
       for (final e in readSchemas.entries) {
@@ -294,6 +295,15 @@ final class ValenceSync {
           _log('sync: offline pushing $bucket: $err');
         }
       }
+      // Classify while holding the lease, before another run can reset the attempt flags.
+      // Auth rejection outranks transport failure, which outranks an incomplete server response.
+      reason = _unauthorized
+          ? ValenceSyncReason.unauthorized
+          : offline
+              ? ValenceSyncReason.offline
+              : _incomplete
+                  ? ValenceSyncReason.failed
+                  : ValenceSyncReason.ok;
       await store.hostPrefSet('valence.sync.offline', offline.toString());
       if (!offline && !_unauthorized && !_incomplete && only == null) {
         await store.hostPrefSet('valence.sync.lastSyncedAt', _now().millisecondsSinceEpoch.toString());
@@ -301,15 +311,6 @@ final class ValenceSync {
     } finally {
       await releaseLease();
     }
-    // A 401 outranks offline. Both mean the data is stale, but only one of them is fixed by the page
-    // setting a new token, and "offline" would have a page wait for connectivity it already has.
-    final reason = _unauthorized
-        ? ValenceSyncReason.unauthorized
-        : offline
-            ? ValenceSyncReason.offline
-            : _incomplete
-                ? ValenceSyncReason.failed
-                : ValenceSyncReason.ok;
     return ValenceSyncResult(touched, changed, offline, reason, await store.pendingWrites());
   }
 
