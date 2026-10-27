@@ -780,14 +780,14 @@ export function loadPluginSchema(root, cfg) {
     // bridge version (§4.3), so a fragment shipped inside a pub package cannot carry one number that is
     // right for every app that installs it: without this form a published plugin is installable only by
     // editing a file in ~/.pub-cache or vendoring the fragment.
-    const stamp = object(entry) ? entry.since : null;
+    const stamp = object(entry) && Object.hasOwn(entry, 'since') ? entry.since : null;
     if (object(entry)) {
       for (const key of Object.keys(entry)) {
         if (key !== 'path' && key !== 'since') throw new Error(`plugin entry: unknown field "${key}" (an entry is a path or {path, since})`);
       }
       if (!object(stamp)) throw new Error('plugin entry: since must be an object of {"namespace.method": version}');
     }
-    const path = object(entry) ? entry.path : entry;
+    const path = object(entry) && Object.hasOwn(entry, 'path') ? entry.path : object(entry) ? undefined : entry;
     if (typeof path !== 'string' || !path || isAbsolute(path) || path.split(/[/\\]/).includes('..')) {
       throw new Error('plugin path must be a nonempty project-relative string inside the project');
     }
@@ -834,7 +834,9 @@ export function loadPluginSchema(root, cfg) {
           if (stamp && own) throw new Error(`plugin ${path}: ${kind} "${name}" declares since and the plugins entry stamps it; remove one`);
           if (stamp && !Object.hasOwn(stamp, name)) throw new Error(`plugin ${path}: add "${name}" to this entry's since in valence.config.json`);
           if (!stamp && !own) throw new Error(`plugin ${path}: ${kind} "${name}" needs a since, in the fragment or in this entry's since`);
-          if (stamp) merged = { ...definition, since: stamp[name] };
+          // Coerced here, not just in parseSchema: a digit string would otherwise freeze into the store
+          // baseline as a string, and correcting it to a number later reads as changing a shipped method.
+          if (stamp) merged = { ...definition, since: int(stamp[name], `${path}: since."${name}"`, 1) };
         }
         // defineProperty handles JSON keys such as __proto__ without mutating object prototypes.
         Object.defineProperty(schema[kind], name, { value: merged, enumerable: true, configurable: true, writable: true });

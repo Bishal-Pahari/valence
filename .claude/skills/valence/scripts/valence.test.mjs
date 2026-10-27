@@ -372,6 +372,14 @@ test('a stamp and a fragment cannot both answer for since, and neither can half 
   reject(stamp({ 'probe.read': 2, 'probe.changed': 99 }), bare, /probe.changed.since/);
   reject([{ path: 'probe.json' }], bare, /since must be an object/);
   reject([{ path: 'probe.json', since: { 'probe.read': 2, 'probe.changed': 2 }, extra: 1 }], bare, /unknown field "extra"/);
+  // A digit string must not freeze into the store baseline as a string: correcting it to a number
+  // later would then read as changing a shipped method, and only --rebaseline could escape it.
+  const p = probePlugin();
+  bare(p);
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(p));
+  cfg.plugins = [{ path: 'probe.json', since: { 'probe.read': '2', 'probe.changed': 2 } }];
+  assert.strictEqual(loadPluginSchema(root, cfg).schema.methods['probe.read'].since, 2);
+  reject(stamp({ 'probe.read': '2.5', 'probe.changed': 2 }), bare, /since."probe.read"/);
   reject([{ since: { 'probe.read': 2 } }], bare, /project-relative/);
   reject([{ path: '../probe.json', since: { 'probe.read': 2 } }], bare, /inside the project/);
 });

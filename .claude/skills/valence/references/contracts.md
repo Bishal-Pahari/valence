@@ -1077,8 +1077,8 @@ Plugins are trusted native code, with the same privileges as the host, not a san
 `valence.config.json.plugins` is an optional array of entries, each either a
 project-root-relative fragment path or `{path, since}`, where `since` maps every method and
 event name in that fragment to an app bridge version. The two forms are exclusive per entry:
-with `since` present the fragment must declare none and must be covered completely, and
-without it the fragment declares its own. A `since` key the fragment does not declare is an
+the object form requires `since`, and then the fragment must declare none and must be covered
+completely; the bare string is the only form in which a fragment declares its own. A `since` key the fragment does not declare is an
 error, so a renamed or dropped method cannot keep a stale stamp. This is what lets a
 **published** fragment be installed unedited: `since` is an app bridge version, and no package
 can know the recorded baseline of every app that installs it (§4.3). The merged schema, and
