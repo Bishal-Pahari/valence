@@ -542,7 +542,7 @@ Error codes. **The set is closed:** add to it here rather than inventing one per
     - **A grown param's only gate is a sibling name, and `codegen` requires it.** A param has no `since` of its own, so the one thing a page can read is another *method or event* that arrived in the same version — `has('data.count')` for `after`. So a built-in that grows a param ships alongside a name at that version, **and the runtime records which name that is**: an app that declares `after` without declaring `data.count` is refused, because otherwise the one gate this section permits answers `false` on every host that app will ever ship, including the ones that accept the cursor, and a page following this advice never pages at all. The check is in `assertBuiltinShapes`, not `assertAdditive`, because the trap needs no store baseline — a schema can be born with the param and without the sibling.
     - **Which is also why a grown param requires the schema `version` to rise with it.** `assertAdditive` refuses a built-in that gains a param while `version` stays at the shipped number: the sibling needs a version to arrive at, and the recorded store baseline needs to see the change.
   - **A key `.` or `..` is refused by `data.put` with `E_PARAMS`.** They are the two values `encodeURIComponent` leaves untouched, so a server that maps a key into a URL path sees them resolve away as dot segments and the write lands on the collection or the root. A server that rejects the batch for it then rejects the **same** queued write on every later run, because push replays the outbox (§5.5): one bad key and nothing in that bucket syncs again, with no method the page could use to clear it. Refusing at the trust boundary is what keeps that out of the outbox; a server-side check is defence in depth, not the fix.
-- **Large byte payloads stay outside the bridge.** The bounded exception is `share.image` (section 4.7): at most 128 KiB of inline PNG/JPEG bytes or an active signed bundle image key. There is no blob, no file handle and no shared scratch directory, and base64 adds a third again on top. Native bytes reach the page over the loopback server's reserved `/_host/` prefix (§3). Outside that bounded exception, bytes going the other way — an image to share, a file to upload — are **regenerated host-side from parameters**: the page sends what to draw, or a key the host already holds, and the host produces the bytes. There is deliberately no inbound HTTP path. The server is GET and HEAD only (§3), the nonce is checked by `bridgeDispatch` and never on HTTP, and the port is not a secret — so a `PUT /_host/…` would let any app on the device write into app-private storage unauthenticated.
+- **Large byte payloads stay outside the bridge.** The bounded exception is `share.image` (section 4.11): at most 128 KiB of inline PNG/JPEG bytes or an active signed bundle image key. There is no blob, no file handle and no shared scratch directory, and base64 adds a third again on top. Native bytes reach the page over the loopback server's reserved `/_host/` prefix (§3). Outside that bounded exception, bytes going the other way — an image to share, a file to upload — are **regenerated host-side from parameters**: the page sends what to draw, or a key the host already holds, and the host produces the bytes. There is deliberately no inbound HTTP path. The server is GET and HEAD only (§3), the nonce is checked by `bridgeDispatch` and never on HTTP, and the port is not a secret — so a `PUT /_host/…` would let any app on the device write into app-private storage unauthenticated.
 - **A method that does take bytes validates in this order,** because the page is untrusted and "a share method" is otherwise a way to write attacker-chosen bytes to disk under an attacker-chosen name: cap the *encoded* length before decoding; decode; check the magic bytes against the type the method claims; require the file name to be a plain leaf matching an explicit pattern; write into a scratch directory the host wipes before each use.
 
 **The host is a trust boundary.**
@@ -712,7 +712,7 @@ at the reserved key `valence.auth.account`. It is written only by this method an
     request. Releasing the lease before the token is written reopens the whole hole on a resume.
   - **Clearing first and storing second**, in that order, because the failure between them has to be
     the recoverable one. After clearing rows, delete the old token, record the new id, rebind task
-    restoration (§4.7), then write the new token. Interrupted writes leave the original credentials
+    restoration (§4.8), then write the new token. Interrupted writes leave the original credentials
     or no bearer, never a new bearer under the old id. Retry sign-in to recover. Storing first and
     clearing second leaves B's token over A's rows, and nothing later notices.
   - `sync.changed` is emitted for the cleared buckets, because a page showing A's list is now showing
@@ -958,7 +958,7 @@ does not expose a page-callable system-settings setter. These signals describe O
 preferences; they do not certify the page as accessible. Semantic HTML, TalkBack
 testing, contrast, focus order and usable tap targets remain the app's job.
 
-## 4.7 Task state restoration (R7)
+### 4.8 Task state restoration (R7)
 
 Snapshots are bound to the native recorded account (§4.4) as well as the signed bundle seq.
 Before loading a restored route, compare its account fingerprint with secure storage; a mismatch
@@ -1000,7 +1000,7 @@ Android process reclamation is tested with Home then `adb shell am kill <appId>`
 reopening the retained task. iOS uses Flutter restoration too but is experimental
 and untested; its app must opt into native state restoration as Flutter documents.
 
-### 4.7 Permissions (schema 10, R3)
+### 4.9 Permissions (schema 10, R3)
 
 `permissions.check({kind}) -> string`, `permissions.request({kind}) -> string`, and
 `permissions.openSettings() -> bool` are built-ins at `since: 10`. Kinds are `camera`,
@@ -1043,7 +1043,7 @@ example are in `docs/permissions.md`.
 
 ---
 
-### 4.7 Native plugins
+### 4.10 Native plugins
 
 A plugin is store-compiled native code, never downloaded code. A Dart package supplies a
 `ValencePlugin` implementation, `valence.plugin.json`, and native setup notes; a matching npm
@@ -1060,7 +1060,7 @@ strings name the packages and the setup document; they are not imports or comman
 The namespace is one lower-camel identifier. All method/event names start with `namespace.`;
 all type names start with its PascalCase spelling. Type references are local to that fragment.
 Two fragments cannot share a namespace, and no fragment can collide with an app method, event
-or type, even with an identical definition. Core namespaces (`app`, `data`, `prefs`, `sync`,
+or type, even with an identical definition. Core namespaces (`share`, `app`, `data`, `prefs`, `sync`,
 `open`, `bundle`, `secure`, `auth`, `permissions`, `notify`, `badge`, `push`, `link`, `state`,
 `http`) are reserved. Fragments cannot declare a schema version: the app owns the combined
 version and each method/event's explicit `since`. After a store baseline exists, additions
@@ -1080,7 +1080,7 @@ The built-in `open.external` delegates through this same registry to `ValenceOpe
 which calls the existing scheme-restricted runtime method. Applications cannot replace it.
 Its wire shape and `since` do not change. Android is tested; iOS is experimental and untested.
 
-### 4.7 Sharing an image (R14, schema 14)
+### 4.11 Sharing an image (R14, schema 14)
 
 `share.image` is `since: 14`, with optional string params `bytes`, `path`, `fileName`,
 `caption`, returning a string. Exactly one of `bytes` (canonical standard padded base64,
@@ -1266,7 +1266,7 @@ Ship at least **two** of these in the host before the first store submission:
 | offline-first cold start | — | none; the built-in bundle and the seed are it |
 | local notifications driven by synced data | `flutter_local_notifications` + `connectivity_plus`, resolved **together** (see §6.1 and the SKILL.md baseline) | requesting `POST_NOTIFICATIONS` at runtime, `RECEIVE_BOOT_COMPLETED` and the plugin's three receivers, core library desugaring, a notification channel created at init, and the timezone setup in §6.1 |
 | a home-screen widget fed by a snapshot (§5.6) | `home_widget` **0.10.0** — `^0.8.x` fails the Android build inside the plugin's own Kotlin (`Cannot inline bytecode built with JVM target 11 into bytecode that is being built with JVM target 1.8`) | an `AppWidgetProvider`, a layout, an `appwidget-provider` XML and a manifest receiver on Android; a widget extension and an App Group on iOS (see §6.2) |
-| native share and haptics | `share_plus` inside `valence`, plus Flutter's own `HapticFeedback` | schema-14 `share.image` accepts bounded inline PNG/JPEG bytes or an active signed bundle image, with a caption; no storage permission. See section 4.7 |
+| native share and haptics | `share_plus` inside `valence`, plus Flutter's own `HapticFeedback` | schema-14 `share.image` accepts bounded inline PNG/JPEG bytes or an active signed bundle image, with a caption; no storage permission. See section 4.11 |
 | biometric lock | `local_auth` | `MainActivity` must extend **`FlutterFragmentActivity`**, not `FlutterActivity`, or every `authenticate()` throws `PlatformException(no_fragment_activity)` |
 
 **Versions live in SKILL.md §Stack baseline, with their dates and their sources** — that is the only table a docs-scout maintains, and the only one that can say how stale it is. The one pin named here is `home_widget`, because §6 is where a reader meets the package and `^0.8.x` costs two Gradle runs to diagnose.

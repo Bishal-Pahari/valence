@@ -1,6 +1,6 @@
 # Permissions
 
-Contracts §4.7. Schema 10 adds `permissions.check`, `permissions.request`,
+Contracts §4.9. Schema 10 adds `permissions.check`, `permissions.request`,
 `permissions.openSettings` and `permissions.changed`. iOS is experimental and untested.
 
 ## Enable only what your app uses

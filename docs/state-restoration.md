@@ -50,7 +50,7 @@ iOS is experimental and untested. Assign a restoration identifier to the
 `restorationIdentifier="valence.page"`. Follow [Flutter's restoration setup](https://api.flutter.dev/flutter/services/RestorationManager-class.html)
 for native embedding and device testing. OS snapshots are best effort on either platform.
 
-Source of truth: contracts §4.7; runtime `restoration.dart` and `app.dart`.
+Source of truth: contracts §4.8; runtime `restoration.dart` and `app.dart`.
 
 If secure storage cannot confirm the account at startup, the host discards the snapshot and opens the verified root page so public/offline startup still works.
 

@@ -1,6 +1,6 @@
 # Writing a Valence plugin
 
-The contract is [§4.7](../.claude/skills/valence/references/contracts.md#47-native-plugins).
+The contract is [§4.10](../.claude/skills/valence/references/contracts.md#410-native-plugins).
 The complete [guide](https://getvalence.pages.dev/docs/guides/plugins/) covers
 fragments, handlers, events, web types and platform setup. A runnable local
 [Dart plugin and matching npm types package](../packages/valence/example/plugins/haptics/)
@@ -23,7 +23,7 @@ against the merged schema and still rejects changes or removal.
 
 Choose one lower-camel namespace for methods/events and its PascalCase prefix
 for types. Fragments may reference only their own named types. Conflicts are errors,
-including identical definitions. Core namespaces are reserved. Metadata fields
+including identical definitions. Core namespaces, including `share`, are reserved. Metadata fields
 name the Dart package, npm package and setup document; tooling executes none of them.
 
 The registry snapshots method ownership. Missing implementations return

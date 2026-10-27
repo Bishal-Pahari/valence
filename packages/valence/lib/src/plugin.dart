@@ -63,6 +63,7 @@ final class ValencePluginRegistry {
     'link',
     'state',
     'http',
+    'share',
   };
   static final _namespace = RegExp(r'^[a-z][a-zA-Z0-9]*$');
   static final _method = RegExp(r'^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)+$');

@@ -16,7 +16,7 @@ const maxInlineShareBytes = 128 * 1024;
 /// Maximum size of an image read from the active signed bundle.
 const maxBundleShareBytes = 5 * 1024 * 1024;
 
-/// The package-owned policy for `share.image` (contracts §4.7).
+/// The package-owned policy for `share.image` (contracts §4.11).
 ///
 /// Paths are manifest keys, never filesystem paths. Only the hash in the host's
 /// verified active manifest selects a CAS file. The native plugin receives a copy

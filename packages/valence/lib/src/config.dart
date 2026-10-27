@@ -118,7 +118,7 @@ final class ValenceConfig {
   /// Exact HTTPS/custom-scheme origins accepted as local routes (§6.3).
   final Set<String> linkOrigins;
 
-  /// Permission kinds enabled by this store build (contracts §4.7). Empty denies all.
+  /// Permission kinds enabled by this store build (contracts §4.9). Empty denies all.
   final Set<String> permissionKinds;
 
   /// Store-build opt-in to local notifications. Initialization never prompts.

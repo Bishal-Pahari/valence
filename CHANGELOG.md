@@ -8,7 +8,7 @@ Schema 8 adds `state.save({json})` and `state.restore()` for a task-local UI blo
 
 ## Unreleased: deep links
 
-Open local screens from Android App Links or custom schemes with schema-5
+Open local screens from Android App Links or custom schemes with schema-9
 `link.initial`, `link.opened` and the web `onLink()` helper. Regenerate the bridge,
 compile `links.origins` and add matching native registrations in a store build.
 Existing hosts remain supported; OTA cannot expand accepted origins. New

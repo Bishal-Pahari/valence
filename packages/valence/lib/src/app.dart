@@ -546,9 +546,10 @@ class _ValenceAppState extends State<ValenceApp>
     await _reclaimPort();
     final permissions = await _valence.permissions.refresh();
     if (!mounted) return;
-    if (permissions.isNotEmpty)
+    if (permissions.isNotEmpty) {
       runScript(
           eventScript('permissions.changed', {'permissions': permissions}));
+    }
     runScript(eventScript('app.resumed', const <String, Object?>{}));
     unawaited(_checkForUpdate());
     await _syncNow();

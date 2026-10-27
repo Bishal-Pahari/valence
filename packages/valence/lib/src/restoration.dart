@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'server.dart';
 import 'wire.dart';
 
-/// Task-local UI state (contracts §4.7). Never written to the app's database.
+/// Task-local UI state (contracts §4.8). Never written to the app's database.
 final class ValenceRestoration extends ChangeNotifier {
   int? _seq;
   String _route = '/';

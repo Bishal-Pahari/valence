@@ -22,10 +22,19 @@
     <p class="sub">The web UI, served from the host's loopback server as a signed bundle.</p>
 
     <section>
+      <h2>Task restoration</h2>
+      <label>Draft <input id="draft" value="fern draft" /></label>
+      <button id="save-state">Save draft and route</button>
+      <button id="clear-state">Clear draft</button>
+      <pre id="restored"></pre>
+    </section>
+
+    <section>
       <h2>Host</h2>
       <pre id="info">reading app.info…</pre>
       <pre id="batch">reading data.getMany…</pre>
       <pre id="status">reading sync.status…</pre>
+      <pre id="link">No link received</pre>
     </section>
 
     <section>
@@ -79,6 +88,50 @@
       <pre id="http-result"></pre>
     </section>
 
+    <section>
+      <h2>Permissions</h2>
+      <p>Choose a permission, check it, then request it only when needed.</p>
+      <select id="permission-kind" aria-label="Permission kind">
+        <option>camera</option><option>location</option><option>notifications</option>
+        <option>contacts</option><option>bluetooth</option><option>microphone</option><option>photos</option>
+      </select>
+      <button id="permission-check">Check</button>
+      <button id="permission-request">Request</button>
+      <button id="permission-settings">App settings</button>
+      <pre id="permission-result" aria-live="polite"></pre>
+      <pre id="permission-event" aria-live="polite"></pre>
+    </section>
+
+
+    <section>
+      <h2>Local reminders</h2>
+      <p>Request permission, then schedule a one-shot reminder 15 seconds from now. Exact requests may return inexact.</p>
+      <button id="notify-permission">Allow reminders</button>
+      <button id="notify-schedule">Remind in 15 seconds</button>
+      <button id="notify-pending">Pending reminders</button>
+      <button id="notify-cancel">Cancel reminder</button>
+      <button id="badge">Badge 3</button>
+      <pre id="notify-result"></pre>
+    </section>
+
+    <section>
+      <h2>Remote push</h2>
+      <p>Requires a Firebase-configured host. Permission is requested only when you tap.</p>
+      <button id="push-check">Check permission</button>
+      <button id="push-request">Allow notifications</button>
+      <button id="push-token">Check registration</button>
+      <pre id="push-result">Push device check blocked: needs Firebase project.</pre>
+    </section>
+
+
+    <section>
+      <h2>Share an image</h2>
+      <p>Share a PNG from the signed bundle or a small inline image, with a caption.</p>
+      <button id="share-bundle">Share bundle image</button>
+      <button id="share-inline">Share inline image</button>
+      <pre id="share-result"></pre>
+    </section>
+
     </main>
     <!--
       A real app imports @getvalence/bridge through the generated web/lib/bridge.g.ts. This example talks
@@ -97,6 +150,7 @@
       const nonce = document.querySelector('meta[name="valence-nonce"]')?.content ?? '';
       const pending = new Map();
       let nextId = 1;
+      let liveLink = false;
       window.__valence = {
         r(reply) {
           const p = pending.get(reply.id);
@@ -112,6 +166,16 @@
               left: css.getPropertyValue('--valence-inset-left'), right: css.getPropertyValue('--valence-inset-right'),
               scale: css.getPropertyValue('--valence-font-scale') });
           }
+          if (name === 'link.opened') {
+            liveLink = true;
+            routeLink(payload);
+          }
+          if (name === 'permissions.changed') document.getElementById('permission-event').textContent = name + ': ' + JSON.stringify(payload);
+
+          if (name.startsWith('notify.')) document.getElementById('notify-result').textContent = name + ': ' + JSON.stringify(payload);
+
+          if (name === 'push.tokenChanged') document.getElementById('push-result').textContent = 'Registration changed; update your backend.';
+          if (name === 'push.received' || name === 'push.tapped') document.getElementById('push-result').textContent = name + ': ' + JSON.stringify(payload.message);
           if (name === 'sync.changed') void refresh();
           // §4.6. Logged rather than acted on, because the point of the three is that they *arrive*:
           // app.lifecycle on the way out as well as in, app.online without asking, and sync.done after
@@ -152,6 +216,31 @@
       const show = (err) => {
         document.getElementById('error').textContent = err ? String(err) : '';
       };
+
+      async function showRestored() {
+        const state = await call('state.restore');
+        if (state && typeof state.draft === 'string') document.getElementById('draft').value = state.draft;
+        document.getElementById('restored').textContent = location.pathname + location.search + location.hash + '\nstate.restore: ' + JSON.stringify(state);
+      }
+      document.getElementById('save-state').onclick = async () => {
+        history.pushState({}, '', '/shelf/fern?mode=draft#edit');
+        await call('state.save', { json: { draft: document.getElementById('draft').value } });
+        await showRestored();
+      };
+      document.getElementById('clear-state').onclick = async () => {
+        await call('state.save', { json: null });
+        await showRestored();
+      };
+
+      function routeLink(link) {
+        if (!link) return;
+        const target = new URL(link.path, location.origin);
+        if (target.origin !== location.origin || !link.path.startsWith('/') || link.path.startsWith('//')) return;
+        history.pushState(null, '', link.path);
+        document.getElementById('link').textContent = 'Link route: ' + location.pathname + location.search + location.hash;
+        console.info('link routed: ' + location.pathname);
+        dispatchEvent(new PopStateEvent('popstate'));
+      }
 
       async function refresh() {
         document.getElementById('status').textContent = 'sync.status: ' + JSON.stringify(await call('sync.status'));
@@ -276,13 +365,67 @@
         });
       }
 
+      for (const action of ['check', 'request', 'settings']) {
+        document.getElementById('permission-' + action).addEventListener('click', async () => {
+          const kind = document.getElementById('permission-kind').value;
+          try {
+            const result = action === 'settings' ? await call('permissions.openSettings') : await call('permissions.' + action, { kind });
+            document.getElementById('permission-result').textContent = kind + ': ' + result;
+          } catch (e) {
+            document.getElementById('permission-result').textContent = String(e);
+          }
+        });
+      }
+
+      for (const [id, method, params] of [
+        ['notify-permission', 'notify.permission', () => ({ request: true })],
+        ['notify-schedule', 'notify.schedule', () => ({ id: 42, title: 'Valence reminder', body: 'A local reminder from your signed page', at: Date.now() + 15000, exact: true, payload: 'demo', actions: ['done', 'snooze'], image: 'iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAMAAABiM0N1AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAK5QTFRFAAAAAU6KAVebKbb2VMX4Kbb2VMX4AVaaAVebKbb2RsD3VMX4VMX4AVaZAVebGHalKbb2VMX4Pa7jADJZADhkAStLATBTAT5uAT5vAUd/AUmCAUyHAU6KAU6LAU6MAVGRAVKSAVKTAVOUAVWXAVWYAVaYAVaaAVeaAVebAjtnAkBwAkN2AkmAA02GA0+KA1CLFmiQF2+ZGXimGn6wG4O2G4a6HIe8Kbb2RL/3VMX47aEaPQAAABN0Uk5TABAQEBBQUGBgYGBggM/Pz8/P3xkQ5PoAAADpSURBVFjD7czXDoJAEEBRVOy9YO+KjB0r+v8/ZoQIC0sizq4PxrmvNzmKQklMrd758uSQQw455JBDDjnvnFSBL4Vw8iGzqn7TCYUwTpiEc3gJ6wQlvOOXXCf3ucNKrpO1bp87nsQ4FidFcF6SzwlKkRxHCjh+KaLzlDiHlSI7TJ7jSaLOSxJ3HEmG85QwTtLiqyEcJVHhnOs+rciQLjsdMhKk83ZmgATptBnrCxCXjuvB1IYEpcOyM5zMbEhIMpvtTn+sAwhKplZv9aYGgKBkao3uHNhwUnk1gmAoKVYEkCPFSyT9qvSvPQCNJCMEO265wAAAAABJRU5ErkJggg==' })],
+        ['notify-pending', 'notify.pending', () => ({})],
+        ['notify-cancel', 'notify.cancel', () => ({ id: 42 })],
+        ['badge', 'badge.set', () => ({ n: 3 })],
+      ]) document.getElementById(id).addEventListener('click', async () => {
+        try { document.getElementById('notify-result').textContent = method + ': ' + JSON.stringify(await call(method, params())); }
+        catch (e) { document.getElementById('notify-result').textContent = String(e); }
+      });
+
+      for (const [id, method, params] of [
+        ['push-check', 'push.permission', {}],
+        ['push-request', 'push.permission', { request: true }],
+        ['push-token', 'push.token', {}],
+      ]) {
+        document.getElementById(id).addEventListener('click', async () => {
+          try {
+            const result = await call(method, params);
+            document.getElementById('push-result').textContent = method === 'push.token' ? (result ? 'Installation registered (token hidden).' : 'Not registered yet.') : result;
+          } catch (error) { document.getElementById('push-result').textContent = String(error); }
+        });
+      }
+      void call('push.initial').then((message) => {
+        if (message) document.getElementById('push-result').textContent = 'Initial tap: ' + JSON.stringify(message);
+      }).catch(() => {});
+
+      for (const id of ['share-bundle', 'share-inline']) {
+        document.getElementById(id).addEventListener('click', async () => {
+          try {
+            const source = id === 'share-bundle' ? { path: 'share.png' } : { bytes: 'iVBORw0KGgoAAAANSUhEUgAAAUAAAAC0CAIAAABqhmJGAAAER0lEQVR4nO3TsY1gNxBEwYtGISlOJXcyZMn7Pg+NHU6zgAqAj5j+9fvf/4Clfo2/APhjBgyLGTAsZsCwmAHDYgYMixkwLGbAsJgBw2IGDIsZMCxmwLCYAcNiBgyLGTAsZsCwmAHDYgYMixkwLGbAsJgBw2IGDIsZMCxmwLCYAcNiBgyLGTAsZsCwmAHDYgYMixnwc/76+5+fN17dyoCfY8BNDPg5BtzEgJ9jwE0M+DkG3MSAn2PATQz4OQbcxICfY8BNDPg5BtzEgJ9jwE0M+DkG3MSAn2PATQz4OQbcxICfY8BNDPg5BtzEgJ9jwE0M+DkG3MSAn2PATQz4OQbcxICfY8BNDPg5BtzEgJ9jwE0M+DkG3MSAn2PATQz4OQbcxIDPFFx/QQIfAz5TcP0FCXwM+EzB9Rck8DHgMwXXX5DAx4DPFFx/QQIfAz5TcP0FCXwM+EzB9Rck8DHgMwXXX5DAx4DPFFx/QQIfAz5TcP0FCXwM+EzB9Uu4ISHFgM8UnI6EGxJSDPhMwelIuCEhxYDPFJyOhBsSUgz4TMHpSLghIcWAzxScjoQbElIM+EzB6Ui4ISHFgM8UnI6EGxJSDPhMwelIuCEhxYDPFJyOhBsSUgz4TMHpSLghIcWAzxScjoQbElIM+EzB6Ui4ISHFgM8UnI6EGxJSDPhMwelIuCEhxYDPFJyOhBsSUgz4TMHpSLghIcWAzxScjoQbElIM+EzB6Ui4ISHFgM8UnI6EGxJSfnTABf8uQcJVDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEgxYAkSBhJSDFiChIGEFAOWIGEgIcWAJUgYSEj50QEDWQYMixkwLGbAsJgBw2IGDIsZMCxmwLCYAcNiBgyLGTAsZsCwmAHDYgYMixkwLGbAsJgBw2IGDIsZMCxmwLCYAcNiBgyLGTAsZsCwmAHDYgYMixkwLGbAsJgBw2IGDIv9D9t/qE4MeS1wAAAAAElFTkSuQmCC' };
+            const result = await call('share.image', { ...source, fileName: 'valence.png', caption: 'Valence image sharing' });
+            document.getElementById('share-result').textContent = result + ' (selection is not delivery)';
+          } catch (e) { document.getElementById('share-result').textContent = String(e); }
+        });
+      }
+
       (async () => {
         try {
           const info = await call('app.info');
+          await showRestored();
           hostBridge = info.bridge;
           document.getElementById('info').textContent = JSON.stringify(info, null, 2);
+          const initialLink = await call('link.initial');
+          // A newer intent may arrive while startup awaits any bridge reply.
+          if (!liveLink) routeLink(initialLink);
           await refresh();
           await showAuth();
+          document.getElementById('notify-result').textContent = 'notify.initial: ' + JSON.stringify(await call('notify.initial'));
           await showState();
         } catch (e) {
           show(e);

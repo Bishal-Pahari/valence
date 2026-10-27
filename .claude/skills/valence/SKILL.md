@@ -7,7 +7,7 @@ argument-hint: "[init|release|doctor] [--channel name] [--rollout 0-100] [--floo
 
 # /valence
 
-For task restoration, follow [contracts §4.7](references/contracts.md#47-task-state-restoration-r7).
+For task restoration, follow [contracts §4.8](references/contracts.md#48-task-state-restoration-r7).
 Use the template's state.* built-ins; on iOS set the FlutterViewController
 restorationIdentifier in Main.storyboard (experimental and untested). Verify
 Home → am kill → retained-task reopen, then force-stop and Recents removal.
@@ -128,7 +128,7 @@ Spawn the `valence-docs-scout` agent with `run_in_background: true`. Its prompt:
 4. **Add the two runtimes.** In the web app, `@getvalence/bridge` (the wizard declares it in `package.json`; run the install). The Flutter one is `flutter pub add valence`, which the host builder does in Phase 4 because the project may not exist yet.
    - They are versioned independently of this CLI. `flutter pub upgrade valence` and `npm update @getvalence/bridge` are how a host or bridge fix reaches an app — **nothing in `lib/valence/` or `<web lib>/` is ever hand-patched.**
 
-For native plugins, read contracts §4.7. Install the Dart and npm types packages,
+For native plugins, read contracts §4.10. Install the Dart and npm types packages,
 list fragment paths in config `plugins`, follow native setup notes and register
 instances in `ValenceBuiltins(..., plugins: [...])`. Codegen merges fragments into
 the same strict dispatcher; keep runtime code in the packages. New capabilities
@@ -334,7 +334,7 @@ For batch reads, use `data.getMany` (since 3, max 500 keys). Read outbox depth f
 
 ## Gotchas (each has cost someone a day)
 
-- **Image sharing (§4.7, schema 14).** `share.image` accepts exactly one of padded
+- **Image sharing (§4.11, schema 14).** `share.image` accepts exactly one of padded
   standard base64 `bytes` (128 KiB decoded maximum) or active signed bundle `path`
   (5 MiB), optional plain `fileName` and a caption up to 4096 UTF-8 bytes. PNG/JPEG
   only. Use `has()`; adding it needs codegen and a store build. The runtime validates
@@ -400,6 +400,6 @@ Task restoration follows the recorded account: switch/sign-out clears route and 
 
 When an app opens OS links, follow contracts ?6.3: compile exact `links.origins`, configure native registrations, install one generated `onLink()` subscription after `connect()`, and test cold/warm and repeated intents. `assetlinks` and `aasa` generate website association documents; review and host them separately. A forced Android approval proves delivery only. iOS stays experimental and untested.
 
-## OS permissions (contracts §4.7)
+## OS permissions (contracts §4.9)
 
 When the app needs camera, foreground location, notifications, contacts, Bluetooth, microphone or photos, use the package permissions built-ins (since 10). Compile only its needed `permissions.kinds`, copy the matching schema additions, regenerate, add the matching Android declarations and iOS usage keys/macros, then ship a store build. Read [references/permissions.md](references/permissions.md) for native setup before claiming a grant can be requested. Check silently on startup, request only from an explicit user action, handle all five status strings, and observe resume deltas. Never infer permanent denial from an Android status check. Test denial, settings return and queued/background requests. Do not replace the runtime service with generated handler bodies. iOS remains experimental and untested.

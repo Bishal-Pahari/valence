@@ -179,7 +179,7 @@ abstract interface class ValenceHostView {
 /// }
 /// ```
 final class Valence {
-  /// Task-local UI state. ValenceApp connects this to OS restoration (§4.7).
+  /// Task-local UI state. ValenceApp connects this to OS restoration (§4.8).
   final restoration = ValenceRestoration();
 
   /// `state.save`: small UI state only; never credentials or durable records.
@@ -696,8 +696,9 @@ final class Valence {
           moved.add(bucket);
         }
       }
-      if (moved.isNotEmpty)
+      if (moved.isNotEmpty) {
         emit(eventScript('sync.changed', {'buckets': moved}));
+      }
       // Every completed run, `changed: 0`, `busy` and `unauthorized` included — that is the whole point:
       // "nothing moved" is the answer a freshness line needs and the one `sync.changed` never sends.
       emit(eventScript('sync.done', {'result': result.toJson()}));
@@ -885,7 +886,7 @@ final class Valence {
   late final _imageShare =
       ValenceImageShare(manifest: () => manifest, casDir: updater.casDir);
 
-  /// `share.image`: bounded PNG/JPEG bytes or an active signed bundle path (§4.7).
+  /// `share.image`: bounded PNG/JPEG bytes or an active signed bundle path (§4.11).
   Future<String> shareImage(
           {String? bytes, String? path, String? fileName, String? caption}) =>
       _imageShare.share(
@@ -909,8 +910,9 @@ final class Valence {
 
   /// `bundle.applyUpdate`. A full trial promotion, then a reload (§2.4).
   Future<void> applyUpdate() async {
-    if (kDebugMode && const String.fromEnvironment('VALENCE_DEV_URL') != '')
+    if (kDebugMode && const String.fromEnvironment('VALENCE_DEV_URL') != '') {
       return;
+    }
     final seq = await updater.applyUpdate();
     if (seq == null) return;
     await _view?.reloadPage();

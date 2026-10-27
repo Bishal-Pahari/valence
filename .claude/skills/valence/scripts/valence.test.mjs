@@ -23,17 +23,16 @@ import {
   bundle,
   keygen,
   codegen,
-
   devPlan,
   pointer,
   diagnose,
   loadConfig,
   association,
   parseSchema,
-  loadPluginSchema,
   verifyBundle,
   loadSigningKey,
   VALENCE_VERSION,
+  loadPluginSchema,
 } from './valence.mjs';
 
 const TEMPLATES = join(import.meta.dirname, '..', 'templates');
@@ -97,12 +96,18 @@ test('the signed example keeps a live link newer than its delayed initial reply'
     });
     const live = () => window.__valence.e('link.opened', { url: 'valence-example://app/warm', path: '/warm?q=1#x' });
     if (liveAt === 'beforeInfo') live();
-    assert.equal(sent[0].m, 'app.info');
-    window.__valence.r({ id: sent[0].id, ok: true, v: { bridge: 13 } });
+    const infoRequest = sent.find((r) => r.m === 'app.info');
+    assert.ok(infoRequest);
+    window.__valence.r({ id: infoRequest.id, ok: true, v: { bridge: 14 } });
     await flush();
-    assert.equal(sent[1].m, 'link.initial');
+    const restoredRequest = sent.find((r) => r.m === 'state.restore');
+    assert.ok(restoredRequest);
+    window.__valence.r({ id: restoredRequest.id, ok: true, v: null });
+    await flush();
+    const initialRequest = sent.find((r) => r.m === 'link.initial');
+    assert.ok(initialRequest);
     if (liveAt === 'duringInitial') live();
-    window.__valence.r({ id: sent[1].id, ok: true, v: { url: 'valence-example://app/cold', path: '/cold' } });
+    window.__valence.r({ id: initialRequest.id, ok: true, v: { url: 'valence-example://app/cold', path: '/cold' } });
     await flush();
     assert.deepEqual(routed, [liveAt ? '/warm?q=1#x' : '/cold']);
     live(); live();
@@ -192,7 +197,7 @@ const editSchema = (root, fn) => {
 test('task restoration is optional, shape-frozen and delegated to the package', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 13);
+  assert.equal(schema.version, 14);
   assert.equal(schema.methods['state.save'].since, 8);
   assert.equal(schema.methods['state.restore'].since, 8);
   codegen({ root, cfg });
@@ -279,7 +284,9 @@ test('plugin conflicts, reserved namespaces, foreign references and malformed fr
     writeFileSync(join(root, 'probe.json'), JSON.stringify(p));
     assert.throws(() => codegen({ root, cfg }), pattern);
   };
-  reject(p => { p.namespace = 'auth'; }, /reserved namespace/);
+  for (const namespace of ['auth', 'share']) {
+    reject(p => { p.namespace = namespace; }, /reserved namespace/);
+  }
   reject(p => { p.version = 3; }, /unknown field/);
   reject(p => { p.methods['probe.read'].returns = 'Row'; }, /unknown local type/);
   reject(p => { p.methods['other.read'] = p.methods['probe.read']; }, /must use namespace/);
@@ -1733,7 +1740,7 @@ test('push builtins freeze permission and nullable initial-message shapes', () =
 test('push uses reserved schema 12 while older app-owned push shapes remain custom', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 13);
+  assert.equal(schema.version, 14);
   assert.equal(schema.methods['auth.account'].since, 13);
   for (const group of ['methods', 'events']) {
     for (const [name, def] of Object.entries(schema[group])) {
@@ -1747,6 +1754,7 @@ test('push uses reserved schema 12 while older app-owned push shapes remain cust
   assert.match(ts, /'push.initial': 12/);
   editSchema(root, (s) => {
     s.version = 11;
+    delete s.methods['share.image'];
     delete s.methods['auth.account'];
     delete s.methods['auth.setToken'].params.account;
     delete s.methods['auth.setToken'].params.discardPending;

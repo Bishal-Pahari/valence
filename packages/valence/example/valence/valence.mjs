@@ -28,7 +28,7 @@ export const VALENCE_VERSION = '0.3.0'; // keep equal to package.json "version" 
 const NATIVE = new Set(['.so', '.dex', '.jar', '.apk', '.aab', '.ipa', '.dylib', '.framework', '.a', '.o', '.class', '.exe', '.dll']);
 const PRIMS = new Set(['string', 'int', 'num', 'bool', 'json', 'void']);
 const CORE_METHODS = ['app.ready', 'app.info'];
-const PLUGIN_RESERVED = new Set('app data prefs sync open bundle secure auth permissions notify badge push link state http'.split(' '));
+const PLUGIN_RESERVED = new Set('app data prefs sync open bundle secure auth permissions notify badge push link state http share'.split(' '));
 const SPKI_ED25519 = Buffer.from('302a300506032b6570032100', 'hex');
 const HASH_RE = /^[0-9a-f]{64}$/;
 // A service worker can only take over the page by being registered from it, and every framework's helper

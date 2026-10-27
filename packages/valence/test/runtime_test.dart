@@ -169,8 +169,9 @@ void main() {
       var fail = true;
       FlutterSecureStoragePlatform.instance =
           _WatchedSecureStorage(data, (key) async {
-        if (fail && key == failKey)
+        if (fail && key == failKey) {
           throw PlatformException(code: 'write-failed');
+        }
       });
       final v = await open(
           writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
@@ -353,10 +354,15 @@ void main() {
     expect(await v.dataGet('plants', 'fern'), 'new');
   });
 
-  group('native plugins (section 4.7)', () {
+  group('native plugins (section 4.10)', () {
     test(
         'reserved owners, duplicate owners and cross-namespace methods fail at registration',
         () {
+      expect(
+          () => ValencePluginRegistry([
+                _Plugin('share', {'share.image'})
+              ]),
+          throwsArgumentError);
       expect(
           () => ValencePluginRegistry([
                 _Plugin('auth', {'auth.read'})

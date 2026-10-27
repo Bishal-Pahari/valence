@@ -1,6 +1,6 @@
 # Sharing an image
 
-`share.image` (since schema 14, contracts §4.7) opens the native share sheet with
+`share.image` (since schema 14, contracts §4.11) opens the native share sheet with
 a PNG or JPEG and an optional caption. Regenerate and ship a store build to add it.
 Import `call` and `has` from your generated `bridge.g.ts`:
 
