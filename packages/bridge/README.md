@@ -100,4 +100,8 @@ Import through your generated `bridge.g.ts`. After `connect()`, guard `has("data
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
+## System appearance
+
+Declare schema-7 app.appearance with bool darkMode, highContrast and reducedMotion fields, then subscribe through the generated on() during bootstrap before ready(). The host publishes an initial snapshot after every load and later preference changes. Optional AppInfo.fontScale is num?; default missing values to 1. Android already applies native text zoom, so do not scale it again in CSS. Use --valence-inset-top/right/bottom/left for content padding. [Guide](../../docs/accessibility.md).
+
 Guard `has("data.count")` to page `data.list` with `after`: pass the last key of the previous page and the scan resumes strictly after it, which is the only complete read of a bucket larger than `data.list`'s 500-row clamp. `has("data.list")` cannot gate `after` — it is a new parameter on a method that has existed since version 1, and a host older than version 5 rejects the unknown field with `E_PARAMS`. `call("data.count", {bucket, prefix})` returns the number of live rows without reading any of them.

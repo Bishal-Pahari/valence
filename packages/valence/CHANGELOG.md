@@ -100,3 +100,7 @@ Corrections an independent review found before this first release, each with a r
   settings method cannot become a route to the sync lease.
 
 284 tests. `dart analyze --fatal-infos` clean. `flutter pub publish --dry-run` has 0 warnings.
+
+## Unreleased - adaptive layout and accessibility
+
+ValenceApp requests edge-to-edge layout, publishes system-bar/cutout inset CSS variables on load and metrics changes, follows Android system text zoom and emits schema-7 app.appearance snapshots. Add optional AppInfo.fontScale: "num?" and regenerate; old schemas remain supported. Existing pages must pad content/fixed controls using the variables and avoid double-scaling Android text. Custom hosts can pass their FlutterView to Valence.attach for matching font-scale reporting. iOS root-font scaling remains experimental and untested.

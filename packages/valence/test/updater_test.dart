@@ -622,6 +622,26 @@ void main() {
   });
 
   group('§2.3 step 8, pending', () {
+    test('updateReady observes the completed status for its pending bundle', () async {
+      final b = await signBundle(key, seq: 20);
+      var notifications = 0;
+      late final ValenceUpdater u;
+      u = makeUpdater(
+        state: ValenceState(installId: 'i', current: 10),
+        client: otaHost(bundles: {20: b}, pointerSeq: 20),
+        onUpdateReady: (seq) {
+          notifications++;
+          expect(seq, 20);
+          expect(u.state.pending, 20);
+          expect(u.lastReason, ValenceBundleReason.ready);
+          expect(u.lastOffered, 20);
+          expect(u.lastCheckedAt, isNotNull);
+        },
+      );
+      expect(await u.checkForUpdate(), 20);
+      expect(notifications, 1);
+    });
+
     test('an urgent bundle calls back so the host can emit bundle.updateReady', () async {
       final b = await signBundle(key, seq: 20, urgent: true);
       final notified = <int>[];

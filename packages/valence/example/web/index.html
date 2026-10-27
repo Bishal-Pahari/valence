@@ -2,21 +2,23 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Valence example</title>
     <style>
       :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-      body { margin: 0; padding: 24px; line-height: 1.5; }
+      body { margin: 0; padding: calc(24px + var(--valence-inset-top, 0px)) calc(24px + var(--valence-inset-right, 0px)) calc(24px + var(--valence-inset-bottom, 0px)) calc(24px + var(--valence-inset-left, 0px)); line-height: 1.5; }
       h1 { font-size: 1.4rem; margin: 0 0 4px; }
       p.sub { margin: 0 0 24px; opacity: 0.7; }
       section { border-top: 1px solid rgba(128, 128, 128, 0.3); padding: 16px 0; }
-      button { font: inherit; padding: 8px 14px; margin-right: 8px; }
+      button { min-height: 48px; min-width: 48px; font: inherit; padding: 8px 14px; margin-right: 8px; }
       pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font-size: 0.85rem; }
       li { margin-bottom: 4px; }
     </style>
   </head>
   <body>
+    <main>
     <h1>Valence example</h1>
+    <pre id="appearance" role="status">Waiting for system appearance</pre>
     <p class="sub">The web UI, served from the host's loopback server as a signed bundle.</p>
 
     <section>
@@ -42,6 +44,7 @@
         The token goes to the host, not into the page's storage: the host attaches it to every sync of
         <code>shelf</code>, including the ones it runs while this page is not on screen.
       </p>
+      <label for="token">API token</label>
       <input id="token" placeholder="paste any string as a token" size="24" />
       <input id="account" placeholder="account id (try a, then b)" size="18" />
       <button id="set-token">auth.setToken</button>
@@ -76,11 +79,20 @@
       <pre id="http-result"></pre>
     </section>
 
+    </main>
     <!--
       A real app imports @getvalence/bridge through the generated web/lib/bridge.g.ts. This example talks
       to the wire protocol directly, so it needs no bundler and `valence bundle` can sign the folder as is
       — and so this file doubles as the smallest honest description of §4.2.
     -->
+    <style>
+      :root[data-valence-dark-mode="true"] { color-scheme: dark; }
+      :root[data-valence-dark-mode="false"] { color-scheme: light; }
+      :root[data-valence-high-contrast="true"] { color: CanvasText; background: Canvas; }
+      :root[data-valence-reduced-motion="true"] * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+      :focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+      input { max-width: 100%; box-sizing: border-box; font: inherit; min-height: 48px; }
+    </style>
     <script>
       const nonce = document.querySelector('meta[name="valence-nonce"]')?.content ?? '';
       const pending = new Map();
@@ -93,6 +105,13 @@
           reply.ok ? p.resolve(reply.v) : p.reject(new Error(`${reply.e.code}: ${reply.e.message}`));
         },
         e(name, payload) {
+          if (name === 'app.appearance') {
+            const css = getComputedStyle(document.documentElement);
+            document.getElementById('appearance').textContent = JSON.stringify({ ...payload,
+              top: css.getPropertyValue('--valence-inset-top'), bottom: css.getPropertyValue('--valence-inset-bottom'),
+              left: css.getPropertyValue('--valence-inset-left'), right: css.getPropertyValue('--valence-inset-right'),
+              scale: css.getPropertyValue('--valence-font-scale') });
+          }
           if (name === 'sync.changed') void refresh();
           // §4.6. Logged rather than acted on, because the point of the three is that they *arrive*:
           // app.lifecycle on the way out as well as in, app.online without asking, and sync.done after

@@ -38,7 +38,7 @@ const TEMPLATES = join(import.meta.dirname, '..', 'templates');
 // for the "an older app still codegens" cases to keep meaning what they say.
 const SINCE_ABOVE_4 = {
   methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'auth.account'],
-  events: ['sync.done', 'app.lifecycle', 'app.online'],
+  events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online'],
   types: ['SyncStatus', 'AppState', 'BundleStatus'],
 };
 const NOW = Date.UTC(2026, 9, 15);
@@ -57,6 +57,7 @@ function fixture({ data = { calendar: 1 }, latest = false } = {}) {
     for (const e of SINCE_ABOVE_4.events) delete s.events[e];
     for (const t of SINCE_ABOVE_4.types) delete s.types[t];
     delete s.methods['data.list'].params.after;
+    delete s.types.AppInfo.fontScale;
     delete s.methods['auth.setToken'].params.account;
     delete s.methods['auth.setToken'].params.discardPending;
     delete s.types.SyncResult.pending;
@@ -901,6 +902,19 @@ test('an app that already shipped a store build can take a built-in\'s new field
   // field a built-in happens to have grown.
   bad((s) => (s.types.Mine.reason = 'string?'), /"Mine" shipped in a store build and cannot change/);
   bad((s) => (s.types.Mine.a = 'int'), /"Mine" shipped in a store build and cannot change/);
+});
+
+test('fontScale is optional, additive against store AppInfo, and frozen by type', () => {
+  const { root, cfg, key } = fixture();
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const output = join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart');
+  assert.doesNotMatch(readFileSync(output, 'utf8'), /fontScale: i\.fontScale/);
+  editSchema(root, (s) => { s.types.AppInfo.fontScale = 'num?'; });
+  codegen({ root, cfg });
+  assert.match(readFileSync(output, 'utf8'), /fontScale: i\.fontScale/);
+  editSchema(root, (s) => { s.types.AppInfo.fontScale = 'num'; });
+  assert.throws(() => codegen({ root, cfg }), /fields are not/);
 });
 
 test('a second --store build cannot quietly rewrite the schema the stores reviewed', () => {

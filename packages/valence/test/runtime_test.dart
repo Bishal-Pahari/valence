@@ -2,6 +2,7 @@
 // generated marshalling. Contracts §4.2, §5.4, §5.5.
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/services.dart';
@@ -59,6 +60,29 @@ void main() {
       );
 
   group('app.info', () {
+    test('uses the attached view nonlinear scale at 16px, rather than the raw factor', () async {
+      final binding = TestWidgetsFlutterBinding.instance;
+      final system = binding.platformDispatcher;
+      final oldMetrics = system.onMetricsChanged;
+      final oldFocus = system.onViewFocusChange;
+      addTearDown(() {
+        system.onMetricsChanged = oldMetrics;
+        system.onViewFocusChange = oldFocus;
+      });
+      final nonlinear = _NonlinearDispatcher(system);
+      final view = TestFlutterView(
+        view: system.implicitView!,
+        platformDispatcher: nonlinear,
+        display: system.displays.first,
+      );
+      final v = await open();
+      v.attach(_ScriptSpy(), flutterView: view);
+      expect(nonlinear.textScaleFactor, 2);
+      expect(v.appInfo().fontScale, 1.75);
+      expect(v.appInfo().fontScale,
+          ValenceAppearance.fromMediaQuery(MediaQueryData.fromView(view)).fontScale);
+    });
+
     test('it reports the platform, the host build, the bridge version and the locale', () async {
       final v = await open();
       final info = v.appInfo();
@@ -68,6 +92,7 @@ void main() {
       expect(info.bridge, v.config.bridgeVersion);
       expect(info.bundle, 0, reason: 'nothing is being served yet');
       expect(info.locale, isNotEmpty);
+      expect(info.fontScale, 1);
     });
   });
 
@@ -897,6 +922,16 @@ void main() {
 }
 
 /// A host view that records the event scripts the runtime emits.
+final class _NonlinearDispatcher extends TestPlatformDispatcher {
+  _NonlinearDispatcher(ui.PlatformDispatcher dispatcher) : super(platformDispatcher: dispatcher);
+
+  @override
+  double get textScaleFactor => 2;
+
+  @override
+  double scaleFontSize(double fontSize) => fontSize == 16 ? 28 : fontSize * 2;
+}
+
 final class _ScriptSpy implements ValenceHostView {
   final List<String> scripts = [];
 

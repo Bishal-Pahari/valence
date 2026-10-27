@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 
+import 'appearance.dart';
 import 'runtime.dart';
 import 'wire.dart';
 
@@ -71,6 +73,8 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   WebViewController? _controller;
   Object? _error;
   String _origin = '';
+  ValenceAppearance? _appearance;
+  bool _appearanceScheduled = false;
 
   /// One-shot event scripts waiting for `window.__valence` to exist.
   ///
@@ -115,6 +119,12 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _valence.attach(this, flutterView: View.of(context));
+  }
+
+  @override
   void dispose() {
     _readyTicker?.cancel();
     _updateTicker?.cancel();
@@ -132,6 +142,8 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
 
   Future<void> _start() async {
     try {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      if (!mounted) return;
       // §2.4: the UI-start transitions, here and nowhere else.
       final manifest = await _valence.updater.activateForUiStart();
       final server = await ValenceServer.bind(
@@ -147,6 +159,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       _log('serving bundle ${manifest.seq} on ${server.origin}');
 
       final controller = WebViewController();
+      await _setTextZoom(controller);
       await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
       await controller.addJavaScriptChannel('Valence', onMessageReceived: _onBridgeMessage);
       // Without this, a JavaScript error during the bundle's bootstrap produces nothing at all — no log,
@@ -164,6 +177,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
       await controller.loadRequest(Uri.parse(server.origin));
       if (!mounted) return;
       setState(() => _controller = controller);
+      if (_pageLoaded) _publishAppearance(forceEvent: true);
 
       _armTriggers();
     } on Object catch (e, st) {
@@ -307,6 +321,7 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   void _onPageFinished(String url) {
     _log('webview finished $url');
     _pageLoaded = true;
+    _publishAppearance(forceEvent: true);
     // window.__valence does not exist until the entry page has loaded, so events emitted before now were
     // buffered. Flushed again after every reload, because an update or a reverted trial reloads the page.
     final queued = [..._buffered];
@@ -449,6 +464,9 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   }
 
   Future<void> _onResume() async {
+    if (!mounted) return;
+    _scheduleAppearance();
+
     // §3: the resume callback can arrive before start-up finishes, and `_start` runs the same triggers at
     // its end anyway — so there is nothing here that a mid-startup resume needs to do, and running it
     // would put an update check alongside the UI-start transition still in flight.
@@ -532,6 +550,64 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
   // Build
   // ---------------------------------------------------------------------------
 
+  ValenceAppearance _systemAppearance() => ValenceAppearance.fromMediaQuery(
+      MediaQueryData.fromView(View.of(context)));
+
+  Future<void> _setTextZoom(WebViewController controller) async {
+    if (!mounted) return;
+    final platform = controller.platform;
+    if (platform is AndroidWebViewController) {
+      await platform.setTextZoom(_systemAppearance().textZoom);
+    }
+  }
+
+  void _publishAppearance({bool forceEvent = false}) {
+    if (!mounted) return;
+    final next = _systemAppearance();
+    final previous = _appearance;
+    if (previous == null || !next.samePreferences(previous)) {
+      setState(() => _appearance = next);
+    } else {
+      _appearance = next;
+    }
+    final controller = _controller;
+    if (controller != null) {
+      unawaited(_setTextZoom(controller)
+          .catchError((Object e) => _log('layout: text zoom failed: $e')));
+      if (_pageLoaded) {
+        runScript(next.script(
+          scaleRootFont: Platform.isIOS,
+          emitEvent:
+              forceEvent || previous == null || !next.samePreferences(previous),
+        ));
+      }
+    }
+  }
+
+  // Metrics can arrive before startup finishes, in bursts, or while backgrounded.
+  // Read the owning view after the next frame; no reload and no pending-event replay.
+  void _scheduleAppearance() {
+    if (!mounted || _appearanceScheduled) return;
+    _appearanceScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _appearanceScheduled = false;
+      _publishAppearance();
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  @override
+  void didChangeMetrics() => _scheduleAppearance();
+
+  @override
+  void didChangeTextScaleFactor() => _scheduleAppearance();
+
+  @override
+  void didChangePlatformBrightness() => _scheduleAppearance();
+
+  @override
+  void didChangeAccessibilityFeatures() => _scheduleAppearance();
+
   @override
   Widget build(BuildContext context) {
     final error = _error;
@@ -562,7 +638,18 @@ class _ValenceAppState extends State<ValenceApp> with WidgetsBindingObserver imp
           await SystemNavigator.pop();
         }
       },
-      child: Scaffold(body: WebViewWidget(controller: controller)),
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: ((_appearance ?? _systemAppearance()).darkMode
+                ? SystemUiOverlayStyle.light
+                : SystemUiOverlayStyle.dark)
+            .copyWith(
+              statusBarColor: Colors.transparent,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarIconBrightness: (_appearance ?? _systemAppearance()).darkMode
+                  ? Brightness.light : Brightness.dark,
+            ),
+        child: Scaffold(body: WebViewWidget(controller: controller)),
+      ),
     );
   }
 }

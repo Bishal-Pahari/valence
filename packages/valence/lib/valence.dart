@@ -9,6 +9,7 @@
 library;
 
 export 'src/app.dart' show ValenceApp, ValenceDispatch, valenceLifecycleFor, valenceOnline;
+export 'src/appearance.dart' show ValenceAppearance;
 export 'src/runtime.dart'
     show
         BridgeError,

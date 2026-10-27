@@ -16,6 +16,7 @@ export interface AppInfo {
   bridge: number;
   bundle: number;
   locale: string;
+  fontScale?: number | null;
 }
 
 export interface Row {
@@ -145,6 +146,11 @@ export interface Events {
   'app.online': {
     online: boolean;
   };
+  'app.appearance': {
+    darkMode: boolean;
+    highContrast: boolean;
+    reducedMotion: boolean;
+  };
 }
 
 export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
@@ -181,6 +187,7 @@ export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
   'sync.done': 6,
   'app.lifecycle': 6,
   'app.online': 6,
+  'app.appearance': 7,
 };
 
 /** Browser fallbacks for this app, so the same build also runs as the website. */

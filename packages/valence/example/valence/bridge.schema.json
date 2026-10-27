@@ -198,6 +198,14 @@
       "payload": {
         "online": "bool"
       }
+    },
+    "app.appearance": {
+      "since": 7,
+      "payload": {
+        "darkMode": "bool",
+        "highContrast": "bool",
+        "reducedMotion": "bool"
+      }
     }
   },
   "types": {
@@ -206,7 +214,8 @@
       "host": "int",
       "bridge": "int",
       "bundle": "int",
-      "locale": "string"
+      "locale": "string",
+      "fontScale": "num?"
     },
     "Row": {
       "key": "string",

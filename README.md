@@ -156,6 +156,10 @@ Run `node valence/valence.mjs doctor --tests` for mechanical checks and mapped u
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
+## Adaptive UI in 0.4
+
+ValenceApp draws edge-to-edge and publishes safe-area CSS variables on rotation and resize. Android text zoom follows system font size; optional app.info().fontScale reports it. The schema-7 app.appearance event reports system dark mode, high contrast and reduced motion. Your page supplies semantic HTML and content padding. [Accessibility guide](docs/accessibility.md). iOS is experimental and untested.
+
 ### Lifecycle, connectivity and update status
 
 Bridge version 6 answers the three questions a page in a browser tab gets from the platform and a page in
