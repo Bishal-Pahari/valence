@@ -5,6 +5,10 @@ import 'runtime.dart';
 /// Return JSON values, not generated Dart model instances. The generated adapter
 /// decodes results and parameters against the IDL. Plugins are trusted native
 /// code; they own initialization, permissions, subscriptions and cleanup.
+/// Invalid typed results become `E_INTERNAL`; errors thrown by [invoke] keep their
+/// code. Direct store writes bypass the writable/dot-key page checks. Ordinary
+/// pref/secure APIs and `openExternal` retain their prefix/scheme checks, but the
+/// host-pref/token APIs and database handle are privileged escape hatches.
 abstract interface class ValencePlugin {
   /// One lower-camel namespace, matching the package's schema fragment.
   String get namespace;

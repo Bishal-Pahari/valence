@@ -42,14 +42,27 @@ permissions, initialization or platform behavior.
 The registry snapshots method ownership. Direct registry calls without generated
 requirements still report missing methods as `E_UNSUPPORTED`; methods not in the schema return `E_UNKNOWN` without calling a
 plugin. The generated adapters strictly decode parameters before invocation and
-typed JSON results before replying. Native subscriptions can emit generated
-`BridgeEvents` scripts with `valence.emit`. The app/plugin owns initialization and
+typed JSON results before replying. `E_PARAMS` is for invalid arguments; malformed
+native results return `E_INTERNAL`. Errors deliberately thrown by the plugin keep
+their code. Native subscriptions can emit generated `BridgeEvents` scripts with
+`valence.emit`. The app/plugin owns initialization and
 cleanup; registration does not schedule background work.
 
 Review plugins as trusted native dependencies: they have host privileges. Keep
 permissions, secret handling and origin/scheme restrictions in native code. Never
 expose the registry as a raw WebView channel. The built-in `open.external` uses
 the same API and preserves the runtime's allowlist; applications cannot replace it.
+
+`Valence.dataPut` enforces writable buckets and rejects dot keys. Native
+`valence.store.put` bypasses that page boundary, so the plugin owns sync correctness.
+Ordinary pref and secure APIs still refuse `valence.` keys, and `openExternal`
+still checks schemes for native callers. Explicit host-pref/token APIs and the
+public database handle remain privileged escape hatches: plugins are not sandboxed.
+
+Only generated `bridge.g.ts` is checked against the merged schema. Published npm
+types are hand-maintained and are not verified by codegen. The CLI's exported
+`PLUGIN_RESERVED` set is compared with `ValencePluginRegistry.reservedNamespaces`
+by the generated-Dart gate. Upgrade vendored tooling with the runtime and regenerate.
 
 Android is tested. iOS is experimental and untested. The emulator verifies haptic
 channel invocation, not felt vibration.

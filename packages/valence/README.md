@@ -138,6 +138,13 @@ seq. Pointing the channel at an older seq only cancels pending downloads.
 
 ## Testing
 
+The generated-Dart CLI gate compares `ValencePluginRegistry.reservedNamespaces`
+with the CLI's exported `PLUGIN_RESERVED` set. Update vendored tooling and
+regenerate when upgrading the runtime. Malformed typed plugin results are
+`E_INTERNAL`; parameter failures remain `E_PARAMS`. Separate npm plugin types
+are hand-maintained, and plugins have native host privileges; see
+[the plugin guide](https://getvalence.pages.dev/docs/guides/plugins/).
+
 `flutter test` in this package runs the contracts §8 matrix: every canonical check rejecting, the state
 machine's strikes and promotions, the server's three branches in order, the store, sync and the lease.
 
