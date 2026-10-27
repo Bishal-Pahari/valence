@@ -170,6 +170,11 @@ Sync correctness: pull cursors advance only through returned rows, never push ec
 
 ValenceApp draws edge-to-edge and publishes safe-area CSS variables on rotation and resize. Android text zoom follows system font size; optional app.info().fontScale reports it. The schema-7 app.appearance event reports system dark mode, high contrast and reduced motion. Your page supplies semantic HTML and content padding. [Accessibility guide](docs/accessibility.md). iOS is experimental and untested.
 
+
+
+## Local reminders
+
+Schema 11 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. iOS is experimental and untested. See [the guide](docs/local-notifications.md).
 ### Lifecycle, connectivity and update status
 
 Bridge version 6 answers the three questions a page in a browser tab gets from the platform and a page in

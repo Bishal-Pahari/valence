@@ -38,6 +38,9 @@ final class ValenceConfig {
     this.linkOrigins = const {},
 
     this.permissionKinds = const {},
+
+    this.notificationsEnabled = false,
+    this.notificationIcon = 'ic_stat_valence',
   });
 
   /// The reverse-domain id a manifest must carry (canonical check 2).
@@ -120,6 +123,12 @@ final class ValenceConfig {
   /// Permission kinds enabled by this store build (contracts §4.7). Empty denies all.
   final Set<String> permissionKinds;
 
+  /// Store-build opt-in to local notifications. Initialization never prompts.
+  final bool notificationsEnabled;
+
+  /// Bundled Android drawable for the notification status icon.
+  final String notificationIcon;
+
   /// Copy with overrides. Handy in tests and for pointing a debug build at a local OTA host.
   ValenceConfig copyWith({
     String? otaBase,
@@ -161,5 +170,8 @@ final class ValenceConfig {
         linkOrigins: linkOrigins ?? this.linkOrigins,
 
         permissionKinds: permissionKinds ?? this.permissionKinds,
+
+        notificationsEnabled: notificationsEnabled,
+        notificationIcon: notificationIcon,
       );
 }

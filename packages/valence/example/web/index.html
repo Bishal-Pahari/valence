@@ -102,6 +102,17 @@
       <pre id="permission-event" aria-live="polite"></pre>
     </section>
 
+
+    <section>
+      <h2>Local reminders</h2>
+      <p>Request permission, then schedule a one-shot reminder 15 seconds from now. Exact requests may return inexact.</p>
+      <button id="notify-permission">Allow reminders</button>
+      <button id="notify-schedule">Remind in 15 seconds</button>
+      <button id="notify-pending">Pending reminders</button>
+      <button id="notify-cancel">Cancel reminder</button>
+      <button id="badge">Badge 3</button>
+      <pre id="notify-result"></pre>
+    </section>
     </main>
     <!--
       A real app imports @getvalence/bridge through the generated web/lib/bridge.g.ts. This example talks
@@ -140,8 +151,9 @@
             liveLink = true;
             routeLink(payload);
           }
-          }
           if (name === 'permissions.changed') document.getElementById('permission-event').textContent = name + ': ' + JSON.stringify(payload);
+
+          if (name.startsWith('notify.')) document.getElementById('notify-result').textContent = name + ': ' + JSON.stringify(payload);
           if (name === 'sync.changed') void refresh();
           // §4.6. Logged rather than acted on, because the point of the three is that they *arrive*:
           // app.lifecycle on the way out as well as in, app.online without asking, and sync.done after
@@ -343,6 +355,17 @@
         });
       }
 
+      for (const [id, method, params] of [
+        ['notify-permission', 'notify.permission', () => ({ request: true })],
+        ['notify-schedule', 'notify.schedule', () => ({ id: 42, title: 'Valence reminder', body: 'A local reminder from your signed page', at: Date.now() + 15000, exact: true, payload: 'demo', actions: ['done', 'snooze'], image: 'iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAMAAABiM0N1AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAK5QTFRFAAAAAU6KAVebKbb2VMX4Kbb2VMX4AVaaAVebKbb2RsD3VMX4VMX4AVaZAVebGHalKbb2VMX4Pa7jADJZADhkAStLATBTAT5uAT5vAUd/AUmCAUyHAU6KAU6LAU6MAVGRAVKSAVKTAVOUAVWXAVWYAVaYAVaaAVeaAVebAjtnAkBwAkN2AkmAA02GA0+KA1CLFmiQF2+ZGXimGn6wG4O2G4a6HIe8Kbb2RL/3VMX47aEaPQAAABN0Uk5TABAQEBBQUGBgYGBggM/Pz8/P3xkQ5PoAAADpSURBVFjD7czXDoJAEEBRVOy9YO+KjB0r+v8/ZoQIC0sizq4PxrmvNzmKQklMrd758uSQQw455JBDDjnvnFSBL4Vw8iGzqn7TCYUwTpiEc3gJ6wQlvOOXXCf3ucNKrpO1bp87nsQ4FidFcF6SzwlKkRxHCjh+KaLzlDiHlSI7TJ7jSaLOSxJ3HEmG85QwTtLiqyEcJVHhnOs+rciQLjsdMhKk83ZmgATptBnrCxCXjuvB1IYEpcOyM5zMbEhIMpvtTn+sAwhKplZv9aYGgKBkao3uHNhwUnk1gmAoKVYEkCPFSyT9qvSvPQCNJCMEO265wAAAAABJRU5ErkJggg==' })],
+        ['notify-pending', 'notify.pending', () => ({})],
+        ['notify-cancel', 'notify.cancel', () => ({ id: 42 })],
+        ['badge', 'badge.set', () => ({ n: 3 })],
+      ]) document.getElementById(id).addEventListener('click', async () => {
+        try { document.getElementById('notify-result').textContent = method + ': ' + JSON.stringify(await call(method, params())); }
+        catch (e) { document.getElementById('notify-result').textContent = String(e); }
+      });
+
       (async () => {
         try {
           const info = await call('app.info');
@@ -354,6 +377,7 @@
           if (!liveLink) routeLink(initialLink);
           await refresh();
           await showAuth();
+          document.getElementById('notify-result').textContent = 'notify.initial: ' + JSON.stringify(await call('notify.initial'));
           await showState();
         } catch (e) {
           show(e);

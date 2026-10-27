@@ -39,9 +39,9 @@ const TEMPLATES = join(import.meta.dirname, '..', 'templates');
 // Listed here rather than per test, because every new runtime capability has to land in exactly one place
 // for the "an older app still codegens" cases to keep meaning what they say.
 const SINCE_ABOVE_4 = {
-  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings'],
-  events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online', 'link.opened', 'permissions.changed'],
-  types: ['SyncStatus', 'AppState', 'BundleStatus', 'Link', 'PermissionState'],
+  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings', 'notify.permission', 'notify.schedule', 'notify.cancel', 'notify.pending', 'notify.initial', 'notify.channels.set', 'badge.set', 'badge.clear'],
+  events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online', 'link.opened', 'permissions.changed', 'notify.tapped', 'notify.action'],
+  types: ['SyncStatus', 'AppState', 'BundleStatus', 'Link', 'PermissionState', 'NotifyScheduled', 'NotifyPending'],
 };
 const NOW = Date.UTC(2026, 9, 15);
 
@@ -1482,4 +1482,35 @@ test('R3 codegen compiles only configured permission kinds and freezes built-in 
   cfg.permissions = { kinds: [] };
   editSchema(root, (s) => { s.methods['permissions.request'].returns = 'bool'; });
   assert.throws(() => codegen({ root, cfg }), /permissions.request/);
+});
+
+test('notification builtins are frozen and compiled opt-in validates drawable names', () => {
+  const { root, cfg } = fixture({ latest: true });
+  cfg.notifications = { enabled: true, icon: 'ic_stat_demo' };
+  const result = codegen({ root, cfg });
+  const config = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'config.g.dart'), 'utf8');
+  assert.match(config, /notificationsEnabled: true/);
+  assert.match(config, /notificationIcon: 'ic_stat_demo'/);
+  cfg.notifications.icon = '../secret';
+  assert.throws(() => codegen({ root, cfg }), /notifications accepts/);
+  cfg.notifications.icon = 'ic_stat_demo';
+  editSchema(root, (s) => { s.methods['notify.schedule'].params.at = 'string'; });
+  assert.throws(() => codegen({ root, cfg }), /params must stay/);
+});
+
+
+for (const since of [1, 10]) test(`schema-${since} custom notification names retain app-owned shapes`, () => {
+  const { root, cfg, key } = fixture();
+  editSchema(root, (s) => {
+    s.version = Math.max(s.version, since);
+    s.methods['notify.schedule'] = { since, params: { hour: 'int' }, returns: 'void' };
+  });
+  codegen({ root, cfg });
+  const source = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(source, /Future<void> notifySchedule/);
+  assert.doesNotMatch(source, /valence.notifications.schedule/);
+  // Freezing that old signature remains enforced by the additive baseline.
+  bundle({ root, cfg, key, store: true, now: NOW });
+  editSchema(root, (s) => { s.methods['notify.schedule'].params.hour = 'string'; });
+  assert.throws(() => codegen({ root, cfg }), /changed|additive|shipped/);
 });

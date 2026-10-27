@@ -34,6 +34,8 @@ export 'src/runtime.dart'
         ValencePermissionBackend,
         valencePermissionKinds,
         ValenceManifest,
+        ValenceNotifications,
+        ValenceNotificationPlatform,
         ValenceOutboxOp,
         ValenceRow,
         ValenceSecure,

@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -26,6 +27,13 @@ class _Handlers extends AppHandlers {
 // Widget tests normally replace HttpClient with an unconditional HTTP 400.
 // This scoped override allows only this integration test to use its local server.
 class _LocalHttpOverrides extends HttpOverrides {}
+
+class _Notifications extends ValenceNotificationPlatform {
+  @override
+  Future<NotificationResponse?> initialize(String icon, void Function(NotificationResponse) respond) async => null;
+  @override
+  Future<bool> permission({required bool request}) async => false;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -58,6 +66,7 @@ void main() {
         ),
       ),
       supportDir: support,
+      notificationPlatform: _Notifications(),
     ),
   );
 
@@ -128,6 +137,20 @@ void main() {
       );
     },
   );
+
+
+  test('notification built-ins reach the runtime through strict dispatch', () async {
+    final h = await handlers();
+    expect((await dispatch(h, 'notify.permission'))['v'], false);
+    expect((await dispatch(h, 'notify.schedule', params: {
+      'id': 42, 'title': 'Demo', 'at': DateTime.now().millisecondsSinceEpoch + 60000,
+    }))['v'], {'id': 42, 'timing': 'blocked'});
+    expect((await dispatch(h, 'notify.initial'))['v'], null);
+    final invalid = await dispatch(h, 'notify.schedule', params: {'id': 42, 'title': 'Demo', 'at': 5, 'extra': true});
+    expect((invalid['e']! as Map)['code'], BridgeErrorCode.params);
+    final denied = await dispatch(h, 'notify.permission', withNonce: 'wrong');
+    expect((denied['e']! as Map)['code'], BridgeErrorCode.denied);
+  });
 
   test(
     'the built-ins are inherited from ValenceBuiltins, not written here',

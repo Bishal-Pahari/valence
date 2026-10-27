@@ -248,3 +248,6 @@ This update prevents new cursor skips. It cannot infer rows omitted by an older 
 ## Optional deep links
 
 Schema 5 adds `link.initial` and `link.opened`; existing schema methods retain their meaning. Regenerate, compile `links.origins` and add native registrations in a store build. `onLink()` is inert on older hosts. See [deep links](deep-links.md).
+
+
+Local reminders: enable Android core library desugaring even in hosts that leave notifications disabled. To adopt schema-11 notify.* and badge.*, add native receivers and a status drawable, set notifications.enabled, regenerate and ship a store build. Coordinate IDs with existing custom reminders; preserve any shipped pre-schema-11 custom notify.schedule shape and handler. See [the guide](local-notifications.md).

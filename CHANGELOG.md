@@ -19,6 +19,11 @@ HTTPS hosting. iOS is experimental and untested. See [setup](docs/deep-links.md)
 
 - Added schema-9 permission checks, serialized foreground requests, app settings and resume changes. Hosts opt in with `permissions.kinds`, native declarations, codegen and a store build. Android checks preserve uncertain denial; iOS remains experimental and untested.
 
+## Unreleased - local reminders
+
+Schema 11 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. iOS is experimental and untested. Android hosts now need core library desugaring even when the feature is disabled, because the native plugin ships with the runtime. Existing custom notification IDs must be coordinated; pre-schema-11 custom methods retain their shipped shapes and app-owned handlers.
+
+
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
 ## Unreleased

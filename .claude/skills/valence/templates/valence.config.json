@@ -28,5 +28,9 @@
   },
   "permissions": {
     "kinds": []
+  },
+  "notifications": {
+    "enabled": false,
+    "icon": "ic_stat_valence"
   }
 }

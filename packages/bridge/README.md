@@ -117,3 +117,10 @@ After `connect()`, install one `onLink()` subscription at the app root. It consu
 ## OS permissions
 
 Schema 9 bindings expose `permissions.check`, `permissions.request`, `permissions.openSettings` and `permissions.changed`. Import them through your generated client and guard calls with `has()`. The native host enforces its store-compiled allowlist. Checks do not prompt; request from a user action. Status strings include denial, permanent denial, restriction and limited access; see the [guide](https://getvalence.pages.dev/docs/guides/permissions/). iOS is experimental and untested.
+
+
+Guard `has("data.count")` to page `data.list` with `after`: pass the last key of the previous page and the scan resumes strictly after it, which is the only complete read of a bucket larger than `data.list`'s 500-row clamp. `has("data.list")` cannot gate `after` — it is a new parameter on a method that has existed since version 1, and a host older than version 5 rejects the unknown field with `E_PARAMS`. `call("data.count", {bucket, prefix})` returns the number of live rows without reading any of them.
+
+## Local reminders (schema 11)
+
+Use the generated call/has/on surface for notify.* and badge.*. Guard notify.schedule with has() on older hosts; subscribe to notify.tapped and notify.action before consuming notify.initial. Payloads are untrusted data. The host needs compiled opt-in and native setup; see [local reminders](https://getvalence.pages.dev/docs/guides/local-notifications/).

@@ -1,15 +1,17 @@
 // Tests for the §4.2 wire protocol and the §4.3 client surface. Run: node --test test/*.test.ts
-import {
-  createBridge,
-  BridgeError,
-  MAX_MESSAGE_BYTES,
-  inHost,
-  __resetForTests,
-} from '../src/index.ts';
-import assert from 'node:assert/strict';
 import { test, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  inHost,
+  BridgeError,
+  createBridge,
+  __resetForTests,
+  MAX_MESSAGE_BYTES,
+} from '../src/index.ts';
 
 interface Methods {
+  'notify.schedule': { params: { id: number; title: string; at: number }; returns: { id: number; timing: string } };
   'app.ready': { params: Record<string, never>; returns: void };
   'app.info': { params: Record<string, never>; returns: { bridge: number } };
   'data.get': { params: { bucket: string; key: string }; returns: unknown };
@@ -19,11 +21,14 @@ interface Methods {
 
 interface Events {
   'app.appearance': { darkMode: boolean; highContrast: boolean; reducedMotion: boolean };
+
+  'notify.action': { id: number; payload?: string | null; action?: string | null };
   'sync.changed': { buckets: string[] };
   'app.resumed': Record<string, never>;
 }
 
 const SINCE = {
+  'notify.schedule': 11,
   'app.ready': 1,
   'app.info': 1,
   'data.get': 1,
@@ -53,6 +58,8 @@ const reply = (r: unknown) => (globalThis as any).window.__valence.r(r);
 const emit = (name: string, payload: unknown) => (globalThis as any).window.__valence.e(name, payload);
 const EVENT_SINCE = {
   'app.appearance': 7,
+
+  'notify.action': 11,
   'sync.changed': 1,
   'app.resumed': 4,
 } as const;
@@ -311,4 +318,27 @@ test('ids increase, so concurrent calls resolve to their own replies', async () 
   reply({ id: sent[1]!.id, ok: true, v: 'second' });
   reply({ id: sent[0]!.id, ok: true, v: 'first' });
   assert.deepEqual(await Promise.all([a, b]), ['first', 'second']);
+});
+
+
+test('schema-11 notifications guard older hosts and deliver action payloads as data', async () => {
+  const { sent } = host();
+  const v = bridge();
+  const old = v.connect();
+  reply({ id: sent[0]!.id, ok: true, v: { bridge: 10 } });
+  await old;
+  assert.equal(v.has('notify.schedule'), false);
+  assert.equal(v.has('notify.action'), false);
+  await assert.rejects(v.call('notify.schedule', { id: 42, title: 'Demo', at: 123 }), (e: unknown) => e instanceof BridgeError && e.code === 'E_UNSUPPORTED');
+  const current = v.connect();
+  reply({ id: sent.at(-1)!.id, ok: true, v: { bridge: 11 } });
+  await current;
+  assert.equal(v.has('notify.schedule'), true);
+  assert.equal(v.has('notify.action'), true);
+  const actions: unknown[] = [];
+  const off = v.on('notify.action', (payload) => actions.push(payload));
+  emit('notify.action', { id: 42, action: 'done', payload: '<script>never evaluate</script>' });
+  off();
+  emit('notify.action', { id: 43 });
+  assert.deepEqual(actions, [{ id: 42, action: 'done', payload: '<script>never evaluate</script>' }]);
 });

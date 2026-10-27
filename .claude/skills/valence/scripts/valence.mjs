@@ -58,6 +58,26 @@ const BUILTINS = {
   'permissions.check': { params: { kind: 'string' }, returns: 'string', call: () => 'return valence.permissions.check(p.kind);' },
   'permissions.request': { params: { kind: 'string' }, returns: 'string', call: () => 'return valence.permissions.request(p.kind);' },
   'permissions.openSettings': { params: {}, returns: 'bool', call: () => 'return valence.permissions.openSettings();' },
+
+  'notify.permission': { params: { request: 'bool?' }, returns: 'bool', call: () => 'return valence.notifications.permission(request: p.request ?? false);' },
+  'notify.schedule': {
+    params: { id: 'int', title: 'string', body: 'string?', at: 'int', channel: 'string?', exact: 'bool?', payload: 'string?', image: 'string?', actions: 'string[]?', group: 'string?' },
+    returns: { fields: { id: 'int', timing: 'string' } },
+    call: (t) => `return ${t}.fromJson(await valence.notifications.schedule(id: p.id, title: p.title, body: p.body, at: p.at, channel: p.channel, exact: p.exact ?? false, payload: p.payload, image: p.image, actionIds: p.actions ?? const [], group: p.group));`,
+  },
+  'notify.cancel': { params: { id: 'int' }, returns: 'void', call: () => 'await valence.notifications.cancel(p.id);' },
+  'notify.pending': {
+    params: {}, returns: { list: true, fields: { id: 'int', title: 'string?', body: 'string?', payload: 'string?' } },
+    call: (t) => `return [for (final r in await valence.notifications.pending()) ${t}.fromJson(r)];`,
+  },
+  'notify.initial': { params: {}, returns: 'json?', call: () => 'return valence.notifications.initial();' },
+  'notify.channels.set': {
+    params: { id: 'string', name: 'string', importance: 'string?', sound: 'string?', group: 'string?', groupName: 'string?' },
+    returns: 'void',
+    call: () => "await valence.notifications.channel(id: p.id, name: p.name, importance: p.importance ?? 'default', sound: p.sound, group: p.group, groupName: p.groupName);",
+  },
+  'badge.set': { params: { n: 'int' }, returns: 'bool', call: () => 'return valence.notifications.badge(p.n);' },
+  'badge.clear': { params: {}, returns: 'bool', call: () => 'return valence.notifications.badge(0);' },
   'app.ready': { params: {}, returns: 'void', call: () => 'await valence.appReady();' },
   'app.info': {
     params: {},
@@ -194,6 +214,10 @@ const BUILTINS = {
       `final r = await valence.httpRequest(url: p.url, method: p.method, headers: p.headers, body: p.body);\n        return ${t}(status: r.status, headers: r.headers, body: r.body);`,
   },
 };
+
+// Before schema 11 notifications were app-owned. Preserve already-shipped custom method shapes;
+// only since-11+ declarations opt into the new runtime delegations.
+const builtinFor = (m) => /^(notify\.|badge\.)/.test(m.name) && m.since < 11 ? undefined : BUILTINS[m.name];
 
 const SEED_SQL = `
 CREATE TABLE kv (bucket TEXT NOT NULL, schema INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, usn INTEGER NOT NULL,
@@ -1063,7 +1087,7 @@ function dartBuiltins(s) {
     '',
   ];
   for (const m of s.methods) {
-    const builtin = BUILTINS[m.name];
+    const builtin = builtinFor(m);
     if (!builtin) continue;
     const typeName = m.returns.base === 'void' || PRIMS.has(m.returns.base) ? '' : m.returns.base;
     const arg = m.params.length ? `${pascal(m.name)}Params p` : '';
@@ -1090,7 +1114,7 @@ function dartBuiltins(s) {
 export function assertBuiltinShapes(s) {
   const show = (t) => (typeof t === 'string' ? t : `a type with {${Object.keys(t.fields).join(', ')}}${t.list ? '[]' : ''}`);
   for (const m of s.methods) {
-    const want = BUILTINS[m.name];
+    const want = builtinFor(m);
     if (!want) continue;
     const got = Object.fromEntries(m.params.map((f) => [f.name, typeString(f.type)]));
     // Required params, exactly. Beyond them only this built-in's own optional params, each at its declared
@@ -1165,6 +1189,12 @@ export function genDartConfig(cfg, keyring) {
   if (!Array.isArray(kinds) || kinds.some((kind) => !knownKinds.has(kind)) || new Set(kinds).size !== kinds.length) {
     throw new Error('permissions.kinds must be an array of unique supported permission kinds');
   }
+  if (cfg.notifications !== undefined && (!cfg.notifications || typeof cfg.notifications !== 'object' || Array.isArray(cfg.notifications) ||
+      Object.keys(cfg.notifications).some((k) => !['enabled', 'icon'].includes(k)) ||
+      (cfg.notifications.enabled !== undefined && typeof cfg.notifications.enabled !== 'boolean') ||
+      (cfg.notifications.icon !== undefined && !/^[a-z][a-z0-9_]{0,63}$/.test(cfg.notifications.icon)))) {
+    throw new Error('notifications accepts enabled (boolean) and icon (bundled lowercase drawable name)');
+  }
   const connect = cfg.http?.origins ?? [];
   if (!Array.isArray(connect)) throw new Error('http.origins must be an array of exact HTTP(S) origins');
   for (const origin of connect) {
@@ -1185,6 +1215,8 @@ export function genDartConfig(cfg, keyring) {
     // bridgeVersion is the generated constant, never a second literal: check 5 compares against it, and a
     // host that under-reports its version refuses its own built-in bundle on first launch.
     '  bridgeVersion: hostBridgeVersion,',
+    `  notificationsEnabled: ${cfg.notifications?.enabled ?? false},`,
+    `  notificationIcon: ${dartStr(cfg.notifications?.icon ?? 'ic_stat_valence')},`,
     '  channel: valenceOtaChannel,',
     `  otaBase: ${dartStr(cfg.ota?.base ?? '')},`,
     `  syncBase: ${dartStr(cfg.sync?.base ?? '')},`,

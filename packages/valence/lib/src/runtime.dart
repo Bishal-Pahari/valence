@@ -18,6 +18,8 @@ import 'native_http.dart';
 import 'restoration.dart';
 
 import 'permissions.dart';
+
+import 'notifications.dart';
 import 'secure.dart';
 import 'server.dart';
 import 'state.dart';
@@ -41,6 +43,8 @@ export 'manifest.dart'
         isSafeBundlePath;
 export 'native_http.dart' show ValenceHttp, ValenceHttpResponse;
 export 'permissions.dart' show ValencePermissions, ValencePermissionBackend, valencePermissionKinds;
+
+export 'notifications.dart' show ValenceNotifications, ValenceNotificationPlatform;
 export 'secure.dart' show ValenceSecure, secureAuthTokenKey, secureAuthAccountKey;
 export 'server.dart' show ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
@@ -207,6 +211,8 @@ final class Valence {
     ValenceSecure? secure,
     DatabaseFactory? databaseFactory,
     ValencePermissionBackend? permissionBackend,
+
+    ValenceNotificationPlatform? notificationPlatform,
   }) async {
     // `open` is awaited in `main()` **before** `runApp`, and `runApp` is what would otherwise create the
     // binding — but the store's directory (path_provider), the seed (rootBundle) and secure storage all
@@ -283,6 +289,16 @@ final class Valence {
       backend: permissionBackend,
       log: log,
     );
+
+    if (config.notificationsEnabled) {
+      valence._notifications = ValenceNotifications(
+        directory: Directory('${dir.path}/notifications'),
+        emit: valence._notificationEmit,
+        icon: config.notificationIcon,
+        platform: notificationPlatform,
+      );
+      await valence._notifications!.initialize();
+    }
     await valence._importSeed();
     return valence;
   }
@@ -325,6 +341,18 @@ final class Valence {
   ValenceServer? _server;
   ValenceHostView? _view;
   ValenceManifest? _manifest;
+  ValenceNotifications? _notifications;
+  final _notificationEvents = <String>[];
+
+  /// Store-build opt-in. OTA configuration cannot enable native notification handling.
+  ValenceNotifications get notifications => _notifications ??
+      (throw const BridgeError(BridgeErrorCode.unsupported, 'local notifications are disabled in this host'));
+
+  void _notificationEmit(String script) {
+    if (_view != null) { emit(script); return; }
+    if (_notificationEvents.length == 16) _notificationEvents.removeAt(0);
+    _notificationEvents.add(script);
+  }
 
   /// Called when a bundle marked `urgent` becomes pending. [ValenceApp] sets it to emit
   /// `bundle.updateReady` into the page, which may then call `bundle.applyUpdate`.
@@ -340,6 +368,8 @@ final class Valence {
   void attach(ValenceHostView view, {FlutterView? flutterView}) {
     _view = view;
     _flutterView = flutterView;
+    for (final script in _notificationEvents) { view.runScript(script); }
+    _notificationEvents.clear();
   }
 
   FlutterView? _flutterView;

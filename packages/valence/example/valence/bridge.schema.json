@@ -194,6 +194,70 @@
       "since": 10,
       "params": {},
       "returns": "bool"
+    },
+    "notify.permission": {
+      "since": 11,
+      "params": {
+        "request": "bool?"
+      },
+      "returns": "bool"
+    },
+    "notify.schedule": {
+      "since": 11,
+      "params": {
+        "id": "int",
+        "title": "string",
+        "body": "string?",
+        "at": "int",
+        "channel": "string?",
+        "exact": "bool?",
+        "payload": "string?",
+        "image": "string?",
+        "actions": "string[]?",
+        "group": "string?"
+      },
+      "returns": "NotifyScheduled"
+    },
+    "notify.cancel": {
+      "since": 11,
+      "params": {
+        "id": "int"
+      },
+      "returns": "void"
+    },
+    "notify.pending": {
+      "since": 11,
+      "params": {},
+      "returns": "NotifyPending[]"
+    },
+    "notify.initial": {
+      "since": 11,
+      "params": {},
+      "returns": "json?"
+    },
+    "notify.channels.set": {
+      "since": 11,
+      "params": {
+        "id": "string",
+        "name": "string",
+        "importance": "string?",
+        "sound": "string?",
+        "group": "string?",
+        "groupName": "string?"
+      },
+      "returns": "void"
+    },
+    "badge.set": {
+      "since": 11,
+      "params": {
+        "n": "int"
+      },
+      "returns": "bool"
+    },
+    "badge.clear": {
+      "since": 11,
+      "params": {},
+      "returns": "bool"
     }
   },
   "events": {
@@ -255,6 +319,22 @@
       "payload": {
         "permissions": "PermissionState[]"
       }
+    },
+    "notify.tapped": {
+      "since": 11,
+      "payload": {
+        "id": "int",
+        "payload": "string?",
+        "action": "string?"
+      }
+    },
+    "notify.action": {
+      "since": 11,
+      "payload": {
+        "id": "int",
+        "payload": "string?",
+        "action": "string?"
+      }
     }
   },
   "types": {
@@ -307,6 +387,16 @@
     "PermissionState": {
       "kind": "string",
       "status": "string"
+    },
+    "NotifyScheduled": {
+      "id": "int",
+      "timing": "string"
+    },
+    "NotifyPending": {
+      "id": "int",
+      "title": "string?",
+      "body": "string?",
+      "payload": "string?"
     }
   }
 }

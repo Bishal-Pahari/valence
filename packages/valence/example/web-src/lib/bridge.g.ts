@@ -69,6 +69,18 @@ export interface PermissionState {
   status: string;
 }
 
+export interface NotifyScheduled {
+  id: number;
+  timing: string;
+}
+
+export interface NotifyPending {
+  id: number;
+  title?: string | null;
+  body?: string | null;
+  payload?: string | null;
+}
+
 export interface Methods {
   'app.ready': { params: Record<string, never>; returns: void };
   'app.info': { params: Record<string, never>; returns: AppInfo };
@@ -148,6 +160,38 @@ export interface Methods {
     kind: string;
   }; returns: string };
   'permissions.openSettings': { params: Record<string, never>; returns: boolean };
+  'notify.permission': { params: {
+    request?: boolean | null;
+  }; returns: boolean };
+  'notify.schedule': { params: {
+    id: number;
+    title: string;
+    body?: string | null;
+    at: number;
+    channel?: string | null;
+    exact?: boolean | null;
+    payload?: string | null;
+    image?: string | null;
+    actions?: string[] | null;
+    group?: string | null;
+  }; returns: NotifyScheduled };
+  'notify.cancel': { params: {
+    id: number;
+  }; returns: void };
+  'notify.pending': { params: Record<string, never>; returns: NotifyPending[] };
+  'notify.initial': { params: Record<string, never>; returns: Json | null };
+  'notify.channels.set': { params: {
+    id: string;
+    name: string;
+    importance?: string | null;
+    sound?: string | null;
+    group?: string | null;
+    groupName?: string | null;
+  }; returns: void };
+  'badge.set': { params: {
+    n: number;
+  }; returns: boolean };
+  'badge.clear': { params: Record<string, never>; returns: boolean };
 }
 
 export interface Events {
@@ -179,6 +223,16 @@ export interface Events {
   };
   'permissions.changed': {
     permissions: PermissionState[];
+  };
+  'notify.tapped': {
+    id: number;
+    payload?: string | null;
+    action?: string | null;
+  };
+  'notify.action': {
+    id: number;
+    payload?: string | null;
+    action?: string | null;
   };
 }
 
@@ -212,6 +266,14 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'permissions.check': 10,
   'permissions.request': 10,
   'permissions.openSettings': 10,
+  'notify.permission': 11,
+  'notify.schedule': 11,
+  'notify.cancel': 11,
+  'notify.pending': 11,
+  'notify.initial': 11,
+  'notify.channels.set': 11,
+  'badge.set': 11,
+  'badge.clear': 11,
 };
 
 export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
@@ -225,6 +287,8 @@ export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
   'app.appearance': 7,
   'link.opened': 9,
   'permissions.changed': 10,
+  'notify.tapped': 11,
+  'notify.action': 11,
 };
 
 /** Browser fallbacks for this app, so the same build also runs as the website. */

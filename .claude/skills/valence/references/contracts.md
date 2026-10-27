@@ -1182,7 +1182,7 @@ Everything here is silent when it is wrong: the call succeeds, the UI says "Set"
 - **Permission.** Android 13+ needs `POST_NOTIFICATIONS`. The plugin *declares* it for you, so the host's job is to **request it at init and report the result** (`requestNotificationsPermission()`): a denied permission is otherwise indistinguishable from a working one, and the host schedules into a void on every modern device with no error anywhere.
 - **Create the channel at init, not on first post.** Android drops a notification whose channel does not exist, silently, and the plugin only creates the channel when a notification is *shown* — so if posting is what is broken, the channel never exists and never will.
 - **Delivery is best effort.** `SCHEDULE_EXACT_ALARM` is **not pre-granted to a fresh install** of an app targeting API 33 or later, even when the manifest declares it — and a backup-and-restore onto Android 14 withdraws it from an app that had it, which is worth reading next to §2.4's backup rules (`logcat`: "lost permission to set exact alarms"); the plugin then records `inexactAllowWhileIdle` and the alarm can sit minutes past its due time, still pending. `USE_EXACT_ALARM` is the one granted automatically and Google Play restricts it to alarm-clock and calendar apps. A morning reminder does not need to be exact: prefer `inexactAllowWhileIdle`, and report the mode you got so the UI can say "Android may deliver this late" instead of lying.
-- **Set `tz.local` from the device's real zone, and schedule wall-clock times, not instants.** The plugin re-derives every stored notification against `tz.local` whenever the clock, the timezone or the device changes. Scheduling an absolute instant (`tz.TZDateTime.from(utc, tz.UTC)`) passes every unit test and then **deletes every scheduled alarm** on the first `TIME_SET` — six before a clock change, zero after, nothing in the log. Building the same times in the device's zone leaves all six intact.
+- **Older app-owned wall-clock scheduling (observed plugin 19.x): set `tz.local` from the device's real zone.** The schema-11 built-in uses plugin 22.3.2+ with explicit absolute UTC one-shot deadlines (?6.5); this historical observation is about the custom daily-reminder implementation. The plugin re-derives every stored notification against `tz.local` whenever the clock, the timezone or the device changes. Scheduling an absolute instant (`tz.TZDateTime.from(utc, tz.UTC)`) passes every unit test and then **deletes every scheduled alarm** on the first `TIME_SET` — six before a clock change, zero after, nothing in the log. Building the same times in the device's zone leaves all six intact.
   - Initialize from `latest_all.dart`, not `latest.dart`. `FlutterTimezone.getLocalTimezone()` can return a legacy alias (`Asia/Katmandu`, one `h`) that the trimmed database does not contain, and `tz.getLocation` throws. Turn an unresolvable zone into a `BridgeError` the page can display.
 - **Re-arm from tomorrow, never `cancelAll`, and key ids by date.** Because a background run cannot reach the WebView (§5.6), the only way to keep a rolling window of reminders alive is to re-arm it on every UI start and after every `sync.changed` — and the obvious `cancelAll()` then reschedule **dismisses the notification the user is reading**: they opened the app *because* the reminder arrived, and the re-arm wipes it out from under them 600 ms later. A sync landing while it is on screen does the same. Clear from tomorrow forward, so the id of a reminder already on screen is one the re-arm never touches; turning reminders off still clears from today. Ids derived from a list position shift when a past day drops out, so a re-arm can also overwrite the wrong day.
 - **Serialise the re-arm against the user's own edits.** Persist the new hour *before* arming, and put arms behind one promise chain. Otherwise changing the hour arms first and persists second, the sync-driven re-arm reads the old value in the gap, and it schedules the old hour over the top — the user's chosen reminder silently does not happen.
@@ -1299,6 +1299,57 @@ validation; Android cold/warm intents and `pm verify-app-links`/`pm set-app-link
 - Codegen emits an opt-in `BridgeHandlersDefaults` mixin implementing every handler with `E_UNSUPPORTED`. Use it for test doubles or partial hosts; production hosts should extend `ValenceBuiltins` and explicitly implement their own methods. A defaults mixin must not mask the built-in implementations.
 - `node valence/valence.mjs doctor [--tests]` runs mechanical diagnostics without an AI session. It checks config, codegen freshness, built-in signature/files/host bridge/data compatibility, current seed coverage, baseline and stack report presence, declared `nativeValue` (at least two distinct §6 capabilities), resolved Flutter dependencies, and app test-matrix evidence. Rows are `PASS`, `WARN` (missing or unexecuted evidence), or `FAIL` (a check ran and failed); any failure exits nonzero. Missing evidence never passes. `nativeValue` is a declaration, not proof of device behavior. `.valence/test-matrix.json` maps stable layer IDs `bridge`, `loopback`, `updater`, `store-sync`, `integration` to app-relative Flutter `test/` or `integration_test/` files; doctor lists every ID. `--tests` executes mapped unit tests; integration rows stay WARN and need a separate device run. File mappings are evidence pointers, not proof that assertions cover the contract. Doctor does not certify store approval or emulator behavior.
 
+### 6.5 Built-in local notifications (schema 11)
+
+Pre-schema-11 custom notify.* and badge.* declarations remain app-owned; codegen preserves their shipped signatures and abstract handlers. Only declarations with since >= 11 use the built-ins below.
+
+Native hosts opt in with compiled `notifications.enabled: true` and a bundled Android drawable
+`notifications.icon` (default `ic_stat_valence`). Disabled hosts return `E_UNSUPPORTED` for this group.
+Initialization never requests permission and never changes bundle activation, trials or sync.
+
+- `notify.permission({request?: bool}) -> bool` passively checks authorization unless explicitly asked
+  to request it. Android exact-alarm access is a separate OS setting; this call does not request it.
+- `notify.schedule({id: int, title: string, body?: string, at: int, channel?: string, exact?: bool,
+  payload?: string, image?: string, actions?: string[], group?: string}) -> {id: int, timing: string}`.
+  `at` is a future Unix epoch millisecond instant, at most 366 days ahead; these are one-shot absolute
+  reminders, unaffected by device timezone changes. Daily local-time windows must be recalculated by
+  the app when its time zone or user settings change. No implicit recurrence or timezone lookup.
+  `timing` is `exact`, `inexact`, `system` (iOS controls delivery), or `blocked` (permission denied;
+  nothing enqueued). Android defaults to inexact; an exact request falls back honestly when access is
+  absent or is revoked during scheduling. Acceptance is not proof of delivery; Doze, channel settings
+  and manufacturer restrictions can still delay or suppress it.
+- IDs are app-wide integers 0..2147483647; scheduling the same ID replaces it. At most 64 pending
+  requests; replacement at the cap is allowed. Coordinate ID ranges with app-owned plugin use.
+  Title/body/payload UTF-8 limits are 256/4096/4096 bytes. `image` is base64 PNG or JPEG only, at most
+  96 KiB decoded and 1024 pixels per side, checked before a bounded pixel decode; corrupt pixel data
+  is refused before scheduling, rather than silently omitting the image. No URL or page-supplied file
+  path is accepted. iOS attachments are written only to a host-owned private directory. Images are
+  optional, not downloaded. Actions are up to three unique compiled IDs `open`, `done`, `snooze` with
+  those English labels. Each opens the UI, including on iOS; reply inputs are deferred to S1.
+- `notify.cancel({id}) -> void` cancels that pending/displayed notification only, never all others.
+  `notify.pending() -> {id, title?, body?, payload?}[]` asks the native scheduler, not an app-maintained
+  shadow list. Re-arm by ID difference; do not cancel a displayed notification simply to refill a window.
+- `notify.channels.set({id, name, importance?: string, sound?: string, group?: string,
+  groupName?: string}) -> void` creates Android channels and optional channel groups. Importance is
+  `min`, `low`, `default`, `high` or `max`; sound omitted means default, empty means silent, otherwise
+  a bundled raw resource name. IDs/resource names are bounded ASCII identifiers, never paths. Existing
+  channel sound/importance remains controlled by Android and the user: use a new ID for a new policy.
+  The default channel is `valence_reminders`. Notification `group` groups tray entries separately.
+- `notify.tapped` and `notify.action` carry `{id: int, payload?: string, action?: string}`. Payloads
+  are untrusted data, never evaluated or navigated to. `notify.initial() -> json?` consumes the cold-start
+  response once. Cold responses are available only there; warm callbacks emit the respective event.
+  Action categories are compiled into the host. Call `notify.initial` after subscribing to warm events.
+- `badge.set({n: int}) -> bool`, `badge.clear() -> bool` report whether a supported platform accepted
+  the request, not whether the launcher visibly changed. `n` is 0..9999. Android badges are best effort
+  and may require vendor permissions and an active notification; iOS requires badge authorization.
+
+Android hosts must enable core library desugaring, keep notification drawable/raw resources in release
+builds, and declare POST_NOTIFICATIONS, RECEIVE_BOOT_COMPLETED, ScheduledNotificationReceiver,
+ScheduledNotificationBootReceiver (BOOT_COMPLETED, MY_PACKAGE_REPLACED and vendor quick boot actions)
+and ActionBroadcastReceiver. Exact scheduling optionally uses SCHEDULE_EXACT_ALARM, never
+USE_EXACT_ALARM by default. iOS installs the UNUserNotificationCenter delegate. No background
+notification callback runs UI activation. iOS code paths are experimental and untested.
+
 ## 8. Test matrix (minimum; all must pass before "done")
 
 R7: bounded multibyte JSON, null clearing, strict nonce/params delegation, task
@@ -1312,6 +1363,14 @@ denied before platform access; all five statuses and provisional normalization;
 legacy/modern Android photos and Bluetooth mappings; serialized dialogs recover
 after errors; resume emits changed kinds only, tolerates an individual failure and
 does not prompt; generated dispatch retains nonce and strict parameter checks.
+
+R4: disabled group denial; no implicit permission prompt; passive/requested permissions; exact denial
+and revocation downgrade; permission refusal schedules nothing; native pending/replacement/cap/cancel;
+bounded text/actions/images including dimension, magic, malformed base64 and path attacks; channel
+policy validation; callback escaping, malformed/foreign response rejection and consuming cold initial;
+badge support/failure; generated strict dispatch/nonce/older-host guards. Android integration: reminder
+actually posts with reported timing, warm tap/action and cold tap, image, cancellation, channel creation,
+clock-change and reboot persistence. No iOS verification is implied by unit or Android tests.
 
 **R16 mechanical doctor.** Both CLI entry points use the same diagnostics. Every FAIL includes a `Fix:` line and exits nonzero, without rewriting files. Compare schema and generated host bridge versions; validate the recorded store schema; verify local OTA manifests and their files before comparing `requires.bridge` with the recorded store version. An OTA above that version is FAIL: rebuild with the store bridge floor and guard newer calls, or ship the new host first. Missing store evidence is WARN; historical OTA artifacts are checked too, so archive obsolete local releases outside `dist-ota` before rerunning. `host.database` is a plain file name (default `valence.db`), never a path: fail on separators, traversal or an invalid filename, and report `<appSupport>/<name>` with a WARN that actual installed location and legacy adoption need a device check. Never open or move a user's database from doctor. Inspect Git's tracked and untracked, non-ignored files for PEM private-key headers; fail without printing key material, including when the configured signing-key directory resolves inside Git through a link. Git unavailable is WARN, not PASS. Ignored files are outside this scan; this is a working-tree check, not a Git-history secret audit. Validate `web.connect` as HTTP(S) URLs without credentials, whitespace or CSP source syntax; paths remain supported and normalize to origins. Validate `http.origins` separately as exact HTTP(S) origins; browser CSP permission never grants native token access. R16 does not add bridge methods or change package versions.
 

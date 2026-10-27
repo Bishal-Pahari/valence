@@ -182,3 +182,10 @@ Compile `links.origins` with codegen and register matching native filters. The r
 ## Permissions (contracts §4.7)
 
 Use the generated `permissions.check`, `permissions.request`, `permissions.openSettings` and `permissions.changed` (since 10). The runtime serializes prompts and restricts them to a foreground attached host and its compiled `permissionKinds`. Empty denies all. Add native declarations and ship a store build; see the [permissions guide](https://getvalence.pages.dev/docs/guides/permissions/). iOS is experimental and untested.
+
+
+`Valence.dataList(bucket, prefix:, limit:, after:)` pages past the 500-row clamp: `after` is the last key of the previous page and the scan resumes strictly after it, which is the only complete read of a bucket larger than the clamp. `Valence.dataCount(bucket, prefix:)` counts live rows without reading them. Both are exposed as the version-5 built-ins `data.list`'s `after` param and `data.count`. The store opens at `<applicationSupportDirectory>/<databaseName>` and adopts a 0.3 database left in the application documents directory, moving its `-wal` and `-shm` sidecars with it and never overwriting an existing destination. A `SQLITE_BUSY` open — a schema migration's `BEGIN EXCLUSIVE` racing the WorkManager job the same launch fires — is retried five times a second apart; `Valence.backgroundSync` then returns `ValenceSyncReason.busy` rather than throwing, while `Valence.open` rethrows, and a failed open is never cached.
+
+## Local reminders
+
+Schema 11 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. iOS is experimental and untested. See [setup and adoption](https://getvalence.pages.dev/docs/guides/local-notifications/).

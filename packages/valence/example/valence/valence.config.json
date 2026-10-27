@@ -48,5 +48,9 @@
       "microphone",
       "photos"
     ]
+  },
+  "notifications": {
+    "enabled": true,
+    "icon": "ic_stat_valence"
   }
 }
