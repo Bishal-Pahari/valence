@@ -1,3 +1,80 @@
+# R8 queue refresh - 2026-10-27
+
+## In plain terms
+
+R8 now includes the latest integrated features and account protections from
+`packages`, plus the bridge packing fix for stale compiled types. Both worktrees
+use `codex/r8`. The only change beyond upstream corrects the accessibility guides
+to name the actual combined template schema, 14, instead of 13.
+
+Code base: `c5d74800cdcfb4372ffbdad53eea762780aa753a`.
+Site base: `d3f259d92222dff53aaa4bbbeffe8cb231fa913e`.
+Reviewed implementation: code `524aef63383d7baf67e7780a36e4111b4d0301dc`,
+site `60415bd131efd60615aecab5aa809f12476de87d`.
+Both upstream merges were fast-forwards. The base advanced during validation
+from code 0c8a4ae/site b924d52; all required gates were rerun after that advance.
+
+## Decisions
+
+Security first: preserve the integrated account protections, including refusal of
+local writes throughout account transitions, draining writes already in progress,
+the global pending-write check when no writable buckets remain, and recording the
+identity before the bearer on adoption. Preserve R7's serialized account changes,
+restoration invalidation and lease-held secure writes.
+
+Keep the combined template/example schema at **14** and appearance at **since 7**.
+Lowering the complete schema to R8's reserved 7 would invalidate the already
+integrated since-8 through since-14 surfaces. No since values, package versions,
+recorded schema-1 store baseline or signed example assets changed.
+
+Read both complete app findings and newest reports read-only: Kundalini iteration
+12 and app-a iteration 10. K F-52/A F-32 reproduce mismatched generator/bridge
+artifacts, directly affecting appearance event gates. The upstream prepack
+regression passed locally; this does not prove the supplied app snapshots have
+been replaced. App-a F-28 still needs page inset adoption and separate investigation
+of intermittent blank navigation; its cause is unproven. Neither report establishes
+R8 accessibility acceptance. Retention, anonymous-401 reporting and stale update
+status remain separate findings, not reasons to widen this refresh.
+
+## Fresh gates
+
+- Root `npm test`: 86 passed, zero failed/skipped; generated Dart analysis/execution
+  and strict/verbatim TypeScript ran. Includes rebuilding and inspecting a packed
+  bridge after deliberately writing stale declarations.
+- Runtime `flutter test`: 492 passed.
+- Runtime `dart analyze --fatal-infos .`: no issues.
+- Define-enabled development proxy tests: 7 passed.
+- Bridge tests: 29 passed, zero skipped; strict TypeScript and pack dry run passed.
+- Example `flutter test`: 24 passed.
+- Generated example and development-demo strict/verbatim TypeScript: passed.
+- Source and vendored example `codegen --check`: fresh, no writes.
+- Signed built-in verification: seq 1793062826, two files, passed.
+- `flutter pub publish --dry-run`: zero warnings.
+- Site `npm run build`: 37 pages; SEO, links and anchors passed.
+- Android debug/release APKs: built; both embedded manifests and signatures match
+  the verified source. Release sentinel/proxy exclusion passed for all 3 AOT
+  libraries. Release APK: 51,472,168 bytes. Existing plugin Kotlin compatibility
+  warnings did not fail the builds.
+
+Focused independent security review found no confirmed defects in owning-view
+metrics, text scaling, appearance since 7, generated delegation, JSON publication,
+nonce/navigation boundaries, account protections or compile-time development
+guards. The reviewer did not run Flutter; the gate counts above are the main
+validation run.
+
+## Limits and handoff
+
+No new emulator run. Earlier R8 device evidence below is historical; TalkBack
+and true split-screen remain unverified. Push delivery needs the maintainer's
+Firebase project. iOS remains experimental and untested. The app repositories
+were not modified and their supplied snapshots were not repackaged.
+
+Exactly one queue item was refreshed. No push, publication, version change or
+merge into packages/main. Only R8's Status cell in the shared roadmap is edited;
+this file carries the requested plain-language note.
+
+---
+
 # R8 queue refresh - 2026-10-26
 
 ## In plain terms
