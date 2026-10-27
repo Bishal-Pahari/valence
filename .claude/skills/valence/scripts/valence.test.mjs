@@ -16,7 +16,7 @@ import { sign } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 
 import {
   seed,
@@ -138,15 +138,45 @@ test('dev plans a Vite server and debug-only emulator/LAN commands without chang
     writeFileSync(join(root, 'ui/package.json'), pkg);
     const cfg = { host: { dir: 'mobile' } };
     const plan = devPlan({ root, cfg, webDir: 'ui' });
-    assert.deepEqual(plan.args, ['run', 'dev', '--', '--host', '0.0.0.0', '--port', '5173', '--strictPort']);
+    assert.deepEqual(plan.args, ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173', '--strictPort']);
     assert.match(plan.command, /flutter run --debug --dart-define=VALENCE_DEV_URL=http:\/\/10.0.2.2:5173/);
-    assert.match(devPlan({ root, cfg, webDir: 'ui', deviceHost: '192.168.1.2', port: '6000' }).command, /192.168.1.2:6000/);
+    const lan = devPlan({ root, cfg, webDir: 'ui', deviceHost: '192.168.1.2', port: '6000', allowLan: true });
+    assert.match(lan.command, /192.168.1.2:6000/);
+    assert.equal(lan.args[4], '0.0.0.0');
+    assert.match(lan.warning, /LAN mode:.*full native bridge.*cleartext HTTP/);
+    for (const deviceHost of ['192.168.1.2', '10.0.2.3', '0.0.0.0', 'dev.example', 'localhost.evil', '2130706433']) {
+      assert.throws(() => devPlan({ root, cfg, webDir: 'ui', deviceHost }), /requires --allow-lan/);
+    }
+    for (const deviceHost of ['localhost', 'LOCALHOST', '127.0.0.1', '10.0.2.2']) {
+      assert.equal(devPlan({ root, cfg, webDir: 'ui', deviceHost }).args[4], '127.0.0.1');
+    }
     for (const port of ['80', '65536', '5173 & echo unsafe', '-1']) assert.throws(() => devPlan({ root, cfg, webDir: 'ui', port }));
-    for (const deviceHost of ['x/path', 'x:80', 'x;echo', 'user@x']) assert.throws(() => devPlan({ root, cfg, webDir: 'ui', deviceHost }));
+    for (const deviceHost of ['x/path', 'x:80', 'x;echo', 'user@x', 'localhost.']) assert.throws(() => devPlan({ root, cfg, webDir: 'ui', deviceHost }));
     assert.equal(readFileSync(join(root, 'ui/package.json'), 'utf8'), pkg);
     writeFileSync(join(root, 'ui/package.json'), '{}');
     assert.throws(() => devPlan({ root, cfg, webDir: 'ui' }), /dev script/);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('dev CLI denies LAN before spawning and passes explicit LAN consent through the wizard', () => {
+  const { root } = fixture();
+  const web = join(root, 'web');
+  writeFileSync(join(web, 'package.json'), JSON.stringify({ scripts: { dev: 'node probe.cjs' } }));
+  writeFileSync(join(web, 'probe.cjs'), "require('node:fs').writeFileSync('started.json', JSON.stringify(process.argv.slice(2)))");
+  const entry = join(import.meta.dirname, '../../../../bin/valence.mjs');
+  const runDev = (args) => spawnSync(process.execPath, [entry, '--root', root, ...args], { encoding: 'utf8', timeout: 30_000 });
+  const denied = runDev(['dev', '--device-host', '192.168.1.20']);
+  assert.equal(denied.status, 1);
+  assert.match(denied.stderr, /requires --allow-lan/);
+  assert.equal(existsSync(join(web, 'started.json')), false);
+  const local = runDev(['dev']);
+  assert.equal(local.status, 0, local.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(join(web, 'started.json'), 'utf8')), ['--host', '127.0.0.1', '--port', '5173', '--strictPort']);
+  const lan = runDev(['--allow-lan', '--device-host', '192.168.1.20', 'dev']);
+  assert.equal(lan.status, 0, lan.stderr);
+  assert.match(lan.stderr, /LAN mode: http:\/\/192\.168\.1\.20:5173.*secure storage and SQLite/);
+  assert.match(lan.stdout, /VALENCE_DEV_URL=http:\/\/192\.168\.1\.20:5173/);
+  assert.deepEqual(JSON.parse(readFileSync(join(web, 'started.json'), 'utf8')), ['--host', '0.0.0.0', '--port', '5173', '--strictPort']);
 });
 
 function fixture({ data = { calendar: 1 }, latest = false } = {}) {

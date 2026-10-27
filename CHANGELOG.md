@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: explicit LAN development trust
+
+- `valence dev` now binds loopback by default. A LAN address or hostname requires
+  `--allow-lan`; that mode binds all interfaces and names the cleartext full-bridge
+  risk before starting. Add the flag to existing physical-device dev commands.
+  Manual Flutter defines remain explicit trust grants; release/profile exclusion
+  is unchanged. Refresh vendored tooling when upgrading.
+
+
 ## Unreleased: capability and status fields
 
 Schema 15 adds nullable builtins, persisted sync reason and signed pending urgency. Regenerate and ship a store build; declaring builtins also requires current optional params on declared built-ins. Earlier hosts and schemas keep working. Account changes clear the new sync observation.
