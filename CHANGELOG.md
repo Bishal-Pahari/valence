@@ -38,6 +38,14 @@ schema, package version or host setup changes are required.
   "could not check on the last attempt", rather than a claim about the current connection.
 - Upgrade the native host package to get the trigger; no schema bump or app handler change is needed.
 
+## Unreleased: seed completion survives database locks
+
+- Seed completion markers retry `SQLITE_BUSY` and `SQLITE_LOCKED` without importing the rows
+  again. Logs separate a row-import failure from a failed marker write and report recovery.
+  Exhausted retries retain rows and retry on the next launch against current cursors.
+- A matching completion marker and extracted seed now skip the unchanged import on later
+  launches. Upgrade the Flutter runtime and ship a host build; no schema or codegen change.
+
 ## Unreleased: a published plugin installs without editing it
 
 - **A `plugins` entry can be `{path, since}`,** stamping each of a fragment's methods and events with
