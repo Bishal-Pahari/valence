@@ -1604,21 +1604,28 @@ export function association({ kind, packageId, fingerprints, appId, out }) {
 }
 
 // A dev package script is trusted local code, like `npm run build`.
-export function devPlan({ root, cfg, webDir = 'web', port = '5173', deviceHost = '10.0.2.2' }) {
+export function devPlan({ root, cfg, webDir = 'web', port = '5173', deviceHost = '10.0.2.2', allowLan = false }) {
   if (!/^\d+$/.test(port) || Number(port) < 1024 || Number(port) > 65535) throw new Error('--port must be 1024..65535');
   if (!/^(?:localhost|(?:[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?))$/.test(deviceHost)) throw new Error('--device-host must be a hostname or IPv4 address');
+  // Only these exact local targets avoid the LAN grant. Do not trust a hostname's current DNS answer.
+  const local = ['10.0.2.2', '127.0.0.1', 'localhost'].includes(deviceHost.toLowerCase());
+  if (!local && !allowLan) throw new Error('--device-host requires --allow-lan for LAN addresses and hostnames; LAN mode grants cleartext server code the full native bridge');
   const cwd = resolve(root, webDir);
   if (!readJson(join(cwd, 'package.json')).scripts?.dev) throw new Error('--web-dir must contain a package.json with a dev script');
   return {
     cwd,
-    args: ['run', 'dev', '--', '--host', '0.0.0.0', '--port', port, '--strictPort'],
+    args: ['run', 'dev', '--', '--host', allowLan ? '0.0.0.0' : '127.0.0.1', '--port', port, '--strictPort'],
     command: `cd "${resolve(root, cfg.host.dir)}"\nflutter run --debug --dart-define=VALENCE_DEV_URL=http://${deviceHost}:${port}`,
+    warning: allowLan
+      ? `LAN mode: http://${deviceHost}:${port} grants its code the full native bridge over cleartext HTTP. Anyone who replaces that traffic can access secure storage and SQLite or change authentication. Use an isolated network, test accounts and test data.`
+      : 'Local development grants server code the full native bridge. Use a separate development app id, test accounts and test data.',
   };
 }
 
 async function dev(options) {
   const plan = devPlan(options);
-  console.log(`Development server grants its code the full native bridge. Use test accounts only.\n${plan.command}`);
+  console.warn(plan.warning);
+  console.log(plan.command);
   // Windows requires cmd for npm.cmd; every argument here is fixed or validated numeric.
   const child = process.platform === 'win32'
     ? spawn('cmd.exe', ['/d', '/s', '/c', `npm ${plan.args.join(' ')}`], { cwd: plan.cwd, stdio: 'inherit' })
@@ -1660,8 +1667,8 @@ const HELP = `Valence CLI ${VALENCE_VERSION} (spec: references/contracts.md)
   valence assetlinks --package id --fingerprints SHA256,... --out public-dir
   valence aasa --app-id TEAMID.bundle.id --out public-dir
 
-  valence dev [--web-dir web] [--port 5173] [--device-host 10.0.2.2]
-                                    run the dev script and print the debug-only Flutter command
+  valence dev [--web-dir web] [--port 5173] [--device-host 10.0.2.2] [--allow-lan]
+                                    loopback-bound by default; --allow-lan grants cleartext LAN code the full bridge
 
 Options: --root <project root> (default .)`;
 
@@ -1674,6 +1681,7 @@ export async function main(argv) {
       'web-dir': { type: 'string', default: 'web' },
       port: { type: 'string', default: '5173' },
       'device-host': { type: 'string', default: '10.0.2.2' },
+      'allow-lan': { type: 'boolean', default: false },
       check: { type: 'boolean', default: false },
       tests: { type: 'boolean', default: false },
       builtin: { type: 'boolean', default: false },
@@ -1697,6 +1705,7 @@ export async function main(argv) {
     },
   });
   const cmd = positionals[0];
+  if (v['allow-lan'] && cmd !== 'dev') throw new Error('--allow-lan only applies to valence dev');
   // Otherwise a release script that loses --store still takes --rebaseline and reports nothing.
   if (v.rebaseline && !(cmd === 'bundle' && v.store)) throw new Error('--rebaseline only means something with "bundle --store"');
   if (cmd === 'version') return console.log(VALENCE_VERSION);
@@ -1709,7 +1718,7 @@ export async function main(argv) {
   const p = paths(root, cfg);
   const log = (o) => console.log(JSON.stringify(o, null, 2));
 
-  if (cmd === 'dev') return dev({ root, cfg, webDir: v['web-dir'], port: v.port, deviceHost: v['device-host'] });
+  if (cmd === 'dev') return dev({ root, cfg, webDir: v['web-dir'], port: v.port, deviceHost: v['device-host'], allowLan: v['allow-lan'] });
 
   if (cmd === 'keygen') return log(keygen({ root, cfg }));
   if (cmd === 'codegen') return log(codegen({ root, cfg, check: v.check }));

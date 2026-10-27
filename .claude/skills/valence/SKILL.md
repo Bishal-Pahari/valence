@@ -238,6 +238,10 @@ Phases 1, 4 and 6 spawn agents. If your harness can't (headless, or subagents di
    - the key backup reminder;
    - next commands: `/valence release --channel beta --rollout 100` and `/valence doctor`.
 
+## Live development
+
+For HMR or a physical-device dev server, read contracts section 3.1. Use the loopback-bound emulator default; a LAN target requires explicit `--allow-lan` and the named cleartext/full-bridge warning. Use a separate development app id and test data, then validate signed behavior without the dev define.
+
 ## Release
 
 **For a store submission** (a new native capability, a new feature area, or the first release), build the app's built-in bundle with `node valence/valence.mjs bundle --store` instead of `--builtin`, then build the Flutter app.
