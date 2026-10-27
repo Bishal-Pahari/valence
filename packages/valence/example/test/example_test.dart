@@ -111,6 +111,44 @@ void main() {
   });
 
   test(
+    'the example denies cleartext bearer requests off device before token lookup',
+    () async {
+      final source =
+          jsonDecode(File('valence/valence.config.json').readAsStringSync())
+              as Map<String, dynamic>;
+      final origins = (source['http'] as Map)['origins'] as List;
+      expect(valenceConfig.httpOrigins, origins.toSet());
+      for (final origin in origins.cast<String>()) {
+        final uri = Uri.parse(origin);
+        expect(
+          uri.scheme == 'https' || uri.host == '127.0.0.1',
+          isTrue,
+          reason:
+              'the reference app must not grant cleartext token trust off device',
+        );
+      }
+      var tokenReads = 0;
+      final h = await handlers(
+        config: valenceConfig.copyWith(
+          authToken: () async {
+            tokenReads++;
+            return 'must-not-leave-device';
+          },
+        ),
+      );
+      for (final url in [
+        'http://10.0.2.2:8787/rpc',
+        'http://192.168.1.20:8787/rpc',
+        'http://127.0.0.1:8788/rpc',
+      ]) {
+        final reply = await dispatch(h, 'http.request', params: {'url': url});
+        expect((reply['e'] as Map)['code'], BridgeErrorCode.denied);
+      }
+      expect(tokenReads, 0);
+    },
+  );
+
+  test(
     'push is explicitly unsupported without native setup and rejects untrusted params first',
     () async {
       final h = await handlers();

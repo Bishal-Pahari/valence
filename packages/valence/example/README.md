@@ -70,7 +70,23 @@ platform for Valence; **iOS is experimental and untested**.
 
 ## Native HTTP demo
 
+<<<<<<< HEAD
 The combined schema is now 15 (appearance remains since 7) and `http.origins` compiles `http://10.0.2.2:8787` for emulator tests. Run the reference adapter in `examples/rest-sync-adapter/`, set its `ADAPTER_TOKEN` through the Login form, and tap `http.request`. `GET /rpc` returns authenticated status without echoing the token; the other button proves an unlisted origin is denied. No CORS headers are needed. This local HTTP endpoint is for tests; production uses HTTPS. The offline bundle and seed still work without that server.
+=======
+Native HTTP was added at built-in schema 4; the combined example schema is 14.
+`http.origins` grants only `http://127.0.0.1:8787` for the local demo. Run the
+reference adapter in `examples/rest-sync-adapter/`, then
+`adb reverse tcp:8787 tcp:8787`. Set its synthetic `ADAPTER_TOKEN` through the
+Login form and tap `http.request`. `GET /rpc` returns status without echoing
+the token; the other button proves an unlisted origin is denied. No CORS headers
+are needed. Use HTTPS for remote APIs. Native Dart HTTP can send a token to an
+explicit cleartext origin even in release builds despite Android's network
+security XML. The default example therefore grants no off-device HTTP origin.
+The offline bundle and seed still work without that server.
+
+For the release-device transport probe and its synthetic-only credential, see
+[R23 validation](../../../docs/r23-validation.md).
+>>>>>>> codex/r23
 
 ## R8 layout probe
 
@@ -91,7 +107,6 @@ The R6 surfaces were added at schema 9. This merged example reports schema 15 an
 
 Schema 10 adds a Permissions section: choose any of the seven kinds, Check, Request or open App settings. Resume deltas appear separately. All kinds are declared solely for this demonstration; production apps must enable and declare only the kinds they use. The Android manifest and iOS SPM usage strings are wired; iOS remains experimental and untested. [Setup guide](https://getvalence.pages.dev/docs/guides/permissions/).
 
-Native HTTP was added at built-in schema 4; `http.origins` compiles `http://10.0.2.2:8787` for emulator tests. Run the reference adapter in `examples/rest-sync-adapter/`, set its `ADAPTER_TOKEN` through the Login form, and tap `http.request`. `GET /rpc` returns authenticated status without echoing the token; the other button proves an unlisted origin is denied. No CORS headers are needed. This local HTTP endpoint is for tests; production uses HTTPS. The offline bundle and seed still work without that server.
 
 
 ## Local reminder demo
@@ -101,6 +116,7 @@ The example schema is 13, with notification methods and events since 11 and noti
 ## Remote push demo
 
 Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** Add your own `android/app/google-services.json`, then `flutter run --dart-define=VALENCE_PUSH=true`. The Google services Gradle plugin is conditional on that file. The page checks/requests permission and reports registration without displaying the token. [Full setup](../../../docs/remote-push.md). The checked-in signed built-in bundle contains the push controls; it stays offline and reports E_UNSUPPORTED until configured. iOS hosts must target 15.0 or later for the Firebase dependencies.
+<<<<<<< HEAD
 
 Native HTTP was added at schema 4; the example now inherits schema 13. `http.origins` compiles `http://10.0.2.2:8787` for emulator tests. Run the reference adapter in `examples/rest-sync-adapter/`, set its `ADAPTER_TOKEN` through the Login form, and tap `http.request`. `GET /rpc` returns authenticated status without echoing the token; the other button proves an unlisted origin is denied. No CORS headers are needed. This local HTTP endpoint is for tests; production uses HTTPS. The offline bundle and seed still work without that server.
 
@@ -110,3 +126,5 @@ Development startup logs `dev: serving upstream <origin>` and says OTA checks, t
 commits and `bundle.applyUpdate` are disabled. Each skipped ready, signed reload, update check
 or apply call also logs a `dev:` diagnostic. A successful call in this mode does not prove an
 OTA transition. Restart without `VALENCE_DEV_URL` for signed offline and rollback validation.
+=======
+>>>>>>> codex/r23

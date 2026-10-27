@@ -31,6 +31,8 @@ final class ValenceHttp {
   }) : _clientFactory = clientFactory ?? http.Client.new;
 
   /// Origins compiled into the native host, never taken from an OTA manifest.
+  /// HTTP grants cleartext token trust in release builds too; use HTTPS remotely.
+  /// Android network security XML is not a boundary for native Dart HTTP.
   final Set<String> origins;
 
   /// Read per request, with the same precedence as authenticated sync.
