@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased: three more ways an account switch could leak across accounts
+
+All three are §4.4 hardening, found by review of the account work. None needs an app change.
+
+- **A `data.put` during a switch is now refused** with `E_INTERNAL`, for the whole transition including
+  the wait for the sync lease. The lease ordered a switch against sync and nothing ordered it against a
+  local write, so a write from the outgoing account's page could commit after the clear and be pushed
+  under the incoming account's token. A write already running is now allowed to finish before the clear
+  rather than after it. If you fire writes while awaiting `auth.setToken`, disable the form for the
+  duration and make a refused write again afterwards — nothing was stored.
+- **The `E_PENDING` guard no longer depends on having a writable bucket.** A host whose `writable` set
+  had become empty skipped the outbox check entirely, so a switch succeeded silently over queued writes
+  and kept them — to be pushed under the new account's token the day a writable bucket came back.
+- **The account id is written before the token on every path**, not just on a switch. On an adoption the
+  old order could lose the id and keep the token, which made the next sign-in as somebody else look like
+  another adoption rather than a switch — leaving the first account's rows and queued writes in place
+  under the second account's token.
+
 ## Unreleased: the bridge tarball is built from its own source
 
 `@getvalence/bridge` ships compiled output (`dist/`), which is build output and not in git. Nothing made

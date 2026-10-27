@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased: account-switch hardening (§4.4)
+
+- `Valence.dataPut` throws `E_INTERNAL` for the duration of an account transition, which now spans the
+  sync-lease wait as well as the clear. Writes already in flight are drained before `clearWritable`, so
+  one cannot commit after the delete and be pushed under the next account's token.
+- `ValenceStore.clearWritable` no longer returns early on an empty bucket set: the outbox check, the
+  outbox delete and the sync-observation reset are not bucket-specific and always run. Only the
+  `kv`/`bucket` deletes are conditional.
+- `auth.setToken` records the account id before writing the token on the non-switch paths too, matching
+  the switch, so an interrupted adoption cannot leave a token with no recorded identity.
+
 ## Unreleased: task restoration
 
 Task restoration now checks the native account before loading a restored route, clears drafts on account switch/sign-out and refuses late route captures from the previous account. Refresh and first-account adoption keep the live draft.

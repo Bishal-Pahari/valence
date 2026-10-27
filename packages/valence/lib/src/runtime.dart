@@ -644,7 +644,22 @@ final class Valence {
       throw BridgeError(BridgeErrorCode.params,
           '"$key" is not a usable key; a server cannot address it');
     }
-    await store.put(bucket, key, value, opId: ValenceState.newInstallId());
+    // Checked here, and the put started in the same synchronous step, so there is no await between the
+    // two for a switch to begin in. See [_switchingAccount].
+    if (_switchingAccount) {
+      throw BridgeError(
+        BridgeErrorCode.internal,
+        'an account change is in progress and this write would belong to neither account; nothing '
+        'was written, so make the write again once auth.setToken settles (contracts §4.4)',
+      );
+    }
+    final write = store.put(bucket, key, value, opId: ValenceState.newInstallId());
+    _writesInFlight.add(write);
+    try {
+      await write;
+    } finally {
+      _writesInFlight.remove(write);
+    }
     // Fire and forget: a local write is durable the moment the transaction commits, and the page must not
     // wait on the network for it.
     unawaited(
@@ -732,6 +747,23 @@ final class Valence {
 
   Future<void> _authTail = Future<void>.value();
 
+  /// Raised for the whole of an account transition (§4.4), including the wait for the sync lease.
+  ///
+  /// The lease orders a switch against *sync*, and nothing ordered it against a local write:
+  /// [dataPut] takes no lease, and bridge messages dispatch concurrently, so a `data.put` from the
+  /// previous account's page could commit after [ValenceStore.clearWritable] and be pushed under the
+  /// next account's token. A write that arrives while this is up is refused rather than delayed —
+  /// held and applied afterwards it would simply land in the new account's outbox, which is the same
+  /// cross-account write by a slower route.
+  bool _switchingAccount = false;
+
+  /// Local writes whose transaction may not have committed yet.
+  ///
+  /// Refusing new writes is not enough on its own: a put that started before [_switchingAccount] went
+  /// up still has a transaction to run, and SQLite is free to commit it *after* the clear's. A switch
+  /// waits for these to settle first, and none can join while the flag is up.
+  final Set<Future<void>> _writesInFlight = {};
+
   /// `auth.setToken`. A null [token] clears it. The host attaches it to every user-bucket request (§4.4).
   ///
   /// [account] is the app's own opaque id for the user. Recording a **different** one, or signing out
@@ -782,16 +814,40 @@ final class Valence {
   /// a Dart-side refresh loop calling authSetToken(newToken) harmless.
   Future<void> _storeToken(String? token,
       {required bool signOut, required String? next}) async {
-    await secure.setAuthToken(token);
+    // Identity first, token second — the same order as [_switchAccount], and for the same reason.
+    // Secure storage writes one key at a time, so a keystore failure or a process death between the
+    // two writes has to leave the *safe* half committed. On an adoption (nothing recorded yet) the
+    // unsafe order loses the id and keeps the token: a later sign-in as somebody else then still sees
+    // no recorded id, so it is another adoption rather than a switch, and the first account's rows and
+    // queued writes survive under the second account's token. Recording first means that failure
+    // leaves the id with the token it already had, and the next different account is a real switch.
     if (signOut) {
       await secure.setAuthAccount(null);
     } else if (next != null) {
       await secure.setAuthAccount(next);
     }
+    await secure.setAuthToken(token);
   }
 
   /// The §4.4 switch: clear, then store, **both** under the §5.6 sync lease.
   Future<void> _switchAccount(
+    String? token, {
+    required String from,
+    required String? to,
+    required bool discardPending,
+  }) async {
+    // Up before the lease wait, not after it: the five seconds below are part of the transition, and a
+    // write admitted during them is a write this switch cannot attribute to either account.
+    _switchingAccount = true;
+    try {
+      await _switchAccountUnderGuard(token,
+          from: from, to: to, discardPending: discardPending);
+    } finally {
+      _switchingAccount = false;
+    }
+  }
+
+  Future<void> _switchAccountUnderGuard(
     String? token, {
     required String from,
     required String? to,
@@ -814,6 +870,16 @@ final class Valence {
       );
     }
     try {
+      // Snapshot and drain: every write that was already running gets to finish before the clear, and
+      // the guard stops any new one joining, so one pass is enough. A write that failed is still a
+      // write that is over, which is all this needs.
+      for (final write in _writesInFlight.toList()) {
+        try {
+          await write;
+        } on Object {
+          // Its own caller already has the error; here it only has to be finished.
+        }
+      }
       final (rows, ops) = await store.clearWritable(config.writableBuckets,
           discardPending: discardPending);
       _log(

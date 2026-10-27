@@ -963,6 +963,97 @@ void main() {
       await v.sync.releaseLease();
     });
 
+    test('a local write during an account transition is refused, not queued (§4.4)',
+        () async {
+      // The lease orders a switch against *sync*, and nothing ordered it against data.put, which
+      // takes no lease at all. Bridge messages dispatch concurrently, so a write from the previous
+      // account's page that commits after the clear and before the new token sits in an outbox that
+      // is pushed under the next account's credentials — the cross-account write E_PENDING exists to
+      // prevent, arriving by the one route E_PENDING never sees. Probed from inside the identity
+      // write, which is the middle of the transition: the clear has happened, the token has not.
+      late Valence v;
+      final data = <String, String>{};
+      var armed = false;
+      Object? refused;
+      FlutterSecureStoragePlatform.instance =
+          _WatchedSecureStorage(data, (key) async {
+        if (!armed || key != secureAuthAccountKey) return;
+        try {
+          await v.dataPut('shelf', 'sneak', {'t': 'theirs'});
+        } on Object catch (e) {
+          refused = e;
+        }
+      });
+      v = await open(
+          writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
+      await v.authSetToken('jwt-a', account: 'user-a');
+      armed = true;
+      await v.authSetToken('jwt-b', account: 'user-b');
+
+      expect(
+          refused,
+          isA<BridgeError>()
+              .having((e) => e.code, 'code', BridgeErrorCode.internal)
+              .having((e) => e.message, 'message',
+                  contains('account change is in progress')));
+      expect(await v.store.pendingWrites(), 0,
+          reason: 'the write never reached the outbox');
+      expect(await v.dataGet('shelf', 'sneak'), isNull);
+      expect(data[secureAuthTokenKey], 'jwt-b',
+          reason: 'and the switch itself still completed');
+    });
+
+    test(
+        'a host that dropped its last writable bucket still refuses a switch over queued writes (§4.4)',
+        () async {
+      // clearWritable returned immediately when the writable set was empty, and took the outbox
+      // check with it. A host update that removes its last writable bucket while A has queued writes
+      // could then switch to B with no E_PENDING at all, keep A's writes, and push them under B's
+      // token the day a writable bucket came back.
+      final data = <String, String>{};
+      final v = await open(writableBuckets: const {}, secure: testSecure(data));
+      await v.authSetToken('jwt-a', account: 'user-a');
+      // Through the store, because data.put refuses a bucket that is no longer writable — which is
+      // precisely how an outbox outlives the config that admitted it.
+      await v.store.put('shelf', 'note', {'t': 'mine'}, opId: 'op-1');
+      expect(await v.store.pendingWrites(), 1);
+
+      await expectLater(
+        v.authSetToken('jwt-b', account: 'user-b'),
+        throwsA(isA<BridgeError>()
+            .having((e) => e.code, 'code', BridgeErrorCode.pending)
+            .having((e) => e.message, 'message', contains('1 local write'))),
+      );
+      expect(data[secureAuthTokenKey], 'jwt-a', reason: 'nothing was changed');
+      expect(await v.authAccount(), 'user-a');
+
+      await v.authSetToken('jwt-b', account: 'user-b', discardPending: true);
+      expect(await v.store.pendingWrites(), 0,
+          reason: 'and the flag still clears them');
+      expect(await v.authAccount(), 'user-b');
+    });
+
+    test('the account id is recorded before the token is written (§4.4)',
+        () async {
+      // Secure storage writes one key at a time, so the order decides what a failure between the two
+      // leaves behind. Token first loses the id and keeps the token: a later sign-in as somebody else
+      // still finds no recorded id, so it is a second adoption rather than a switch, and the first
+      // account's rows and queued writes survive under the second account's token.
+      final order = <String>[];
+      FlutterSecureStoragePlatform.instance = _WatchedSecureStorage(
+          <String, String>{}, (key) async => order.add(key));
+      final v = await open(
+          writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
+
+      await v.authSetToken('jwt-a', account: 'user-a');
+      expect(order, [secureAuthAccountKey, secureAuthTokenKey],
+          reason: 'an adoption records the identity first');
+      order.clear();
+      await v.authSetToken('jwt-b', account: 'user-b');
+      expect(order.last, secureAuthTokenKey,
+          reason: 'and a switch still writes the token last of all');
+    });
+
     test(
         'an unreadable account id fails the call rather than reading as "none recorded"',
         () async {
