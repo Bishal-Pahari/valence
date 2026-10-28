@@ -148,7 +148,7 @@ final class ValenceSync {
 
   /// Reads persisted observations and current outbox depth without taking the sync lease.
   Future<ValenceSyncStatus> status() async {
-    final rows = await logDatabaseWait(
+    final rows = await databaseOperation(
         'sync.status',
         () => store.db.query('prefs', where: 'key IN (?, ?, ?)', whereArgs: [
               'valence.sync.lastSyncedAt',
@@ -179,7 +179,7 @@ final class ValenceSync {
   Future<bool> acquireLease() async {
     final now = _now().millisecondsSinceEpoch;
     var taken = false;
-    await logDatabaseWait(
+    await databaseOperation(
         'sync.acquireLease',
         () => store.db.transaction((txn) async {
               final rows = await txn.query(
@@ -339,7 +339,7 @@ final class ValenceSync {
       // Persist the outcome before releasing the lease: a later run must not be overwritten.
       // A run that observed nothing writes nothing, so it cannot overwrite one that did.
       if (!nothingAttempted) {
-        await logDatabaseWait(
+        await databaseOperation(
             'sync.observations',
             () => store.db.transaction((txn) async {
                   final observations = {

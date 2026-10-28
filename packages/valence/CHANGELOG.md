@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased: `hasNotification` is required, and sync's waits name a lock
+
+**Breaking for hosts with their own `ValencePushTransport`.** `ValencePushMessage`'s `hasNotification`
+is now a required argument with no default. Hosts using `valence_push` are unaffected — it already
+passes `message.notification != null`. `false` is the permissive answer, because it is the half of the
+data-only check that lets a payload trigger a sync, and core no longer derives it now that the transport
+belongs to the host. The default meant a transport that never considered the field turned every
+notification carrying `{"valence":"sync"}` into a background sync; omitting it is now a compile error.
+
+Sync's own lease transaction and observation write go through the same wrapper as the store's queries, so
+a confirmed `SQLITE_BUSY` on either is labelled `store: database locked operation=sync.acquireLease`
+rather than only timed (§5.1.1). No SQL, bind argument, bucket, key or path is logged, as before.
+
+An app-owned method under a built-in's name that differed only in its return type is accepted again:
+the generator's signature comparison looked only at the params, so every structured-return built-in
+matched and `notify.pending` returning `string[]` was refused, against §6.5.
+
 ## Unreleased: Firebase is an opt-in native package
 
 Core-only Valence hosts no longer depend on Firebase. Remote push hosts must add

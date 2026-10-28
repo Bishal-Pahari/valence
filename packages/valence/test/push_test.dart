@@ -95,20 +95,23 @@ void main() {
   });
 
   test('cold tap is consumed once then warm taps become live', () async {
-    await start(
-        const ValencePushMessage(id: 'cold', data: {'screen': '/shelf'}));
+    await start(const ValencePushMessage(
+        hasNotification: false, id: 'cold', data: {'screen': '/shelf'}));
     expect(events, isEmpty);
     expect((await push.initial())?.id, 'cold');
     expect(await push.initial(), isNull);
-    transport.taps.add(const ValencePushMessage(id: 'warm'));
+    transport.taps
+        .add(const ValencePushMessage(hasNotification: false, id: 'warm'));
     expect(events.single, contains('push.tapped'));
     expect(events.single, contains('warm'));
   });
 
   test('newer tap during initial lookup wins over stale cold tap', () async {
     final starting = push.start(emit: events.add, sync: () async {});
-    transport.taps.add(const ValencePushMessage(id: 'new'));
-    transport.initialReply.complete(const ValencePushMessage(id: 'old'));
+    transport.taps
+        .add(const ValencePushMessage(hasNotification: false, id: 'new'));
+    transport.initialReply
+        .complete(const ValencePushMessage(hasNotification: false, id: 'old'));
     await starting;
     expect((await push.initial())?.id, 'new');
     expect(events, isEmpty);
@@ -145,9 +148,10 @@ void main() {
   test('foreground hint syncs; notification or extra fields never do',
       () async {
     await start();
-    transport.messages.add(const ValencePushMessage(data: {'valence': 'sync'}));
-    transport.messages.add(
-        const ValencePushMessage(data: {'valence': 'sync', 'bucket': 'x'}));
+    transport.messages.add(const ValencePushMessage(
+        hasNotification: false, data: {'valence': 'sync'}));
+    transport.messages.add(const ValencePushMessage(
+        hasNotification: false, data: {'valence': 'sync', 'bucket': 'x'}));
     transport.messages.add(const ValencePushMessage(
         data: {'valence': 'sync'}, hasNotification: true));
     await Future<void>.delayed(Duration.zero);
@@ -168,7 +172,8 @@ void main() {
     expect(events.single, contains('"image":null'));
     expect(events.single, contains(r'\";evil()'));
     expect(
-        const ValencePushMessage(image: 'https://images.test/a.png')
+        const ValencePushMessage(
+                hasNotification: false, image: 'https://images.test/a.png')
             .toJson()['image'],
         'https://images.test/a.png');
     for (final image in [
@@ -176,7 +181,10 @@ void main() {
       'https://user@images.test/a',
       'javascript:evil()'
     ]) {
-      expect(ValencePushMessage(image: image).toJson()['image'], isNull);
+      expect(
+          ValencePushMessage(hasNotification: false, image: image)
+              .toJson()['image'],
+          isNull);
     }
   });
 
@@ -185,9 +193,12 @@ void main() {
       () async {
     await start();
     final secret = 's' * maxMessageBytes;
-    transport.messages.add(ValencePushMessage(data: {'secret': secret}));
-    transport.taps.add(ValencePushMessage(data: {'secret': secret}));
-    transport.messages.add(ValencePushMessage(data: {'bad': Object()}));
+    transport.messages.add(
+        ValencePushMessage(hasNotification: false, data: {'secret': secret}));
+    transport.taps.add(
+        ValencePushMessage(hasNotification: false, data: {'secret': secret}));
+    transport.messages.add(
+        ValencePushMessage(hasNotification: false, data: {'bad': Object()}));
     expect(events, isEmpty);
     expect(await push.initial(), isNull);
     expect(logs, hasLength(3));
@@ -195,7 +206,8 @@ void main() {
   });
 
   test('initial payload fits both reply and event message caps', () async {
-    await start(const ValencePushMessage(id: 'x', data: {'count': 1}));
+    await start(const ValencePushMessage(
+        hasNotification: false, id: 'x', data: {'count': 1}));
     final json = (await push.initial())!.toJson();
     expect(utf8.encode(jsonEncode({'id': 1, 'ok': true, 'v': json})).length,
         lessThan(maxMessageBytes));
@@ -210,7 +222,8 @@ void main() {
           throw StateError('private-token');
         });
     transport.messages.addError(StateError('private-payload'));
-    transport.messages.add(const ValencePushMessage(data: {'valence': 'sync'}));
+    transport.messages.add(const ValencePushMessage(
+        hasNotification: false, data: {'valence': 'sync'}));
     await Future<void>.delayed(Duration.zero);
     expect(logs, hasLength(3));
     expect(logs.join(), isNot(contains('private')));
@@ -225,10 +238,12 @@ void main() {
           syncs++;
         });
     await push.dispose();
-    transport.initialReply.complete(const ValencePushMessage(id: 'late'));
+    transport.initialReply
+        .complete(const ValencePushMessage(hasNotification: false, id: 'late'));
     await starting;
     expect(await push.initial(), isNull);
-    transport.messages.add(const ValencePushMessage(data: {'valence': 'sync'}));
+    transport.messages.add(const ValencePushMessage(
+        hasNotification: false, data: {'valence': 'sync'}));
     transport.rotations.add('secret');
     expect(events, isEmpty);
     expect(syncs, 0);

@@ -113,7 +113,7 @@ final class ValenceStore {
     final existing = _open[path];
     if (existing != null) return existing;
     final opening =
-        _databaseOperation('store.open', () => _openAt(path, factory ?? databaseFactory, log), log);
+        databaseOperation('store.open', () => _openAt(path, factory ?? databaseFactory, log), log);
     _open[path] = opening;
     return opening.catchError((Object e, StackTrace st) {
       if (_open[path] == opening) _open.remove(path);
@@ -134,9 +134,9 @@ final class ValenceStore {
           // through execSQL — so `execute` throws "Queries can be performed using SQLiteDatabase query or
           // rawQuery methods only" and the app dies on its first launch, before any UI. sqflite_common_ffi,
           // the factory every `flutter test` uses, accepts `execute` here, so no unit test catches it.
-          final journal = await _databaseOperation(
+          final journal = await databaseOperation(
               'store.configure', () => db.rawQuery('PRAGMA journal_mode = WAL'), log);
-          await _databaseOperation(
+          await databaseOperation(
               'store.configure', () => db.rawQuery('PRAGMA busy_timeout = 5000'), log);
           // rawQuery returns the mode now in effect. A filesystem that cannot do WAL answers `delete`, and
           // the concurrency the rest of the data layer assumes is gone, so report it rather than discard it.
@@ -144,21 +144,21 @@ final class ValenceStore {
         },
         onCreate: (db, _) async {
           for (final sql in _schemaSql) {
-            await _databaseOperation('store.configure', () => db.execute(sql), log);
+            await databaseOperation('store.configure', () => db.execute(sql), log);
           }
         },
         // Preserve queued payloads and their original insertion order during the v1 upgrade.
         onUpgrade: (db, from, to) async {
           if (from < 2) {
-            await _databaseOperation(
+            await databaseOperation(
                 'store.configure', () => db.execute('ALTER TABLE outbox RENAME TO outbox_v1'), log);
-            await _databaseOperation('store.configure', () => db.execute(_schemaSql[3]), log);
-            await _databaseOperation(
+            await databaseOperation('store.configure', () => db.execute(_schemaSql[3]), log);
+            await databaseOperation(
                 'store.configure',
                 () => db.execute('INSERT INTO outbox (id, bucket, key, value, deleted, created_at) '
                     'SELECT id, bucket, key, value, deleted, created_at FROM outbox_v1 ORDER BY rowid'),
                 log);
-            await _databaseOperation(
+            await databaseOperation(
                 'store.configure', () => db.execute('DROP TABLE outbox_v1'), log);
           }
         },
@@ -188,7 +188,7 @@ final class ValenceStore {
 
   /// Returns a row's value, or null when it is absent or a tombstone.
   Future<Object?> get(String bucket, int schema, String key) async {
-    final rows = await _databaseOperation(
+    final rows = await databaseOperation(
         'store.get',
         () => db.query(
               'kv',
@@ -211,7 +211,7 @@ final class ValenceStore {
     if (keys.isEmpty) return [];
     final unique = keys.toSet();
     final marks = List.filled(unique.length, '?').join(',');
-    final rows = await _databaseOperation(
+    final rows = await databaseOperation(
         'store.getMany',
         () => db.query(
               'kv',
@@ -258,7 +258,7 @@ final class ValenceStore {
       where.write(' AND key > ?');
       args.add(after);
     }
-    final rows = await _databaseOperation(
+    final rows = await databaseOperation(
         'store.list',
         () => db.query(
               'kv',
@@ -279,7 +279,7 @@ final class ValenceStore {
   /// indexed count rather than every row's JSON.
   Future<int> count(String bucket, int schema, {String? prefix}) async {
     final (where, args) = _liveRowsWhere(bucket, schema, prefix);
-    final rows = await _databaseOperation(
+    final rows = await databaseOperation(
         'store.count', () => db.rawQuery('SELECT COUNT(*) AS n FROM kv WHERE $where', args), _log);
     return rows.first['n']! as int;
   }
@@ -298,7 +298,7 @@ final class ValenceStore {
 
   /// The highest applied `usn` for one `(bucket, schema)` pair, or 0 when the pair is unknown.
   Future<int> maxUsn(String bucket, int schema) async {
-    final rows = await _databaseOperation(
+    final rows = await databaseOperation(
         'store.maxUsn',
         () => db.query(
               'bucket',
@@ -318,7 +318,7 @@ final class ValenceStore {
   /// to be reversible. A map lets the v1 entry hide the v2 entry, so a satisfied bundle still looks
   /// unsatisfied after a successful pull (§2.3 step 7, §5.4).
   Future<Map<String, Set<int>>> syncedPairs() async {
-    final rows = await _databaseOperation(
+    final rows = await databaseOperation(
         'store.syncedPairs',
         () => db.query('bucket', columns: ['name', 'schema'], where: 'synced_at IS NOT NULL'),
         _log);
@@ -331,7 +331,7 @@ final class ValenceStore {
 
   /// Every `(bucket, schema)` pair the database holds, synced or not.
   Future<Map<String, Set<int>>> allPairs() async {
-    final rows = await _databaseOperation(
+    final rows = await databaseOperation(
         'store.allPairs', () => db.query('bucket', columns: ['name', 'schema']), _log);
     final out = <String, Set<int>>{};
     for (final r in rows) {
@@ -354,7 +354,7 @@ final class ValenceStore {
   Future<void> put(String bucket, String key, Object? value, {required String opId}) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     final json = value == null ? null : jsonEncode(value);
-    await _databaseOperation(
+    await databaseOperation(
         'store.put',
         () => db.transaction((txn) async {
               await txn.insert(
@@ -383,7 +383,7 @@ final class ValenceStore {
 
   /// The queued ops for [bucket], oldest first.
   Future<List<ValenceOutboxOp>> outbox(String bucket, {int limit = 200}) async {
-    final rows = await _databaseOperation(
+    final rows = await databaseOperation(
         'store.outbox',
         () => db.query(
               'outbox',
@@ -409,14 +409,14 @@ final class ValenceStore {
   ///
   /// The page has no other way to ask: a pending delete leaves no row, so counting `usn == -1` undercounts.
   Future<int> pendingWrites() async {
-    final rows = await _databaseOperation(
+    final rows = await databaseOperation(
         'store.pendingWrites', () => db.rawQuery('SELECT COUNT(*) AS n FROM outbox'), _log);
     return rows.first['n']! as int;
   }
 
   /// Which buckets have queued ops. Used to decide what to push.
   Future<Set<String>> outboxBuckets() async {
-    final rows = await _databaseOperation(
+    final rows = await databaseOperation(
         'store.outboxBuckets', () => db.rawQuery('SELECT DISTINCT bucket FROM outbox'), _log);
     return {for (final r in rows) r['bucket']! as String};
   }
@@ -438,7 +438,7 @@ final class ValenceStore {
     bool complete = true,
   }) async {
     var applied = 0;
-    await _databaseOperation(
+    await databaseOperation(
         'store.applyPullPage',
         () => db.transaction((txn) async {
               final blocked = <String>{
@@ -473,7 +473,7 @@ final class ValenceStore {
   }
 
   /// Marks an empty/final static pull complete without moving its cursor.
-  Future<void> completePull(String bucket, int schema) => _databaseOperation('store.completePull',
+  Future<void> completePull(String bucket, int schema) => databaseOperation('store.completePull',
       () => db.transaction((txn) => _bumpBucket(txn, bucket, schema, 0, synced: true)), _log);
 
   /// Clears the acknowledged ops and applies the echoed rows, in one transaction.
@@ -486,7 +486,7 @@ final class ValenceStore {
     required List<String> acked,
     required List<Map<String, Object?>> rows,
   }) async {
-    await _databaseOperation(
+    await databaseOperation(
         'store.applyPushAck',
         () => db.transaction((txn) async {
               for (final id in acked) {
@@ -569,7 +569,7 @@ final class ValenceStore {
     if (schemas.isEmpty) return const {};
     final counts = <String, int>{};
     // ATTACH outside a transaction: SQLite refuses it inside one.
-    await _databaseOperation('store.importSeed',
+    await databaseOperation('store.importSeed',
         () => db.execute('ATTACH DATABASE ? AS valence_seed', [seedPath]), _log);
     try {
       final pairs = {
@@ -580,7 +580,7 @@ final class ValenceStore {
           for (final n in b.value) MapEntry(b.key, n)
       ]) {
         final from = await maxUsn(e.key, e.value);
-        await _databaseOperation(
+        await databaseOperation(
             'store.importSeed',
             () => db.transaction((txn) async {
                   await txn.rawInsert(
@@ -605,7 +605,7 @@ final class ValenceStore {
             _log);
       }
     } finally {
-      await _databaseOperation(
+      await databaseOperation(
           'store.importSeed', () => db.execute('DETACH DATABASE valence_seed'), _log);
     }
     return counts;
@@ -629,7 +629,7 @@ final class ValenceStore {
         'requires it (contracts §2.4)',
       );
     }
-    await _databaseOperation(
+    await databaseOperation(
         'store.dropPair',
         () => db.transaction((txn) async {
               await txn
@@ -660,7 +660,7 @@ final class ValenceStore {
     var ops = 0;
     final marks = List.filled(buckets.length, '?').join(', ');
     final names = buckets.toList();
-    await _databaseOperation(
+    await databaseOperation(
         'store.clearWritable',
         () => db.transaction((txn) async {
               if (!discardPending) {
@@ -736,7 +736,7 @@ final class ValenceStore {
   }
 
   Future<String?> _prefGet(String key) async {
-    final rows = await _databaseOperation(
+    final rows = await databaseOperation(
         'store.prefGet',
         () => db.query('prefs', columns: ['value'], where: 'key = ?', whereArgs: [key], limit: 1),
         _log);
@@ -745,11 +745,11 @@ final class ValenceStore {
 
   Future<void> _prefSet(String key, String? value) async {
     if (value == null) {
-      await _databaseOperation(
+      await databaseOperation(
           'store.prefSet', () => db.delete('prefs', where: 'key = ?', whereArgs: [key]), _log);
       return;
     }
-    await _databaseOperation(
+    await databaseOperation(
         'store.prefSet',
         () => db.insert('prefs', {'key': key, 'value': value},
             conflictAlgorithm: ConflictAlgorithm.replace),
@@ -758,7 +758,13 @@ final class ValenceStore {
 }
 
 // Keep lock classification out of the generic timing helper and never print SQL/args.
-Future<T> _databaseOperation<T>(String operation, Future<T> Function() action, ValenceLogger log) =>
+/// Wraps one database operation in the §5.1.1 diagnostics: the named wait line, and the separate
+/// `database locked` label when the failure really was contention rather than anything else.
+///
+/// Library-public rather than private to this file because sync owns three writes of its own — the lease
+/// transaction and the observation write among them, the two most likely to contend with the UI isolate —
+/// and calling `logDatabaseWait` directly got them the wait line without the lock label.
+Future<T> databaseOperation<T>(String operation, Future<T> Function() action, ValenceLogger log) =>
     logDatabaseWait(operation, () async {
       try {
         return await action();

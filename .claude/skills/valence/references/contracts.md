@@ -1581,6 +1581,12 @@ objects. `hasNotification` records the presence of a native notification envelop
 (even when title/body are empty); it is used only for the data-only hint check and
 is not a new bridge field. Wire signatures and reserved schema 12 stay unchanged.
 
+`hasNotification` is a **required** argument of `ValencePushMessage`, with no default. `false` is the
+permissive answer — it is the half of `isSyncHint` that lets a payload run a sync — and core no longer
+derives it, because the transport is now the host's to supply. A default would mean a transport that
+never considered the field turned every notification carrying `{"valence":"sync"}` into a background
+sync. A transport states the fact; omitting it is a compile error rather than a silent fail-open.
+
 Firebase dependencies live exclusively in the opt-in `valence_push` package:
 FCM on Android, APNs through FCM on iOS (experimental and untested). A push host
 adds that package, initializes Firebase and passes `createFirebasePush()` to

@@ -164,6 +164,31 @@ void main() {
     ValenceStore.resetCacheForTests();
   });
 
+  test('a lock on a sync-owned operation is labelled, not just timed',
+      () async {
+    // The lease transaction and the status read belong to sync, not the store, and they called the wait
+    // logger directly — so a real SQLITE_BUSY produced "store: failed operation=sync.acquireLease" with
+    // no lock label, on two of the writes most likely to contend with the UI isolate. §5.1.1 promises
+    // confirmed lock errors are labelled separately, whichever layer owns the query.
+    ValenceStore.resetCacheForTests();
+    final log = LogSpy();
+    final database = _WaitingDatabase();
+    final store = await ValenceStore.open('private-file-path',
+        factory: _WaitingFactory(database), log: log.call);
+    final sync =
+        ValenceSync(store: store, config: testConfig(key), log: log.call);
+    final lease = sync.acquireLease();
+    final status = sync.status();
+    database.gate.completeError(LockedDatabaseException());
+    await expectLater(lease, throwsA(isA<DatabaseException>()));
+    await expectLater(status, throwsA(isA<DatabaseException>()));
+    expect(log.lines,
+        contains('store: database locked operation=sync.acquireLease'));
+    expect(log.lines, contains('store: database locked operation=sync.status'));
+    expect(log.toString(), isNot(contains('private-')));
+    ValenceStore.resetCacheForTests();
+  });
+
   test('store lock wrapper preserves the error and logs no SQL or arguments',
       () async {
     ValenceStore.resetCacheForTests();

@@ -72,7 +72,8 @@ void main() {
     final stateBefore = jsonEncode(v.state.toJson());
     final file = File('${v.dir.path}/state.json');
     final existsBefore = file.existsSync();
-    transport.messages.add(const ValencePushMessage(data: {'valence': 'sync'}));
+    transport.messages.add(const ValencePushMessage(
+        hasNotification: false, data: {'valence': 'sync'}));
     // Poll a concrete database condition rather than assume an arbitrary sync delay.
     for (var i = 0; i < 100 && await v.store.maxUsn('shelf', 1) == 0; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 10));

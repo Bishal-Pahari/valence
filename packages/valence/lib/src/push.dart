@@ -10,13 +10,19 @@ import 'wire.dart';
 /// An untrusted push payload. Never navigate, evaluate code or authenticate from it.
 final class ValencePushMessage {
   /// Creates metadata for the bridge. Images are metadata, never fetched by Dart.
+  ///
+  /// [hasNotification] is required because `false` is the permissive answer: it is what makes
+  /// [isSyncHint] accept a payload and run a sync. Core used to derive it itself from the provider's
+  /// envelope, but §6.4 now invites a host to supply its own transport, and a default would let one that
+  /// never thought about the field turn every notification carrying `{"valence":"sync"}` into a sync.
+  /// A transport states the fact; it does not get to omit it.
   const ValencePushMessage(
-      {this.id,
+      {required this.hasNotification,
+      this.id,
       this.data = const {},
       this.title,
       this.body,
-      this.image,
-      this.hasNotification = false});
+      this.image});
 
   /// Whether the native envelope contains a notification, even with empty text.
   /// Used only for exact data-only sync hints; never sent over the bridge.
