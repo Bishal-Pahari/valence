@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased: a missing notification icon no longer takes the app down
+
+- A native notification service that refuses to start no longer throws out of `Valence.open`. The
+  host logs the native code and the reason and runs with notifications unavailable: `notify.schedule`
+  reports `blocked`, `notify.pending` is empty, `badge.set` is false, and the rest of the app is
+  unaffected. A host that cannot post a notification is still an app.
+- The usual cause is Android's release resource shrinker. `notifications.icon` is named only as a
+  string in `valence.config.json`, so nothing references the drawable and R8 deletes it — which no
+  debug-build check can see. `valence doctor` now has a `notification icon` row that fails when the
+  drawable is missing from `android/app/src/main/res` or when `res/raw/keep.xml` does not name it.
+  If you have notifications enabled, add `res/raw/keep.xml` with
+  `tools:keep="@drawable/<your icon>"` and run a release build.
+- The notifications guide says this where the icon is introduced, as a requirement rather than a tip,
+  and now shows the three-line adapter for delegating a shipped custom `notify.*` method to the
+  built-in scheduler — there is no separate service class to import.
+
 ## Unreleased: a replaced OS snapshot cannot cross an account or a bundle
 
 A replacement task snapshot handed to an already-running host is now checked against the

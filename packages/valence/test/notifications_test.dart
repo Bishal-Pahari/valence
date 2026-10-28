@@ -12,6 +12,9 @@ class FakeNotifications extends ValenceNotificationPlatform {
   final rows = <PendingNotificationRequest>[];
   AndroidScheduleMode? mode;
   NotificationResponse? launch;
+
+  /// A native code `initialize` should fail with, as a shrunk-away icon does.
+  String? failInit;
   late void Function(NotificationResponse) respond;
   @override
   bool get isIOS => ios;
@@ -20,6 +23,12 @@ class FakeNotifications extends ValenceNotificationPlatform {
       String icon, void Function(NotificationResponse) callback) async {
     initialized++;
     respond = callback;
+    if (failInit != null) {
+      throw PlatformException(
+          code: failInit!,
+          message: 'The resource $icon could not be found. Please make sure it '
+              'has been added as a drawable resource to your Android head project.');
+    }
     return launch;
   }
 
@@ -112,6 +121,41 @@ void main() {
         now: () => now);
   });
   tearDown(() async => directory.delete(recursive: true));
+
+  test(
+      'a native service that cannot start degrades to blocked instead of failing Valence.open',
+      () async {
+    platform.failInit = 'invalid_icon';
+    final logs = <String>[];
+    final degraded = ValenceNotifications(
+        directory: directory,
+        emit: events.add,
+        platform: platform,
+        now: () => now,
+        log: logs.add);
+    // Valence.open awaits exactly this; an unhandled PlatformException took the whole app down.
+    await degraded.initialize();
+    expect(degraded.unavailable, 'invalid_icon');
+    expect(logs.single, contains('keep.xml'));
+    expect(logs.single, contains('ic_stat_valence'));
+    expect(
+        await degraded.schedule(
+            id: 1,
+            title: 'Reminder',
+            at: now.millisecondsSinceEpoch + 3600000),
+        {'id': 1, 'timing': 'blocked'});
+    expect(await degraded.permission(request: true), isFalse);
+    expect(await degraded.pending(), isEmpty);
+    expect(await degraded.badge(3), isFalse);
+    await degraded.cancel(1);
+    await degraded.channel(id: 'daily', name: 'Daily');
+    expect(await degraded.initial(), isNull);
+    expect(platform.sends, 0);
+    expect(platform.prompts, 0);
+    // Parameter validation still runs, so a page cannot learn the service is absent from an accepted call.
+    expect(() => degraded.schedule(id: -1, title: 'x', at: now.millisecondsSinceEpoch + 1000),
+        throwsA(isA<BridgeError>()));
+  });
 
   test(
       'iOS attachments prune historical IDs and alternate extensions; cancel removes owned files',

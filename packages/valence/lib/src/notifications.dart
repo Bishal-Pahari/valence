@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 
+import 'log.dart';
 import 'wire.dart';
 
 /// The bounded local notification service. The native adapter never receives page file paths or URLs.
@@ -19,8 +20,10 @@ final class ValenceNotifications {
     this.icon = 'ic_stat_valence',
     ValenceNotificationPlatform? platform,
     DateTime Function()? now,
+    ValenceLogger log = defaultValenceLogger,
   })  : _platform = platform ?? ValenceNotificationPlatform(),
-        _now = now ?? DateTime.now;
+        _now = now ?? DateTime.now,
+        _log = log;
 
   /// Private attachment directory.
   final Directory directory;
@@ -32,17 +35,39 @@ final class ValenceNotifications {
   final String icon;
   final ValenceNotificationPlatform _platform;
   final DateTime Function() _now;
+  final ValenceLogger _log;
   Future<void>? _initialized;
   Future<void> _tail = Future.value();
   Map<String, Object?>? _initial;
+  String? _unavailable;
+
+  /// The native code for why the service could not start, or null when it did.
+  ///
+  /// A host that cannot post a notification is still an app (§6.5), so every call
+  /// degrades — `notify.schedule` reports `blocked` — instead of throwing.
+  String? get unavailable => _unavailable;
 
   /// Registers callbacks and captures a cold-start tap without prompting.
   Future<void> initialize() => _initialized ??= _initialize();
 
   Future<void> _initialize() async {
     _identifier(icon, 'icon');
-    final response = await _platform.initialize(icon, _respond);
-    _initial = _response(response);
+    try {
+      final response = await _platform.initialize(icon, _respond);
+      _initial = _response(response);
+    } on PlatformException catch (e) {
+      // Never fail Valence.open over the notification service. The icon is named only as
+      // a string in valence.config.json, so Android's release resource shrinker removes
+      // it unless res/raw/keep.xml names it, and the first thing to fail would be the
+      // store build on a device, by not starting at all.
+      _unavailable = e.code;
+      _log('notifications: the native service did not start '
+          '(${e.code}${e.message == null ? '' : ': ${e.message}'}); every notify.* call '
+          'will report "blocked" and the rest of the host runs normally. If this is a '
+          'release build, check that android/app/src/main/res/raw/keep.xml names '
+          '@drawable/$icon: resource shrinking deletes a drawable that only '
+          'valence.config.json refers to.');
+    }
   }
 
   void _respond(NotificationResponse response) {
@@ -96,6 +121,7 @@ final class ValenceNotifications {
   /// Passive by default; requesting notification authorization is always explicit.
   Future<bool> permission({bool request = false}) async {
     await initialize();
+    if (_unavailable != null) return false;
     return _platform.permission(request: request);
   }
 
@@ -195,6 +221,7 @@ final class ValenceNotifications {
   /// Returns native pending requests; no cached shadow queue.
   Future<List<Map<String, Object?>>> pending() async {
     await initialize();
+    if (_unavailable != null) return const [];
     return [
       for (final r in await _platform.pending())
         {
@@ -214,6 +241,7 @@ final class ValenceNotifications {
   Future<void> cancel(int id) => _serial(() async {
         _id(id);
         await initialize();
+        if (_unavailable != null) return;
         await _platform.cancel(id);
         for (final ext in ['png', 'jpg']) {
           final file = File('${directory.path}/$id.$ext');
@@ -241,6 +269,7 @@ final class ValenceNotifications {
         if (group != null) _identifier(group, 'group');
         _text(groupName ?? '', 'groupName', 128);
         await initialize();
+        if (_unavailable != null) return;
         await _platform.channel(
             id: id,
             name: name,

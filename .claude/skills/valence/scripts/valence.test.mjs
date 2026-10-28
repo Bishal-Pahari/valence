@@ -880,6 +880,39 @@ test('doctor fails unsafe database names and browser/native origins with actiona
   }
 });
 
+test('doctor checks the notification icon exists and survives release resource shrinking', async () => {
+  const { root, cfg } = fixture();
+  codegen({ root, cfg });
+  const res = join(root, cfg.host.dir, 'android', 'app', 'src', 'main', 'res');
+  const row = async () => (await diagnose({ root, cfg })).find(([, n]) => n === 'notification icon');
+
+  // A host that never enabled notifications is not asked about an icon at all.
+  assert.equal((await row())[0], 'PASS');
+
+  cfg.notifications = { enabled: true, icon: 'ic_stat_app' };
+  assert.match((await row())[2], /res directory absent/);
+
+  mkdirSync(join(res, 'drawable'), { recursive: true });
+  let r = await row();
+  assert.equal(r[0], 'FAIL');
+  assert.match(r[2], /not under android\/app\/src\/main\/res/);
+
+  writeFileSync(join(res, 'drawable', 'ic_stat_app.xml'), '<vector/>');
+  // The icon is there and debug builds work. This is exactly the state that took a release build
+  // down: the shrinker deletes a drawable nothing but valence.config.json names.
+  r = await row();
+  assert.equal(r[0], 'FAIL');
+  assert.match(r[2], /resource shrinking deletes @drawable\/ic_stat_app/);
+  assert.match(r[2], /Fix: .*keep\.xml/);
+
+  mkdirSync(join(res, 'raw'), { recursive: true });
+  writeFileSync(join(res, 'raw', 'keep.xml'), '<resources tools:keep="@drawable/ic_stat_app_header"/>');
+  assert.equal((await row())[0], 'FAIL', 'a longer name that merely starts with the icon is not a keep');
+
+  writeFileSync(join(res, 'raw', 'keep.xml'), '<resources tools:keep="@drawable/ic_stat_app,@raw/chime"/>');
+  assert.equal((await row())[0], 'PASS');
+});
+
 test('doctor compares generated bridge, baseline and verified OTA requirements', async () => {
   const { root, cfg, key } = fixture();
   codegen({ root, cfg });

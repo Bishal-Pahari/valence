@@ -327,6 +327,7 @@ final class Valence {
         emit: valence._notificationEmit,
         icon: config.notificationIcon,
         platform: notificationPlatform,
+        log: log,
       );
       await valence._notifications!.initialize();
     }

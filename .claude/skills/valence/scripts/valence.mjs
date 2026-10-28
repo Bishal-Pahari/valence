@@ -1492,6 +1492,22 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
     if (cfg.host.databaseDirectory !== undefined || cfg.host.databasePath !== undefined) throw new Error('host database directory/path overrides are unsupported');
     return `<appSupport>/${name}; installed location and legacy adoption need a device check`;
   }, 'set host.database to the existing database file name, run codegen; verify legacy adoption on a device before shipping');
+  await check('notification icon', () => {
+    if (!cfg.notifications?.enabled) return;
+    const icon = cfg.notifications.icon ?? 'ic_stat_valence';
+    const res = join(host, 'android', 'app', 'src', 'main', 'res');
+    if (!existsSync(res)) return `Android res directory absent; @drawable/${icon} not checked`;
+    const dirs = readdirSync(res).filter((d) => d === 'drawable' || d.startsWith('drawable-'));
+    const found = dirs.filter((d) => readdirSync(join(res, d)).some((f) => f.replace(/\.[^.]+$/, '') === icon));
+    if (!found.length) throw new Error(`notifications.icon names @drawable/${icon}, which is not under android/app/src/main/res`);
+    // The icon is named only as a string in valence.config.json, so no layout, style or manifest attribute
+    // refers to it and Flutter's release resource shrinker deletes it. The runtime then starts with
+    // notifications unavailable rather than failing, but the reminder the app shipped is silently dead.
+    const keep = join(res, 'raw', 'keep.xml');
+    if (!existsSync(keep) || !new RegExp(`@drawable/${icon}(?![a-z0-9_])`).test(readFileSync(keep, 'utf8'))) {
+      throw new Error(`release resource shrinking deletes @drawable/${icon}: nothing but valence.config.json names it, and res/raw/keep.xml does not`);
+    }
+  }, 'add the drawable under android/app/src/main/res/drawable and name it in res/raw/keep.xml as tools:keep="@drawable/<icon>", then run a release build as well as debug');
   await check('signing keys in Git', () => {
     if (insideGit(keyDir)) throw new Error('configured signing-key directory resolves inside a Git work tree');
     const repo = git(['rev-parse', '--show-toplevel']);
