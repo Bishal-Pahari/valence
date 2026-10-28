@@ -154,7 +154,7 @@ test('both doctor entry points exit nonzero with a fix for a broken mechanical s
   }
 });
 
-test('the runtime version the wizard declares matches the two packages in this repo', () => {
+test('the runtime version the wizard declares matches all runtime packages in this repo', () => {
   // The wizard writes "@getvalence/bridge": "^<RUNTIME_VERSION>" into an app's package.json, and the
   // skill tells the builder to run "flutter pub add valence". Both have to name a version that exists.
   const declared = readFileSync(join(PKG, 'bin', 'valence.mjs'), 'utf8').match(/RUNTIME_VERSION = '([^']+)'/)[1];
@@ -162,6 +162,8 @@ test('the runtime version the wizard declares matches the two packages in this r
   assert.equal(bridge, declared, 'packages/bridge');
   const pubspec = readFileSync(join(PKG, 'packages', 'valence', 'pubspec.yaml'), 'utf8');
   assert.equal(pubspec.match(/^version: (.+)$/m)[1].trim(), declared, 'packages/valence');
+  const push = readFileSync(join(PKG, 'packages', 'valence_push', 'pubspec.yaml'), 'utf8');
+  assert.equal(push.match(/^version: (.+)$/m)[1].trim(), declared, 'packages/valence_push');
 });
 
 test('packing the bridge rebuilds dist, so a tarball can never ship stale compiled types', () => {

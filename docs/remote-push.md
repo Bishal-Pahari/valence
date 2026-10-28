@@ -1,12 +1,17 @@
 # Remote push
 
-Contracts §6.4. New methods/events use `since: 12`; regenerate the schema and ship
-a store build. This feature is opt-in. No Firebase initialization is needed for
-an ordinary offline Valence host. Android delivery is **blocked: needs Firebase
-project** for the device check. iOS/APNs and its rich-image extension are
-experimental and untested.
+Contracts section 6.4. New methods/events use `since: 12`; regenerate the schema and ship
+a store build. Remote push is an opt-in **native dependency**: install `valence_push`
+only in push hosts. `valence` alone has no Firebase dependencies; local notifications
+and badges remain in core. Removing the package and rebuilding the host removes
+its Firebase SDKs, unless another app dependency supplies them. A Dart flag or
+omitting `push.*` cannot remove installed native SDKs. Review the resolved package
+graph and final binary before completing store disclosures.
 
-The reserved `since: 12` identifies this addition in Valence?s template. An app
+Android delivery is **blocked: needs Firebase project** for the device check.
+iOS/APNs and its rich-image extension are experimental and untested.
+
+The reserved `since: 12` identifies this addition in Valence's template. An app
 maintains its own additive schema history; gate calls and events with `has()`
 from its regenerated bridge rather than comparing `app.info().bridge` to 12.
 Update the generated bridge and `@getvalence/bridge` together: current generated
@@ -14,14 +19,18 @@ code supplies both method and event availability tables.
 
 ## Configure the native host
 
-Add `firebase_core: ^4.14.0` and `firebase_messaging: ^16.7.0` to your host's
-dependencies. These versions preserve the registration-token API used here;
-Messaging 17 moves to registration/Firebase Installation IDs. Do not upgrade that
-major version without adapting this API and your send backend together.
+Add `valence_push: ^0.4.0-beta.0` to your host's dependencies. For this unreleased
+checkout, use a path dependency to `packages/valence_push` and override `valence`
+to the matching core checkout. Keep `firebase_core: ^4.14.0` and
+`firebase_messaging: ^16.7.0` as direct dependencies when your Dart code imports
+them. These versions preserve the registration-token API used here;
+Messaging 17 moves to registration/Firebase Installation IDs. Adapt the API and
+your send backend together before upgrading that major version.
 
 Use your Firebase project to register your exact Android application id, add
 `google-services.json` to `android/app/`, and apply the Google services Gradle
-plugin. The example declares plugin 4.4.4 and applies it only when the file exists.
+plugin in your push host. The core example deliberately omits that plugin;
+adding the push package also requires this native setup.
 Declare `android.permission.POST_NOTIFICATIONS` in the main Android manifest.
 The phone/emulator needs compatible Google Play services. Never put a service
 account key in the app, web output, or repository.
@@ -33,15 +42,24 @@ Copy `.claude/skills/valence/templates/push_background.dart` to the host's
 WidgetsFlutterBinding.ensureInitialized();
 await Firebase.initializeApp();
 FirebaseMessaging.onBackgroundMessage(pushBackgroundMessage);
-final push = ValencePush();
+final push = createFirebasePush();
 final valence = await Valence.open(valenceConfig, push: push);
 ```
 
-Import `firebase_core`, `firebase_messaging`, `valence.dart`, the generated config
-and your background callback. For the repository example, configure Firebase and
-run `flutter run --dart-define=VALENCE_PUSH=true`. Without that flag, push methods
-return `E_UNSUPPORTED`. The offline demo still starts without a Firebase project.
-The flag is an example opt-in, not a release-build bypass.
+Import `package:valence_push/valence_push.dart` alongside `firebase_core`,
+`firebase_messaging`, `valence.dart`, the generated config and your background callback.
+The core repository example deliberately includes no push dependency or initialization;
+its push methods return `E_UNSUPPORTED`. To enable push, add the package and native
+setup above and wire this initialization into your host. Setting `VALENCE_PUSH=true`
+on the core example no longer enables Firebase.
+
+Existing unreleased push hosts replace `ValencePush()` with `createFirebasePush()`.
+Custom `ValencePushTransport` implementations now exchange `ValencePushMessage`
+instead of Firebase `RemoteMessage`; preserve `hasNotification` even for empty
+notification envelopes. That native-only flag is excluded from the bridge JSON.
+`ValencePushMessage.fromRemote` moves into the adapter's conversion; construct
+provider-neutral records directly in custom transports. The background callback's
+`ValencePush.handleBackground` API and every bridge signature stay unchanged.
 
 `start` captures notification taps without fetching a token or prompting. Keep
 the push object for the lifetime of the host; `await push.dispose()` stops its
@@ -101,9 +119,9 @@ the page for an in-app presentation; it does not create a second system alert.
 Image loading and delivery can fail independently. HTTPS `image` metadata crosses
 the bridge, not image bytes. The signed page's CSP still governs web image loads.
 
-The Firebase native dependencies ship with the runtime even when push is disabled;
-they require an iOS deployment target of **15.0 or later**. Raise the host's Runner
-and extension target settings accordingly when upgrading this unreleased runtime.
+Push hosts installing `valence_push` need an iOS deployment target of **15.0 or later**
+for Firebase. Raise Runner and extension target settings in those hosts. Core-only
+hosts no longer inherit that Firebase requirement; other plugins still set their own minima.
 
 On iOS, upload the APNs key to Firebase, add the Firebase project plist to Runner,
 enable Push Notifications plus Remote notifications/Background fetch, and keep

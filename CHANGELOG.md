@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased: Firebase is an opt-in native package
+
+Core-only Valence hosts no longer depend on Firebase. Remote push hosts must add
+`valence_push: ^0.4.0-beta.0`, import `package:valence_push/valence_push.dart` and
+replace `ValencePush()` with `createFirebasePush()` after Firebase initialization.
+Keep direct Firebase dependencies when importing their APIs. Rebuild the native
+host; an OTA cannot install or remove SDKs. Custom transports now exchange
+`ValencePushMessage` rather than `RemoteMessage` and preserve `hasNotification`.
+The Firebase-specific `ValencePushMessage.fromRemote` constructor is removed;
+custom transports construct the provider-neutral record directly.
+
+Bridge schema/signatures, background sync, notification data, caps and consent
+rules are unchanged. Local notifications and badges remain core dependencies;
+Android desugaring is still needed for local notifications. The core example has
+no Firebase dependency, and `VALENCE_PUSH=true` no longer enables it: follow the
+remote-push guide to add the native package and initialization. Firebase's iOS
+15.0 minimum applies to push hosts. Device delivery still needs a Firebase project;
+iOS is experimental and untested. This supersedes the earlier SDK-disclosure
+mitigation below. Audit other app dependencies and final binaries independently.
+
 ## Unreleased: `notify.pendingIds()`, because a full reminder queue cannot be read back
 
 Schema **16** adds one method: `notify.pendingIds() -> int[]`, the native pending queue with the IDs

@@ -1734,6 +1734,9 @@ test(
     mkdirSync(join(app, 'test'), { recursive: true });
     writeFileSync(join(app, 'test', 'dispatch_test.dart'), DART_TEST);
     execSync('flutter pub get --offline', { cwd: app, stdio: 'pipe' });
+    const dependencies = JSON.parse(readFileSync(join(app, '.dart_tool/package_config.json'), 'utf8')).packages.map((p) => p.name);
+    assert.equal(dependencies.some((name) => name.startsWith('firebase_')), false, 'a core-only host must not resolve Firebase');
+    assert.equal(dependencies.includes('valence_push'), false, 'push transport is a native package opt-in');
     // The generated code is held to the analyzer's strictest setting, because an app's CI will be.
     execSync(`dart analyze --fatal-infos "${join(app, 'lib')}"`, { stdio: 'pipe' });
     assert.match(execSync('flutter test', { cwd: app, encoding: 'utf8' }), /All tests passed/);
