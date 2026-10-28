@@ -1315,6 +1315,34 @@ PRAGMA user_version = 2;
   - A background isolate must call `DartPluginRegistrant.ensureInitialized()` before its first store call, or the plugin isn't registered in that isolate at all. That is the other first-run-on-device failure in this code path.
 - **Check that WAL took.** `rawQuery('PRAGMA journal_mode = WAL')` returns the mode that is now in effect; a filesystem that can't do WAL answers `delete` and you lose the concurrency the rest of §5 assumes. Log or assert the returned value rather than discarding it.
 
+### 5.1.1 Startup and database wait diagnostics (R29)
+
+`Valence.open` reports each phase's entry and completion through its existing logger:
+binding, links, directories, store, state, services, notifications (when enabled), seed,
+and push (when configured). Lines carry elapsed milliseconds from entry to `open`;
+completion also carries phase milliseconds. Failure names the active phase without
+printing the exception or its arguments, then rethrows the original error. A final
+`startup: complete` means only that `open` returned, not that a WebView painted or
+`ready()` committed a trial. A phase entry without completion identifies the last
+observed phase; it does not establish the cause of a stall.
+
+Runtime-owned database operations (including open/configuration, seed import, prefs,
+sync observations and lease acquisition) report `store: waiting operation=<label>`
+after ten seconds pending and every ten seconds thereafter. Each line carries an
+operation id, isolate id and elapsed milliseconds; a waited operation reports whether
+it completed or failed. Confirmed lock errors are labelled separately. Labels are
+fixed source names, never SQL, file paths, bucket/key names, values, tokens or account
+ids. Callers opening `ValenceStore` directly can pass its optional `log` callback;
+the first opener owns the cached store's logger in that isolate. Direct app/plugin
+queries through the public `store.db` are outside this instrumentation.
+
+These diagnostics do not cancel work, add retries, change lock/lease deadlines or
+alter transactions. A pending query may be waiting on sqflite scheduling, a lock or
+execution; a wait line does not identify the holder or prove a deadlock. Capture
+app-scoped logs and Android exit-info before restarting; preserve the database and
+account. Event-loop stalls can delay or prevent timer output. Android device
+acceptance remains separate; iOS is experimental and untested.
+
 ### 5.2 Seed
 
 `assets/valence/seed.db` has the same schema and is built by `valence seed`:
@@ -1703,6 +1731,14 @@ USE_EXACT_ALARM by default. iOS installs the UNUserNotificationCenter delegate. 
 notification callback runs UI activation. iOS code paths are experimental and untested.
 
 ## 8. Test matrix (minimum; all must pass before "done")
+
+R29 diagnostics (§5.1.1): startup reports ordered phases and monotonic elapsed times,
+failure names the active phase and preserves the original error; completion does not
+bind a server or imply page readiness. Held database futures produce named waits
+without timeout, concurrent operations have distinct ids, completion/error cancels
+timers, exception identity/trace survives, diagnostic sink failure cannot change the
+operation result, and logs omit private arguments. Exercise store reads, prefs,
+transactions, sync status/lease and a held database open through their real wrappers.
 
 R19: generated requirements include event-only fragment namespaces and every plugin
 method; constructing real generated handlers without their plugin throws before

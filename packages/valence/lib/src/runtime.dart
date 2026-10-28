@@ -246,102 +246,119 @@ final class Valence {
     // whole unit suite passes while the first real launch dies with "Binding has not yet been
     // initialized" before a single frame. It is idempotent, and it returns an existing test binding
     // unchanged.
-    WidgetsFlutterBinding.ensureInitialized();
-    final links = ValenceLinks(origins: config.linkOrigins, onOpened: (_) {});
-    // Capture the OS intent before directory lookup, seed import or widget creation.
-    if (Platform.isAndroid || Platform.isIOS) await links.start();
-    final support = supportDir ?? await getApplicationSupportDirectory();
-    final dir = Directory('${support.path}${Platform.pathSeparator}valence');
-    await dir.create(recursive: true);
-    // ponytail: backup exclusion is platform setup, not a Dart call. iOS needs
-    // NSURLIsExcludedFromBackupKey on this directory from AppDelegate, Android needs
-    // dataExtractionRules/fullBackupContent. See the package README; a plugin would be the upgrade path.
+    final trace = StartupTrace(log);
+    try {
+      trace.start('binding');
+      WidgetsFlutterBinding.ensureInitialized();
+      trace.start('links');
+      final links = ValenceLinks(origins: config.linkOrigins, onOpened: (_) {});
+      // Capture the OS intent before directory lookup, seed import or widget creation.
+      if (Platform.isAndroid || Platform.isIOS) await links.start();
+      trace.start('directories');
+      final support = supportDir ?? await getApplicationSupportDirectory();
+      final dir = Directory('${support.path}${Platform.pathSeparator}valence');
+      await dir.create(recursive: true);
+      // ponytail: backup exclusion is platform setup, not a Dart call. iOS needs
+      // NSURLIsExcludedFromBackupKey on this directory from AppDelegate, Android needs
+      // dataExtractionRules/fullBackupContent. See the package README; a plugin would be the upgrade path.
 
-    // The database lives *outside* valence/, because it holds user data and should be backed up.
-    final store =
-        await _openStore(config, support, documentsDir, log, databaseFactory);
-    if (!store.isWal) {
-      log('store: journal_mode is "${store.journalMode}", not wal; the concurrency the data layer '
-          'assumes is not available on this filesystem');
-    }
+      // The database lives *outside* valence/, because it holds user data and should be backed up.
+      trace.start('store');
+      final store =
+          await _openStore(config, support, documentsDir, log, databaseFactory);
+      if (!store.isWal) {
+        log('store: journal_mode is "${store.journalMode}", not wal; the concurrency the data layer '
+            'assumes is not available on this filesystem');
+      }
 
-    final stateFile = File('${dir.path}${Platform.pathSeparator}state.json');
-    final state = ValenceState.load(stateFile);
-    final keystore = secure ?? ValenceSecure(log: log);
-    // §4.4: the stored token is the *fallback*. An app with its own refresh loop in Dart keeps its
-    // `authToken` callback and nothing here overrides it, which is what makes this additive for a host
-    // that already had one.
-    final sync = ValenceSync(
-      store: store,
-      config: config.authToken == null
-          ? config.copyWith(authToken: keystore.authToken)
-          : config,
-      client: client,
-      log: log,
-    );
-    final updater = ValenceUpdater(
-      config: config,
-      state: state,
-      stateFile: stateFile,
-      casDir: Directory('${dir.path}${Platform.pathSeparator}cas'),
-      manifestsDir: Directory('${dir.path}${Platform.pathSeparator}manifests'),
-      store: store,
-      sync: sync,
-      readAsset: readAsset,
-      client: client,
-      log: log,
-    );
-
-    final valence = Valence._(
-      config: config,
-      state: state,
-      store: store,
-      sync: sync,
-      updater: updater,
-      secure: keystore,
-      dir: dir,
-      hostBuild: hostBuild,
-      log: log,
-    );
-    valence.links = links;
-    links.onOpened = (link) => valence
-        .emit(eventScript('link.opened', {'url': link.url, 'path': link.path}));
-    // The widget attaches later, so route the urgent-update callback through the runtime.
-    updater.onUpdateReady = (seq) => valence.onUpdateReady?.call(seq);
-    // §4.4: a rejected token is the page's problem to fix, so it has to reach the page. Buffered like
-    // every other event, which matters here because a cold start's first sync beats the entry page.
-    sync.onUnauthorized = () =>
-        valence.emit(eventScript('auth.expired', const <String, Object?>{}));
-    valence.permissions = ValencePermissions(
-      kinds: config.permissionKinds,
-      isForeground: () =>
-          valence._view != null &&
-          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed,
-      backend: permissionBackend,
-      log: log,
-    );
-
-    if (config.notificationsEnabled) {
-      valence._notifications = ValenceNotifications(
-        directory: Directory('${dir.path}/notifications'),
-        emit: valence._notificationEmit,
-        icon: config.notificationIcon,
-        platform: notificationPlatform,
+      trace.start('state');
+      final stateFile = File('${dir.path}${Platform.pathSeparator}state.json');
+      final state = ValenceState.load(stateFile);
+      trace.start('services');
+      final keystore = secure ?? ValenceSecure(log: log);
+      // §4.4: the stored token is the *fallback*. An app with its own refresh loop in Dart keeps its
+      // `authToken` callback and nothing here overrides it, which is what makes this additive for a host
+      // that already had one.
+      final sync = ValenceSync(
+        store: store,
+        config: config.authToken == null
+            ? config.copyWith(authToken: keystore.authToken)
+            : config,
+        client: client,
         log: log,
       );
-      await valence._notifications!.initialize();
-    }
-    await valence._importSeed();
-    valence.push = push;
-    if (push != null) {
-      await push.start(
-          emit: valence.emit,
-          sync: () async {
-            await valence.syncNow();
-          });
-    }
+      final updater = ValenceUpdater(
+        config: config,
+        state: state,
+        stateFile: stateFile,
+        casDir: Directory('${dir.path}${Platform.pathSeparator}cas'),
+        manifestsDir:
+            Directory('${dir.path}${Platform.pathSeparator}manifests'),
+        store: store,
+        sync: sync,
+        readAsset: readAsset,
+        client: client,
+        log: log,
+      );
 
-    return valence;
+      final valence = Valence._(
+        config: config,
+        state: state,
+        store: store,
+        sync: sync,
+        updater: updater,
+        secure: keystore,
+        dir: dir,
+        hostBuild: hostBuild,
+        log: log,
+      );
+      valence.links = links;
+      links.onOpened = (link) => valence.emit(
+          eventScript('link.opened', {'url': link.url, 'path': link.path}));
+      // The widget attaches later, so route the urgent-update callback through the runtime.
+      updater.onUpdateReady = (seq) => valence.onUpdateReady?.call(seq);
+      // §4.4: a rejected token is the page's problem to fix, so it has to reach the page. Buffered like
+      // every other event, which matters here because a cold start's first sync beats the entry page.
+      sync.onUnauthorized = () =>
+          valence.emit(eventScript('auth.expired', const <String, Object?>{}));
+      valence.permissions = ValencePermissions(
+        kinds: config.permissionKinds,
+        isForeground: () =>
+            valence._view != null &&
+            WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed,
+        backend: permissionBackend,
+        log: log,
+      );
+
+      if (config.notificationsEnabled) {
+        trace.start('notifications');
+        valence._notifications = ValenceNotifications(
+          directory: Directory('${dir.path}/notifications'),
+          emit: valence._notificationEmit,
+          icon: config.notificationIcon,
+          platform: notificationPlatform,
+          log: log,
+        );
+        await valence._notifications!.initialize();
+      }
+      trace.start('seed');
+      await valence._importSeed();
+      valence.push = push;
+      if (push != null) {
+        trace.start('push');
+        await push.start(
+            emit: valence.emit,
+            sync: () async {
+              await valence.syncNow();
+            });
+      }
+
+      trace.complete();
+      return valence;
+    } catch (_) {
+      trace.fail();
+      rethrow;
+    }
   }
 
   /// Permission service for the UI isolate, never used by background sync.
@@ -491,7 +508,8 @@ final class Valence {
     final done =
         await store.hostPrefGet(_seedStamp) == stamp && seedFile.existsSync();
     if (done) {
-      _log('seed: skipped; completion marker matches host build and asset length');
+      _log(
+          'seed: skipped; completion marker matches host build and asset length');
       return;
     }
     try {
@@ -530,7 +548,8 @@ final class Valence {
               'existing rows retained; the next launch will retry');
           return;
         }
-        _log('seed: completion marker database locked; retrying in one second');
+        _log('seed: completion marker database locked; retrying in one second '
+            'operation=seed.marker attempt=${attempt + 1}');
         await Future<void>.delayed(const Duration(seconds: 1));
       }
     }
@@ -696,7 +715,8 @@ final class Valence {
         'was written, so make the write again once auth.setToken settles (contracts §4.4)',
       );
     }
-    final write = store.put(bucket, key, value, opId: ValenceState.newInstallId());
+    final write =
+        store.put(bucket, key, value, opId: ValenceState.newInstallId());
     _writesInFlight.add(write);
     try {
       await write;
@@ -1145,10 +1165,11 @@ final class Valence {
     // `open` rethrows, because an app with no store cannot start.
     for (var attempt = 0;; attempt++) {
       try {
-        return await ValenceStore.open(path, factory: factory);
+        return await ValenceStore.open(path, factory: factory, log: log);
       } on Object catch (e) {
         if (attempt >= 4 || !isDatabaseLocked(e)) rethrow;
-        log('store: the database is locked by another isolate; retrying in one second');
+        log('store: the database is locked by another isolate; retrying in one second '
+            'operation=runtime.openStore attempt=${attempt + 1}');
         await Future<void>.delayed(const Duration(seconds: 1));
       }
     }

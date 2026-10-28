@@ -63,6 +63,32 @@ void main() {
             .having((e) => e.message, 'message', contains(fragment)),
       );
 
+  group('startup diagnostics', () {
+    test('phase order and elapsed times distinguish open from page readiness', () async {
+      final log = LogSpy();
+      final v = await open(log: log);
+      final begins = log.lines.where((line) => line.contains('status=begin')).toList();
+      expect(begins.map((line) => RegExp(r'phase=(\w+)').firstMatch(line)!.group(1)),
+          ['binding', 'links', 'directories', 'store', 'state', 'services', 'seed']);
+      final completions = log.lines.where((line) => line.contains('status=complete')).toList();
+      expect(completions.length, begins.length);
+      final elapsed = log.lines.where((line) => line.startsWith('startup:')).map(
+          (line) => int.parse(RegExp(r'elapsedMs=(\d+)').firstMatch(line)!.group(1)!)).toList();
+      expect(elapsed, orderedEquals([...elapsed]..sort()));
+      expect(log.lines.last, startsWith('startup: complete elapsedMs='));
+      expect(v.server, isNull, reason: 'open has not started the host widget');
+    });
+
+    test('failed directory setup names the phase without logging the path', () async {
+      File('${support.path}/valence').writeAsStringSync('obstruction');
+      final log = LogSpy();
+      await expectLater(open(log: log), throwsA(isA<FileSystemException>()));
+      expect(log.lines.last, startsWith('startup: phase=directories status=failed'));
+      expect(log.has('startup: complete '), isFalse);
+      expect(log.has(support.path), isFalse);
+    });
+  });
+
   group('app.info', () {
     test(
         'uses the attached view nonlinear scale at 16px, rather than the raw factor',
