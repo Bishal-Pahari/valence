@@ -1,5 +1,47 @@
 # Integration validation - 2026-10-28
 
+## October 28 app closeout reconciliation
+
+**In plain terms.** App-a has now completed iteration 12 and its final report.
+Both apps' findings and latest iteration-12 reports were read without changes.
+The local packages bases remain ebb0793 (code) / afe2366 (site), and all nine
+ready branch tips remain ancestors of both integration heads. There is no eligible
+must-have todo item. Retain this candidate for improver acceptance; do not start
+stretch work or change runtime behavior merely to create a new branch.
+
+App-a still observes anonymous shelf HTTP 401 reported as ok in its supplied
+snapshot. R26 already addresses that case in this candidate: an incomplete pull
+returns and persists failed, while authenticated 401 remains unauthorized and
+keeps the credential and queued writes. Its regression covers anonymous 401,
+403 and 500 on both public and writable buckets. The app has not yet validated
+this integrated runtime; its release-12 result is not evidence that R26 regressed.
+R17's persisted reason and builtins fields likewise remain pending integration
+acceptance, rather than features already verified by that app's snapshot.
+
+The new app report corrects its apparent blank navigation capture: original PNG
+pixels and crops contain the labels, and 13 settled captures pass its pixel
+probe. Do not infer a native paint defect or introduce a speculative CSS fix.
+The migration setup and status-persistence documentation gaps are reported closed;
+mandatory native dependency costs remain. Earlier lock observations were not
+reproduced, which does not establish their cause or a permanent fix. TalkBack
+remains partial. Matched wizard/bridge composition is confirmed by app-a, while
+Kundalini's older mismatched-pair report retains its original snapshot boundary.
+
+Decision: prioritize the existing failure-reporting and user-data protections,
+preserve schema 15 and all reserved since values, and carry the corrected app
+evidence into the handoff. Read-only retention/tombstone storage and snapshot
+revision identity remain separate concerns. No new emulator or independent
+review session is claimed; Firebase delivery needs the maintainer project and
+iOS remains experimental and untested. The earlier APK, release-exclusion and
+packaging results below retain their original scope and were not rerun for this
+report-only reconciliation.
+
+Fresh required gates after reading the new report: root npm test 92 passed,
+zero skipped (generated Dart included); runtime flutter test 528 passed;
+dart analyze --fatal-infos . found no issues; bridge tests 29 passed, zero
+skipped; strict/verbatim TypeScript passed; site build and SEO checks passed
+41 pages. Both worktrees pass diff --check. Only this report changed.
+
 ## 2026-10-28 revalidation
 
 **In plain terms.** The existing nine-branch candidate is still based on the newest
