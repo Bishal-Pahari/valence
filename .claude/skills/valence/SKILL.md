@@ -291,6 +291,12 @@ The native dependency requires desugaring in every Android adopter, including di
 
 ## Doctor (read only)
 
+For startup stalls or database-lock warnings, capture the runtime's `startup:` phase
+timings, `store: waiting operation=...` lines and app-scoped Android exit-info before
+restarting. Preserve the database/account; follow contracts section 5.1.1 and
+https://getvalence.pages.dev/docs/guides/startup-diagnostics/. Open completion is
+separate from WebView/ready evidence; elapsed waits alone do not identify a cause.
+
 Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a PASS:
 
 - **CLI version.** `node valence/valence.mjs version` against the skill's copy, `node ${CLAUDE_SKILL_DIR}/scripts/valence.mjs version`.
