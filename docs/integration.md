@@ -1,5 +1,40 @@
 # Integration validation - 2026-10-28
 
+## October 28 runtime timeout follow-up
+
+**In plain terms.** The first full runtime run on unchanged code 3f572be
+failed five tests: 523 passed, five timed out at the existing 30-second limit.
+The affected checks were store batch reads, store cursor pagination, persisted
+sync reason, single lease ownership and lease release after an exception.
+Late assertions also ran after timeout/teardown: an empty batch, a null stored
+reason and a retained lease were reported. Those assertions do not identify
+the original cause of the timeout.
+
+Without changing any code, `flutter test test/store_test.dart
+test/sync_test.dart --concurrency=1` passed all 99 tests. Then
+`flutter test --no-pub --concurrency=1` passed all 528 tests in 177 seconds.
+The timeout limits and assertions were unchanged. The original default-concurrency
+run took 733 seconds and remains a failed gate attempt; it is not represented
+as a pass. Contention or test interference is plausible, not established.
+The serial pass does not establish stable default-concurrency execution or
+explain app-a F-33/F-35. No runtime or test patch is justified by these results.
+
+Other fresh required gates: root `npm test` passed 92 tests, zero skips,
+including generated Dart (482 seconds); bridge tests passed 29 tests, zero
+skips; strict/verbatim TypeScript passed; site build/SEO passed all 41 pages.
+Fatal-info Dart analysis: passed with no issues.
+
+Both apps' findings and newest reports were read-only inputs: Kundalini
+iteration 12 and app-a iteration 13. No eligible must-have todo item exists.
+Both packages heads remain ebb0793 / afe2366, and all nine pending tips
+(R17, R19–R26) are included in both integration histories. The merge order
+and source SHAs below remain unchanged. Decision: retain the candidate,
+record the failed attempt, preserve user data, and leave app acceptance
+findings open. No new emulator or independent review session ran. Earlier
+APK, AOT and packaging evidence retains its original date and scope.
+No behavior, spec, schema or version changed; no test-app writes,
+shared-branch changes, pushes or publications.
+
 ## October 28 afternoon confirmation
 
 **In plain terms.** No eligible must-have item remains to implement. Rechecked
