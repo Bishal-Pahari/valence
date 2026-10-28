@@ -44,8 +44,31 @@ tests, strict/verbatim TypeScript, bridge pack dry run, zero-warning pub dry run
 run exposed two stale revision-15 expectations; they were corrected to 16 before
 the passing rerun. The new full-queue regression passed in that initial run too.
 
-Post-merge gate results are recorded below when complete. Logs are retained in
-`%TEMP%/valence-r28-rebased-*.log`; initial logs use `valence-r28-*.log`.
+Post-merge gates passed on the heads above:
+
+| Gate | Result |
+| --- | --- |
+| Root `npm test` | 97 passed, zero skipped; generated Dart analyzed and exercised |
+| Runtime `flutter test --no-pub --concurrency=1` | 533 passed |
+| `dart analyze --fatal-infos .` | No issues |
+| Example `flutter test --no-pub` | 27 passed |
+| Example `flutter build apk --debug --no-pub` | Passed, 2295.6 seconds |
+| `flutter pub publish --dry-run` | 0 warnings |
+| Bridge tests / strict-verbatim TS / pack dry run | 29 passed / passed / passed |
+| Site build and SEO | 41 pages passed |
+| Example codegen check / signed builtin verification | No stale files / seq 1793209750 verified |
+
+The first post-merge root run passed 96/97 tests: the unchanged REST adapter's
+601-operation push returned 502 instead of 200. The unchanged adapter-only retry
+passed, followed by the complete 97-test passing rerun. Cause remains unestablished;
+no assertion or timeout was changed. The earlier failure remains recorded rather
+than counted as a pass. A cosmetic duplicate test setup deletion was removed.
+
+The APK process used `GRADLE_OPTS=-Dorg.gradle.jvmargs=-Xmx2048m
+-Dorg.gradle.workers.max=2` and `JAVA_TOOL_OPTIONS=-XX:ActiveProcessorCount=2`.
+Existing KGP migration warnings remain; no global environment or Gradle property
+file was changed. Logs are retained in `%TEMP%/valence-r28-rebased-*.log`
+(passing root: `root-retry`); initial logs use `valence-r28-*.log`.
 
 ## Security review and limitations
 
