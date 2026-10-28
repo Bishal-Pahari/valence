@@ -1249,6 +1249,19 @@ The built-in `open.external` delegates through this same registry to `ValenceOpe
 which calls the existing scheme-restricted runtime method. Applications cannot replace it.
 Its wire shape and `since` do not change. Android is tested; iOS is experimental and untested.
 
+Distribution is ordinary publishing: the Dart half goes to pub.dev, the web types to npm, and
+an app installs both the way it installs any other dependency. There is no registry, resolver
+or marketplace, and nothing is ever fetched on a plugin's behalf: `plugins[].path` always names
+a file already on disk, whether that is a vendored directory or one inside `node_modules`.
+The published listing on the website is a hand-maintained docs page. Appearing on it says a
+package exists and declares a fragment; it is not a review, an endorsement or a compatibility
+guarantee, and a plugin is trusted native code with host privileges (above), so an app audits
+one the way it audits any native dependency. A package may also extend the host **without**
+being a plugin: `valence_push` (§6.4) supplies a `ValencePushTransport` for `push.*`, a
+namespace the core already owns, so it has no fragment, no namespace of its own and no
+`plugins` entry — it is a pub dependency and a constructor argument. Which of the two shapes a
+package uses is the first thing its listing has to say, because it decides how it is installed.
+
 ### 4.11 Sharing an image (R14, schema 14)
 
 `share.image` is `since: 14`, with optional string params `bytes`, `path`, `fileName`,

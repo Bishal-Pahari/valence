@@ -139,6 +139,11 @@ instances in `ValenceBuiltins(valence, plugins: [...])`. A published fragment le
 an app bridge version and no package knows yours. Strict decoding and the
 store baseline cover the merged schema. Regenerated handlers check required plugin
 namespaces and exact method registrations at startup in every build mode. Native additions require a store release.
+Distribution is ordinary pub and npm publishing; there is no registry or marketplace,
+and the site's [plugin directory](https://getvalence.pages.dev/docs/guides/plugin-directory/)
+is a docs listing of what exists. A package can also extend the host without being a
+plugin — `valence_push` implements `ValencePushTransport` for the core `push.*`
+namespace, so it needs no fragment and no `plugins` entry.
 See [Writing a plugin](docs/writing-plugins.md) and the runnable
 [haptics package](packages/valence/example/plugins/haptics/).
 

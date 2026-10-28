@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased: the plugin directory
+
+There is now a page that says which plugins and add-on packages exist:
+[the plugin directory](https://getvalence.pages.dev/docs/guides/plugin-directory/).
+No third-party plugin is published yet, and the page says so — what it mainly does is
+name the two shapes a package can take, because they are installed differently and
+nothing said so before:
+
+- a **plugin** brings its own namespace (a `valence.plugin.json` fragment, a
+  `ValencePlugin`, web types) and needs a `plugins` entry with your own `since` stamp,
+  codegen and a registration;
+- an **add-on** implements something core already owns and needs neither. `valence_push`
+  is the first one: `push.*` is a core namespace, so the package supplies a
+  `ValencePushTransport` and is a pub dependency plus a constructor argument.
+
+Nothing changes in the runtime or the CLI. Distribution was always ordinary pub and npm
+publishing — there is no registry, resolver or marketplace, `plugins[].path` always names
+a file already on disk, and a listing is a hand-maintained docs row that records a
+package exists, not that anyone read it. A plugin is trusted native code with host
+privileges, so audit one like any native dependency. Contracts §4.10 now states this.
+
+If you are publishing a plugin, the directory lists what a listing asks for: published
+pub and npm halves, a fragment that declares **no** `since`, an unreserved lower-camel
+namespace, `valence.plugin.json` shipped inside the npm package, native setup notes at
+the path `setup` names, an honest platform claim, and a licence.
+
 ## Unreleased: a stale generator says so, and a push transport must state `hasNotification`
 
 If your vendored `valence/valence.mjs` is older than the runtime you are reading about, a real built-in

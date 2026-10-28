@@ -66,3 +66,21 @@ by the generated-Dart gate. Upgrade vendored tooling with the runtime and regene
 
 Android is tested. iOS is experimental and untested. The emulator verifies haptic
 channel invocation, not felt vibration.
+
+## Publishing and listing
+
+Distribution is ordinary publishing: the Dart half to pub.dev, the web types to npm.
+There is no registry, resolver or marketplace, and nothing is fetched on a plugin's
+behalf — `plugins[].path` always names a file already on disk, so ship
+`valence.plugin.json` inside the npm package and let apps point at
+`node_modules/@you/your-plugin/valence.plugin.json`.
+
+A package can also extend the host **without** being a plugin. `valence_push`
+implements `ValencePushTransport` for `push.*`, a namespace core already owns, so it
+has no fragment, no namespace and no `plugins` entry: it is a pub dependency and a
+constructor argument. Which shape a package uses decides how it is installed.
+
+The site's [plugin directory](https://getvalence.pages.dev/docs/guides/plugin-directory/)
+lists both shapes and says what a listing asks for. It is a hand-maintained docs page:
+being listed records that a package exists and declares a fragment, not that anyone
+read the code — and a plugin is trusted native code with host privileges.

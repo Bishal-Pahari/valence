@@ -148,6 +148,12 @@ declares no `since`; the app stamps it per entry, `{path, since: {"ns.method": N
 and test construction of the real app handlers. Generated namespace/method requirements
 reject missing registrations in every build mode; doctor's registration row lists
 requirements without executing Dart. Native setup still needs device validation.
+Distribution is ordinary pub/npm publishing: no registry or marketplace, and
+`plugins[].path` always names a file already on disk. A package may extend the host
+*without* being a plugin — `valence_push` implements `ValencePushTransport` for the
+core `push.*` namespace, so it has no fragment, namespace or `plugins` entry. The
+site's plugin directory (`/docs/guides/plugin-directory/`) lists both shapes; it
+records that a package exists, not that it was reviewed.
 
 ### Phase 4: Build (two builder agents in parallel, with separate files)
 
