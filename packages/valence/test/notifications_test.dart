@@ -242,6 +242,11 @@ void main() {
     expect((await service.pending()).length, 63);
     await schedule(id: 64); // rejection did not poison the mutation queue
     expect((await service.pending()).length, 64);
+    // pendingIds reads the same native snapshot, which is the whole point: the full one is over the
+    // §4.2 reply cap when the fields are at their limits, so this is the only way a page at the cap
+    // can re-arm by ID difference (§6.5).
+    expect(await service.pendingIds(),
+        (await service.pending()).map((r) => r['id']).toList());
   });
   test('invalid input is refused before any native initialization or decoding',
       () async {

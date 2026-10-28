@@ -71,8 +71,13 @@ const BUILTINS = {
     params: {}, returns: { list: true, fields: { id: 'int', title: 'string?', body: 'string?', payload: 'string?' } },
     call: (t) => `return [for (final r in await valence.notifications.pending()) ${t}.fromJson(r)];`,
   },
-  'notify.initial': { params: {}, returns: 'json?', call: () => 'return valence.notifications.initial();' },
+  // The IDs alone, because `notify.pending`'s full snapshot cannot be read at the cap: 64 requests at
+  // the 256/4096/4096-byte title/body/payload limits is over the 262,144-byte reply cap, so the only
+  // documented way to discover pending IDs answers E_TOO_LARGE on the apps that schedule the most.
+  // `notify.pending` keeps every field it has: trimming them would make an absent body and an empty one
+  // the same answer, silently, on the method whose whole purpose is reconciliation.
   'notify.pendingIds': { minSince: 16, params: {}, returns: 'int[]', call: () => 'return valence.notifications.pendingIds();' },
+  'notify.initial': { params: {}, returns: 'json?', call: () => 'return valence.notifications.initial();' },
   'notify.channels.set': {
     params: { id: 'string', name: 'string', importance: 'string?', sound: 'string?', group: 'string?', groupName: 'string?' },
     returns: 'void',

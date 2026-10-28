@@ -1,8 +1,20 @@
 # Changelog
 
-## Unreleased: read pending reminder IDs without large payloads
+## Unreleased: `pendingIds()`, because a full reminder queue cannot be read back
 
-Schema 16 adds `notify.pendingIds()` for cancellation by difference even when full notification content exceeds the bridge reply cap. Keep `notify.pending()` unchanged; declare the new method at `since: 16`, regenerate, ship a store build and guard it with `has()`. Disabled hosts still deny the group. No delivery guarantee is added; iOS remains experimental and untested.
+`ValenceNotifications.pendingIds()` returns the native pending queue's IDs as `List<int>`, from the
+same snapshot `pending()` reads. Schema 16 delegates `notify.pendingIds` to it.
+
+`pending()` carries each request's title, body and payload, capped at 256, 4096 and 4096 bytes, so a
+full queue of 64 maximum-size requests is about 540 KB — over the 256 KB bridge reply cap, which
+means `replyOk` answers `E_TOO_LARGE`. That broke the documented cancel-and-refill-by-difference
+workflow on exactly the apps that keep the most reminders queued. `pending()` is unchanged: trimming
+its fields would have made an absent body and an empty one the same answer on the method whose whole
+purpose is reconciliation.
+
+A host whose notification service could not start returns an empty list from both.
+`AppInfo.builtins` is now 16.
+
 
 ## Unreleased: say which SDKs every Valence binary carries
 

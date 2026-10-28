@@ -107,7 +107,7 @@ Schema 10 adds a Permissions section: choose any of the seven kinds, Check, Requ
 
 ## Local reminder demo
 
-The example schema is 16, with pendingIds since 16 and earlier notification methods and events since 11 and notifications.enabled set to true. Allow reminders, then schedule 15 seconds ahead: the page shows exact or inexact, displays native pending requests, cancels ID 42 and records warm tap/action or the consumed cold initial response. Images use a tiny PNG; Done and Snooze open the UI and report an action without automatically changing app data. The Android platform files include receivers, a status drawable and desugaring. iOS/AppDelegate is implemented but experimental and untested. See [setup](../../../docs/local-notifications.md).
+The example schema is 16, with notification methods and events since 11, `notify.pendingIds` since 16, and notifications.enabled set to true. Allow reminders, then schedule 15 seconds ahead: the page shows exact or inexact, displays native pending requests, cancels ID 42 and records warm tap/action or the consumed cold initial response. Images use a tiny PNG; Done and Snooze open the UI and report an action without automatically changing app data. The Android platform files include receivers, a status drawable and desugaring. iOS/AppDelegate is implemented but experimental and untested. See [setup](../../../docs/local-notifications.md).
 
 ## Remote push demo
 

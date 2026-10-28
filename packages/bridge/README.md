@@ -134,7 +134,7 @@ Guard `has("data.count")` to page `data.list` with `after`: pass the last key of
 
 ## Local reminders (schema 11)
 
-Use the generated call/has/on surface for notify.* and badge.*. Guard notify.schedule with has() on older hosts; subscribe to notify.tapped and notify.action before consuming notify.initial. Payloads are untrusted data. The host needs compiled opt-in and native setup; see [local reminders](https://getvalence.pages.dev/docs/guides/local-notifications/).
+Use the generated call/has/on surface for notify.* and badge.*. Guard notify.schedule with has() on older hosts; subscribe to notify.tapped and notify.action before consuming notify.initial. Payloads are untrusted data. Read pending IDs with notify.pendingIds (schema 16) rather than notify.pending when the queue may be full: the full snapshot can exceed the reply cap. The host needs compiled opt-in and native setup; see [local reminders](https://getvalence.pages.dev/docs/guides/local-notifications/).
 
 ## Image sharing (schema 14)
 

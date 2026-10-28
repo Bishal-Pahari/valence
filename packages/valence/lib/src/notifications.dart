@@ -237,7 +237,12 @@ final class ValenceNotifications {
     ];
   }
 
-  /// Returns the native queue's IDs without copying notification content into a reply.
+  /// The IDs of the native pending requests, and nothing else.
+  ///
+  /// `pending()` carries each request's title, body and payload, so a full queue of maximum-size
+  /// fields is over the §4.2 reply cap and the page gets `E_TOO_LARGE` instead of the list §6.5
+  /// tells it to re-arm by ID difference from — exactly on the apps that schedule the most. Same
+  /// native snapshot, same IDs, nothing a cap can grow past: 64 ints fit whatever they hold.
   Future<List<int>> pendingIds() async {
     await initialize();
     if (_unavailable != null) return const [];

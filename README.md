@@ -201,7 +201,7 @@ ValenceApp draws edge-to-edge and publishes safe-area CSS variables on rotation 
 
 ## Local reminders
 
-Schema 11 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. iOS is experimental and untested. See [the guide](docs/local-notifications.md).
+Schema 11 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. Schema 16 adds notify.pendingIds, the same native queue as bare IDs, because a full queue of maximum-size requests is over the bridge reply cap and notify.pending cannot answer the cancel-by-difference refill on the apps that queue the most. iOS is experimental and untested. See [the guide](docs/local-notifications.md).
 
 ### Remote push
 
