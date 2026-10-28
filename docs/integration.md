@@ -1,5 +1,71 @@
 # Integration validation - 2026-10-28
 
+## October 28 Kundalini iteration-13 acceptance findings
+
+**In plain terms.** The newest input is now Kundalini iteration 13, alongside
+app-a iteration 13 and both VALENCE_FINDINGS.md files, read without modifying
+either app. Kundalini's report still contains DEVICE TABLE and VERIFICATION
+placeholders; its narrative and findings are evidence, not a completed device
+matrix or a verified all-checks pass.
+
+Kundalini F-59 is a reported blocker: a release APK lost the string-referenced
+notification drawable during resource shrinking, and invalid_icon escaped
+notification initialization through Valence.open before a screen could start.
+The app reports that keeping the resource restored startup. Source inspection
+on this candidate confirms that Valence.open awaits initialization and the
+notification service does not catch that exception. This run did not rebuild
+or reproduce the app's release APK. Passing desktop tests cannot close this
+release-resource failure.
+
+New major findings are F-57 (a below-reservation built-in since silently selects
+an app-owned abstract handler) and F-58 (an offline host still includes Firebase
+dependencies and their native startup provider). This candidate's pubspec
+unconditionally depends on firebase_core and firebase_messaging. The latter
+finding's policy conclusions are the app report's assessment, not a new store
+policy review. F-60 asks for a concrete custom-notification adapter example.
+F-61 identifies a confirmed docs mismatch: site src/pages/llms.txt.ts says
+permissions schema 9, while contracts section 4.9 and the permissions guide say
+10. These findings have no assigned todo row in the shared roadmap; none is
+claimed fixed or silently folded into an unrelated ready feature branch.
+
+Decision: keep the tested integration candidate available for the improver,
+but do not represent it as beta acceptance. Prioritize F-59's startup failure,
+then the major adoption/dependency findings. Any notification recovery change
+must keep permission checks, strict decoding, resource limits and signed
+activation intact, report unavailable scheduling honestly, and gain a runtime
+regression and release-device acceptance. Preserve existing databases, account
+identity, notification IDs and shipped custom method signatures. App-a F-33
+and F-35 also remain open; no blocked operation or ANR cause is established.
+
+No eligible must-have todo or codex in-progress/changes-requested row exists.
+The packages bases remain code ebb0793 / site afe2366, and all nine pending
+branch tips (R17, R19-R26) are ancestors of both integration heads. The existing
+merge order, SHAs and schema reservations below remain applicable; rebuilding
+the same history would discard the later integration test synchronization.
+
+The first root npm test attempt failed one test: 91 passed, zero skipped;
+generated Dart passed. The dev CLI LAN-consent test's local subprocess returned
+null status after about 32 seconds against its existing 30-second spawnSync
+limit. The captured assertion does not include the subprocess error/signal,
+so it does not establish why the subprocess failed to exit normally. The exact
+focused test passed unchanged in 4.6 seconds. Do not infer a fix or a stable
+full-suite pass from that isolated result. No timeout or assertion was changed.
+
+Final required gates passed on unchanged implementation code 4215b3c / site
+0b25170: the full root npm test confirmation passed 92 tests with zero skips
+(generated Dart included), runtime flutter test --concurrency=1 passed 528,
+fatal-info Dart analysis found no issues, bridge tests passed 29 with zero
+skips, strict/verbatim TypeScript passed, and the site build/SEO checks passed
+41 pages. Bridge npm pack --dry-run also passed. The original root failure
+remains a failed attempt; the confirmation does not establish its cause.
+No new default-concurrency runtime pass is claimed.
+
+This update changes validation reports only. No new emulator or independent
+review session ran. Prior APK, AOT-exclusion and packaging results retain their
+recorded dates and scope. Firebase delivery still needs the maintainer project;
+iOS is experimental and untested. No behavior, spec, schema or version change,
+test-app write, packages/main commit or merge, push or publication.
+
 ## October 28 runtime timeout follow-up
 
 **In plain terms.** The first full runtime run on unchanged code 3f572be
