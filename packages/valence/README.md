@@ -142,6 +142,11 @@ seq. Pointing the channel at an older seq only cancels pending downloads.
 
 ## Testing
 
+For startup stalls and database waits, see [Startup diagnostics](https://getvalence.pages.dev/docs/guides/startup-diagnostics/).
+The existing logger reports `Valence.open` phase timings and database operations pending
+for ten seconds, without changing retries or transaction behavior. `startup: complete`
+means open returned, not that the WebView painted or a trial committed.
+
 The generated-Dart CLI gate compares `ValencePluginRegistry.reservedNamespaces`
 with the CLI's exported `PLUGIN_RESERVED` set. Update vendored tooling and
 regenerate when upgrading the runtime. Malformed typed plugin results are

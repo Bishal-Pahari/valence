@@ -65,6 +65,10 @@ Details and exact policy quotes are in [contracts.md §7](.claude/skills/valence
 
 ## Quick start
 
+Native startup and pending SQLite operations now carry phase timings and fixed
+operation labels through the existing logger. See [startup diagnostics](docs/startup-diagnostics.md)
+before investigating a stall; capture evidence while preserving the app's data.
+
 Native plugin results are checked against the schema; malformed results report
 `E_INTERNAL`. Plugin packages have host privileges. Their separately published
 web types are hand-maintained; see [the plugin guide](docs/writing-plugins.md)
