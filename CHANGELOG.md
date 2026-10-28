@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: a replaced OS snapshot cannot cross an account or a bundle
+
+A replacement task snapshot handed to an already-running host is now checked against the
+account fingerprint and bundle seq that startup verified, and dropped whole on a mismatch.
+Before this, restoring a snapshot saved under one account after switching to another served
+the first account's route and draft through `state.restore()`, and an older bundle's blob
+skipped the seq check. Upgrade the native host package; no schema, config or app handler
+change is needed.
+
 ## Unreleased: native plugin registration checks
 
 Regenerated handlers reject missing plugin namespaces and exact native methods at startup

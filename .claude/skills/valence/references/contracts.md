@@ -1081,6 +1081,14 @@ bound loopback origin. The blob and route are tied to the served signed bundle s
 an update or rollback drops both before serving the new bundle. Normal signature,
 nonce, navigation and trial-ready checks still run; restoration never commits a trial.
 
+The OS may hand a *replacement* envelope to a scope that is already running. That
+path does not re-run the startup account and bundle checks, so the host compares the
+replacement's account fingerprint and seq with the ones startup already checked and
+drops the whole envelope on any mismatch, keeping the live state; the refused
+envelope is then overwritten in the OS bucket. Without that comparison, restoring
+account A's saved envelope after a switch to B would serve A's route and draft
+through state.restore, and an older bundle's blob would bypass the seq check.
+
 The state lives only in the OS task restoration snapshot, not prefs or state.json.
 A fresh task (including Android force-stop or removal from Recents) starts at /
 with null. Backgrounding alone retains the current page. state.restore returns the
@@ -1667,6 +1675,9 @@ construction and invocation in the example host.
 R7: bounded multibyte JSON, null clearing, strict nonce/params delegation, task
 snapshot restore and fresh-task reset, same-bundle and native-account isolation (including stale OS snapshots and in-flight route captures), refresh/adoption retention, hostile restored
 routes (including encoded /_host/), rotated loopback port, unchanged trial checks;
+**a replacement envelope handed to a running scope is refused unless its account fingerprint and seq
+match the ones startup checked — after an account switch, after an update, and with no account bound —
+while a matching one still restores**;
 Android Home → am kill → retained-task reopen restores path/query/hash and blob,
 force-stop and explicit task removal start fresh.
 

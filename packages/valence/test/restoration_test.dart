@@ -116,4 +116,80 @@ void main() {
     await tester.restoreFrom(data);
     expect(model.restore(), {'draft': 'retained task'});
   });
+
+  test('a replacement envelope is checked against the bound account and sequence', () {
+    final alice = ValenceRestoration()
+      ..activate(7)
+      ..bindAccount('alice', adopt: true);
+    alice.observe('http://127.0.0.1:1/alice', 'http://127.0.0.1:1');
+    alice.save({'draft': 'alice'});
+    final envelope = alice.snapshot();
+
+    for (final stranger in [
+      ValenceRestoration()
+        ..activate(7)
+        ..bindAccount('bob', adopt: true), // another account
+      ValenceRestoration()
+        ..activate(6)
+        ..bindAccount('alice', adopt: true), // another bundle
+      ValenceRestoration()..activate(7), // no account bound at all
+    ]) {
+      stranger.hydrate(envelope, initial: false);
+      expect(stranger.route, '/');
+      expect(stranger.restore(), isNull);
+    }
+
+    final same = ValenceRestoration()
+      ..activate(7)
+      ..bindAccount('alice', adopt: true);
+    same.hydrate(envelope, initial: false);
+    expect(same.route, '/alice');
+    expect(same.restore(), {'draft': 'alice'});
+  });
+
+  testWidgets('a replacement snapshot is refused after an account switch', (tester) async {
+    final model = ValenceRestoration();
+    Widget host() => RootRestorationScope(
+        restorationId: 'test',
+        child: ValenceRestorationScope(model: model, onReady: () => model.activate(7), child: const SizedBox()));
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+    model.bindAccount('alice', adopt: true);
+    model.observe('http://127.0.0.1:1234/alice/draft', 'http://127.0.0.1:1234');
+    model.save({'draft': "alice's"});
+    await tester.pump();
+    final alice = await tester.getRestorationData();
+
+    // The host switches account, which §4.4 clears the task snapshot for.
+    model.bindAccount('bob');
+    model.observe('http://127.0.0.1:1234/bob', 'http://127.0.0.1:1234');
+    model.save({'draft': "bob's"});
+    await tester.pump();
+
+    await tester.restoreFrom(alice);
+    expect(model.route, '/bob');
+    expect(model.restore(), {'draft': "bob's"});
+  });
+
+  testWidgets('a replacement snapshot from another bundle sequence is refused', (tester) async {
+    final model = ValenceRestoration();
+    Widget host() => RootRestorationScope(
+        restorationId: 'test',
+        child: ValenceRestorationScope(model: model, onReady: () => model.activate(7), child: const SizedBox()));
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+    model.observe('http://127.0.0.1:1234/old', 'http://127.0.0.1:1234');
+    model.save({'draft': 'from 7'});
+    await tester.pump();
+    final old = await tester.getRestorationData();
+
+    // An update commits: §4.8 drops task state across a bundle boundary.
+    model.activate(8);
+    model.observe('http://127.0.0.1:1234/new', 'http://127.0.0.1:1234');
+    await tester.pump();
+
+    await tester.restoreFrom(old);
+    expect(model.route, '/new');
+    expect(model.restore(), isNull);
+  });
 }

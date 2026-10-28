@@ -125,38 +125,66 @@ final class ValenceRestoration extends ChangeNotifier {
       {'seq': _seq, 'route': _route, 'json': _json, 'account': _account});
 
   /// Validates OS data as untrusted input before it can influence navigation.
-  void hydrate(String? snapshot) {
-    _seq = null;
-    _route = '/';
-    _json = null;
-    _account = null;
-    if (snapshot == null || utf8.encode(snapshot).length > 450000) return;
+  ///
+  /// [initial] is false for a replacement envelope handed to a scope that is
+  /// already running. That path never reaches `prepareRestoration` again, so the
+  /// envelope must carry the account and the bundle sequence startup already
+  /// checked; anything else is another account's draft or an older bundle's blob,
+  /// and is dropped instead of being served through `state.restore`.
+  void hydrate(String? snapshot, {bool initial = true}) {
+    final envelope = _decode(snapshot);
+    if (!initial) {
+      if (envelope == null ||
+          envelope.seq != _seq ||
+          envelope.account != _account) {
+        return;
+      }
+      if (envelope.route == _route && envelope.json == _json) return;
+      _route = envelope.route;
+      _json = envelope.json;
+      notifyListeners();
+      return;
+    }
+    _seq = envelope?.seq;
+    _route = envelope?.route ?? '/';
+    _json = envelope?.json;
+    _account = envelope?.account;
+  }
+
+  /// Strict decoding of one OS envelope; null for anything that fails a check,
+  /// which a first restoration turns into an empty task.
+  static ({int seq, String route, String? json, String? account})? _decode(
+      String? snapshot) {
+    if (snapshot == null || utf8.encode(snapshot).length > 450000) return null;
     try {
       final data = jsonDecode(snapshot);
       if (data is! Map<String, dynamic> ||
           data['seq'] is! int ||
           data['route'] is! String ||
           !safeRoute(data['route'] as String)) {
-        return;
+        return null;
       }
       final blob = data['json'];
       final account = data['account'];
       if (account != null &&
           (account is! String ||
               !RegExp(r'^[0-9a-f]{64}$').hasMatch(account))) {
-        return;
+        return null;
       }
       if (blob != null &&
           (blob is! String || utf8.encode(blob).length > 65536)) {
-        return;
+        return null;
       }
       if (blob != null) jsonDecode(blob as String);
-      _seq = data['seq'] as int;
-      _route = data['route'] as String;
-      _json = blob as String?;
-      _account = account as String?;
+      return (
+        seq: data['seq'] as int,
+        route: data['route'] as String,
+        json: blob as String?,
+        account: account as String?,
+      );
     } on FormatException {
       // Corrupt or obsolete restoration data starts fresh.
+      return null;
     }
   }
 }
@@ -193,10 +221,13 @@ class _ValenceRestorationScopeState extends State<ValenceRestorationScope>
   @override
   void restoreState(RestorationBucket? oldBucket, bool initialRestore) {
     registerForRestoration(_snapshot, 'snapshot');
-    widget.model.hydrate(_snapshot.value);
+    widget.model.hydrate(_snapshot.value, initial: initialRestore);
     if (initialRestore) {
       widget.model.addListener(_save);
       widget.onReady();
+    } else {
+      // A refused replacement envelope must not be left in the OS bucket.
+      _save();
     }
   }
 
