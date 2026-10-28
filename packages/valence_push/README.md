@@ -23,9 +23,10 @@ No SDK-version bump, wire/schema change, signing change or delivery guarantee is
 
 In this monorepo, `pubspec_overrides.yaml` resolves the unpublished sibling core.
 Pub consumers use the versioned dependency; the override is not part of the upload.
-Run `flutter pub get`, `flutter test`, `dart analyze --fatal-infos .` here. A publish
-dry run also needs the core version on pub.dev; before publication that resolution
-can only be checked with the documented local override.
+Run `flutter pub get`, `flutter test`, `dart analyze --fatal-infos .` here. The publish
+dry run uses the local override and reports a dependency-override hint; the upload
+excludes that file. Before publishing the adapter, publish core and repeat the
+checks against its published version.
 
 ```dart
 import 'package:flutter/widgets.dart';

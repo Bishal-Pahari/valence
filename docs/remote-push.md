@@ -1,6 +1,6 @@
 # Remote push
 
-Contracts ?6.4. New methods/events use `since: 12`; regenerate the schema and ship
+Contracts section 6.4. New methods/events use `since: 12`; regenerate the schema and ship
 a store build. Remote push is an opt-in **native dependency**: install `valence_push`
 only in push hosts. `valence` alone has no Firebase dependencies; local notifications
 and badges remain in core. Removing the package and rebuilding the host removes
@@ -11,7 +11,7 @@ graph and final binary before completing store disclosures.
 Android delivery is **blocked: needs Firebase project** for the device check.
 iOS/APNs and its rich-image extension are experimental and untested.
 
-The reserved `since: 12` identifies this addition in Valence?s template. An app
+The reserved `since: 12` identifies this addition in Valence's template. An app
 maintains its own additive schema history; gate calls and events with `has()`
 from its regenerated bridge rather than comparing `app.info().bridge` to 12.
 Update the generated bridge and `@getvalence/bridge` together: current generated
