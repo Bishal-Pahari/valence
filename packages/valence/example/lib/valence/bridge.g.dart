@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 15;
+const hostBridgeVersion = 16;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale, this.fontScale, this.builtins});
@@ -616,6 +616,7 @@ abstract interface class BridgeHandlers {
   Future<NotifyScheduled> notifySchedule(NotifyScheduleParams p);
   Future<void> notifyCancel(NotifyCancelParams p);
   Future<List<NotifyPending>> notifyPending();
+  Future<List<int>> notifyPendingIds();
   Future<Object?> notifyInitial();
   Future<void> notifyChannelsSet(NotifyChannelsSetParams p);
   Future<bool> badgeSet(BadgeSetParams p);
@@ -693,6 +694,8 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<void> notifyCancel(NotifyCancelParams p) async => throw const BridgeError('E_UNSUPPORTED', 'notify.cancel is not implemented');
   @override
   Future<List<NotifyPending>> notifyPending() async => throw const BridgeError('E_UNSUPPORTED', 'notify.pending is not implemented');
+  @override
+  Future<List<int>> notifyPendingIds() async => throw const BridgeError('E_UNSUPPORTED', 'notify.pendingIds is not implemented');
   @override
   Future<Object?> notifyInitial() async => throw const BridgeError('E_UNSUPPORTED', 'notify.initial is not implemented');
   @override
@@ -837,6 +840,10 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.notifyPending();
         return replyOk(id, r.map((e) => e.toJson()).toList());
+      case 'notify.pendingIds':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        final r = await h.notifyPendingIds();
+        return replyOk(id, r);
       case 'notify.initial':
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         final r = await h.notifyInitial();
@@ -1095,6 +1102,11 @@ abstract class ValenceBuiltins {
   /// `notify.pending`, from the package.
   Future<List<NotifyPending>> notifyPending() async {
     return [for (final r in await valence.notifications.pending()) NotifyPending.fromJson(r)];
+  }
+
+  /// `notify.pendingIds`, from the package.
+  Future<List<int>> notifyPendingIds() async {
+    return valence.notifications.pendingIds();
   }
 
   /// `notify.initial`, from the package.

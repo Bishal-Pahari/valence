@@ -109,6 +109,7 @@
       <button id="notify-permission">Allow reminders</button>
       <button id="notify-schedule">Remind in 15 seconds</button>
       <button id="notify-pending">Pending reminders</button>
+      <button id="notify-pending-ids">Pending IDs only</button>
       <button id="notify-cancel">Cancel reminder</button>
       <button id="badge">Badge 3</button>
       <pre id="notify-result"></pre>
@@ -385,6 +386,9 @@
         ['notify-permission', 'notify.permission', () => ({ request: true })],
         ['notify-schedule', 'notify.schedule', () => ({ id: 42, title: 'Valence reminder', body: 'A local reminder from your signed page', at: Date.now() + 15000, exact: true, payload: 'demo', actions: ['done', 'snooze'], image: 'iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAMAAABiM0N1AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAK5QTFRFAAAAAU6KAVebKbb2VMX4Kbb2VMX4AVaaAVebKbb2RsD3VMX4VMX4AVaZAVebGHalKbb2VMX4Pa7jADJZADhkAStLATBTAT5uAT5vAUd/AUmCAUyHAU6KAU6LAU6MAVGRAVKSAVKTAVOUAVWXAVWYAVaYAVaaAVeaAVebAjtnAkBwAkN2AkmAA02GA0+KA1CLFmiQF2+ZGXimGn6wG4O2G4a6HIe8Kbb2RL/3VMX47aEaPQAAABN0Uk5TABAQEBBQUGBgYGBggM/Pz8/P3xkQ5PoAAADpSURBVFjD7czXDoJAEEBRVOy9YO+KjB0r+v8/ZoQIC0sizq4PxrmvNzmKQklMrd758uSQQw455JBDDjnvnFSBL4Vw8iGzqn7TCYUwTpiEc3gJ6wQlvOOXXCf3ucNKrpO1bp87nsQ4FidFcF6SzwlKkRxHCjh+KaLzlDiHlSI7TJ7jSaLOSxJ3HEmG85QwTtLiqyEcJVHhnOs+rciQLjsdMhKk83ZmgATptBnrCxCXjuvB1IYEpcOyM5zMbEhIMpvtTn+sAwhKplZv9aYGgKBkao3uHNhwUnk1gmAoKVYEkCPFSyT9qvSvPQCNJCMEO265wAAAAABJRU5ErkJggg==' })],
         ['notify-pending', 'notify.pending', () => ({})],
+        // A full queue of maximum-size requests is over the reply cap, so the IDs are what a
+        // cancel-by-difference refill reads. Schema 16.
+        ['notify-pending-ids', 'notify.pendingIds', () => ({})],
         ['notify-cancel', 'notify.cancel', () => ({ id: 42 })],
         ['badge', 'badge.set', () => ({ n: 3 })],
       ]) document.getElementById(id).addEventListener('click', async () => {

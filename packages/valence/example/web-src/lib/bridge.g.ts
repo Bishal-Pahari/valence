@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 15;
+export const BRIDGE_VERSION = 16;
 
 export interface AppInfo {
   platform: string;
@@ -189,6 +189,7 @@ export interface Methods {
     id: number;
   }; returns: void };
   'notify.pending': { params: Record<string, never>; returns: NotifyPending[] };
+  'notify.pendingIds': { params: Record<string, never>; returns: number[] };
   'notify.initial': { params: Record<string, never>; returns: Json | null };
   'notify.channels.set': { params: {
     id: string;
@@ -300,6 +301,7 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'notify.schedule': 11,
   'notify.cancel': 11,
   'notify.pending': 11,
+  'notify.pendingIds': 16,
   'notify.initial': 11,
   'notify.channels.set': 11,
   'badge.set': 11,

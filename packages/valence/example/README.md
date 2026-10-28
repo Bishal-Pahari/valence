@@ -70,7 +70,7 @@ platform for Valence; **iOS is experimental and untested**.
 
 ## Native HTTP demo
 
-Native HTTP was added at built-in schema 4; the combined example schema is 15.
+Native HTTP was added at built-in schema 4; the combined example schema is 16.
 `http.origins` grants only `http://127.0.0.1:8787` for the local demo. Run the
 reference adapter in `examples/rest-sync-adapter/`, then
 `adb reverse tcp:8787 tcp:8787`. Set its synthetic `ADAPTER_TOKEN` through the
@@ -96,7 +96,7 @@ Task snapshots are bound to the native account as well as the signed bundle: swi
 
 ## Deep-link demo
 
-The R6 surfaces were added at schema 9. This merged example reports schema 15 and accepts `valence-example://app` and `https://links.example.invalid`. Native Android filters and experimental iOS registrations are included. The page shows the routed path/query/hash and uses the wire protocol directly, matching the rest of this no-bundler demo. Production apps use `onLink()` from their generated client. See [setup](../../../docs/deep-links.md). The placeholder HTTPS domain cannot verify; forced approval tests delivery only.
+The R6 surfaces were added at schema 9. This merged example reports schema 16 and accepts `valence-example://app` and `https://links.example.invalid`. Native Android filters and experimental iOS registrations are included. The page shows the routed path/query/hash and uses the wire protocol directly, matching the rest of this no-bundler demo. Production apps use `onLink()` from their generated client. See [setup](../../../docs/deep-links.md). The placeholder HTTPS domain cannot verify; forced approval tests delivery only.
 
 
 ## Permissions demo
@@ -107,7 +107,7 @@ Schema 10 adds a Permissions section: choose any of the seven kinds, Check, Requ
 
 ## Local reminder demo
 
-The example schema is 13, with notification methods and events since 11 and notifications.enabled set to true. Allow reminders, then schedule 15 seconds ahead: the page shows exact or inexact, displays native pending requests, cancels ID 42 and records warm tap/action or the consumed cold initial response. Images use a tiny PNG; Done and Snooze open the UI and report an action without automatically changing app data. The Android platform files include receivers, a status drawable and desugaring. iOS/AppDelegate is implemented but experimental and untested. See [setup](../../../docs/local-notifications.md).
+The example schema is 16, with notification methods and events since 11, `notify.pendingIds` since 16, and notifications.enabled set to true. Allow reminders, then schedule 15 seconds ahead: the page shows exact or inexact, displays native pending requests, cancels ID 42 and records warm tap/action or the consumed cold initial response. Images use a tiny PNG; Done and Snooze open the UI and report an action without automatically changing app data. The Android platform files include receivers, a status drawable and desugaring. iOS/AppDelegate is implemented but experimental and untested. See [setup](../../../docs/local-notifications.md).
 
 ## Remote push demo
 

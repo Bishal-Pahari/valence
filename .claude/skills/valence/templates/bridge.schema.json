@@ -1,5 +1,5 @@
 {
-  "version": 15,
+  "version": 16,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -224,6 +224,11 @@
       "since": 11,
       "params": {},
       "returns": "NotifyPending[]"
+    },
+    "notify.pendingIds": {
+      "since": 16,
+      "params": {},
+      "returns": "int[]"
     },
     "notify.initial": {
       "since": 11,

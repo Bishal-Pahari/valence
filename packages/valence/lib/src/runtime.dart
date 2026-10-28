@@ -84,7 +84,7 @@ final class ValenceAppInfo {
     required this.bundle,
     required this.locale,
     this.fontScale = 1,
-    this.builtins = 15,
+    this.builtins = 16,
   });
 
   /// `android`, `ios`, or whatever `Platform.operatingSystem` says.

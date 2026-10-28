@@ -348,8 +348,8 @@ void main() {
     () async {
       final h = await handlers();
       final info = (await dispatch(h, 'app.info'))['v']! as Map;
-      expect(info['builtins'], 15);
-      expect(info['bridge'], 15);
+      expect(info['builtins'], 16);
+      expect(info['bridge'], 16);
       expect(
         ((await dispatch(h, 'sync.status'))['v']! as Map)['reason'],
         isNull,

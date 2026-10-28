@@ -51,6 +51,21 @@ can remove already scheduled alarms, so refill after permission changes.
 `notify.pending()` reads the native queue and returns `{id,title,body,payload}[]`. IDs are
 0..2147483647; a repeat ID replaces the request. The queue cap is 64 (replacement is allowed at the
 cap). Pending means queued, never delivered. Title/body/payload limits are 256/4096/4096 UTF-8 bytes.
+
+**For the cancel-by-difference above, read `notify.pendingIds()` (schema 16) instead.** It returns the
+same native snapshot as bare `int[]`. A full queue of maximum-size requests is about 540 KB, over the
+bridge's 256 KB reply cap, so `notify.pending()` is refused with `E_TOO_LARGE` on exactly the apps
+that keep the most reminders queued. The IDs are about 400 bytes and cannot grow past the cap.
+`notify.pending()` is unchanged and still the right call when the titles or payloads are wanted and
+the queue is small.
+
+```ts
+const ids = has('notify.pendingIds')
+  ? await call('notify.pendingIds', {})
+  : (await call('notify.pending', {})).map((r) => r.id);
+for (const id of ids) if (!wanted.has(id)) await call('notify.cancel', { id });
+```
+
 Actions are the compiled `open`, `done`, `snooze` IDs, with English labels; every action opens the UI.
 The app decides what Done and Snooze mean. Reply inputs and custom layouts are deferred.
 

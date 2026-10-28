@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased: `pendingIds()`, because a full reminder queue cannot be read back
+
+`ValenceNotifications.pendingIds()` returns the native pending queue's IDs as `List<int>`, from the
+same snapshot `pending()` reads. Schema 16 delegates `notify.pendingIds` to it.
+
+`pending()` carries each request's title, body and payload, capped at 256, 4096 and 4096 bytes, so a
+full queue of 64 maximum-size requests is about 540 KB — over the 256 KB bridge reply cap, which
+means `replyOk` answers `E_TOO_LARGE`. That broke the documented cancel-and-refill-by-difference
+workflow on exactly the apps that keep the most reminders queued. `pending()` is unchanged: trimming
+its fields would have made an absent body and an empty one the same answer on the method whose whole
+purpose is reconciliation.
+
+A host whose notification service could not start returns an empty list from both.
+`AppInfo.builtins` is now 16.
+
+
 ## Unreleased: say which SDKs every Valence binary carries
 
 The docs said a host that does not configure push needs no Firebase. That is true of the runtime and

@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased: `notify.pendingIds()`, because a full reminder queue cannot be read back
+
+Schema **16** adds one method: `notify.pendingIds() -> int[]`, the native pending queue with the IDs
+and nothing else.
+
+`notify.pending()` is the only thing the docs give a page for discovering pending reminder IDs, which
+is what the documented cancel-and-refill-by-difference workflow needs. It carries each request's
+title, body and payload, and those are capped at 256, 4096 and 4096 bytes, so a full queue of 64
+maximum-size requests is about 540 KB — over the 256 KB bridge reply cap. The reply is replaced with
+`E_TOO_LARGE`, so the workflow broke on exactly the apps that keep the most reminders queued. Sixty
+four integers are about 400 bytes and no field can grow them past the cap.
+
+```ts
+const ids = has('notify.pendingIds')
+  ? await call('notify.pendingIds', {})
+  : (await call('notify.pending', {})).map((r) => r.id);
+for (const id of ids) if (!wanted.has(id)) await call('notify.cancel', { id });
+```
+
+**Nothing you have shipped changes.** `notify.pending()` keeps every field and every meaning it has:
+trimming it was the other option and was rejected, because an absent body and an empty one would
+have become the same answer, silently, on the method whose whole purpose is reconciliation.
+
+**To adopt it:** add `"notify.pendingIds": { "since": 16, "params": {}, "returns": "int[]" }` to your
+schema, raise your schema `version` to at least 16, regenerate, and ship a store build — an OTA
+cannot add a native method. Gate it with `has('notify.pendingIds')`. Both methods read one native
+snapshot, and both return an empty list on a host whose notification service could not start.
+`app.info().builtins` is now 16.
+
+
 ## Unreleased: say which SDKs every Valence binary carries
 
 The docs said a host that does not configure push needs no Firebase. That is true of the runtime and

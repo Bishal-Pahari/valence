@@ -42,7 +42,7 @@ const TEMPLATES = join(import.meta.dirname, '..', 'templates');
 // Listed here rather than per test, because every new runtime capability has to land in exactly one place
 // for the "an older app still codegens" cases to keep meaning what they say.
 const SINCE_ABOVE_4 = {
-  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings', 'notify.permission', 'notify.schedule', 'notify.cancel', 'notify.pending', 'notify.initial', 'notify.channels.set', 'badge.set', 'badge.clear', 'push.token', 'push.permission', 'push.initial', 'share.image'],
+  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings', 'notify.permission', 'notify.schedule', 'notify.cancel', 'notify.pending', 'notify.pendingIds', 'notify.initial', 'notify.channels.set', 'badge.set', 'badge.clear', 'push.token', 'push.permission', 'push.initial', 'share.image'],
   events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online', 'link.opened', 'permissions.changed', 'notify.tapped', 'notify.action', 'push.received', 'push.tapped', 'push.tokenChanged'],
   types: ['SyncStatus', 'AppState', 'BundleStatus', 'Link', 'PermissionState', 'NotifyScheduled', 'NotifyPending', 'PushMessage'],
 };
@@ -237,7 +237,7 @@ const editSchema = (root, fn) => {
 test('task restoration is optional, shape-frozen and delegated to the package', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 15);
+  assert.equal(schema.version, 16);
   assert.equal(schema.methods['state.save'].since, 8);
   assert.equal(schema.methods['state.restore'].since, 8);
   codegen({ root, cfg });
@@ -1386,6 +1386,7 @@ test('schema 15 fields are nullable and additive against a recorded schema 14', 
   const { root, cfg, key } = fixture({ latest: true });
   editSchema(root, s => {
     s.version = 14;
+    delete s.methods['notify.pendingIds'];
     delete s.types.AppInfo.builtins;
     delete s.types.SyncStatus.reason;
     delete s.types.BundleStatus.urgent;
@@ -1809,6 +1810,14 @@ final class H with BridgeHandlersDefaults {
   Future<HttpResponse> httpRequest(HttpRequestParams p) async => const HttpResponse(status: 200, headers: {}, body: 'ok');
   @override
   Future<List<Row>?> xEdge(XEdgeParams p) async => p.blobs == null ? null : [Row(key: p.type, value: p.blobs, usn: p.rows?.length ?? 0)];
+  // A legal queue at the cap: 64 requests at the §6.5 title/body/payload byte limits.
+  @override
+  Future<List<NotifyPending>> notifyPending() async => [
+        for (var i = 0; i < 64; i++)
+          NotifyPending(id: i, title: 'a' * 256, body: 'b' * 4096, payload: 'c' * 4096),
+      ];
+  @override
+  Future<List<int>> notifyPendingIds() async => [for (var i = 0; i < 64; i++) i];
 }
 
 Future<Map<String, Object?>> call(String raw) async =>
@@ -1930,6 +1939,17 @@ void main() {
     expect(((some['v']! as List).first as Map)['usn'], 1);
   });
 
+  test('a full pending queue is over the reply cap, and its IDs are not', () async {
+    // R28: 64 x (256 + 4096 + 4096) bytes of fields cannot come back through the 262,144-byte cap, so
+    // the only documented way to discover pending IDs was unusable exactly on the apps that schedule
+    // the most. notify.pending keeps every field it has; notify.pendingIds answers the reconciliation.
+    expect(code(await call('{"id":30,"n":"n1","m":"notify.pending","p":{}}')), BridgeErrorCode.tooLarge);
+    final ids = await call('{"id":31,"n":"n1","m":"notify.pendingIds","p":{}}');
+    expect(ids['ok'], isTrue, reason: '\${ids['e']}');
+    expect(ids['v'], List<int>.generate(64, (i) => i));
+    expect(code(await call('{"id":32,"n":"n1","m":"notify.pendingIds","p":{"x":1}}')), BridgeErrorCode.params);
+  });
+
   test('event scripts are built by the package', () {
     expect(
       BridgeEvents.syncChanged(buckets: ['a']),
@@ -2001,6 +2021,28 @@ test('notification builtins are frozen and compiled opt-in validates drawable na
 });
 
 
+test('notify.pendingIds is a schema-16 built-in that returns bare IDs and cannot be reshaped', () => {
+  const { root, cfg, key } = fixture({ latest: true });
+  cfg.notifications = { enabled: true, icon: 'ic_stat_demo' };
+  const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
+  assert.equal(schema.version, 16);
+  assert.equal(schema.methods['notify.pendingIds'].since, 16);
+  // notify.pending keeps every field it has: an app that reads it still gets titles and payloads.
+  assert.equal(schema.methods['notify.pending'].returns, 'NotifyPending[]');
+  codegen({ root, cfg });
+  assert.match(
+    readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8'),
+    /Future<List<int>> notifyPendingIds\(\) async \{\s*return valence\.notifications\.pendingIds\(\);/,
+  );
+  assert.match(readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8'), /'notify.pendingIds': 16,/);
+  // A store build at 16 records it, so it may not then be renamed into something the runtime does not have.
+  bundle({ root, cfg, key, store: true, now: NOW });
+  editSchema(root, (s) => { s.methods['notify.pendingIds'].returns = 'NotifyPending[]'; });
+  assert.throws(() => codegen({ root, cfg }), /must return int\[\]|changed|additive|shipped/);
+  editSchema(root, (s) => { s.methods['notify.pendingIds'].returns = 'int[]'; s.methods['notify.pendingIds'].params = { after: 'int?' }; });
+  assert.throws(() => codegen({ root, cfg }), /must stay|changed|additive|shipped/);
+});
+
 for (const since of [1, 10]) test(`schema-${since} custom notification names retain app-owned shapes`, () => {
   const { root, cfg, key } = fixture();
   editSchema(root, (s) => {
@@ -2032,7 +2074,7 @@ test('push builtins freeze permission and nullable initial-message shapes', () =
 test('push uses reserved schema 12 while older app-owned push shapes remain custom', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 15);
+  assert.equal(schema.version, 16);
   assert.equal(schema.methods['auth.account'].since, 13);
   for (const group of ['methods', 'events']) {
     for (const [name, def] of Object.entries(schema[group])) {
@@ -2047,6 +2089,7 @@ test('push uses reserved schema 12 while older app-owned push shapes remain cust
   editSchema(root, (s) => {
     s.version = 11;
     delete s.types.AppInfo.builtins;
+    delete s.methods['notify.pendingIds'];
     delete s.methods['share.image'];
     delete s.methods['auth.account'];
     delete s.methods['auth.setToken'].params.account;
