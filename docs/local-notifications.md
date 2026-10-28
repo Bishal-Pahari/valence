@@ -69,19 +69,12 @@ for (const id of ids) if (!wanted.has(id)) await call('notify.cancel', { id });
 Actions are the compiled `open`, `done`, `snooze` IDs, with English labels; every action opens the UI.
 The app decides what Done and Snooze mean. Reply inputs and custom layouts are deferred.
 
-Schema 16 adds `notify.pendingIds() -> int[]` for queue reconciliation. Declare it with `since: 16`, regenerate and ship a store build. It reads queued IDs from the native scheduler without title/body/payload, so all 64 maximum-size reminders remain readable under the bridge reply cap. It does not cancel or re-arm requests. An unavailable native service returns an empty list; a host with notifications disabled returns `E_UNSUPPORTED`. `notify.pending()` still returns complete content and can report `E_TOO_LARGE`.
+Declare `notify.pendingIds` with `since: 16`, regenerate and ship a store build.
+A host with notifications disabled returns `E_UNSUPPORTED`. Each call reads one native queue
+snapshot; two calls can observe different snapshots. Reading IDs never cancels or re-arms requests.
 
-Guard the new call with `has('notify.pendingIds')`. For older hosts, `notify.pending()` remains usable for small queues; if it reports `E_TOO_LARGE`, show that reconciliation could not complete. Do not interpret the error as an empty queue or cancel unknown/displayed notifications.
-
-```ts
-const pendingIds = has('notify.pendingIds')
-  ? await call('notify.pendingIds')
-  : (await call('notify.pending')).map(({ id }) => id);
-// If either call fails, stop reconciliation and surface the error.
-for (const id of pendingIds) {
-  if (!desiredIds.has(id)) await call('notify.cancel', { id });
-}
-```
+If the older-host `notify.pending()` fallback reports `E_TOO_LARGE`, stop reconciliation and show
+the error. Do not treat the failure as an empty queue or cancel unknown/displayed notifications.
 
 For an image, pass base64 PNG/JPEG in `image`: maximum 96 KiB decoded and 1024 pixels per side.
 URLs, filesystem paths, SVGs and corrupt pixel data are refused. Header limits precede a bounded
