@@ -76,7 +76,7 @@ const BUILTINS = {
   // documented way to discover pending IDs answers E_TOO_LARGE on the apps that schedule the most.
   // `notify.pending` keeps every field it has: trimming them would make an absent body and an empty one
   // the same answer, silently, on the method whose whole purpose is reconciliation.
-  'notify.pendingIds': { params: {}, returns: 'int[]', call: () => 'return valence.notifications.pendingIds();' },
+  'notify.pendingIds': { minSince: 16, params: {}, returns: 'int[]', call: () => 'return valence.notifications.pendingIds();' },
   'notify.initial': { params: {}, returns: 'json?', call: () => 'return valence.notifications.initial();' },
   'notify.channels.set': {
     params: { id: 'string', name: 'string', importance: 'string?', sound: 'string?', group: 'string?', groupName: 'string?' },

@@ -1710,7 +1710,10 @@ it and the first thing to fail would be the store build, on a device.
   is what the re-arm needs: a full queue at the field limits above is over the §4.2 reply cap, so
   `notify.pending` answers `E_TOO_LARGE` on precisely the apps that schedule the most. Gate it with
   `has('notify.pendingIds')`, and read `notify.pending` only when the titles or payloads are wanted and
-  the queue is known to be small.
+  the queue is known to be small. The new built-in delegates only at `since >= 16`, its reserved
+  capability revision. Each call reads one native queue snapshot; two calls may observe different
+  snapshots. It never mutates the queue, and returns an empty list on an unavailable service; a
+  disabled host returns `E_UNSUPPORTED`.
 - `notify.channels.set({id, name, importance?: string, sound?: string, group?: string,
   groupName?: string}) -> void` creates Android channels and optional channel groups. Importance is
   `min`, `low`, `default`, `high` or `max`; sound omitted means default, empty means silent, otherwise
