@@ -1,5 +1,73 @@
 # Integration validation - 2026-10-29
 
+## Adoption follow-up - 2026-10-29
+
+Both apps' findings and newest iteration reports were read without writing to
+either app: initially Kundalini iteration 13 and app-a iteration 14, then the new
+Kundalini iteration-14 report created during this run. Its day-14 finding F-62
+records that the vendored CLI did not recognize `notify.pendingIds`, generated
+an abstract app-owned handler at the correct
+`since: 16`, and gave no tooling-refresh diagnostic. The app reports that
+`create-valence update` restored delegation. This is separate from F-57's
+below-reservation declaration and does not demonstrate failure of the current
+integrated generator. App-a F-36 still records supplied snapshot tooling rejecting
+the live docs' nullable `SyncStatus.reason` addition. Matched artifact adoption
+remains necessary; neither finding is closed by framework tests.
+
+Kundalini iteration 14 adopts the guarded ID-only read with the older full-read
+fallback and records a Gradle-daemon disappearance followed by a smaller heap
+configuration. At read time its device and verification sections contained placeholders;
+no completed iteration-14 build or device matrix is inferred from that draft.
+
+No must-have row is `todo`, `codex: in progress` or `codex: changes requested`.
+The code/site packages bases remain `41fed55` / `7bfe7bd`; every original queue
+tip and R27/R28/R29 tip is an ancestor of the corresponding integration head.
+Decision: retain this candidate, preserve data and shipped signatures, and record
+the new adoption evidence. Keep this run scoped to integration validation while
+there is no eligible must-have item. No branch reassembly is needed while both
+bases and all ready tips remain unchanged.
+A blanket rejection of unknown names under a built-in namespace would also reject
+valid shipped custom methods such as Kundalini's `notify.daily`; any future
+diagnostic must preserve that compatibility distinction.
+
+Fresh verification on code `81c452a` / site `b55d0bf`:
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 97 passed, zero skipped; generated Dart and strict/verbatim generated TS included; 380.1 seconds reported by Node |
+| Core flutter test --no-pub --concurrency=1 | 541 passed; 1331.7 seconds command wall time |
+| Core dart analyze --fatal-infos . | No issues; 214.9 seconds |
+| Adapter tests / fatal-info analysis | 2 passed / no issues |
+| Core / adapter pub publish --dry-run | Both zero warnings; adapter retains the documented local-override hint |
+| Example flutter test --no-pub | 27 passed |
+| Bridge tests / strict-verbatim TS / pack dry run | 29 passed, zero skipped / passed / passed |
+| Site build and SEO | 42 pages passed |
+| Example codegen / signed built-in verification | No stale files / seq 1793209750 verified |
+| Example debug APK | Passed; 1458.2 seconds command wall time (Gradle reported 1450.6 seconds) |
+| Core graph / APK Firebase audit | Passed: no Firebase package, manifest component or SDK reference in all 19 DEX files |
+
+Test suites, analyzers, packaging and site gates passed on their first attempts,
+with unchanged assertions and timeouts. Native commands ran serially after root tests. Logs are
+`%TEMP%/valence-integration-20261029-refresh-*.log`; native command exit codes and
+wall times are in `valence-integration-20261029-refresh-results.json`.
+APK timing and its successful exit are in `valence-integration-20261029-refresh-apk-result.json`.
+
+The APK used a command-local 2 GiB Gradle heap, 1 GiB metaspace, two workers and
+ActiveProcessorCount=2 with a single-use daemon; no shared Gradle configuration
+changed. The existing app_badge_plus KGP warning remains. A planned bounded
+cancellation found the verified client had already exited: the original build
+completed successfully, no process was stopped, and no smaller-heap retry ran.
+The first post-build audit launcher exited 9009 because `python` resolved to the
+Windows Store alias. The unchanged audit then passed through the installed
+Python 3.13 interpreter located by `uv python find`; no Python installation or
+source patch was needed. A thread snapshot was captured near daemon shutdown;
+it does not establish a cause for the long build.
+
+The first host-memory sample during generated-Dart analysis showed 261,216 KiB
+free of 32,827,764 KiB; this is context, not a demonstrated cause of delay.
+No new emulator run or independent review is claimed. Earlier release-AOT/device
+evidence below retains its original scope and date.
+
 ## In plain terms
 
 Firebase is now an optional native dependency through `valence_push`; hosts using
