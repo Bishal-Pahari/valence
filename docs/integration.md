@@ -1,5 +1,31 @@
 # Integration validation - 2026-10-28
 
+## October 28 afternoon confirmation
+
+**In plain terms.** No eligible must-have item remains to implement. Rechecked
+both apps' findings and newest iteration reports (Kundalini 12, app-a 13).
+The packages bases are still ebb0793 / afe2366, and every pending branch tip
+(R17, R19, R20, R21, R22, R23, R24, R25, R26) is included in both integration
+histories. The merge order and source SHAs below remain unchanged.
+
+Fresh required gates passed on code 99c990e / site 8f878d5: root npm test
+92 passed with zero skips (generated Dart included), runtime flutter test
+528 passed, fatal-info Dart analysis clean, bridge tests 29 passed with zero
+skips, strict/verbatim TypeScript passed, and site build/SEO passed 41 pages.
+The root command's initial captured output lacked a suite summary; its completed
+log later confirmed all 92 tests in 500.9 seconds. A redundant confirmation
+attempt was then stopped, including only its verified process descendants.
+That cancelled duplicate is not counted as a passing run.
+
+Decision: preserve the tested candidate and user data while improver acceptance
+is pending. App-a F-33/F-35 remain unresolved; no blocked operation or ANR cause
+has been established. Do not infer a runtime fix from successful later starts.
+No behavior, spec, schema or version changed. This confirmation updates reports
+only. No new emulator/review session ran; earlier APK, AOT and packaging results
+retain their dates and scope. Firebase delivery needs the maintainer project;
+iOS remains experimental and untested. No test-app writes, shared-branch
+changes, pushes or publications.
+
 ## October 28 reconnect gate synchronization
 
 **In plain terms.** Two full runtime runs on the unchanged candidate each
