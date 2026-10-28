@@ -1,5 +1,48 @@
 # Integration validation - 2026-10-28
 
+## October 28 reconnect gate synchronization
+
+**In plain terms.** Two full runtime runs on the unchanged candidate each
+passed 526 tests and failed the same two reconnect widget checks. The focused
+foreground check and all 16 widget-file tests passed unchanged. The tests used
+a fixed 150 ms real-I/O wait before asserting that signed verification and
+SQLite publication had completed; that wait did not establish completion.
+
+The integration now waits up to five seconds for both the expected pending
+sequence and the completed ready status in those two checks, retaining failure
+diagnostics and all existing assertions. A first revision passed all 528 tests,
+but confirmation then failed at an earlier background-sync request assertion
+(527 passed). That setup had never established startup sync completion before
+reconnect, which can legitimately collide with its lease. The final background
+check observes startup sync.done first and then the reconnect request. It still
+checks that no update request runs in the background and that resume stages it.
+The foreground check also holds a manifest response behind a test-owned gate
+and verifies that no pending bundle
+is published before the response is released. Pointer counts, signed verification,
+completed status, updateReady delivery and no-reload assertions remain checked.
+
+Decision: synchronize these integration tests on the observable result instead
+of changing the runtime or extending a blind sleep. Both original full-suite
+failures remain recorded here; the passing isolated run alone was insufficient.
+This change makes no startup-performance claim and does not close app-a F-33 or
+F-35. No spec, schema, package version, runtime, generator or template behavior
+changed. There is still no eligible must-have todo item. The newest packages
+bases remain ebb0793 / afe2366, and all nine pending tips remain included.
+
+Required gates in this run: root npm test 92 passed, zero skips, including
+generated Dart; bridge tests 29 passed, zero skips, and strict/verbatim TypeScript
+passed. The final synchronized runtime suite passed all 528 tests; site
+production build and SEO checks passed all 41 pages. Fatal-info Dart analysis
+found no issues. The final root confirmation also passed all 92 tests with zero
+skips. The test-only implementation is commit 703dd80 on codex/integration;
+the report commits follow the tested implementation.
+
+Inputs read-only: both apps' VALENCE_FINDINGS.md and newest reports, Kundalini
+iteration 12 and app-a iteration 13. Existing merge order and source SHAs below
+remain applicable. No new emulator or independent review session ran. Earlier
+APK, AOT-exclusion and packaging evidence retains its original scope and date.
+Firebase delivery needs the maintainer project; iOS is experimental and untested.
+
 ## October 28 iteration-13 startup evidence
 
 **In plain terms.** App-a's latest report adds an unresolved major startup
