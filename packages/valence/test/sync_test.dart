@@ -273,6 +273,37 @@ void main() {
       });
     }
 
+    test('a scoped run that matches nothing reports failed and overwrites no observation', () async {
+      final log = LogSpy();
+      final sync = syncWith(
+          MockClient((req) async => req.url.path.endsWith('/plants')
+              ? http.Response('{"rows":[],"max":0,"more":false}', 200)
+              : http.Response('', 401)),
+          config: testConfig(key, writableBuckets: {'shelf'})
+              .copyWith(authToken: () async => 'token'),
+          log: log);
+      sync.onUnauthorized = () {};
+      // A real run records the refusal that the page draws "sign in again" from.
+      expect((await sync.run(readSchemas: {'plants': 1})).reason,
+          ValenceSyncReason.unauthorized);
+      expect((await sync.status()).reason, 'unauthorized');
+
+      // `buckets` is page-supplied, so a name this bundle no longer has is reachable on demand.
+      // It attempts nothing, so it may neither claim success nor erase the refusal.
+      final empty = await sync.run(readSchemas: {'plants': 1}, only: ['plantz']);
+      expect(empty.reason, ValenceSyncReason.failed);
+      expect(empty.buckets, isEmpty);
+      expect(empty.changed, 0);
+      expect(log.has('matched no syncable bucket'), isTrue, reason: log.toString());
+      expect((await sync.status()).reason, 'unauthorized');
+      expect((await sync.status()).lastSyncedAt, isNull);
+
+      // A scope that matches is unchanged: it attempts, and reports what happened.
+      expect((await sync.run(readSchemas: {'plants': 1}, only: ['plants'])).reason,
+          ValenceSyncReason.ok);
+      expect((await sync.status()).reason, 'ok');
+    });
+
     test('offline outranks a server failure without losing the offline flag', () async {
       final sync = syncWith(MockClient((req) async {
         if (req.url.path.endsWith('/plants')) return http.Response('', 500);

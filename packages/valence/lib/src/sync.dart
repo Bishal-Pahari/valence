@@ -254,12 +254,14 @@ final class ValenceSync {
     _incomplete = false;
     final touched = <String>[];
     var changed = 0;
+    var attempted = 0;
     var offline = false;
     late final ValenceSyncReason reason;
     try {
       final wanted = only?.toSet();
       for (final e in readSchemas.entries) {
         if (wanted != null && !wanted.contains(e.key)) continue;
+        attempted++;
         try {
           changed += await pullPair(e.key, e.value);
           touched.add(e.key);
@@ -279,6 +281,7 @@ final class ValenceSync {
       // write that has not been acknowledged yet.
       for (final bucket in config.writableBuckets) {
         if (wanted != null && !wanted.contains(bucket)) continue;
+        attempted++;
         try {
           changed += await pullPair(bucket, 1);
           if (!touched.contains(bucket)) touched.add(bucket);
@@ -298,6 +301,7 @@ final class ValenceSync {
           _log('sync: outbox holds ops for "$bucket", which is not writable; leaving them alone');
           continue;
         }
+        attempted++;
         try {
           changed += await pushBucket(bucket);
           if (!touched.contains(bucket)) touched.add(bucket);
@@ -309,29 +313,40 @@ final class ValenceSync {
           _log('sync: offline pushing $bucket: $err');
         }
       }
+      // A scoped run whose buckets match nothing attempts nothing, and `buckets` is page-supplied
+      // (§5.6), so without this a page could turn a durable `unauthorized` into a reported success
+      // on demand by naming a bucket this bundle no longer has.
+      final nothingAttempted = only != null && attempted == 0;
+      if (nothingAttempted) {
+        _log('sync: scoped run matched no syncable bucket (${only.join(', ')}); '
+            'nothing was attempted and the stored outcome is left as it was');
+      }
       // Classify while holding the lease, before another run can reset the attempt flags.
       // Auth rejection outranks transport failure, which outranks an incomplete server response.
       reason = _unauthorized
           ? ValenceSyncReason.unauthorized
           : offline
               ? ValenceSyncReason.offline
-              : _incomplete
+              : _incomplete || nothingAttempted
                   ? ValenceSyncReason.failed
                   : ValenceSyncReason.ok;
       // Persist the outcome before releasing the lease: a later run must not be overwritten.
-      await store.db.transaction((txn) async {
-        final observations = {
-          'valence.sync.reason': reason.name,
-          'valence.sync.offline': offline.toString(),
-          if (!offline && !_unauthorized && !_incomplete && only == null)
-            'valence.sync.lastSyncedAt':
-                _now().millisecondsSinceEpoch.toString(),
-        };
-        for (final entry in observations.entries) {
-          await txn.insert('prefs', {'key': entry.key, 'value': entry.value},
-              conflictAlgorithm: ConflictAlgorithm.replace);
-        }
-      });
+      // A run that observed nothing writes nothing, so it cannot overwrite one that did.
+      if (!nothingAttempted) {
+        await store.db.transaction((txn) async {
+          final observations = {
+            'valence.sync.reason': reason.name,
+            'valence.sync.offline': offline.toString(),
+            if (!offline && !_unauthorized && !_incomplete && only == null)
+              'valence.sync.lastSyncedAt':
+                  _now().millisecondsSinceEpoch.toString(),
+          };
+          for (final entry in observations.entries) {
+            await txn.insert('prefs', {'key': entry.key, 'value': entry.value},
+                conflictAlgorithm: ConflictAlgorithm.replace);
+          }
+        });
+      }
     } finally {
       await releaseLease();
     }

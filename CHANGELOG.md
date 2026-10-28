@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased: a sync scoped to nothing can no longer report success
+
+`sync.now({ buckets })` naming only buckets the host does not have — a typo, or a
+bucket a newer bundle renamed — attempted nothing and reported `reason: "ok"`, and
+persisted that over a stored `unauthorized`. A page's "sign in again" banner reads
+`sync.status()`, so one scoped call could make a refused account look healthy.
+
+A scoped run that matches no read pair, no writable bucket and no outbox bucket now
+reports `failed`, logs the names it was given, and writes no observation, so the last
+real outcome stands. A scope that does match any bucket is unchanged. Upgrade the
+native host package; no schema or app change is needed.
+
 ## Unreleased: a missing notification icon no longer takes the app down
 
 - A native notification service that refuses to start no longer throws out of `Valence.open`. The
