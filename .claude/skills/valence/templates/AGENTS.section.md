@@ -53,3 +53,8 @@ For grown-param gates and durable status, use the schema-15 capability/status gu
 
 
 **Development validation:** `dev:` startup and bypass logs mean OTA checks, trials and commits are disabled. Restart without `VALENCE_DEV_URL` before testing signed offline starts or rollback.
+
+**Startup stalls and database waits:** capture `startup:` phase timings, named
+`store: waiting` operations and app-scoped Android exit-info before restarting.
+Preserve the database/account. Open completion is separate from page readiness;
+wait duration alone does not establish a cause. See https://getvalence.pages.dev/docs/guides/startup-diagnostics/.
