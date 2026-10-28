@@ -207,7 +207,7 @@ Schema 11 adds built-in local reminders: notify.schedule/cancel/pending/channels
 
 Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** See [setup and acceptance checks](docs/remote-push.md).
 
-The Firebase native dependencies ship even when push is disabled; iOS hosts must target 15.0 or later. Firebase initialization remains opt-in. iOS is experimental and untested.
+Firebase native dependencies ship only through an installed push package or another app dependency. Hosts using `valence_push` must target iOS 15.0 or later and initialize Firebase explicitly; core-only hosts do not inherit that Firebase requirement. iOS is experimental and untested.
 
 ### Lifecycle, connectivity and update status
 
@@ -262,3 +262,5 @@ or apply call also logs a `dev:` diagnostic. A successful call in this mode does
 OTA transition. Restart without `VALENCE_DEV_URL` for signed offline and rollback validation.
 
 Sync outcomes are an open string set: `ok`, `busy`, `offline`, `unauthorized`, `failed`. A non-200 or invalid protocol response reports `failed`, including a 401 sent to a request without a bearer token. Only a bearer-bearing 401 expires authentication. Partial changes remain applied, queued writes remain available for retry, and incomplete runs never advance the last successful unscoped timestamp. Treat every non-`ok` outcome as incomplete, even when `changed` is positive. See contracts section 5.6.
+
+Remote push is a native package opt-in: add `valence_push` and pass `createFirebasePush()` after Firebase initialization. Core-only hosts do not resolve Firebase; local notifications and badges remain core dependencies. [Setup and migration](docs/remote-push.md).

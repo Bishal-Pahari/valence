@@ -1,0 +1,22 @@
+name: valence_push
+description: Opt-in Firebase Messaging transport for Valence push notifications and background sync hints.
+version: 0.4.0-beta.0
+repository: https://github.com/Bishal-Pahari/valence
+issue_tracker: https://github.com/Bishal-Pahari/valence/issues
+homepage: https://getvalence.pages.dev
+documentation: https://getvalence.pages.dev/docs/guides/remote-push/
+environment:
+  sdk: ^3.6.0
+  flutter: ">=3.44.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  valence: ^0.4.0-beta.0
+  firebase_core: ^4.14.0
+  firebase_messaging: ^16.7.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  firebase_core_platform_interface: 8.1.1
+  firebase_messaging_platform_interface: 4.10.0

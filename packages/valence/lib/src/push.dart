@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:ui' show DartPluginRegistrant, RootIsolateToken;
 
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/widgets.dart';
 
 import 'log.dart';
@@ -13,18 +11,16 @@ import 'wire.dart';
 final class ValencePushMessage {
   /// Creates metadata for the bridge. Images are metadata, never fetched by Dart.
   const ValencePushMessage(
-      {this.id, this.data = const {}, this.title, this.body, this.image});
+      {this.id,
+      this.data = const {},
+      this.title,
+      this.body,
+      this.image,
+      this.hasNotification = false});
 
-  /// Converts Firebase's native delivery envelope.
-  factory ValencePushMessage.fromRemote(RemoteMessage message) =>
-      ValencePushMessage(
-        id: message.messageId,
-        data: message.data,
-        title: message.notification?.title,
-        body: message.notification?.body,
-        image: message.notification?.android?.imageUrl ??
-            message.notification?.apple?.imageUrl,
-      );
+  /// Whether the native envelope contains a notification, even with empty text.
+  /// Used only for exact data-only sync hints; never sent over the bridge.
+  final bool hasNotification;
 
   /// Provider message id; may be absent.
   final String? id;
@@ -57,19 +53,19 @@ final class ValencePushMessage {
   }
 }
 
-/// Platform boundary for Firebase Messaging, also usable for deterministic tests.
+/// Provider-neutral transport; Firebase lives in the opt-in valence_push package.
 abstract interface class ValencePushTransport {
   /// Foreground delivery only.
-  Stream<RemoteMessage> get received;
+  Stream<ValencePushMessage> get received;
 
   /// Notification taps that resume an existing process.
-  Stream<RemoteMessage> get tapped;
+  Stream<ValencePushMessage> get tapped;
 
   /// Rotated FCM registration tokens.
   Stream<String> get tokens;
 
   /// The notification that started a fresh process, if any.
-  Future<RemoteMessage?> initial();
+  Future<ValencePushMessage?> initial();
 
   /// Current settings, or a user-facing permission request when requested.
   Future<String> permission({required bool request});
@@ -78,46 +74,18 @@ abstract interface class ValencePushTransport {
   Future<String?> token();
 }
 
-final class _FirebasePushTransport implements ValencePushTransport {
-  FirebaseMessaging get _messaging => FirebaseMessaging.instance;
-
-  @override
-  Stream<RemoteMessage> get received => FirebaseMessaging.onMessage;
-  @override
-  Stream<RemoteMessage> get tapped => FirebaseMessaging.onMessageOpenedApp;
-  @override
-  Stream<String> get tokens => _messaging.onTokenRefresh;
-  @override
-  Future<RemoteMessage?> initial() => _messaging.getInitialMessage();
-  @override
-  Future<String> permission({required bool request}) async {
-    final settings = request
-        ? await _messaging.requestPermission(
-            alert: true, badge: true, sound: true)
-        : await _messaging.getNotificationSettings();
-    return settings.authorizationStatus.name;
-  }
-
-  @override
-  Future<String?> token() async {
-    // FlutterFire forbids token API calls on Apple before APNs registration.
-    if (Platform.isIOS && await _messaging.getAPNSToken() == null) return null;
-    return _messaging.getToken();
-  }
-}
-
-/// Opt-in remote push, contracts §6.4. Initialize Firebase before constructing it.
+/// Opt-in remote push, contracts §6.4. Supply a store-configured transport.
 ///
 /// This object subscribes and captures the initial tap without requesting permission
 /// or fetching a registration token during offline startup. Call [dispose] when the
 /// host is permanently discarded. Background callbacks use [handleBackground],
 /// never a UI runtime or this instance.
 final class ValencePush {
-  /// Creates the Firebase adapter or uses an injected platform boundary.
+  /// Creates a push service with an explicit native transport.
   ValencePush(
-      {ValencePushTransport? transport,
+      {required ValencePushTransport transport,
       ValenceLogger log = defaultValenceLogger})
-      : _transport = transport ?? _FirebasePushTransport(),
+      : _transport = transport,
         _log = log;
 
   final ValencePushTransport _transport;
@@ -148,10 +116,8 @@ final class ValencePush {
   Future<void> _start() async {
     void onError(Object _) => _log('push: platform event unavailable');
     _subscriptions.add(_transport.received.listen((message) {
-      _event('push.received',
-          {'message': ValencePushMessage.fromRemote(message).toJson()});
-      if (isSyncHint(message.data,
-          hasNotification: message.notification != null)) {
+      _event('push.received', {'message': message.toJson()});
+      if (isSyncHint(message.data, hasNotification: message.hasNotification)) {
         unawaited(_runSync());
       }
     }, onError: onError));
@@ -179,8 +145,8 @@ final class ValencePush {
     }
   }
 
-  void _tap(RemoteMessage message) {
-    final record = ValencePushMessage.fromRemote(message);
+  void _tap(ValencePushMessage message) {
+    final record = message;
     if (!_fits('push.tapped', {'message': record.toJson()})) return;
     if (_live) {
       _event('push.tapped', {'message': record.toJson()});

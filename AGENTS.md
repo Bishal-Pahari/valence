@@ -15,6 +15,7 @@ Valence is an open-source architecture for shipping a web UI inside a Flutter ap
 | `.claude/skills/valence/templates/` | Files the skill copies into apps |
 | `.claude/agents/valence-*.md` | The docs-scout, builder and reviewer subagents the skill orchestrates |
 | `packages/valence/` | **The Flutter host runtime**, published on pub.dev as `valence`. The whole of contracts §2, §3, §4.2 and §5: loopback server, updater and state machine, verification, SQLite store, sync, bridge dispatcher, WebView. Its `test/` is the §8 matrix; its `example/` is a real app whose `main.dart` is about twenty lines. |
+| `packages/valence_push/` | Opt-in Firebase Messaging transport. Core-only hosts do not depend on Firebase. |
 | `packages/bridge/` | **The web bridge client**, published on npm as `@getvalence/bridge`. The whole of §4.3, zero runtime dependencies, ESM with `.d.ts`. |
 | `docs/research.md` | Landscape research (2026-10-14): store policies quoted, OTA, SDUI and hybrid options, and the gap Valence fills. Not shipped in the npm package. |
 | *(separate repo)* `valence-site` | The website and the developer docs (Astro + Starlight), kept in their own repo next to this one. Its release console models contracts §2.3, §2.4 and §5.3, and its docs pages restate this spec: when behaviour changes here, update them there. |
@@ -31,6 +32,7 @@ Valence is an open-source architecture for shipping a web UI inside a Flutter ap
    - The tests need Node ≥ 22.18, because the bridge test imports TypeScript through type stripping.
    - The generated-Dart test needs `flutter` on PATH, because the generated code imports `package:valence`. If it skips, say so, and don't count it as passed.
    - `packages/valence` has its own gates, and `npm test` does **not** run them: `flutter test`, `dart analyze --fatal-infos .`, `flutter pub publish --dry-run` (warning-free), and `flutter build apk --debug` in `example/`.
+   - `packages/valence_push` also requires `flutter test`, `dart analyze --fatal-infos .` and a warning-free `flutter pub publish --dry-run`. Its local `pubspec_overrides.yaml` resolves the unpublished core during development; uploads exclude that override.
    - `packages/bridge` likewise: `node --test test/*.test.ts`, `npx -y -p typescript tsc -p tsconfig.json`, and `npm pack --dry-run`.
 3. **The CLI stays zero-dependency** (Node ≥ 22.13: `node:crypto`, `node:sqlite`, `node:util`). Bump `VALENCE_VERSION` in `valence.mjs` when its behaviour changes.
 4. **Generated Dart must pass `dart analyze --fatal-infos`**, and generated TS must type-check under `--strict --verbatimModuleSyntax`. The tests enforce both.
@@ -50,13 +52,14 @@ Valence is an open-source architecture for shipping a web UI inside a Flutter ap
 
 ## Releasing
 
-One version for everything: `create-valence`, `@getvalence/bridge` and the `valence` pub package share a version number, and `VALENCE_VERSION` in `valence.mjs` equals it (a test enforces that). `RUNTIME_VERSION` in `bin/valence.mjs` is the range the wizard writes into an app's `package.json`, and a test keeps it equal to both packages' versions — so the release bump touches four places: `package.json`, `VALENCE_VERSION`, `RUNTIME_VERSION`, and the two package manifests.
+Runtime release versions stay aligned: `create-valence`, `@getvalence/bridge`, `valence` and the optional `valence_push` pub package share a runtime version number, and `VALENCE_VERSION` in `valence.mjs` equals it (a test enforces that). `RUNTIME_VERSION` in `bin/valence.mjs` is the range the wizard writes into an app's `package.json`, and a test keeps it equal to all three runtime packages' versions — so the release bump updates: `package.json`, `VALENCE_VERSION`, `RUNTIME_VERSION`, and all three runtime package manifests.
 
-The three are published separately and in this order, because the later ones depend on the earlier:
+The four are published separately and in this order, because the later ones depend on the earlier:
 
 ```
 cd packages/bridge && npm publish --access public                    # @getvalence/bridge (prepack builds dist/)
 cd packages/valence && flutter pub publish                           # valence
+cd packages/valence_push && flutter pub publish                      # optional Firebase transport, after valence
 npm publish --otp=<code>                                             # create-valence
 ```
 
