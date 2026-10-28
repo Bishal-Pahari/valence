@@ -77,7 +77,8 @@ final class ValenceSyncResult {
 /// Local sync observations. [offline] is the last attempt, not current connectivity (§7.1).
 final class ValenceSyncStatus {
   /// Creates a local status snapshot.
-  const ValenceSyncStatus({required this.pending, required this.lastSyncedAt, required this.offline, this.reason});
+  const ValenceSyncStatus(
+      {required this.pending, required this.lastSyncedAt, required this.offline, this.reason});
 
   /// Remaining operations, including deletes and repeated edits.
   final int pending;
@@ -147,17 +148,18 @@ final class ValenceSync {
 
   /// Reads persisted observations and current outbox depth without taking the sync lease.
   Future<ValenceSyncStatus> status() async {
-    final rows =
-        await store.db.query('prefs', where: 'key IN (?, ?, ?)', whereArgs: [
-      'valence.sync.lastSyncedAt',
-      'valence.sync.offline',
-      'valence.sync.reason',
-    ]);
+    final rows = await logDatabaseWait(
+        'sync.status',
+        () => store.db.query('prefs', where: 'key IN (?, ?, ?)', whereArgs: [
+              'valence.sync.lastSyncedAt',
+              'valence.sync.offline',
+              'valence.sync.reason',
+            ]),
+        _log);
     final values = {for (final row in rows) row['key']: row['value']};
     return ValenceSyncStatus(
       pending: await store.pendingWrites(),
-      lastSyncedAt:
-          int.tryParse(values['valence.sync.lastSyncedAt'] as String? ?? ''),
+      lastSyncedAt: int.tryParse(values['valence.sync.lastSyncedAt'] as String? ?? ''),
       offline: values['valence.sync.offline'] == 'true',
       reason: values['valence.sync.reason'] as String?,
     );
@@ -177,43 +179,47 @@ final class ValenceSync {
   Future<bool> acquireLease() async {
     final now = _now().millisecondsSinceEpoch;
     var taken = false;
-    await store.db.transaction((txn) async {
-      final rows = await txn.query(
-        'prefs',
-        columns: ['value'],
-        where: 'key = ?',
-        whereArgs: [syncLeaseKey],
-        limit: 1,
-      );
-      final (held, owner) = _readLease(rows.isEmpty ? null : rows.first['value'] as String);
-      final live = held != null && held > now - syncLeaseTtl.inMilliseconds && held <= now;
-      // A lease recorded by **another process** cannot be held by anything running now. The lease exists to
-      // keep the UI isolate and the background isolate apart, and those share this process (§5.6), so the
-      // only way to see a foreign pid is a launch that is gone: a crash, a force-stop, or Android reclaiming
-      // the app. Waiting out the two minutes in that case blocks every sync of the new launch and reports
-      // each one as a successful empty sync, which is exactly when a user has just reopened a stale app.
-      // A recycled pid that matches ours degrades to the old behaviour: we wait for the expiry.
-      //
-      // ponytail: single-process assumption. A host that puts a service in its own `android:process` would
-      // need the owner to be a token both processes agree on, written at launch.
-      if (live && owner == pid) return;
-      if (live) {
-        _log(owner == null
-            ? 'sync: clearing a lease written by an older host, which records no owner'
-            : 'sync: taking over a lease left by process $owner, which is gone');
-      }
-      await txn.insert(
-        'prefs',
-        {'key': syncLeaseKey, 'value': _leaseValue(now)},
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-      taken = true;
-    });
+    await logDatabaseWait(
+        'sync.acquireLease',
+        () => store.db.transaction((txn) async {
+              final rows = await txn.query(
+                'prefs',
+                columns: ['value'],
+                where: 'key = ?',
+                whereArgs: [syncLeaseKey],
+                limit: 1,
+              );
+              final (held, owner) = _readLease(rows.isEmpty ? null : rows.first['value'] as String);
+              final live = held != null && held > now - syncLeaseTtl.inMilliseconds && held <= now;
+              // A lease recorded by **another process** cannot be held by anything running now. The lease exists to
+              // keep the UI isolate and the background isolate apart, and those share this process (§5.6), so the
+              // only way to see a foreign pid is a launch that is gone: a crash, a force-stop, or Android reclaiming
+              // the app. Waiting out the two minutes in that case blocks every sync of the new launch and reports
+              // each one as a successful empty sync, which is exactly when a user has just reopened a stale app.
+              // A recycled pid that matches ours degrades to the old behaviour: we wait for the expiry.
+              //
+              // ponytail: single-process assumption. A host that puts a service in its own `android:process` would
+              // need the owner to be a token both processes agree on, written at launch.
+              if (live && owner == pid) return;
+              if (live) {
+                _log(owner == null
+                    ? 'sync: clearing a lease written by an older host, which records no owner'
+                    : 'sync: taking over a lease left by process $owner, which is gone');
+              }
+              await txn.insert(
+                'prefs',
+                {'key': syncLeaseKey, 'value': _leaseValue(now)},
+                conflictAlgorithm: ConflictAlgorithm.replace,
+              );
+              taken = true;
+            }),
+        _log);
     return taken;
   }
 
   /// Pushes the lease forward. Call after every applied page, so a long `since = 0` pull keeps it.
-  Future<void> renewLease() => store.hostPrefSet(syncLeaseKey, _leaseValue(_now().millisecondsSinceEpoch));
+  Future<void> renewLease() =>
+      store.hostPrefSet(syncLeaseKey, _leaseValue(_now().millisecondsSinceEpoch));
 
   String _leaseValue(int millis) => '$millis:$pid';
 
@@ -333,19 +339,21 @@ final class ValenceSync {
       // Persist the outcome before releasing the lease: a later run must not be overwritten.
       // A run that observed nothing writes nothing, so it cannot overwrite one that did.
       if (!nothingAttempted) {
-        await store.db.transaction((txn) async {
-          final observations = {
-            'valence.sync.reason': reason.name,
-            'valence.sync.offline': offline.toString(),
-            if (!offline && !_unauthorized && !_incomplete && only == null)
-              'valence.sync.lastSyncedAt':
-                  _now().millisecondsSinceEpoch.toString(),
-          };
-          for (final entry in observations.entries) {
-            await txn.insert('prefs', {'key': entry.key, 'value': entry.value},
-                conflictAlgorithm: ConflictAlgorithm.replace);
-          }
-        });
+        await logDatabaseWait(
+            'sync.observations',
+            () => store.db.transaction((txn) async {
+                  final observations = {
+                    'valence.sync.reason': reason.name,
+                    'valence.sync.offline': offline.toString(),
+                    if (!offline && !_unauthorized && !_incomplete && only == null)
+                      'valence.sync.lastSyncedAt': _now().millisecondsSinceEpoch.toString(),
+                  };
+                  for (final entry in observations.entries) {
+                    await txn.insert('prefs', {'key': entry.key, 'value': entry.value},
+                        conflictAlgorithm: ConflictAlgorithm.replace);
+                  }
+                }),
+            _log);
       }
     } finally {
       await releaseLease();
@@ -366,7 +374,8 @@ final class ValenceSync {
   /// Returns the rows applied. Stops early and logs when [byteBudget] is exhausted.
   Future<int> pullPair(String bucket, int schema, {int? byteBudget}) async {
     budgetExhausted = false;
-    if (config.syncMode == ValenceSyncMode.staticChunks && !config.writableBuckets.contains(bucket)) {
+    if (config.syncMode == ValenceSyncMode.staticChunks &&
+        !config.writableBuckets.contains(bucket)) {
       return _pullStatic(bucket, schema, byteBudget: byteBudget);
     }
     var applied = 0;
@@ -427,7 +436,8 @@ final class ValenceSync {
       if (byteBudget != null && spent >= byteBudget) {
         _incomplete = true;
         budgetExhausted = true;
-        _log('sync: pull $bucket v$schema hit the $byteBudget byte budget after $applied rows; backing off');
+        _log(
+            'sync: pull $bucket v$schema hit the $byteBudget byte budget after $applied rows; backing off');
         return applied;
       }
     }
@@ -463,7 +473,11 @@ final class ValenceSync {
       }
       final to = c['to'];
       final file = c['file'];
-      if (to is int && file is String && file.isNotEmpty && !file.contains('/') && !file.contains('..')) {
+      if (to is int &&
+          file is String &&
+          file.isNotEmpty &&
+          !file.contains('/') &&
+          !file.contains('..')) {
         chunks.add((to: to, file: file));
       } else {
         _incomplete = true;
@@ -563,7 +577,8 @@ final class ValenceSync {
       _log('sync: push $bucket returned a body that is not an object');
       return 0;
     }
-    if (raw['acked'] is! List || raw['rows'] is! List ||
+    if (raw['acked'] is! List ||
+        raw['rows'] is! List ||
         (raw['acked'] as List).any((a) => a is! String) ||
         (raw['rows'] as List).any((r) => !_validRow(r))) {
       _incomplete = true;
@@ -604,7 +619,8 @@ final class ValenceSync {
 
   bool _validRow(Object? r) => r is Map<String, Object?> && r['k'] is String && r['u'] is int;
 
-  ({List<Map<String, Object?>> rows, int max, bool more})? _decodePage(String body, {bool requireMore = true}) {
+  ({List<Map<String, Object?>> rows, int max, bool more})? _decodePage(String body,
+      {bool requireMore = true}) {
     final Object? raw;
     try {
       raw = jsonDecode(body);
@@ -614,7 +630,9 @@ final class ValenceSync {
     if (raw is! Map<String, Object?>) return null;
     final rows = raw['rows'];
     if (rows is! List) return null;
-    if (raw['max'] is! int || (requireMore && raw['more'] is! bool) || rows.any((r) => !_validRow(r))) {
+    if (raw['max'] is! int ||
+        (requireMore && raw['more'] is! bool) ||
+        rows.any((r) => !_validRow(r))) {
       _incomplete = true;
       return null;
     }

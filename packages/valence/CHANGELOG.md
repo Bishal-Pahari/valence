@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: startup timings and named database waits
+
+Native startup reports phase entry, completion and elapsed milliseconds through
+the existing logger. Database operations still pending after ten seconds name
+their operation and report completion or failure. No schema or app configuration
+change is needed; ship an updated Flutter host. These diagnostics preserve retries,
+transactions and user data. They provide evidence for a recurrence and do not
+establish a cause or fix for earlier Android stalls.
+
 ## Unreleased: `pendingIds()`, because a full reminder queue cannot be read back
 
 `ValenceNotifications.pendingIds()` returns the native pending queue's IDs as `List<int>`, from the

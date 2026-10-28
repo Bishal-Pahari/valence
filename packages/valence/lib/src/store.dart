@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
 
+import 'log.dart';
 import 'wire.dart';
 
 /// One row of a bucket, as `data.get` and `data.list` return it.
@@ -68,7 +69,9 @@ bool isDatabaseLocked(Object e) {
 }
 
 /// `DatabaseException(…)` wraps the message first, so anchoring here cannot reach the SQL or its args.
-final _lockedMessage = RegExp(r'^DatabaseException\((?:database is locked|database table is locked)', caseSensitive: false);
+final _lockedMessage = RegExp(
+    r'^DatabaseException\((?:database is locked|database table is locked)',
+    caseSensitive: false);
 
 /// The schema from contracts §5.1. `user_version` is carried by sqflite's own `version` argument.
 const _schemaSql = [
@@ -89,11 +92,14 @@ const _schemaSql = [
 /// isolate holds, and the next bridge call fails with `database_closed`. [open] caches one instance per
 /// path per isolate and there is deliberately no `close`.
 final class ValenceStore {
-  ValenceStore._(this.db, this.path, this.journalMode);
+  ValenceStore._(this.db, this.path, this.journalMode, this._log);
+
+  final ValenceLogger _log;
 
   static final Map<String, Future<ValenceStore>> _open = {};
 
   /// Opens (or returns the already-open) store at [path].
+  /// The first opener in an isolate supplies the cached store's [log] callback.
   ///
   /// Each isolate calls this on the same path and gets the same plugin-side connection back. A background
   /// isolate must call `DartPluginRegistrant.ensureInitialized()` before its first call, or the plugin is
@@ -102,10 +108,12 @@ final class ValenceStore {
   /// A failed open is **not** cached. The schema upgrade takes `BEGIN EXCLUSIVE`, so a background isolate
   /// opening while the UI isolate upgrades gets `SQLITE_BUSY` — and caching that rejection would make every
   /// later call in the isolate fail against a database that is now perfectly fine.
-  static Future<ValenceStore> open(String path, {DatabaseFactory? factory}) {
+  static Future<ValenceStore> open(String path,
+      {DatabaseFactory? factory, ValenceLogger log = defaultValenceLogger}) {
     final existing = _open[path];
     if (existing != null) return existing;
-    final opening = _openAt(path, factory ?? databaseFactory);
+    final opening =
+        _databaseOperation('store.open', () => _openAt(path, factory ?? databaseFactory, log), log);
     _open[path] = opening;
     return opening.catchError((Object e, StackTrace st) {
       if (_open[path] == opening) _open.remove(path);
@@ -114,7 +122,8 @@ final class ValenceStore {
     });
   }
 
-  static Future<ValenceStore> _openAt(String path, DatabaseFactory factory) async {
+  static Future<ValenceStore> _openAt(
+      String path, DatabaseFactory factory, ValenceLogger log) async {
     var mode = 'unknown';
     final db = await factory.openDatabase(
       path,
@@ -125,30 +134,37 @@ final class ValenceStore {
           // through execSQL — so `execute` throws "Queries can be performed using SQLiteDatabase query or
           // rawQuery methods only" and the app dies on its first launch, before any UI. sqflite_common_ffi,
           // the factory every `flutter test` uses, accepts `execute` here, so no unit test catches it.
-          final journal = await db.rawQuery('PRAGMA journal_mode = WAL');
-          await db.rawQuery('PRAGMA busy_timeout = 5000');
+          final journal = await _databaseOperation(
+              'store.configure', () => db.rawQuery('PRAGMA journal_mode = WAL'), log);
+          await _databaseOperation(
+              'store.configure', () => db.rawQuery('PRAGMA busy_timeout = 5000'), log);
           // rawQuery returns the mode now in effect. A filesystem that cannot do WAL answers `delete`, and
           // the concurrency the rest of the data layer assumes is gone, so report it rather than discard it.
           mode = '${journal.isEmpty ? 'unknown' : journal.first.values.first}'.toLowerCase();
         },
         onCreate: (db, _) async {
           for (final sql in _schemaSql) {
-            await db.execute(sql);
+            await _databaseOperation('store.configure', () => db.execute(sql), log);
           }
         },
         // Preserve queued payloads and their original insertion order during the v1 upgrade.
         onUpgrade: (db, from, to) async {
           if (from < 2) {
-            await db.execute('ALTER TABLE outbox RENAME TO outbox_v1');
-            await db.execute(_schemaSql[3]);
-            await db.execute('INSERT INTO outbox (id, bucket, key, value, deleted, created_at) '
-                'SELECT id, bucket, key, value, deleted, created_at FROM outbox_v1 ORDER BY rowid');
-            await db.execute('DROP TABLE outbox_v1');
+            await _databaseOperation(
+                'store.configure', () => db.execute('ALTER TABLE outbox RENAME TO outbox_v1'), log);
+            await _databaseOperation('store.configure', () => db.execute(_schemaSql[3]), log);
+            await _databaseOperation(
+                'store.configure',
+                () => db.execute('INSERT INTO outbox (id, bucket, key, value, deleted, created_at) '
+                    'SELECT id, bucket, key, value, deleted, created_at FROM outbox_v1 ORDER BY rowid'),
+                log);
+            await _databaseOperation(
+                'store.configure', () => db.execute('DROP TABLE outbox_v1'), log);
           }
         },
       ),
     );
-    return ValenceStore._(db, path, mode);
+    return ValenceStore._(db, path, mode, log);
   }
 
   /// Forgets the per-isolate cache. For tests only; it does **not** close anything.
@@ -172,13 +188,16 @@ final class ValenceStore {
 
   /// Returns a row's value, or null when it is absent or a tombstone.
   Future<Object?> get(String bucket, int schema, String key) async {
-    final rows = await db.query(
-      'kv',
-      columns: ['value'],
-      where: 'bucket = ? AND schema = ? AND key = ? AND deleted = 0',
-      whereArgs: [bucket, schema, key],
-      limit: 1,
-    );
+    final rows = await _databaseOperation(
+        'store.get',
+        () => db.query(
+              'kv',
+              columns: ['value'],
+              where: 'bucket = ? AND schema = ? AND key = ? AND deleted = 0',
+              whereArgs: [bucket, schema, key],
+              limit: 1,
+            ),
+        _log);
     if (rows.isEmpty) return null;
     return jsonDecode(rows.first['value']! as String);
   }
@@ -192,16 +211,20 @@ final class ValenceStore {
     if (keys.isEmpty) return [];
     final unique = keys.toSet();
     final marks = List.filled(unique.length, '?').join(',');
-    final rows = await db.query(
-      'kv',
-      columns: ['key', 'value', 'usn'],
-      where: 'bucket = ? AND schema = ? AND deleted = 0 AND key IN ($marks)',
-      whereArgs: [bucket, schema, ...unique],
-    );
+    final rows = await _databaseOperation(
+        'store.getMany',
+        () => db.query(
+              'kv',
+              columns: ['key', 'value', 'usn'],
+              where: 'bucket = ? AND schema = ? AND deleted = 0 AND key IN ($marks)',
+              whereArgs: [bucket, schema, ...unique],
+            ),
+        _log);
     final byKey = {for (final r in rows) r['key']! as String: r};
     return [
       for (final key in unique)
-        if (byKey[key] case final r?) ValenceRow(key, jsonDecode(r['value']! as String), r['usn']! as int),
+        if (byKey[key] case final r?)
+          ValenceRow(key, jsonDecode(r['value']! as String), r['usn']! as int),
     ];
   }
 
@@ -224,7 +247,9 @@ final class ValenceStore {
     int? limit,
     String? after,
   }) async {
-    final n = (limit == null || limit <= 0) ? defaultListLimit : (limit > maxListLimit ? maxListLimit : limit);
+    final n = (limit == null || limit <= 0)
+        ? defaultListLimit
+        : (limit > maxListLimit ? maxListLimit : limit);
     final (where, args) = _liveRowsWhere(bucket, schema, prefix);
     // `after != null`, not `after.isNotEmpty`: the empty string is a valid key — only `.` and `..` are
     // refused (§4.2) — so treating `after: ''` as "no cursor" makes a bucket whose first key is empty
@@ -233,16 +258,20 @@ final class ValenceStore {
       where.write(' AND key > ?');
       args.add(after);
     }
-    final rows = await db.query(
-      'kv',
-      columns: ['key', 'value', 'usn'],
-      where: where.toString(),
-      whereArgs: args,
-      orderBy: 'key',
-      limit: n,
-    );
+    final rows = await _databaseOperation(
+        'store.list',
+        () => db.query(
+              'kv',
+              columns: ['key', 'value', 'usn'],
+              where: where.toString(),
+              whereArgs: args,
+              orderBy: 'key',
+              limit: n,
+            ),
+        _log);
     return [
-      for (final r in rows) ValenceRow(r['key']! as String, jsonDecode(r['value']! as String), r['usn']! as int),
+      for (final r in rows)
+        ValenceRow(r['key']! as String, jsonDecode(r['value']! as String), r['usn']! as int),
     ];
   }
 
@@ -250,7 +279,8 @@ final class ValenceStore {
   /// indexed count rather than every row's JSON.
   Future<int> count(String bucket, int schema, {String? prefix}) async {
     final (where, args) = _liveRowsWhere(bucket, schema, prefix);
-    final rows = await db.rawQuery('SELECT COUNT(*) AS n FROM kv WHERE $where', args);
+    final rows = await _databaseOperation(
+        'store.count', () => db.rawQuery('SELECT COUNT(*) AS n FROM kv WHERE $where', args), _log);
     return rows.first['n']! as int;
   }
 
@@ -268,13 +298,16 @@ final class ValenceStore {
 
   /// The highest applied `usn` for one `(bucket, schema)` pair, or 0 when the pair is unknown.
   Future<int> maxUsn(String bucket, int schema) async {
-    final rows = await db.query(
-      'bucket',
-      columns: ['max_usn'],
-      where: 'name = ? AND schema = ?',
-      whereArgs: [bucket, schema],
-      limit: 1,
-    );
+    final rows = await _databaseOperation(
+        'store.maxUsn',
+        () => db.query(
+              'bucket',
+              columns: ['max_usn'],
+              where: 'name = ? AND schema = ?',
+              whereArgs: [bucket, schema],
+              limit: 1,
+            ),
+        _log);
     return rows.isEmpty ? 0 : rows.first['max_usn']! as int;
   }
 
@@ -285,7 +318,10 @@ final class ValenceStore {
   /// to be reversible. A map lets the v1 entry hide the v2 entry, so a satisfied bundle still looks
   /// unsatisfied after a successful pull (§2.3 step 7, §5.4).
   Future<Map<String, Set<int>>> syncedPairs() async {
-    final rows = await db.query('bucket', columns: ['name', 'schema'], where: 'synced_at IS NOT NULL');
+    final rows = await _databaseOperation(
+        'store.syncedPairs',
+        () => db.query('bucket', columns: ['name', 'schema'], where: 'synced_at IS NOT NULL'),
+        _log);
     final out = <String, Set<int>>{};
     for (final r in rows) {
       out.putIfAbsent(r['name']! as String, () => <int>{}).add(r['schema']! as int);
@@ -295,7 +331,8 @@ final class ValenceStore {
 
   /// Every `(bucket, schema)` pair the database holds, synced or not.
   Future<Map<String, Set<int>>> allPairs() async {
-    final rows = await db.query('bucket', columns: ['name', 'schema']);
+    final rows = await _databaseOperation(
+        'store.allPairs', () => db.query('bucket', columns: ['name', 'schema']), _log);
     final out = <String, Set<int>>{};
     for (final r in rows) {
       out.putIfAbsent(r['name']! as String, () => <int>{}).add(r['schema']! as int);
@@ -317,39 +354,45 @@ final class ValenceStore {
   Future<void> put(String bucket, String key, Object? value, {required String opId}) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     final json = value == null ? null : jsonEncode(value);
-    await db.transaction((txn) async {
-      await txn.insert(
-        'kv',
-        {
-          'bucket': bucket,
-          'schema': 1,
-          'key': key,
-          'value': json ?? 'null',
-          'usn': -1,
-          'deleted': value == null ? 1 : 0,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-      await txn.insert('outbox', {
-        'id': opId,
-        'bucket': bucket,
-        'key': key,
-        'value': json,
-        'deleted': value == null ? 1 : 0,
-        'created_at': now,
-      });
-    });
+    await _databaseOperation(
+        'store.put',
+        () => db.transaction((txn) async {
+              await txn.insert(
+                'kv',
+                {
+                  'bucket': bucket,
+                  'schema': 1,
+                  'key': key,
+                  'value': json ?? 'null',
+                  'usn': -1,
+                  'deleted': value == null ? 1 : 0,
+                },
+                conflictAlgorithm: ConflictAlgorithm.replace,
+              );
+              await txn.insert('outbox', {
+                'id': opId,
+                'bucket': bucket,
+                'key': key,
+                'value': json,
+                'deleted': value == null ? 1 : 0,
+                'created_at': now,
+              });
+            }),
+        _log);
   }
 
   /// The queued ops for [bucket], oldest first.
   Future<List<ValenceOutboxOp>> outbox(String bucket, {int limit = 200}) async {
-    final rows = await db.query(
-      'outbox',
-      where: 'bucket = ?',
-      whereArgs: [bucket],
-      orderBy: 'ordinal',
-      limit: limit,
-    );
+    final rows = await _databaseOperation(
+        'store.outbox',
+        () => db.query(
+              'outbox',
+              where: 'bucket = ?',
+              whereArgs: [bucket],
+              orderBy: 'ordinal',
+              limit: limit,
+            ),
+        _log);
     return [
       for (final r in rows)
         ValenceOutboxOp(
@@ -366,13 +409,15 @@ final class ValenceStore {
   ///
   /// The page has no other way to ask: a pending delete leaves no row, so counting `usn == -1` undercounts.
   Future<int> pendingWrites() async {
-    final rows = await db.rawQuery('SELECT COUNT(*) AS n FROM outbox');
+    final rows = await _databaseOperation(
+        'store.pendingWrites', () => db.rawQuery('SELECT COUNT(*) AS n FROM outbox'), _log);
     return rows.first['n']! as int;
   }
 
   /// Which buckets have queued ops. Used to decide what to push.
   Future<Set<String>> outboxBuckets() async {
-    final rows = await db.rawQuery('SELECT DISTINCT bucket FROM outbox');
+    final rows = await _databaseOperation(
+        'store.outboxBuckets', () => db.rawQuery('SELECT DISTINCT bucket FROM outbox'), _log);
     return {for (final r in rows) r['bucket']! as String};
   }
 
@@ -393,39 +438,43 @@ final class ValenceStore {
     bool complete = true,
   }) async {
     var applied = 0;
-    await db.transaction((txn) async {
-      final blocked = <String>{
-        for (final r in await txn.query('outbox', columns: ['key'], where: 'bucket = ?', whereArgs: [bucket]))
-          r['key']! as String,
-      };
-      for (final r in rows) {
-        final key = r['k'];
-        final usn = r['u'];
-        if (key is! String || usn is! int) continue;
-        if (blocked.contains(key)) continue;
-        final deleted = r['d'] == 1 || r['d'] == true;
-        await txn.insert(
-          'kv',
-          {
-            'bucket': bucket,
-            'schema': schema,
-            'key': key,
-            'value': jsonEncode(r['v']),
-            'usn': usn,
-            'deleted': deleted ? 1 : 0,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-        applied++;
-      }
-      await _bumpBucket(txn, bucket, schema, maxUsnAfter, synced: complete);
-    });
+    await _databaseOperation(
+        'store.applyPullPage',
+        () => db.transaction((txn) async {
+              final blocked = <String>{
+                for (final r in await txn.query('outbox',
+                    columns: ['key'], where: 'bucket = ?', whereArgs: [bucket]))
+                  r['key']! as String,
+              };
+              for (final r in rows) {
+                final key = r['k'];
+                final usn = r['u'];
+                if (key is! String || usn is! int) continue;
+                if (blocked.contains(key)) continue;
+                final deleted = r['d'] == 1 || r['d'] == true;
+                await txn.insert(
+                  'kv',
+                  {
+                    'bucket': bucket,
+                    'schema': schema,
+                    'key': key,
+                    'value': jsonEncode(r['v']),
+                    'usn': usn,
+                    'deleted': deleted ? 1 : 0,
+                  },
+                  conflictAlgorithm: ConflictAlgorithm.replace,
+                );
+                applied++;
+              }
+              await _bumpBucket(txn, bucket, schema, maxUsnAfter, synced: complete);
+            }),
+        _log);
     return applied;
   }
 
   /// Marks an empty/final static pull complete without moving its cursor.
-  Future<void> completePull(String bucket, int schema) =>
-      db.transaction((txn) => _bumpBucket(txn, bucket, schema, 0, synced: true));
+  Future<void> completePull(String bucket, int schema) => _databaseOperation('store.completePull',
+      () => db.transaction((txn) => _bumpBucket(txn, bucket, schema, 0, synced: true)), _log);
 
   /// Clears the acknowledged ops and applies the echoed rows, in one transaction.
   ///
@@ -437,33 +486,37 @@ final class ValenceStore {
     required List<String> acked,
     required List<Map<String, Object?>> rows,
   }) async {
-    await db.transaction((txn) async {
-      for (final id in acked) {
-        await txn.delete('outbox', where: 'id = ?', whereArgs: [id]);
-      }
-      final blocked = <String>{
-        for (final r in await txn.query('outbox', columns: ['key'], where: 'bucket = ?', whereArgs: [bucket]))
-          r['key']! as String,
-      };
-      for (final r in rows) {
-        final key = r['k'];
-        final usn = r['u'];
-        if (key is! String || usn is! int) continue;
-        if (blocked.contains(key)) continue;
-        await txn.insert(
-          'kv',
-          {
-            'bucket': bucket,
-            'schema': 1,
-            'key': key,
-            'value': jsonEncode(r['v']),
-            'usn': usn,
-            'deleted': (r['d'] == 1 || r['d'] == true) ? 1 : 0,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-      }
-    });
+    await _databaseOperation(
+        'store.applyPushAck',
+        () => db.transaction((txn) async {
+              for (final id in acked) {
+                await txn.delete('outbox', where: 'id = ?', whereArgs: [id]);
+              }
+              final blocked = <String>{
+                for (final r in await txn.query('outbox',
+                    columns: ['key'], where: 'bucket = ?', whereArgs: [bucket]))
+                  r['key']! as String,
+              };
+              for (final r in rows) {
+                final key = r['k'];
+                final usn = r['u'];
+                if (key is! String || usn is! int) continue;
+                if (blocked.contains(key)) continue;
+                await txn.insert(
+                  'kv',
+                  {
+                    'bucket': bucket,
+                    'schema': 1,
+                    'key': key,
+                    'value': jsonEncode(r['v']),
+                    'usn': usn,
+                    'deleted': (r['d'] == 1 || r['d'] == true) ? 1 : 0,
+                  },
+                  conflictAlgorithm: ConflictAlgorithm.replace,
+                );
+              }
+            }),
+        _log);
   }
 
   Future<void> _bumpBucket(
@@ -516,36 +569,44 @@ final class ValenceStore {
     if (schemas.isEmpty) return const {};
     final counts = <String, int>{};
     // ATTACH outside a transaction: SQLite refuses it inside one.
-    await db.execute('ATTACH DATABASE ? AS valence_seed', [seedPath]);
+    await _databaseOperation('store.importSeed',
+        () => db.execute('ATTACH DATABASE ? AS valence_seed', [seedPath]), _log);
     try {
       final pairs = {
         for (final e in schemas.entries) e.key: {e.value, ...?additionalSchemas[e.key]},
       };
-      for (final e in [for (final b in pairs.entries) for (final n in b.value) MapEntry(b.key, n)]) {
+      for (final e in [
+        for (final b in pairs.entries)
+          for (final n in b.value) MapEntry(b.key, n)
+      ]) {
         final from = await maxUsn(e.key, e.value);
-        await db.transaction((txn) async {
-          await txn.rawInsert(
-            'INSERT OR REPLACE INTO kv (bucket, schema, key, value, usn, deleted) '
-            'SELECT bucket, schema, key, value, usn, deleted FROM valence_seed.kv '
-            'WHERE bucket = ? AND schema = ? AND usn > ?',
-            [e.key, e.value, from],
-          );
-          // rawInsert returns a last-insert-rowid, which is meaningless on a WITHOUT ROWID table: it reads
-          // as 1 for a seed of thousands and looks like a failed import. changes() is the row count.
-          final changed = await txn.rawQuery('SELECT changes() AS n');
-          counts[e.key] = (counts[e.key] ?? 0) + (changed.first['n']! as int);
-          final seedMax = await txn.rawQuery(
-            'SELECT MAX(usn) AS m FROM valence_seed.kv WHERE bucket = ? AND schema = ?',
-            [e.key, e.value],
-          );
-          final m = seedMax.first['m'];
-          if (m is int && m > from) {
-            await _bumpBucket(txn, e.key, e.value, m, synced: false);
-          }
-        });
+        await _databaseOperation(
+            'store.importSeed',
+            () => db.transaction((txn) async {
+                  await txn.rawInsert(
+                    'INSERT OR REPLACE INTO kv (bucket, schema, key, value, usn, deleted) '
+                    'SELECT bucket, schema, key, value, usn, deleted FROM valence_seed.kv '
+                    'WHERE bucket = ? AND schema = ? AND usn > ?',
+                    [e.key, e.value, from],
+                  );
+                  // rawInsert returns a last-insert-rowid, which is meaningless on a WITHOUT ROWID table: it reads
+                  // as 1 for a seed of thousands and looks like a failed import. changes() is the row count.
+                  final changed = await txn.rawQuery('SELECT changes() AS n');
+                  counts[e.key] = (counts[e.key] ?? 0) + (changed.first['n']! as int);
+                  final seedMax = await txn.rawQuery(
+                    'SELECT MAX(usn) AS m FROM valence_seed.kv WHERE bucket = ? AND schema = ?',
+                    [e.key, e.value],
+                  );
+                  final m = seedMax.first['m'];
+                  if (m is int && m > from) {
+                    await _bumpBucket(txn, e.key, e.value, m, synced: false);
+                  }
+                }),
+            _log);
       }
     } finally {
-      await db.execute('DETACH DATABASE valence_seed');
+      await _databaseOperation(
+          'store.importSeed', () => db.execute('DETACH DATABASE valence_seed'), _log);
     }
     return counts;
   }
@@ -568,10 +629,15 @@ final class ValenceStore {
         'requires it (contracts §2.4)',
       );
     }
-    await db.transaction((txn) async {
-      await txn.delete('kv', where: 'bucket = ? AND schema = ?', whereArgs: [bucket, schema]);
-      await txn.delete('bucket', where: 'name = ? AND schema = ?', whereArgs: [bucket, schema]);
-    });
+    await _databaseOperation(
+        'store.dropPair',
+        () => db.transaction((txn) async {
+              await txn
+                  .delete('kv', where: 'bucket = ? AND schema = ?', whereArgs: [bucket, schema]);
+              await txn
+                  .delete('bucket', where: 'name = ? AND schema = ?', whereArgs: [bucket, schema]);
+            }),
+        _log);
   }
 
   /// Deletes every row, cursor and queued write of the given writable [buckets] (contracts §4.4).
@@ -594,32 +660,40 @@ final class ValenceStore {
     var ops = 0;
     final marks = List.filled(buckets.length, '?').join(', ');
     final names = buckets.toList();
-    await db.transaction((txn) async {
-      if (!discardPending) {
-        final queued = (await txn.rawQuery('SELECT COUNT(*) AS n FROM outbox')).first['n']! as int;
-        if (queued > 0) {
-          throw BridgeError(
-            BridgeErrorCode.pending,
-            '$queued local write${queued == 1 ? ' has' : 's have'} not reached the server, and ${queued == 1 ? 'it belongs' : 'they belong'} '
-            'to the account being signed out. Sync them first, or pass {"discardPending": true} to '
-            'delete them unsent (contracts §4.4).',
-          );
-        }
-      }
-      // Only the bucket-named deletes are conditional: `bucket IN ()` is not SQL. The outbox check
-      // above, the outbox delete and the freshness reset below are not about any particular bucket,
-      // and skipping the lot when the set is empty is how a host that dropped its last writable
-      // bucket could switch account over queued writes without ever seeing E_PENDING — and push them
-      // under the new account's token the day the bucket came back.
-      if (buckets.isNotEmpty) {
-        rows = await txn.delete('kv', where: 'bucket IN ($marks)', whereArgs: names);
-        await txn.delete('bucket', where: 'name IN ($marks)', whereArgs: names);
-      }
-      ops = await txn.delete('outbox');
-      // The freshness observations describe the account that just left. Left behind, sync.status()
-      // answers 'synced a minute ago' over the new account's empty buckets, before it has ever synced.
-      await txn.delete('prefs', where: 'key IN (?, ?, ?)', whereArgs: ['valence.sync.lastSyncedAt', 'valence.sync.offline', 'valence.sync.reason']);
-    });
+    await _databaseOperation(
+        'store.clearWritable',
+        () => db.transaction((txn) async {
+              if (!discardPending) {
+                final queued =
+                    (await txn.rawQuery('SELECT COUNT(*) AS n FROM outbox')).first['n']! as int;
+                if (queued > 0) {
+                  throw BridgeError(
+                    BridgeErrorCode.pending,
+                    '$queued local write${queued == 1 ? ' has' : 's have'} not reached the server, and ${queued == 1 ? 'it belongs' : 'they belong'} '
+                    'to the account being signed out. Sync them first, or pass {"discardPending": true} to '
+                    'delete them unsent (contracts §4.4).',
+                  );
+                }
+              }
+              // Only the bucket-named deletes are conditional: `bucket IN ()` is not SQL. The outbox check
+              // above, the outbox delete and the freshness reset below are not about any particular bucket,
+              // and skipping the lot when the set is empty is how a host that dropped its last writable
+              // bucket could switch account over queued writes without ever seeing E_PENDING — and push them
+              // under the new account's token the day the bucket came back.
+              if (buckets.isNotEmpty) {
+                rows = await txn.delete('kv', where: 'bucket IN ($marks)', whereArgs: names);
+                await txn.delete('bucket', where: 'name IN ($marks)', whereArgs: names);
+              }
+              ops = await txn.delete('outbox');
+              // The freshness observations describe the account that just left. Left behind, sync.status()
+              // answers 'synced a minute ago' over the new account's empty buckets, before it has ever synced.
+              await txn.delete('prefs', where: 'key IN (?, ?, ?)', whereArgs: [
+                'valence.sync.lastSyncedAt',
+                'valence.sync.offline',
+                'valence.sync.reason'
+              ]);
+            }),
+        _log);
     return (rows, ops);
   }
 
@@ -656,20 +730,42 @@ final class ValenceStore {
 
   static void _refuseReservedPrefKey(String key) {
     if (key == 'valence' || key.startsWith('valence.')) {
-      throw BridgeError(BridgeErrorCode.denied, 'the "valence." pref prefix is reserved for the host');
+      throw BridgeError(
+          BridgeErrorCode.denied, 'the "valence." pref prefix is reserved for the host');
     }
   }
 
   Future<String?> _prefGet(String key) async {
-    final rows = await db.query('prefs', columns: ['value'], where: 'key = ?', whereArgs: [key], limit: 1);
+    final rows = await _databaseOperation(
+        'store.prefGet',
+        () => db.query('prefs', columns: ['value'], where: 'key = ?', whereArgs: [key], limit: 1),
+        _log);
     return rows.isEmpty ? null : rows.first['value']! as String;
   }
 
   Future<void> _prefSet(String key, String? value) async {
     if (value == null) {
-      await db.delete('prefs', where: 'key = ?', whereArgs: [key]);
+      await _databaseOperation(
+          'store.prefSet', () => db.delete('prefs', where: 'key = ?', whereArgs: [key]), _log);
       return;
     }
-    await db.insert('prefs', {'key': key, 'value': value}, conflictAlgorithm: ConflictAlgorithm.replace);
+    await _databaseOperation(
+        'store.prefSet',
+        () => db.insert('prefs', {'key': key, 'value': value},
+            conflictAlgorithm: ConflictAlgorithm.replace),
+        _log);
   }
 }
+
+// Keep lock classification out of the generic timing helper and never print SQL/args.
+Future<T> _databaseOperation<T>(String operation, Future<T> Function() action, ValenceLogger log) =>
+    logDatabaseWait(operation, () async {
+      try {
+        return await action();
+      } catch (error) {
+        if (isDatabaseLocked(error)) {
+          diagnosticLog(log, 'store: database locked operation=$operation');
+        }
+        rethrow;
+      }
+    }, log);
