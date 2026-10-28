@@ -29,7 +29,8 @@ your send backend together before upgrading that major version.
 
 Use your Firebase project to register your exact Android application id, add
 `google-services.json` to `android/app/`, and apply the Google services Gradle
-plugin. The example declares plugin 4.4.4 and applies it only when the file exists.
+plugin in your push host. The core example deliberately omits that plugin;
+adding the push package also requires this native setup.
 Declare `android.permission.POST_NOTIFICATIONS` in the main Android manifest.
 The phone/emulator needs compatible Google Play services. Never put a service
 account key in the app, web output, or repository.
