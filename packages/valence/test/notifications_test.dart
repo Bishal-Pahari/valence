@@ -140,12 +140,11 @@ void main() {
     expect(logs.single, contains('ic_stat_valence'));
     expect(
         await degraded.schedule(
-            id: 1,
-            title: 'Reminder',
-            at: now.millisecondsSinceEpoch + 3600000),
+            id: 1, title: 'Reminder', at: now.millisecondsSinceEpoch + 3600000),
         {'id': 1, 'timing': 'blocked'});
     expect(await degraded.permission(request: true), isFalse);
     expect(await degraded.pending(), isEmpty);
+    expect(await degraded.pendingIds(), isEmpty);
     expect(await degraded.badge(3), isFalse);
     await degraded.cancel(1);
     await degraded.channel(id: 'daily', name: 'Daily');
@@ -153,7 +152,9 @@ void main() {
     expect(platform.sends, 0);
     expect(platform.prompts, 0);
     // Parameter validation still runs, so a page cannot learn the service is absent from an accepted call.
-    expect(() => degraded.schedule(id: -1, title: 'x', at: now.millisecondsSinceEpoch + 1000),
+    expect(
+        () => degraded.schedule(
+            id: -1, title: 'x', at: now.millisecondsSinceEpoch + 1000),
         throwsA(isA<BridgeError>()));
   });
 

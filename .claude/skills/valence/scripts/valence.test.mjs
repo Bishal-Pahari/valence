@@ -42,7 +42,7 @@ const TEMPLATES = join(import.meta.dirname, '..', 'templates');
 // Listed here rather than per test, because every new runtime capability has to land in exactly one place
 // for the "an older app still codegens" cases to keep meaning what they say.
 const SINCE_ABOVE_4 = {
-  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings', 'notify.permission', 'notify.schedule', 'notify.cancel', 'notify.pending', 'notify.initial', 'notify.channels.set', 'badge.set', 'badge.clear', 'push.token', 'push.permission', 'push.initial', 'share.image'],
+  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings', 'notify.permission', 'notify.schedule', 'notify.cancel', 'notify.pending', 'notify.pendingIds', 'notify.initial', 'notify.channels.set', 'badge.set', 'badge.clear', 'push.token', 'push.permission', 'push.initial', 'share.image'],
   events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online', 'link.opened', 'permissions.changed', 'notify.tapped', 'notify.action', 'push.received', 'push.tapped', 'push.tokenChanged'],
   types: ['SyncStatus', 'AppState', 'BundleStatus', 'Link', 'PermissionState', 'NotifyScheduled', 'NotifyPending', 'PushMessage'],
 };
@@ -237,7 +237,7 @@ const editSchema = (root, fn) => {
 test('task restoration is optional, shape-frozen and delegated to the package', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 15);
+  assert.equal(schema.version, 16);
   assert.equal(schema.methods['state.save'].since, 8);
   assert.equal(schema.methods['state.restore'].since, 8);
   codegen({ root, cfg });
@@ -1386,6 +1386,7 @@ test('schema 15 fields are nullable and additive against a recorded schema 14', 
   const { root, cfg, key } = fixture({ latest: true });
   editSchema(root, s => {
     s.version = 14;
+    delete s.methods['notify.pendingIds'];
     delete s.types.AppInfo.builtins;
     delete s.types.SyncStatus.reason;
     delete s.types.BundleStatus.urgent;
@@ -2032,7 +2033,7 @@ test('push builtins freeze permission and nullable initial-message shapes', () =
 test('push uses reserved schema 12 while older app-owned push shapes remain custom', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 15);
+  assert.equal(schema.version, 16);
   assert.equal(schema.methods['auth.account'].since, 13);
   for (const group of ['methods', 'events']) {
     for (const [name, def] of Object.entries(schema[group])) {
@@ -2046,6 +2047,7 @@ test('push uses reserved schema 12 while older app-owned push shapes remain cust
   assert.match(ts, /'push.initial': 12/);
   editSchema(root, (s) => {
     s.version = 11;
+    delete s.methods['notify.pendingIds'];
     delete s.types.AppInfo.builtins;
     delete s.methods['share.image'];
     delete s.methods['auth.account'];
@@ -2061,4 +2063,22 @@ test('push uses reserved schema 12 while older app-owned push shapes remain cust
   const dart = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8');
   assert.match(dart, /Future<bool> pushToken\(PushTokenParams p\)/);
   assert.doesNotMatch(dart, /valence.pushToken\(/);
+});
+
+ test('schema 16 pending IDs are additive, shape-frozen and delegated', () => {
+  const { root, cfg, key } = fixture({ latest: true });
+  const latest = readFileSync(schemaFile(root), 'utf8');
+  editSchema(root, s => { s.version = 15; delete s.methods['notify.pendingIds']; });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  writeFileSync(schemaFile(root), latest);
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  assert.match(dart, /return valence.notifications.pendingIds\(\)/);
+  assert.match(ts, /'notify.pendingIds': 16/);
+  editSchema(root, s => { s.methods['notify.pendingIds'].returns = 'string[]'; });
+  assert.throws(() => codegen({ root, cfg }), /must return/);
+  writeFileSync(schemaFile(root), latest);
+  editSchema(root, s => { s.methods['notify.pendingIds'].since = 15; });
+  assert.throws(() => codegen({ root, cfg }), /since|below/);
 });

@@ -72,6 +72,7 @@ const BUILTINS = {
     call: (t) => `return [for (final r in await valence.notifications.pending()) ${t}.fromJson(r)];`,
   },
   'notify.initial': { params: {}, returns: 'json?', call: () => 'return valence.notifications.initial();' },
+  'notify.pendingIds': { minSince: 16, params: {}, returns: 'int[]', call: () => 'return valence.notifications.pendingIds();' },
   'notify.channels.set': {
     params: { id: 'string', name: 'string', importance: 'string?', sound: 'string?', group: 'string?', groupName: 'string?' },
     returns: 'void',

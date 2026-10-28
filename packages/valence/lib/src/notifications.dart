@@ -237,6 +237,13 @@ final class ValenceNotifications {
     ];
   }
 
+  /// Returns the native queue's IDs without copying notification content into a reply.
+  Future<List<int>> pendingIds() async {
+    await initialize();
+    if (_unavailable != null) return const [];
+    return [for (final r in await _platform.pending()) r.id];
+  }
+
   /// Cancels only this ID. Never cancel-all during a rolling-window refill.
   Future<void> cancel(int id) => _serial(() async {
         _id(id);

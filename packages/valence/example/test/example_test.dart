@@ -27,6 +27,9 @@ class _Handlers extends AppHandlers {
 class _LocalHttpOverrides extends HttpOverrides {}
 
 class _Notifications extends ValenceNotificationPlatform {
+  final rows = <PendingNotificationRequest>[];
+  @override
+  Future<List<PendingNotificationRequest>> pending() async => rows.toList();
   @override
   Future<NotificationResponse?> initialize(
     String icon,
@@ -64,6 +67,7 @@ void main() {
   Future<_Handlers> handlers({
     ValenceConfig? config,
     ValencePush? push,
+    ValenceNotificationPlatform? notifications,
   }) async => _Handlers(
     await Valence.open(
       // The OTA and sync hosts in the example config are .invalid, so nothing can leave the machine.
@@ -77,7 +81,7 @@ void main() {
         ),
       ),
       supportDir: support,
-      notificationPlatform: _Notifications(),
+      notificationPlatform: notifications ?? _Notifications(),
 
       push: push,
     ),
@@ -98,6 +102,60 @@ void main() {
     return jsonDecode(await bridgeDispatch(h, raw, nonce: nonce))
         as Map<String, Object?>;
   }
+
+  test(
+    'full notification content exceeds the reply cap but every pending ID remains readable',
+    () async {
+      final native = _Notifications();
+      final h = await handlers(notifications: native);
+      expect((await dispatch(h, 'notify.pendingIds'))['v'], isEmpty);
+      final ids = List.generate(64, (i) => i == 63 ? 2147483647 : i);
+      native.rows.addAll([
+        for (final id in ids)
+          PendingNotificationRequest(
+            id,
+            't' * 256,
+            'b' * 4096,
+            jsonEncode({'valence': 'local-v1', 'payload': 'p' * 4096}),
+          ),
+      ]);
+      expect(
+        ((await dispatch(h, 'notify.pending'))['e']! as Map)['code'],
+        BridgeErrorCode.tooLarge,
+      );
+      final reply = await dispatch(h, 'notify.pendingIds');
+      expect(reply['ok'], isTrue);
+      expect(reply['v'], ids);
+      expect(utf8.encode(jsonEncode(reply)).length, lessThan(262144));
+      expect(
+        native.rows.length,
+        64,
+      ); // Reading never cancels or re-arms anything.
+      expect(
+        ((await dispatch(h, 'notify.pendingIds', withNonce: 'wrong'))['e']!
+            as Map)['code'],
+        BridgeErrorCode.denied,
+      );
+      expect(
+        ((await dispatch(h, 'notify.pendingIds', params: {'extra': true}))['e']!
+            as Map)['code'],
+        BridgeErrorCode.params,
+      );
+      final disabled = await handlers(
+        config: ValenceConfig(
+          appId: valenceConfig.appId,
+          keyring: valenceConfig.keyring,
+          bridgeVersion: hostBridgeVersion,
+          otaBase: valenceConfig.otaBase,
+          syncBase: valenceConfig.syncBase,
+        ),
+      );
+      expect(
+        ((await dispatch(disabled, 'notify.pendingIds'))['e']! as Map)['code'],
+        BridgeErrorCode.unsupported,
+      );
+    },
+  );
 
   test('the generated config carries what the spec compiles into a host', () {
     expect(valenceConfig.appId, 'com.getvalence.example');
@@ -348,8 +406,8 @@ void main() {
     () async {
       final h = await handlers();
       final info = (await dispatch(h, 'app.info'))['v']! as Map;
-      expect(info['builtins'], 15);
-      expect(info['bridge'], 15);
+      expect(info['builtins'], 16);
+      expect(info['bridge'], 16);
       expect(
         ((await dispatch(h, 'sync.status'))['v']! as Map)['reason'],
         isNull,
