@@ -144,6 +144,23 @@ void main() {
     }
   }
 
+  Future<void> waitFor(
+      WidgetTester tester, bool Function() completed, String description) async {
+    // Verification and SQLite use real I/O; a fixed sleep races other test files.
+    final elapsed = Stopwatch()..start();
+    while (!completed() && elapsed.elapsed < const Duration(seconds: 5)) {
+      await io(tester);
+    }
+    expect(completed(), isTrue, reason: '$description: ${log.lines}');
+    await tester.pump();
+  }
+
+  Future<void> waitForPending(WidgetTester tester) => waitFor(
+      tester,
+      () => runtime.state.pending == trial.seq &&
+          runtime.bundleStatus().reason == ValenceBundleReason.ready,
+      'verified pending update');
+
   Future<void> mount(WidgetTester tester,
       {bool pending = false, bool blocked = false}) async {
     if (pending) {
@@ -294,9 +311,20 @@ void main() {
     connectivity.add(['none']);
     await io(tester);
     expect(pointerRequests(), before);
-    respond = serveTrial;
+    final gate = Completer<void>();
+    addTearDown(() {
+      if (!gate.isCompleted) gate.complete();
+    });
+    respond = (request) async {
+      if (request.url.path.endsWith('/manifests/20.json')) await gate.future;
+      return serveTrial(request);
+    };
     connectivity.add(['none', 'wifi']);
     await io(tester);
+    expect(pointerRequests(), before + 1);
+    expect(runtime.state.pending, isNull);
+    gate.complete();
+    await waitForPending(tester);
     final after = runtime.bundleStatus();
     expect(pointerRequests(), before + 1);
     expect(after.reason, ValenceBundleReason.ready);
@@ -337,19 +365,26 @@ void main() {
   testWidgets('background reconnect syncs but leaves the update check to resume',
       (tester) async {
     await mount(tester);
-    await io(tester);
+    final controller = webview.controller;
+    controller.navigation.finished(controller.loads.last.toString());
+    // Reconnect must start after startup releases its lease, not race a busy sync.
+    await waitFor(tester,
+        () => controller.scripts.any((s) => s.contains('sync.done')),
+        'startup sync completion');
     await lifecycle(tester, AppLifecycleState.paused);
     final before = pointerRequests();
     final syncBefore = requests.where((url) => url.contains('sync.test')).length;
     connectivity.add(['none']);
     connectivity.add(['wifi']);
-    await io(tester);
+    await waitFor(tester,
+        () => requests.where((url) => url.contains('sync.test')).length > syncBefore,
+        'background reconnect sync request');
     expect(runtime.appState().online, isTrue);
     expect(pointerRequests(), before);
     expect(requests.where((url) => url.contains('sync.test')).length, greaterThan(syncBefore));
     respond = serveTrial;
     await lifecycle(tester, AppLifecycleState.resumed);
-    await io(tester);
+    await waitForPending(tester);
     expect(pointerRequests(), before + 1);
     expect(runtime.state.pending, trial.seq);
   });
