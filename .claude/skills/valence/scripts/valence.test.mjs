@@ -2088,7 +2088,6 @@ test('push uses reserved schema 12 while older app-owned push shapes remain cust
   assert.match(ts, /'push.initial': 12/);
   editSchema(root, (s) => {
     s.version = 11;
-    delete s.methods['notify.pendingIds'];
     delete s.types.AppInfo.builtins;
     delete s.methods['notify.pendingIds'];
     delete s.methods['share.image'];
