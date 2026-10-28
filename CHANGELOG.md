@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased: say which SDKs every Valence binary carries
+
+The docs said a host that does not configure push needs no Firebase. That is true of the runtime and
+false of the binary: `firebase_core` and `firebase_messaging` are unconditional dependencies of the
+`valence` package, alongside `flutter_local_notifications` and `app_badge_plus`, so an offline app
+with no account, no push and no reminders still ships them. `FirebaseInitProvider` runs on every
+launch and logs that it found no default options, and FCM registers a service in the merged manifest.
+
+Play's Data safety form and Apple's privacy manifest ask about SDKs that are **present**, not SDKs
+that are reached, so if you are submitting a Valence app, declare them as present and unused: no
+token is registered and nothing is collected without a configured push adapter. You cannot remove
+them — `dependency_overrides` re-points a package, it does not drop one.
+
+No code changed. Moving push into a separate `valence_push` package that an app adds when it declares
+`push.*` is the real fix and is not in 0.4. The store-policy, remote-push and contracts text now say
+all of this where an adopter will read it.
+
+## Unreleased: codegen refuses a built-in declared below its reserved since
+
+A built-in's `since` is the version the runtime reserved for that name, not a number your app
+chooses — the delegation is only generated at or above it. Declaring one below made the name
+app-owned silently: codegen emitted an abstract handler, `ValenceBuiltins` did not satisfy it, the
+host stopped compiling with a message that looked like the package had forgotten to ship something,
+and writing the handler by hand compiled and reimplemented a built-in.
+
+`codegen` now refuses it and names the number to use. Four names carry a floor, because they were in
+use as app-owned methods before the built-ins existed: `notify.*` and `badge.*` at 11, `push.*` at
+12, and `share.image` at 14. Every other built-in still delegates at any `since`.
+
+Only a declaration carrying the built-in's **own signature** is refused — that is what copying the
+template and renumbering it produces. A method of your own under one of those names, with its own
+params and return, keeps its abstract handler exactly as before, and so does a name your recorded
+store schema already shipped.
+
+If codegen now fails for you, raise that method's `since` to the number the message gives. Your
+schema's own `version` is unaffected. The permissions guide, which told you to assign your app's next
+version to copied built-ins, is corrected, and the bridge guide has the floors in one table.
+
 ## Unreleased: a sync scoped to nothing can no longer report success
 
 `sync.now({ buckets })` naming only buckets the host does not have — a typo, or a

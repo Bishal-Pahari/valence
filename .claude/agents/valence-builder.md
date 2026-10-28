@@ -65,7 +65,9 @@ Your job is the part that is genuinely this app's:
   needed, and a missing one is a blank screen on first launch with nothing in the log.
 - **Platform files the package cannot write:**
   - Android `network_security_config.xml` permitting cleartext for `127.0.0.1` **only**, referenced from
-    `AndroidManifest.xml`, plus `dataExtractionRules` and `fullBackupContent` excluding `valence/`;
+    `AndroidManifest.xml`, plus `dataExtractionRules` and `fullBackupContent` excluding `valence/`
+    (this bounds the WebView and platform HTTP stacks, not native Dart HTTP — see §4.5 before granting
+    an `http.origins` entry);
   - iOS ATS loopback exception per the stack check, never `NSAllowsArbitraryLoads`, and
     `NSURLIsExcludedFromBackupKey` on the `valence/` directory from `AppDelegate`;
   - background sync: `Valence.backgroundSync(valenceConfig)` is the callable; registering it with

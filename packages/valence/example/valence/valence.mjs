@@ -236,7 +236,18 @@ const BUILTINS = {
 };
 
 // Preserve app-owned notification and push shapes predating the built-ins.
-const builtinFor = (m) => m.since < (BUILTINS[m.name]?.minSince ?? 1) || (/^(notify\.|badge\.)/.test(m.name) && m.since < 11) || (m.name.startsWith('push.') && m.since < 12) ? undefined : BUILTINS[m.name];
+// The one `since` at or above which the package implements a built-in. Below it the name is the app's own,
+// which is how a pre-11 custom `notify.*` keeps its shipped signature — and the trap `assertReservedSince`
+// closes, because below it codegen emits an abstract handler that `ValenceBuiltins` does not satisfy.
+const reservedSince = (name) => {
+  if (!(name in BUILTINS)) return null;
+  const own = BUILTINS[name].minSince ?? 1;
+  if (/^(notify\.|badge\.)/.test(name)) return Math.max(own, 11);
+  if (name.startsWith('push.')) return Math.max(own, 12);
+  return own;
+};
+
+const builtinFor = (m) => (m.name in BUILTINS && m.since >= reservedSince(m.name) ? BUILTINS[m.name] : undefined);
 
 const SEED_SQL = `
 CREATE TABLE kv (bucket TEXT NOT NULL, schema INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, usn INTEGER NOT NULL,
@@ -857,6 +868,36 @@ export function loadPluginSchema(root, cfg) {
   return { schema, owners, namespaces };
 }
 
+/// Refuses a built-in declared below the `since` the runtime reserved for it, **at the built-in's own
+/// signature** — which is what copying the template and renumbering it produces.
+///
+/// Below the reserved number codegen emits an abstract handler and `ValenceBuiltins` does not implement
+/// it, so the host stops compiling with a message that points at the package rather than at the schema,
+/// and an app that reacts by writing the handler itself has silently reimplemented a built-in.
+///
+/// A declaration with a *different* signature is a genuinely app-owned method that predates the built-in
+/// (a custom `notify.daily`-style reminder, a `push.token` that took a provider), and §6.5 promises to
+/// preserve it, so the signature is the discriminator and no store baseline is needed to read it. A name
+/// the recorded store schema already carries is let through whatever its shape, because that one really
+/// did ship.
+export function assertReservedSince(s, storeSchema) {
+  const shipped = new Set(storeSchema ? parseSchema(storeSchema).methods.map((m) => m.name) : []);
+  for (const m of s.methods) {
+    const want = BUILTINS[m.name];
+    if (builtinFor(m) || !want || shipped.has(m.name)) continue;
+    const got = Object.fromEntries(m.params.map((f) => [f.name, typeString(f.type)]));
+    const optional = want.optionalParams ?? {};
+    const required = Object.fromEntries(Object.entries(got).filter(([f]) => !(f in optional)));
+    const sameParams = canonical(required) === canonical(want.params);
+    const sameReturns = typeof want.returns !== 'string' || typeString(m.returns) === want.returns;
+    if (!sameParams || !sameReturns) continue; // the app's own method, with its own shape
+    const reserved = reservedSince(m.name);
+    throw new Error(
+      `"${m.name}" has the built-in's own signature but "since": ${m.since}, below the ${reserved} the runtime reserves for that name — so the delegation is not generated, ValenceBuiltins will not satisfy the abstract handler, and writing it by hand reimplements a built-in. Use "since": ${reserved}: a built-in's since is reserved, even though your schema's own version is yours. (A method of your own under this name, with a different signature, is preserved as it always was.)`,
+    );
+  }
+}
+
 export function parseSchema(schema, pluginMethods = new Set(), pluginNamespaces = new Set()) {
   const version = int(schema.version, 'schema.version', 1);
   const types = schema.types ?? {};
@@ -1396,8 +1437,10 @@ export function codegen({ root, cfg, check = false }) {
   const p = paths(root, cfg);
   const { schema: raw, owners, namespaces } = loadPluginSchema(root, cfg);
   const s = parseSchema(raw, owners, namespaces);
+  const storeSchema = readBaseline(p).storeSchema;
   assertBuiltinShapes(s);
-  assertAdditive(readBaseline(p).storeSchema, raw);
+  assertReservedSince(s, storeSchema);
+  assertAdditive(storeSchema, raw);
   const keyring = existsSync(p.keyring) ? readJson(p.keyring) : {};
   if (!Object.keys(keyring).length) throw new Error('keyring.json is empty. Run "valence keygen" first.');
   const outputs = [
@@ -1527,6 +1570,17 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
     }
     if (Array.isArray(cfg.http?.origins) && cfg.http.origins.some((value) => typeof value !== 'string' || /[\s\\]/.test(value))) throw new Error('http.origins contains whitespace or backslashes');
     genDartConfig(cfg, readJson(p.keyring)); // Native token origins have the stricter exact-origin rule.
+    // §4.5: the grant is live in release builds, and Android's network security XML does not bound native
+    // Dart HTTP, so an emulator-host or LAN origin left in a config ships the host token over cleartext.
+    const cleartext = (cfg.http?.origins ?? []).filter((value) => {
+      try {
+        const u = new URL(value);
+        return u.protocol === 'http:' && !['127.0.0.1', 'localhost', '[::1]', '::1'].includes(u.hostname);
+      } catch { return false; }
+    });
+    if (cleartext.length) {
+      return `http.origins grants cleartext to ${cleartext.join(', ')}; that grant is live in release builds and carries the host token (§4.5). Use HTTPS for anything off-device`;
+    }
   }, 'use HTTP(S) URLs in web.connect and exact trusted origins in http.origins; run codegen and ship a store build for native origin changes');
   await check('stack report', () => {
     if (!existsSync(join(root, '.valence', 'stack-check.md'))) return 'missing .valence/stack-check.md; run the docs-scout phase';

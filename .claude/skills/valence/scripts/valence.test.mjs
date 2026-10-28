@@ -165,7 +165,15 @@ test('dev CLI denies LAN before spawning and passes explicit LAN consent through
   writeFileSync(join(web, 'package.json'), JSON.stringify({ scripts: { dev: 'node probe.cjs' } }));
   writeFileSync(join(web, 'probe.cjs'), "require('node:fs').writeFileSync('started.json', JSON.stringify(process.argv.slice(2)))");
   const entry = join(import.meta.dirname, '../../../../bin/valence.mjs');
-  const runDev = (args) => spawnSync(process.execPath, [entry, '--root', root, ...args], { encoding: 'utf8', timeout: 30_000 });
+  // The two accepted invocations each spawn the real `npm run dev` the wizard spawns, so each pays an npm
+  // cold start — minutes under load on Windows, and a 30-second budget timed out here on 2026-10-28 with
+  // nothing in the assertion to say why. The budget is generous and the timeout is now named, because this
+  // is the only end-to-end proof that --allow-lan is required before the child starts.
+  const runDev = (args) => {
+    const r = spawnSync(process.execPath, [entry, '--root', root, ...args], { encoding: 'utf8', timeout: 120_000 });
+    assert.ok(!r.error || r.error.code !== 'ETIMEDOUT', `valence ${args.join(' ')} exceeded its 120s budget rather than failing a check`);
+    return r;
+  };
   const denied = runDev(['dev', '--device-host', '192.168.1.20']);
   assert.equal(denied.status, 1);
   assert.match(denied.stderr, /requires --allow-lan/);
@@ -878,6 +886,19 @@ test('doctor fails unsafe database names and browser/native origins with actiona
     cfg.http = { origins: [origin] };
     assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'connection origins'));
   }
+  // §4.5: a native origin grant is live in release builds and carries the host token, and Android's
+  // network security XML does not bound native Dart HTTP — so an emulator-host or LAN origin left in a
+  // config is a cleartext token leak that nothing else in the toolchain mentions.
+  for (const origin of ['http://10.0.2.2:8787', 'http://192.168.0.5:8787', 'http://api.internal']) {
+    cfg.http = { origins: [origin] };
+    const row = (await diagnose({ root, cfg })).find(([, n]) => n === 'connection origins');
+    assert.equal(row[0], 'WARN', origin);
+    assert.match(row[2], /grants cleartext/);
+  }
+  for (const origin of ['http://127.0.0.1:8787', 'http://localhost:4330', 'https://api.example.com']) {
+    cfg.http = { origins: [origin] };
+    assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'PASS' && n === 'connection origins'), origin);
+  }
 });
 
 test('doctor checks the notification icon exists and survives release resource shrinking', async () => {
@@ -1003,6 +1024,77 @@ test('a schema shipped in a store build is additive only', () => {
   assert.throws(() => codegen({ root, cfg }), /cannot change/);
   editSchema(root, (s) => delete s.methods['haptics.tap']);
   assert.throws(() => codegen({ root, cfg }), /cannot be removed/);
+});
+
+test('the package reports the built-in revision the template schema is at', () => {
+  // `AppInfo.builtins` is the runtime's own capability revision (§4), in the same number space as the
+  // reserved schema versions the CLI owns. Nothing else compares the two, and both sides are literals:
+  // a release that bumps the template and adds an optional param to a built-in would leave every page's
+  // `(info.builtins ?? 0) >= <new>` gate false for ever, with every gate in the repo still green.
+  const schema = JSON.parse(readFileSync(join(TEMPLATES, 'bridge.schema.json'), 'utf8'));
+  const declared = /this\.builtins = (\d+)[,;]/.exec(readFileSync(join(PKG, 'lib', 'src', 'runtime.dart'), 'utf8'));
+  assert.ok(declared, 'AppInfo.builtins default not found in packages/valence/lib/src/runtime.dart');
+  assert.equal(Number(declared[1]), schema.version,
+    'AppInfo.builtins and the template schema version must move together');
+});
+
+test('a built-in declared below its reserved since is refused, unless the store build shipped it', () => {
+  const { root, cfg } = fixture({ latest: true });
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  const at = (name, since) => {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, (s) => {
+      // The app numbers its own history, so a reader of the permissions guide picks "the next reserved
+      // version for your app" — which for most apps is below the number the runtime reserved.
+      s.methods[name].since = since;
+    });
+  };
+
+  // Below the reserved number the delegation is not generated: codegen emits an abstract handler that
+  // ValenceBuiltins does not implement, so the host stops compiling with a message that points at the
+  // package. Writing that handler by hand compiles, and silently reimplements a built-in.
+  at('notify.schedule', 8);
+  assert.throws(() => codegen({ root, cfg }), /"since": 8, below the 11/);
+  at('badge.set', 10);
+  assert.throws(() => codegen({ root, cfg }), /below the 11/);
+  at('push.token', 8);
+  assert.throws(() => codegen({ root, cfg }), /below the 12/);
+  at('share.image', 13);
+  assert.throws(() => codegen({ root, cfg }), /"since": 13, below the 14/);
+
+  // §6.5 promises to preserve a method of the app's own under one of these names, and the signature is
+  // what tells the two apart: a renumbered copy of the template has the built-in's shape, a method that
+  // predates the built-in has its own. This is the shape a 0.3 app carried before push existed.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => (s.methods['push.token'] = { since: 8, params: { provider: 'string' }, returns: 'bool' }));
+  assert.ok(codegen({ root, cfg }).written.length);
+
+  // Only names the runtime actually reserves have a floor. `permissions.*` has none, so an app that
+  // numbers it from its own history still delegates — which is why the permissions guide's "assign the
+  // next reserved version for your app" is true of permissions and wrong everywhere else.
+  at('permissions.check', 2);
+  assert.ok(codegen({ root, cfg }).written.length);
+
+  // At the reserved number it delegates, which is the whole fix: nothing else about the schema changes.
+  writeFileSync(schemaFile(root), pristine);
+  assert.ok(codegen({ root, cfg }).written.length);
+
+  // An app-owned method that merely shares the namespace is untouched: that is the documented way to keep
+  // a reminder method you shipped before schema 11 existed.
+  editSchema(root, (s) => (s.methods['notify.daily'] = { since: 8, params: { title: 'string', at: 'int' }, returns: 'void' }));
+  assert.ok(codegen({ root, cfg }).written.length);
+
+  // And a built-in *name* below the reserved number is allowed when the recorded store build shipped it:
+  // then it really is the app's, with a signature its pages already call. That is the only way an app
+  // reaches this state, because the guard refuses the declaration that has never shipped.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => {
+    s.methods['notify.cancel'] = { since: 8, params: { id: 'int' }, returns: 'void' };
+  });
+  const shipped = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
+  mkdirSync(join(root, '.valence'), { recursive: true });
+  writeFileSync(join(root, '.valence', 'baseline.json'), JSON.stringify({ storeSeq: 1, storeSchema: shipped }));
+  assert.ok(codegen({ root, cfg }).written.length);
 });
 
 test('a built-in may be omitted but not redefined, because the package implements it', () => {
