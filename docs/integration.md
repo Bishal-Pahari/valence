@@ -1,6 +1,93 @@
 # Integration validation - 2026-10-28
 
+## October 28 refresh on the latest built-in compatibility checks
+
+**In plain terms.** Both integration branches now start from packages code
+`131f7ef45a39de17ff7ada2f706817e96de28152` and site
+`61c06d1bacf9e900df7c90af7833622f5b8a131a`. All earlier implementation branches
+are already merged upstream. Each refresh was a fast-forward, with no feature
+conflict or repeated merge. All eighteen checked tips are ancestors of packages
+in both repos: R8, R7, R6, R3, R4, R5, R9, R10, R14, R17 and R19-R26. The ordered
+source/merge SHA table below remains the historical integration record. No
+eligible must-have todo or in-progress/changes-requested item exists to claim.
+
+The carried upstream changes protect replacement OS snapshots across accounts
+and signed bundles; keep the host alive when native notifications cannot start;
+check the Android icon and keep.xml in doctor; and prevent a sync scope matching
+nothing from erasing the last real outcome. The newest commit additionally
+refuses a newly renumbered built-in at its built-in signature while preserving
+recorded and differently shaped custom methods, warns about off-device cleartext
+HTTP grants, and documents the fixed builtins revision. The site corrects the
+permissions number, demonstrates generated notification delegation and discloses
+that the native notification, badge and Firebase SDKs ship unconditionally.
+
+Decision: preserve these security, data and adoption protections, live drafts,
+existing databases, shipped custom signatures and reserved schema numbers. No
+runtime, generator or template patch is added by this run; no version or store
+baseline changes. Kundalini F-57/F-59/F-60/F-61 have source/docs remedies to adopt.
+F-58's disclosure mismatch is corrected; unconditional Firebase dependencies
+remain an explicit adoption cost, without a new store-policy acceptance claim.
+
+Read-only inputs remain Kundalini findings/iteration 13 and app-a findings/
+iteration 14, rechecked as the newest reports before handoff. App-a F-36 concerns
+its supplied archives rejecting documented nullable SyncStatus.reason. Current
+source tests accept the addition against a schema-14 store baseline, which does
+not establish that matching archives reached the app. No archive was replaced.
+Its cancelled release build and absent Android boot baseline in iteration 14
+supply no fresh app runtime failure or device pass. F-33/F-35 remain unisolated;
+preserve the app's receipt/rejection safeguards pending matching-snapshot
+adoption and device evidence. Integration gates do not certify beta acceptance.
+
+Fresh gates on the newest heads named above:
+
+| Gate | Result |
+|---|---|
+| Root npm test | 95 passed, zero skipped; compiled generated Dart, nullable additions and built-in compatibility/doctor regressions included |
+| Runtime flutter test --concurrency=1 | 533 passed |
+| Runtime dart analyze --fatal-infos . | No issues |
+| Example flutter test --concurrency=1 | 26 passed |
+| Bridge tests / strict-verbatim TypeScript | 29 passed, zero skipped / passed |
+| Bridge npm pack --dry-run | Passed |
+| Runtime flutter pub publish --dry-run | Zero warnings |
+| Example flutter build apk --debug | Passed with process-local resource limits; assembleDebug 302.7 seconds |
+| Site npm run build | 41 pages and SEO checks passed |
+
+Earlier attempts retain their own scope:
+
+- Code 73b3e79 / site 4c83c8e passed 92 root tests with zero skips, 531 runtime
+  tests, clean analysis, 26 example tests, bridge tests/type-check/pack and the
+  zero-warning pub dry run. The overlapping site attempt was cancelled after its
+  npm preamble. Its old-head APK attempt was cancelled when packages advanced.
+- Code 4197e08 / site 5797dba passed 93 root tests with zero skips and bridge
+  tests/type-check/pack. Its runtime attempt was stopped when packages advanced;
+  it is not a pass. A wrapper log-path error then occurred before a new test
+  executed and was corrected without a source change.
+- Code dc73877 / site 2fbc974 completed every gate: 93 root tests with zero skips,
+  533 runtime tests, 26 example tests, 29 bridge tests, clean analysis and strict
+  TypeScript, both packaging dry runs, a debug APK and 41-page site/SEO build.
+  The default APK attempt was cancelled after the host reported 346,460 KiB free
+  memory. The bounded retry passed assembleDebug in 1,352.7 seconds. No compiler
+  or runtime cause for the slow execution was established. A JVM thread snapshot
+  was collected during the live attempt; no runtime defect was reproduced or
+  patched, and no speculative regression test was added.
+
+The newest APK build uses the same process-local GRADLE_OPTS as the completed
+bounded build: 1,536 MiB heap, 768 MiB metaspace, 128 MiB code cache, one worker,
+no parallel execution and a single-use Gradle daemon. The earlier daemon and its
+Kotlin child were observed using the requested heap cap. Tracked Gradle settings,
+test timeouts and assertions are unchanged. No other builder's process was
+stopped. Cancelled attempts are not build/compiler passes or diagnosed failures.
+
+No emulator or independent review session ran. Prior release APK, AOT-exclusion
+and device evidence retains its original date and scope. Firebase delivery still
+needs the maintainer project; iOS remains experimental and untested. No test-app
+writes, packages/main commits or merges, pushes or publications.
+
 ## October 28 Kundalini iteration-13 acceptance findings
+
+Historical record for report tips 863aa44 / 1c54206. The source observations and
+acceptance statuses in this section describe that candidate; see the refresh
+above for subsequent fixes and current validation.
 
 **In plain terms.** The newest input is now Kundalini iteration 13, alongside
 app-a iteration 13 and both VALENCE_FINDINGS.md files, read without modifying
