@@ -2108,3 +2108,21 @@ test('push uses reserved schema 12 while older app-owned push shapes remain cust
   assert.match(dart, /Future<bool> pushToken\(PushTokenParams p\)/);
   assert.doesNotMatch(dart, /valence.pushToken\(/);
 });
+
+ test('schema 16 pending IDs are additive, shape-frozen and delegated', () => {
+  const { root, cfg, key } = fixture({ latest: true });
+  const latest = readFileSync(schemaFile(root), 'utf8');
+  editSchema(root, s => { s.version = 15; delete s.methods['notify.pendingIds']; });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  writeFileSync(schemaFile(root), latest);
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  assert.match(dart, /return valence.notifications.pendingIds\(\)/);
+  assert.match(ts, /'notify.pendingIds': 16/);
+  editSchema(root, s => { s.methods['notify.pendingIds'].returns = 'string[]'; });
+  assert.throws(() => codegen({ root, cfg }), /must return/);
+  writeFileSync(schemaFile(root), latest);
+  editSchema(root, s => { s.methods['notify.pendingIds'].since = 15; });
+  assert.throws(() => codegen({ root, cfg }), /since|below/);
+});

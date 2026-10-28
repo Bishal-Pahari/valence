@@ -248,3 +248,5 @@ or apply call also logs a `dev:` diagnostic. A successful call in this mode does
 OTA transition. Restart without `VALENCE_DEV_URL` for signed offline and rollback validation.
 
 Sync outcomes are an open string set: `ok`, `busy`, `offline`, `unauthorized`, `failed`. A non-200 or invalid protocol response reports `failed`, including a 401 sent to a request without a bearer token. Only a bearer-bearing 401 expires authentication. Partial changes remain applied, queued writes remain available for retry, and incomplete runs never advance the last successful unscoped timestamp. Treat every non-`ok` outcome as incomplete, even when `changed` is positive. See contracts section 5.6.
+
+Schema 16 adds `notify.pendingIds()` for cancellation by difference even when full notification content exceeds the bridge reply cap. Keep `notify.pending()` unchanged; declare the new method at `since: 16`, regenerate, ship a store build and guard it with `has()`. Disabled hosts still deny the group. No delivery guarantee is added; iOS remains experimental and untested.
