@@ -465,6 +465,7 @@ async function init(o) {
     } else {
       const gen = codegen({ root, cfg });
       ok('codegen', gen.written.length ? gen.written.map((f) => posix(relative(root, f))).join(', ') : 'up to date');
+      for (const w of gen.warnings) warn('codegen', w);
     }
 
     const pm = packageManager(root, dep.file);
@@ -517,6 +518,9 @@ function update(o) {
   for (const f of s.backedUp) warn('removed', `${f} (no longer shipped; you had edited it, so it was renamed to .bak)`);
   if (attrs) ok('git config', `.gitattributes +${attrs}`);
   ok('codegen', gen.written.length ? gen.written.map((f) => posix(relative(root, f))).join(', ') : 'up to date');
+  // `update` is the fix for a generator older than the runtime, so it is also the best place to say a
+  // name still looks unrecognised — if one survives this run, updating was not what the schema needed.
+  for (const w of gen.warnings) warn('codegen', w);
   console.log(`\n  Review the diff, run your tests, and commit. ${dim('Then: claude "/valence doctor"')}\n`);
 }
 

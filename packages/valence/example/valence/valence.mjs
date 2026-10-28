@@ -86,6 +86,7 @@ const BUILTINS = {
   'badge.set': { params: { n: 'int' }, returns: 'bool', call: () => 'return valence.notifications.badge(p.n);' },
   'badge.clear': { params: {}, returns: 'bool', call: () => 'return valence.notifications.badge(0);' },
 
+  // The optional valence_push transport is injected natively; wire delegation stays in core.
   'push.token': { params: {}, returns: 'string?', call: () => 'return valence.pushToken();' },
   'push.permission': {
     params: { request: 'bool?' }, returns: 'string',
@@ -254,6 +255,28 @@ const reservedSince = (name) => {
 };
 
 const builtinFor = (m) => (m.name in BUILTINS && m.since >= reservedSince(m.name) ? BUILTINS[m.name] : undefined);
+
+// The areas the package ships built-ins in, derived from the table rather than listed twice.
+const BUILTIN_AREAS = new Set(Object.keys(BUILTINS).map((n) => n.split('.')[0]));
+
+/// Warns about a method in one of the package's own areas that this CLI has no built-in for.
+///
+/// It is generated as the app's own either way, so a built-in shipped *after* this copy of the CLI and a
+/// method the app genuinely owns produce the same output: an abstract member of `BridgeHandlers` that
+/// `ValenceBuiltins` does not satisfy. That reads as "the package has not shipped this yet", which sends
+/// you off to write a native implementation of something the package already has — the dead end K F-62
+/// hit at the right `since`, with the right docs, against a vendored CLI that predated the method.
+///
+/// A warning rather than a refusal: §6.5 promises an app-owned `notify.daily` keeps working, and refusing
+/// it to catch a stale generator would break the apps the promise was made to.
+export function staleToolingWarnings(s) {
+  return s.methods
+    .filter((m) => !m.plugin && !(m.name in BUILTINS) && BUILTIN_AREAS.has(m.name.split('.')[0]))
+    .map(
+      (m) =>
+        `"${m.name}" is generated as your own method, but "${m.name.split('.')[0]}." is an area the valence package ships built-ins in and this CLI has no built-in by that name. If a guide introduced it as a built-in, your tooling is older than the runtime you are reading about: run "npx create-valence update". If the method is genuinely yours, nothing is wrong — but note it will stay yours, so ValenceBuiltins will not implement it and your host must.`,
+    );
+}
 
 const SEED_SQL = `
 CREATE TABLE kv (bucket TEXT NOT NULL, schema INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, usn INTEGER NOT NULL,
@@ -895,7 +918,7 @@ export function assertReservedSince(s, storeSchema) {
     const optional = want.optionalParams ?? {};
     const required = Object.fromEntries(Object.entries(got).filter(([f]) => !(f in optional)));
     const sameParams = canonical(required) === canonical(want.params);
-    const sameReturns = typeof want.returns !== 'string' || typeString(m.returns) === want.returns;
+    const sameReturns = builtinReturnMatches(m, want.returns, s);
     if (!sameParams || !sameReturns) continue; // the app's own method, with its own shape
     const reserved = reservedSince(m.name);
     throw new Error(
@@ -1336,28 +1359,46 @@ export function assertBuiltinShapes(s) {
       }
       continue;
     }
-    const type = s.types.find((t) => t.name === m.returns.base);
-    // The required fields must be there, exactly. Beyond them only this built-in's own optional fields are
-    // allowed, each at its declared type — that is what makes a runtime able to add one (rule 5) without
-    // every app on the older shape failing codegen.
-    const optional = want.returns.optional ?? {};
-    const fields = Object.fromEntries((type?.fields ?? []).map((f) => [f.name, typeString(f.type)]));
-    const required = Object.fromEntries(Object.entries(fields).filter(([f]) => !(f in optional)));
-    const extras = Object.entries(fields).filter(([f]) => f in optional);
-    const bad =
-      !!m.returns.nullable !== !!want.returns.nullable ||
-      !!m.returns.list !== !!want.returns.list ||
-      !type ||
-      canonical(required) !== canonical(want.returns.fields) ||
-      extras.some(([f, t]) => t !== optional[f]);
-    if (bad) {
+    if (!builtinReturnMatches(m, want.returns, s)) {
+      const optional = want.returns.optional ?? {};
       const allowed = Object.keys(optional).length ? ` It may also carry ${Object.entries(optional).map(([f, t]) => `"${f}": ${t}`).join(', ')}.` : '';
+      // A field this CLI has never heard of is the shape a stale vendored copy produces: the runtime grew
+      // an optional field (rule 5), the guide that documents it is newer than this generator, and the
+      // message above would otherwise blame the schema for declaring exactly what the docs said to.
+      const type = s.types.find((t) => t.name === m.returns.base);
+      const unknown = (type?.fields ?? [])
+        .map((f) => f.name)
+        .filter((f) => !(f in want.returns.fields) && !(f in optional));
+      const stale = unknown.length
+        ? ` This CLI does not know the field${unknown.length > 1 ? 's' : ''} ${unknown.map((f) => `"${f}"`).join(', ')} at all. If a guide introduced ${unknown.length > 1 ? 'them' : 'it'} as a new optional field, your tooling is older than the runtime you are reading about: run "npx create-valence update" and try again.`
+        : '';
       throw new Error(
-        `"${m.name}" is implemented by the valence package, so it must return ${show(want.returns)}, not "${typeString(m.returns)}". The type's name is yours; its fields are not.${allowed}`,
+        `"${m.name}" is implemented by the valence package, so it must return ${show(want.returns)}, not "${typeString(m.returns)}". The type's name is yours; its fields are not.${allowed}${stale}`,
       );
     }
   }
 }
+
+/// Whether a method's return matches a built-in's structured return: the required fields exactly, and
+/// beyond them only this built-in's own optional fields at their declared types — which is what lets the
+/// runtime add one (rule 5) without failing codegen for every app still on the older shape.
+///
+/// Shared with `assertReservedSince`, which needs the same answer to tell a renumbered copy of the
+/// template from a method of the app's own. Comparing only the params there made every structured-return
+/// built-in look like a match, so an app-owned `notify.pending` returning `string[]` was refused as a
+/// renumbered built-in — the opposite of what §6.5 promises (CR-20261029-1).
+const builtinReturnMatches = (m, wantReturns, s) => {
+  if (typeof wantReturns === 'string') return typeString(m.returns) === wantReturns;
+  const type = s.types.find((t) => t.name === m.returns.base);
+  if (!type || !!m.returns.nullable !== !!wantReturns.nullable || !!m.returns.list !== !!wantReturns.list) return false;
+  const optional = wantReturns.optional ?? {};
+  const fields = Object.fromEntries(type.fields.map((f) => [f.name, typeString(f.type)]));
+  const required = Object.fromEntries(Object.entries(fields).filter(([f]) => !(f in optional)));
+  return (
+    canonical(required) === canonical(wantReturns.fields) &&
+    Object.entries(fields).every(([f, t]) => !(f in optional) || t === optional[f])
+  );
+};
 
 const typeString = (t) => `${t.base}${t.list ? '[]' : ''}${t.nullable ? '?' : ''}`;
 
@@ -1454,13 +1495,14 @@ export function codegen({ root, cfg, check = false }) {
     [p.dart, genDart(s)],
     [p.dartConfig, genDartConfig(cfg, keyring)],
   ];
+  const warnings = staleToolingWarnings(s);
   const stale = outputs.filter(([f, text]) => !existsSync(f) || normalize(readFileSync(f, 'utf8')) !== normalize(text)).map(([f]) => f);
   if (check) {
     if (stale.length) throw new Error(`generated files are stale, run "valence codegen":\n  ${stale.join('\n  ')}`);
-    return { written: [] };
+    return { written: [], warnings };
   }
   for (const [f, text] of outputs) if (stale.includes(f)) writeFile(f, text);
-  return { written: stale };
+  return { written: stale, warnings };
 }
 
 // ---------- CLI ----------
@@ -1499,7 +1541,10 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
   };
   const p = paths(root, cfg);
   const host = resolve(root, cfg.host.dir);
-  await check('generated code', () => { codegen({ root, cfg, check: true }); });
+  // WARN, not FAIL: the generated code really is current for this CLI, and the method may genuinely be the
+  // app's. But `doctor` is the first thing run when a built-in "has not shipped yet", so it is where the
+  // stale-generator reading belongs (K F-62).
+  await check('generated code', () => codegen({ root, cfg, check: true }).warnings.join(' ') || undefined);
   await check('native plugin registration', () => {
     const { namespaces, owners } = loadPluginSchema(root, cfg);
     if (!namespaces.size) return;
@@ -1818,7 +1863,11 @@ export async function main(argv) {
   if (cmd === 'dev') return dev({ root, cfg, webDir: v['web-dir'], port: v.port, deviceHost: v['device-host'], allowLan: v['allow-lan'] });
 
   if (cmd === 'keygen') return log(keygen({ root, cfg }));
-  if (cmd === 'codegen') return log(codegen({ root, cfg, check: v.check }));
+  if (cmd === 'codegen') {
+    const r = codegen({ root, cfg, check: v.check });
+    for (const w of r.warnings) console.warn(`warning: ${w}`);
+    return log({ written: r.written });
+  }
   if (cmd === 'bundle') {
     const r = bundle({
       root,

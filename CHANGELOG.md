@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased: a stale generator says so, and a push transport must state `hasNotification`
+
+If your vendored `valence/valence.mjs` is older than the runtime you are reading about, a real built-in
+is to it just an unknown name in an area the package owns — so it generated that name as *your* method,
+silently, and your host stopped compiling with `Missing concrete implementation of
+'BridgeHandlers.notifyPendingIds'`. That reads as "the package has not shipped this yet", which is the
+one conclusion that sends you off to reimplement a built-in by hand. Two apps hit this in one week, from
+both directions: a whole method (`notify.pendingIds`, schema 16) and one documented optional field
+(`SyncStatus.reason`, schema 15).
+
+- `codegen` now **warns** when a method's area is one the package ships built-ins in but the name is one
+  it has never heard of, and names `npx create-valence update`. `doctor`'s `generated code` row turns to
+  `WARN` with the same sentence. A warning and not an error, because an app-owned `notify.daily` from
+  before schema 11 is still supported: if the method really is yours, nothing is wrong.
+- When a built-in's returned type is declared with a field the generator has no entry for, the rejection
+  **names that field** and the same command, instead of only blaming your schema for declaring what the
+  docs told you to.
+- **Habit worth forming:** run `npx create-valence update` before trusting a `since` for any built-in,
+  and check the generated `ValenceBuiltins` carries the delegation rather than an abstract member.
+
+**You must change this if you wrote your own push transport.** `ValencePushMessage`'s `hasNotification`
+is now a **required** argument with no default. Hosts using `valence_push` are unaffected — it already
+passes it. `false` is the permissive answer, because it is the half of the data-only check that lets a
+payload trigger a sync, and core no longer derives it for you now that the transport is yours. The
+default meant a transport that never considered the field turned every notification carrying
+`{"valence":"sync"}` into a background sync. Pass `message.notification != null`, or your provider's
+equivalent; omitting it is a compile error rather than a silent fail-open.
+
+Also fixed: an app-owned method under a built-in's name that differed only in its **return type** was
+refused as a renumbered built-in, because the signature comparison looked only at the params — so
+`notify.pending` returning `string[]` could not be declared at all, against §6.5's promise to preserve
+it. Sync's own lease and observation writes now carry the `database locked` label §5.1.1 promises rather
+than only a timing line. The remote-push guide carries the Google services Gradle wiring again, the last
+in-repo copy of which the Firebase split removed.
+
 ## Unreleased: Firebase is an opt-in native package
 
 Core-only Valence hosts no longer depend on Firebase. Remote push hosts must add

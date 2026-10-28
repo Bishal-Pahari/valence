@@ -166,6 +166,21 @@ test('the runtime version the wizard declares matches all runtime packages in th
   assert.equal(push.match(/^version: (.+)$/m)[1].trim(), declared, 'packages/valence_push');
 });
 
+test('the example vendors the skill’s CLI byte for byte, so the reference app cannot run a different generator', () => {
+  // `packages/valence/example` is the repo's own Valence app, and like every app it vendors
+  // `valence/valence.mjs`. Nothing compared the two copies, and `VALENCE_VERSION` is equal in both
+  // whatever they contain — so the skill's copy gained a line in one merge and the example's did not,
+  // which is exactly the stale-vendored-CLI state K F-62 reports from the other side. Inert while the
+  // drift is a comment; the next one generates different Dart in the app the gates are run against.
+  const skill = readFileSync(join(PKG, '.claude', 'skills', 'valence', 'scripts', 'valence.mjs'), 'utf8');
+  const vendored = readFileSync(join(PKG, 'packages', 'valence', 'example', 'valence', 'valence.mjs'), 'utf8');
+  assert.equal(
+    vendored,
+    skill,
+    'packages/valence/example/valence/valence.mjs has drifted; re-copy .claude/skills/valence/scripts/valence.mjs over it',
+  );
+});
+
 test('packing the bridge rebuilds dist, so a tarball can never ship stale compiled types', () => {
   // K F-52: packages/bridge ships `files: ["dist"]`, and dist/ is gitignored build output. From
   // 2026-10-17 to 2026-10-27 nobody ran `npm run build` there, so every `npm pack` — the release

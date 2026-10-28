@@ -1069,6 +1069,19 @@ test('a built-in declared below its reserved since is refused, unless the store 
   editSchema(root, (s) => (s.methods['push.token'] = { since: 8, params: { provider: 'string' }, returns: 'bool' }));
   assert.ok(codegen({ root, cfg }).written.length);
 
+  // The same promise when only the *return* differs. `notify.pending` takes no params, so the params
+  // cannot tell a renumbered copy of the template from an app's own reminder list — and comparing only
+  // them made every structured-return built-in match, refusing this schema with no baseline recorded
+  // (CR-20261029-1). An app-owned list of reminder ids as strings is exactly what §6.5 preserves.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => (s.methods['notify.pending'] = { since: 8, params: {}, returns: 'string[]' }));
+  assert.ok(codegen({ root, cfg }).written.length);
+
+  // And the renumbered copy of the template is still caught, structured return and all.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => (s.methods['notify.pending'].since = 8));
+  assert.throws(() => codegen({ root, cfg }), /"since": 8, below the 11/);
+
   // Only names the runtime actually reserves have a floor. `permissions.*` has none, so an app that
   // numbers it from its own history still delegates — which is why the permissions guide's "assign the
   // next reserved version for your app" is true of permissions and wrong everywhere else.
@@ -1097,6 +1110,38 @@ test('a built-in declared below its reserved since is refused, unless the store 
   assert.ok(codegen({ root, cfg }).written.length);
 });
 
+test('a name in one of the package’s own areas that this CLI has never heard of is named as stale tooling', async () => {
+  const { root, cfg } = fixture({ latest: true });
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+
+  // K F-62: the app adopted a real built-in at its real reserved `since`, against a vendored CLI that
+  // predated the method. codegen wrote both files and said nothing, because an unrecognised name in a
+  // reserved area is generated as the app's own — so the host stopped compiling with "Missing concrete
+  // implementation", which reads as "the package has not shipped this yet" and sends you off to write a
+  // native implementation of something the package already has.
+  editSchema(root, (s) => (s.methods['notify.somethingNewer'] = { since: 16, params: {}, returns: 'void' }));
+  const r = codegen({ root, cfg });
+  assert.ok(r.written.length); // still generated: it may genuinely be the app's method (§6.5)
+  assert.match(r.warnings.join('\n'), /"notify\.somethingNewer"/);
+  assert.match(r.warnings.join('\n'), /create-valence update/);
+
+  // doctor is the first thing run when a built-in "has not shipped yet", so the row warns rather than
+  // passing silently — and it is still a WARN, because the generated code really is current for this CLI.
+  const rows = await diagnose({ root, cfg, run: () => ({ status: 0, stdout: '' }) });
+  const generated = rows.find(([, name]) => name === 'generated code');
+  assert.equal(generated[0], 'WARN');
+  assert.match(generated[2], /create-valence update/);
+
+  // The template says nothing: every built-in it declares is one this CLI knows, including the
+  // three-part `notify.channels.set`.
+  writeFileSync(schemaFile(root), pristine);
+  assert.deepEqual(codegen({ root, cfg }).warnings, []);
+
+  // And a method outside every built-in area is the ordinary case, with nothing to warn about.
+  editSchema(root, (s) => (s.methods['shelf.list'] = { since: 1, params: {}, returns: 'void' }));
+  assert.deepEqual(codegen({ root, cfg }).warnings, []);
+});
+
 test('a built-in may be omitted but not redefined, because the package implements it', () => {
   const { root, cfg } = fixture();
   // The generated ValenceBuiltins delegates these to the valence package. A schema that keeps the name
@@ -1118,6 +1163,16 @@ test('a built-in may be omitted but not redefined, because the package implement
   bad((s) => (s.methods['data.list'].returns = 'Row'), /a type with \{key, value, usn\}\[\]/);
   // A field the runtime added is still refused at the wrong type.
   bad((s) => (s.types.SyncResult.reason = 'int'), /fields are not/);
+  // A F-36: a field this generator has never heard of is the shape a *stale* vendored CLI produces — the
+  // runtime grew an optional field, the guide documenting it is newer than the generator, and the message
+  // blamed the schema for declaring exactly what the docs said to. It now names the field and the command.
+  bad((s) => (s.types.SyncResult.queuedFor = 'string?'), /does not know the field "queuedFor"[\s\S]*create-valence update/);
+  bad(
+    (s) => Object.assign(s.types.SyncResult, { queuedFor: 'string?', attemptedAt: 'int?' }),
+    /does not know the fields "queuedFor", "attemptedAt"[\s\S]*create-valence update/,
+  );
+  // A field it does know, at the wrong type, is the app's own mistake and says nothing about tooling.
+  bad((s) => (s.types.SyncResult.reason = 'int'), /its fields are not\.(?![\s\S]*create-valence update)/);
   // §4.4's methods are built-ins like the rest. A nullable `value` would make secure.set a second delete,
   // silently, on a method whose whole point is that clearing a credential is explicit.
   bad((s) => (s.methods['secure.set'].params.value = 'string?'), /must stay/);
