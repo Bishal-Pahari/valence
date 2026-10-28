@@ -29,8 +29,30 @@ your send backend together before upgrading that major version.
 
 Use your Firebase project to register your exact Android application id, add
 `google-services.json` to `android/app/`, and apply the Google services Gradle
-plugin in your push host. The core example deliberately omits that plugin;
-adding the push package also requires this native setup.
+plugin in your push host. The core example deliberately omits that plugin, so
+there is no copy of this wiring left in the repo to crib from — it takes two
+files. Declare it in `android/settings.gradle.kts`:
+
+```kotlin
+plugins {
+    // …the Flutter, Android and Kotlin plugins already there
+    id("com.google.gms.google-services") version "4.4.4" apply false
+}
+```
+
+and apply it in `android/app/build.gradle.kts`:
+
+```kotlin
+plugins {
+    id("com.android.application")
+    id("kotlin-android")
+    id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
+}
+```
+
+Miss either half and `Firebase.initializeApp()` throws on missing default
+options at launch, so the failure is loud rather than silent.
 Declare `android.permission.POST_NOTIFICATIONS` in the main Android manifest.
 The phone/emulator needs compatible Google Play services. Never put a service
 account key in the app, web output, or repository.

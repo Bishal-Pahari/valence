@@ -32,6 +32,7 @@ Valence is an open-source architecture for shipping a web UI inside a Flutter ap
    - The tests need Node ≥ 22.18, because the bridge test imports TypeScript through type stripping.
    - The generated-Dart test needs `flutter` on PATH, because the generated code imports `package:valence`. If it skips, say so, and don't count it as passed.
    - `packages/valence` has its own gates, and `npm test` does **not** run them: `flutter test`, `dart analyze --fatal-infos .`, `flutter pub publish --dry-run` (warning-free), and `flutter build apk --debug` in `example/`.
+     - After that APK build, `python3 example/tool/check_no_firebase.py` is what backs the claim in §7 and the §8 R27 rows that a core-only host ships no Firebase: it reads the manifest and every DEX file in the artifact. It is the one gate in this repo that needs `python3`. Nothing else does, so if it is unavailable say the Firebase audit did not run rather than counting the APK build as the evidence.
    - `packages/valence_push` also requires `flutter test`, `dart analyze --fatal-infos .` and a warning-free `flutter pub publish --dry-run`. Its local `pubspec_overrides.yaml` resolves the unpublished core during development; uploads exclude that override.
    - `packages/bridge` likewise: `node --test test/*.test.ts`, `npx -y -p typescript tsc -p tsconfig.json`, and `npm pack --dry-run`.
 3. **The CLI stays zero-dependency** (Node ≥ 22.13: `node:crypto`, `node:sqlite`, `node:util`). Bump `VALENCE_VERSION` in `valence.mjs` when its behaviour changes.

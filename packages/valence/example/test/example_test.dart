@@ -126,7 +126,9 @@ void main() {
       final reply = await dispatch(h, 'notify.pendingIds');
       expect(reply['ok'], isTrue);
       expect(reply['v'], ids);
-      expect(utf8.encode(jsonEncode(reply)).length, lessThan(262144));
+      // The cap itself, not a copy of today's number: this is the one test that proves the ids reply
+      // fits where the full snapshot does not, so it has to move if §4.2's cap ever moves.
+      expect(utf8.encode(jsonEncode(reply)).length, lessThan(maxMessageBytes));
       expect(
         native.rows.length,
         64,
