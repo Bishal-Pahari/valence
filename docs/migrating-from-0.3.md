@@ -254,4 +254,4 @@ Local reminders: enable Android core library desugaring even in hosts that leave
 
 ## Optional remote push
 
-Schema 5 adds opt-in push methods/events. Add the schema and regenerate, configure Firebase and ship a native store build before using them. Firebase dependencies require iOS 15.0 even if push is disabled. Android delivery/image/silent-sync validation is blocked pending a maintainer project; iOS/APNs remains experimental and untested. See [Remote push](remote-push.md).
+Schema 12 adds opt-in push methods/events. Add the schema and regenerate, configure Firebase and ship a native store build before using them. Install `valence_push` and pass `createFirebasePush()` after Firebase initialization. Only push hosts inherit Firebase's iOS 15.0 minimum; core-only hosts do not resolve Firebase. Android delivery/image/silent-sync validation is blocked pending a maintainer project; iOS/APNs remains experimental and untested. See [Remote push](remote-push.md).

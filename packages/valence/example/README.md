@@ -111,7 +111,14 @@ The example schema is 16, with notification methods and events since 11, `notify
 
 ## Remote push demo
 
-Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** Add your own `android/app/google-services.json`, then `flutter run --dart-define=VALENCE_PUSH=true`. The Google services Gradle plugin is conditional on that file. The page checks/requests permission and reports registration without displaying the token. [Full setup](../../../docs/remote-push.md). The checked-in signed built-in bundle contains the push controls; it stays offline and reports E_UNSUPPORTED until configured. iOS hosts must target 15.0 or later for the Firebase dependencies.
+The signed page retains schema-12 push controls, but this example intentionally
+has no Firebase dependency, configuration or initialization. Calls report
+`E_UNSUPPORTED`. `VALENCE_PUSH=true` no longer enables Firebase. To exercise push,
+add `valence_push` and direct Firebase imports, configure the native project and
+initialize `createFirebasePush()` as shown in [the setup guide](../../../docs/remote-push.md).
+A native rebuild is required; no signing or bridge-schema change is needed for
+these existing controls. Device delivery needs a maintainer Firebase project;
+iOS/APNs remains experimental and untested.
 
 Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent. Older hosts omit them. See [capability revisions and durable status](https://getvalence.pages.dev/docs/guides/capabilities-and-status/).
 

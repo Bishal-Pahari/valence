@@ -4,11 +4,6 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Optional project configuration supplied locally by the maintainer for push tests.
-if (file("google-services.json").exists()) {
-    apply(plugin = "com.google.gms.google-services")
-}
-
 android {
     namespace = "com.getvalence.valence_example"
     compileSdk = flutter.compileSdkVersion

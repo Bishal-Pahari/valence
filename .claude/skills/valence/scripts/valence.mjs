@@ -86,6 +86,7 @@ const BUILTINS = {
   'badge.set': { params: { n: 'int' }, returns: 'bool', call: () => 'return valence.notifications.badge(p.n);' },
   'badge.clear': { params: {}, returns: 'bool', call: () => 'return valence.notifications.badge(0);' },
 
+  // The optional valence_push transport is injected natively; wire delegation stays in core.
   'push.token': { params: {}, returns: 'string?', call: () => 'return valence.pushToken();' },
   'push.permission': {
     params: { request: 'bool?' }, returns: 'string',

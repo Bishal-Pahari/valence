@@ -1547,22 +1547,28 @@ validation; Android cold/warm intents and `pm verify-app-links`/`pm set-app-link
 
 ### 6.4 Remote push (schema 12, opt-in)
 
-`ValencePush` wraps Firebase Messaging: FCM on Android, APNs through FCM on iOS
-(experimental and untested). A host initializes Firebase and passes a push instance
-to `Valence.open(push: ...)`. Without one, all `push.*` methods return
-`E_UNSUPPORTED`; Valence never initializes Firebase itself or calls messaging
-without an adapter. Firebase's own native auto-init is governed by the host's
-project configuration, separately from this bridge opt-in.
+`ValencePush` owns the provider-neutral lifecycle and wire records in `valence`.
+Its explicit `ValencePushTransport` exchanges `ValencePushMessage`, never Firebase
+objects. `hasNotification` records the presence of a native notification envelope
+(even when title/body are empty); it is used only for the data-only hint check and
+is not a new bridge field. Wire signatures and reserved schema 12 stay unchanged.
 
-The *runtime* is opt-in; the *binary* is not. `firebase_core` and `firebase_messaging` are
-unconditional dependencies of the `valence` package, alongside `flutter_local_notifications`
-and `app_badge_plus`, so every Valence app contains them whether or not it declares `push.*`:
-`FirebaseInitProvider` is a merged `ContentProvider` that runs on every launch and logs that it
-found no default options, and Messaging registers a service in the merged manifest. An app
-cannot remove them — `dependency_overrides` re-points a package, it does not drop one. Both
-stores' privacy forms ask about SDKs that are *present*, not SDKs that are reached, so §7 says
-to declare them as present and unused. Splitting push into a `valence_push` package an app adds
-when it declares `push.*` is the intended fix and is not in 0.4.
+Firebase dependencies live exclusively in the opt-in `valence_push` package:
+FCM on Android, APNs through FCM on iOS (experimental and untested). A push host
+adds that package, initializes Firebase and passes `createFirebasePush()` to
+`Valence.open(push: ...)`. Existing unreleased push hosts replace `ValencePush()`
+with that factory and import `package:valence_push/valence_push.dart`. Custom
+transports implement the provider-neutral interface. Core-only hosts need no
+Firebase dependency, config, initialization or native provider/service; omitting
+an adapter keeps all `push.*` methods at `E_UNSUPPORTED`. Declaring bridge methods
+or toggling a Dart flag cannot install a native SDK. The core example deliberately
+omits the adapter package. Other host dependencies can still bring Firebase in;
+audit the resolved graph and final binary, not just the schema.
+
+Local notifications and badges remain core dependencies. Installing `valence_push`
+adds Firebase even if no Dart code calls it: native auto-init is governed by the
+host's project configuration and consent controls, separately from bridge opt-in.
+Firebase's iOS 15.0 minimum applies to push hosts; iOS remains untested.
 
 | Method | Params | Returns |
 |---|---|---|
@@ -1643,7 +1649,7 @@ Firebase project** until the maintainer supplies the project configuration.
   - The CSP header comes from the signed manifest.
 - **No third-party mini apps.** If the app ever hosts other developers' bundles, Apple guidelines 4.7.1 to 4.7.5 apply: Apple's permission for native APIs, a content index and age gating. That is out of scope.
 - **First launch never blocks on a download.** Guideline 4.2.3(ii) is satisfied by the built-in bundle plus the seed.
-- **Every Valence binary carries more SDKs than the app uses, and that must be disclosed.** The `valence` package depends unconditionally on `firebase_core` and `firebase_messaging` (§6.4), `flutter_local_notifications` and `app_badge_plus`, so an offline app with no account, no push and no reminders still ships them: `FirebaseInitProvider` runs on every launch and FCM registers a service in the merged manifest. Play's Data safety form and Apple's privacy manifest ask about SDKs that are **present**, not SDKs that are reached, so declare them as present and unused — no token is registered and nothing is collected without a configured push adapter. This is the one finding in the 0.4 test week that **an app cannot fix for itself**: a transitive dependency of the runtime is not something `dependency_overrides` can drop. The fix is to move push into a `valence_push` package an app adds when it declares `push.*`; it is not in 0.4, and until then this disclosure is the mitigation.
+- **Audit the SDKs in the actual binary.** Firebase is an opt-in native dependency through `valence_push` (section 6.4); `valence` alone does not depend on it. Local notifications and badges still ship with core. A host adding the push package must review Firebase's native auto-init/consent settings and disclose its SDKs and actual collection as required by the stores. Omitting `push.*`, passing no adapter or setting a Dart flag to false does not remove installed native SDKs. Other app dependencies may also include Firebase; verify the resolved graph and merged binary.
 
 ---
 
@@ -1790,3 +1796,5 @@ R8 regression rows (§4.7): owning-view logical insets exclude keyboard and chan
 R5 regression rows: exact data-only sync hints only; no payload-supplied config, URLs, tokens or trial transitions; passive startup and explicit permission requests; registration gated on permission/APNs; cold-tap consumption and live-tap race; token rotation; JSON escaping and event cap; disabled-host E_UNSUPPORTED and generated strict nonce/params denials. Device delivery/image/silent-sync checks remain blocked until a Firebase project is supplied.
 
 R17 regression rows: independent app/built-in revisions; reporting-schema parameter coherence; nullable returned fields additive against schema 14; legacy delegation omission; persisted unauthorized/failed/scoped-success outcomes, agreement with returned failures after driver replacement, busy/error preservation and account clearing; signed pending urgency true/false, invalid signature/missing/stale sequence refusal and unchanged activation state.
+
+R27 regression rows: a generated core-only host resolves no firebase_* or valence_push packages; the core example APK has no Firebase provider/service or Firebase DEX classes. Opt-in adapter tests map native envelopes (including empty notifications), passive permission, registration, taps and events; core retains exact hints, caps, JSON escaping, disabled-host denials, native token/lease sync and unchanged activation state. Firebase device delivery remains blocked; iOS untested.

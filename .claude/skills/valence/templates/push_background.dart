@@ -1,4 +1,5 @@
-// Copy to the host's lib/push_background.dart when opting into Firebase push.
+// Install valence_push (and Firebase imports below) before copying this callback.
+// In main(), initialize Firebase then pass createFirebasePush() to Valence.open.
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:valence/valence.dart';
 

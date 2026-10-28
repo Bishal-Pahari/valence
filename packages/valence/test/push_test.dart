@@ -1,26 +1,25 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:valence/valence.dart';
 
 final class _Transport implements ValencePushTransport {
-  final messages = StreamController<RemoteMessage>.broadcast(sync: true);
-  final taps = StreamController<RemoteMessage>.broadcast(sync: true);
+  final messages = StreamController<ValencePushMessage>.broadcast(sync: true);
+  final taps = StreamController<ValencePushMessage>.broadcast(sync: true);
   final rotations = StreamController<String>.broadcast(sync: true);
-  final initialReply = Completer<RemoteMessage?>();
+  final initialReply = Completer<ValencePushMessage?>();
   String status = 'authorized';
   final requests = <bool>[];
   int tokenCalls = 0;
   @override
-  Stream<RemoteMessage> get received => messages.stream;
+  Stream<ValencePushMessage> get received => messages.stream;
   @override
-  Stream<RemoteMessage> get tapped => taps.stream;
+  Stream<ValencePushMessage> get tapped => taps.stream;
   @override
   Stream<String> get tokens => rotations.stream;
   @override
-  Future<RemoteMessage?> initial() => initialReply.future;
+  Future<ValencePushMessage?> initial() => initialReply.future;
   @override
   Future<String> permission({required bool request}) async {
     requests.add(request);
@@ -59,7 +58,7 @@ void main() {
     await push.dispose();
     await transport.close();
   });
-  Future<void> start([RemoteMessage? initial]) {
+  Future<void> start([ValencePushMessage? initial]) {
     transport.initialReply.complete(initial);
     return push.start(
         emit: events.add,
@@ -97,19 +96,19 @@ void main() {
 
   test('cold tap is consumed once then warm taps become live', () async {
     await start(
-        const RemoteMessage(messageId: 'cold', data: {'screen': '/shelf'}));
+        const ValencePushMessage(id: 'cold', data: {'screen': '/shelf'}));
     expect(events, isEmpty);
     expect((await push.initial())?.id, 'cold');
     expect(await push.initial(), isNull);
-    transport.taps.add(const RemoteMessage(messageId: 'warm'));
+    transport.taps.add(const ValencePushMessage(id: 'warm'));
     expect(events.single, contains('push.tapped'));
     expect(events.single, contains('warm'));
   });
 
   test('newer tap during initial lookup wins over stale cold tap', () async {
     final starting = push.start(emit: events.add, sync: () async {});
-    transport.taps.add(const RemoteMessage(messageId: 'new'));
-    transport.initialReply.complete(const RemoteMessage(messageId: 'old'));
+    transport.taps.add(const ValencePushMessage(id: 'new'));
+    transport.initialReply.complete(const ValencePushMessage(id: 'old'));
     await starting;
     expect((await push.initial())?.id, 'new');
     expect(events, isEmpty);
@@ -146,12 +145,11 @@ void main() {
   test('foreground hint syncs; notification or extra fields never do',
       () async {
     await start();
-    transport.messages.add(const RemoteMessage(data: {'valence': 'sync'}));
-    transport.messages
-        .add(const RemoteMessage(data: {'valence': 'sync', 'bucket': 'x'}));
-    transport.messages.add(const RemoteMessage(
-        data: {'valence': 'sync'},
-        notification: RemoteNotification(title: 'alert')));
+    transport.messages.add(const ValencePushMessage(data: {'valence': 'sync'}));
+    transport.messages.add(
+        const ValencePushMessage(data: {'valence': 'sync', 'bucket': 'x'}));
+    transport.messages.add(const ValencePushMessage(
+        data: {'valence': 'sync'}, hasNotification: true));
     await Future<void>.delayed(Duration.zero);
     expect(syncs, 1);
     expect(events, hasLength(3));
@@ -160,11 +158,11 @@ void main() {
   test('script content stays JSON and image URLs are HTTPS metadata only',
       () async {
     await start();
-    transport.messages.add(const RemoteMessage(
+    transport.messages.add(const ValencePushMessage(
       data: {'text': '\u2028\u2029";evil()'},
-      notification: RemoteNotification(
-          title: '";evil()',
-          android: AndroidNotification(imageUrl: 'file:///secret')),
+      title: '";evil()',
+      image: 'file:///secret',
+      hasNotification: true,
     ));
     expect(events.single, contains(r'\u2028\u2029'));
     expect(events.single, contains('"image":null'));
@@ -187,9 +185,9 @@ void main() {
       () async {
     await start();
     final secret = 's' * maxMessageBytes;
-    transport.messages.add(RemoteMessage(data: {'secret': secret}));
-    transport.taps.add(RemoteMessage(data: {'secret': secret}));
-    transport.messages.add(RemoteMessage(data: {'bad': Object()}));
+    transport.messages.add(ValencePushMessage(data: {'secret': secret}));
+    transport.taps.add(ValencePushMessage(data: {'secret': secret}));
+    transport.messages.add(ValencePushMessage(data: {'bad': Object()}));
     expect(events, isEmpty);
     expect(await push.initial(), isNull);
     expect(logs, hasLength(3));
@@ -197,7 +195,7 @@ void main() {
   });
 
   test('initial payload fits both reply and event message caps', () async {
-    await start(const RemoteMessage(messageId: 'x', data: {'count': 1}));
+    await start(const ValencePushMessage(id: 'x', data: {'count': 1}));
     final json = (await push.initial())!.toJson();
     expect(utf8.encode(jsonEncode({'id': 1, 'ok': true, 'v': json})).length,
         lessThan(maxMessageBytes));
@@ -212,7 +210,7 @@ void main() {
           throw StateError('private-token');
         });
     transport.messages.addError(StateError('private-payload'));
-    transport.messages.add(const RemoteMessage(data: {'valence': 'sync'}));
+    transport.messages.add(const ValencePushMessage(data: {'valence': 'sync'}));
     await Future<void>.delayed(Duration.zero);
     expect(logs, hasLength(3));
     expect(logs.join(), isNot(contains('private')));
@@ -227,10 +225,10 @@ void main() {
           syncs++;
         });
     await push.dispose();
-    transport.initialReply.complete(const RemoteMessage(messageId: 'late'));
+    transport.initialReply.complete(const ValencePushMessage(id: 'late'));
     await starting;
     expect(await push.initial(), isNull);
-    transport.messages.add(const RemoteMessage(data: {'valence': 'sync'}));
+    transport.messages.add(const ValencePushMessage(data: {'valence': 'sync'}));
     transport.rotations.add('secret');
     expect(events, isEmpty);
     expect(syncs, 0);

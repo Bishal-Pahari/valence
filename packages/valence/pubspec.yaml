@@ -49,9 +49,6 @@ dependencies:
   permission_handler: ^12.0.3
   device_info_plus: ^13.3.0
 
-  firebase_core: ^4.14.0
-  firebase_messaging: ^16.7.0
-
   share_plus: ^13.3.1
 
 dev_dependencies:
@@ -63,5 +60,3 @@ dev_dependencies:
   # So a test can swap in flutter_secure_storage's own in-memory platform instead of the Keystore.
   flutter_secure_storage_platform_interface: ^2.1.1
   sqflite_common_ffi: ^2.4.4
-  firebase_core_platform_interface: 8.1.1
-  firebase_messaging_platform_interface: 4.10.0
