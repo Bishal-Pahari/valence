@@ -1,5 +1,52 @@
 # Integration validation - 2026-10-28
 
+## October 28 iteration-13 startup evidence
+
+**In plain terms.** App-a's latest report adds an unresolved major startup
+finding, F-35. Passing integration gates does not establish release acceptance.
+The Android exit records confirm an input-focus ANR for PID 3231 (5008 ms),
+then initialization/start timeouts for PIDs 6712 and 6744. The initial Flutter
+trace was lost; no cause is established. Device load and build memory pressure
+are context, not evidence that either caused these failures.
+
+F-33 also recurred on inherited release 12: after OTA 1793173403 committed,
+PID 5847 logged three ten-second SQLite lock warnings at 13:29:22. This
+supersedes the previous reconciliation's statement that locks did not recur.
+Neither the lock holder nor a relationship to the startup failures is known.
+The retained guide screenshot does not prove the requested About navigation
+finished rendering.
+
+The corrected startup probe recorded three ready/page-finished successes and
+one post-build success. Its observation totals include evidence capture and
+are not startup latency measurements. These runs establish readiness signals;
+they do not establish ANR absence or long-suspension/socket recovery. F-35
+remains open. The bounded Gradle build succeeded, final OTA 1793173711
+committed, and the app reports an offline restart retaining 15 plants, 36 shelf
+records, identity and its prior receipt. These successes do not close F-33/F-35.
+
+Inputs: both apps' VALENCE_FINDINGS.md; Kundalini iteration 12; app-a iteration
+13 and its retained exit records, healthy-OTA log, startup result JSON and final
+commit/offline logs, all read-only. App-a's prescribed archive hashes remain
+unchanged from iteration 12. No integrated-runtime adoption or new anonymous-401
+check is inferred from this report.
+
+Decision: retain the existing integration and reserved schema numbers, keep
+the startup finding visible for release acceptance, and preserve user data.
+Do not introduce a speculative runtime fix, reset the app, or attribute the
+failure to emulator load without a trace identifying the blocked operation.
+There is no eligible must-have todo item. Both packages bases remain
+ebb0793 / afe2366; all nine pending branch tips remain included in both
+integration histories. No new emulator or independent review session ran.
+Firebase delivery still needs the maintainer project; iOS remains experimental
+and untested. Earlier APK, AOT-exclusion and packaging results retain their
+original dates and scope.
+
+Fresh required gates on this unchanged implementation: root npm test 92 passed,
+zero skips (generated Dart included); runtime flutter test 528 passed; fatal-info
+Dart analysis found no issues; bridge tests 29 passed, zero skips; strict/verbatim
+TypeScript passed; site production build and SEO checks passed 41 pages. Both
+worktrees pass diff --check. Only this report changed in either repository.
+
 ## October 28 app closeout reconciliation
 
 **In plain terms.** App-a has now completed iteration 12 and its final report.
