@@ -223,6 +223,8 @@ const BUILTINS = {
   // "is the host still holding the user I signed in?" answerable after a cold start.
   'auth.account': { params: {}, returns: 'string?', call: () => 'return valence.authAccount();' },
   'link.initial': {
+    // Pre-9 apps shipped custom link signatures; their handlers remain app-owned.
+    minSince: 9,
     params: {},
     returns: { fields: { url: 'string', path: 'string' }, nullable: true },
     call: (t) => `final r = valence.linkInitial();\n        return r == null ? null : ${t}(url: r.url, path: r.path);`,

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased: preserve custom deep links during migration
+
+Updating 0.3 tooling now preserves a custom `link.initial` declared before schema 9,
+including a nullable string return. Keep its handler, event emitter, routing adapter
+and shipped baseline; no rebaseline or signature change is needed. Schema-9 built-ins
+still delegate with strict nullable `{url, path}` checks. See the migration guide.
+
 ## Unreleased: the plugin directory
 
 There is now a page that says which plugins and add-on packages exist:

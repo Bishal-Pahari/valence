@@ -129,6 +129,15 @@ package does not implement, which means it is yours.
 
 ## 5. Regenerate and check
 
+Keep any pre-schema-9 custom `link.initial` handler and `link.opened` emitter.
+For example, `link.initial(): string?` at `since: 2` stays app-owned; codegen
+does not delegate it to the package's schema-9 `Link?` method. Keep the shipped
+`since`, return type, event payload and `.valence/baseline.json` unchanged.
+Do not rebaseline to get through migration. Use your existing routing adapter
+instead of `onLink`, which expects `{url, path}`. Leave `links.origins` empty
+while your own native listeners deliver links, to avoid competing delivery.
+New applications use the template's `since: 9` method and modern payload.
+
 ```sh
 node valence/valence.mjs codegen
 cd <your flutter host> && flutter pub get && dart analyze --fatal-infos lib test && flutter test

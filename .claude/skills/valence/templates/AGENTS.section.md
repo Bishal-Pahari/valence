@@ -51,6 +51,11 @@ OS links use contracts ?6.3: store-compiled `links.origins`, matching native reg
 
 For grown-param gates and durable status, use the schema-15 capability/status guide: https://getvalence.pages.dev/docs/guides/capabilities-and-status/. Missing returned fields need nullish fallbacks.
 
+**Migrating pre-schema-9 custom links:** keep the shipped `link.initial` handler,
+`link.opened` emitter and routing adapter; preserve their signatures and baseline.
+Read https://getvalence.pages.dev/docs/getting-started/migrating-from-0-3/ before
+enabling the package's links or replacing the adapter with `onLink`.
+
 
 **Development validation:** `dev:` startup and bypass logs mean OTA checks, trials and commits are disabled. Restart without `VALENCE_DEV_URL` before testing signed offline starts or rollback.
 
