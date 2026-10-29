@@ -1,5 +1,74 @@
 # Integration validation - 2026-10-29
 
+## Iteration-16 acceptance update - 2026-10-29
+
+Read both apps' VALENCE_FINDINGS.md and their newest iteration reports read-only:
+Kundalini 14 and app-a 16. No eligible must-have remains: R1-R29 are done.
+Packages is still code `472bd2f13f71702cd4abb59ede590783ecd8104c` / site
+`bb8d82fc509825f34d45cfd5ca06d72c7237030b`. Rechecked all 23 feature
+tips against packages in both repositories; every tip is included and both
+integration branches contain the latest packages base. Only this report differs
+from packages in either implementation tree.
+
+App-a iteration 16 adds evidence beyond the iteration-15 closeout below:
+
+- On the first offline start after a retained-data reinstall, PID 6320 logged
+  `store.open` waits at 10002ms and 20003ms, completion at 29274ms, and startup
+  completion at 29492ms. Seed processing followed the store wait and skipped
+  import because its completion marker matched. The app reports readiness at
+  36.15s. This identifies the pending operation; it does not establish a SQLite
+  lock, its holder, an ANR cause or a fix for F-33/F-35.
+- An injected offline background kill replaced PID 7047 with PID 7240.
+  Android exit-info identifies the former as USER REQUESTED / KILL BACKGROUND,
+  with retained task state. The new PID served normal OTA 1793255712 at the same
+  loopback port 24326, started and finished `/#/shelf`, and called ready. The app
+  reports 15 visible plants and retained 36 records, identity and receipt.
+  This is retained-task recreation after `am kill`; natural memory-pressure
+  eviction, forced socket reclamation and `state.save` drafts remain untested.
+  The observer attached late: its 0.43s is not a startup measurement.
+- Missing-ready OTA 1793255686 fell back twice, was marked bad and was explicitly
+  refused on a further launch. Final normal OTA 1793255712 committed on the
+  rebuilt installation with floor 1792247440, then served offline after force-stop.
+  The final artifact comparison reports the same files as the normal builtin.
+  The force-stop path starts at root, separately from retained-task restoration.
+- Wizard and bridge archive hashes match iteration 15. The app resolved the
+  prescribed Flutter path without fingerprinting its source, so archive equality
+  does not establish native runtime source identity. F-29/F-36 retain their
+  earlier snapshot-specific resolution boundaries.
+- The app reports 10 web, 15 native and 7 diagnostic tests, generated-code check,
+  clean fatal-info analysis, doctors without FAILs and a 431.3s release build.
+  These were not rerun here. Its independent app review records that fake
+  orchestration tests do not prove dispatcher/nonce denials, and app-owned
+  pre-open credential inspection is outside runtime wait instrumentation.
+
+Spot-checked the live wait capture, reinstall log, process exit-info, restored
+route log, snapshot hashes, independent app review, both failed-trial logs, bad
+refusal, final commit/offline logs and artifact comparison. Evidence lives in
+the read-only app-a repo: ITERATION_16_REPORT.md, .valence/review-iteration16.md
+and .shots/iteration16-{reinstall-live.log,reinstalled-offline-1.log,
+reclaim-exit.txt,reclaim.log,snapshot-hashes.txt,rollback-1.log,rollback-2.log,
+rollback-3.log,final-commit-1.log,final-force-stop-1.log,final-artifact.json}.
+The shelf counts and visible product behavior above remain app-reported; no
+new emulator session or screenshot review was performed here.
+
+Kundalini's latest evidence is unchanged: schema-16 source/tests exist, but its
+installed host remains schema 11. Seven inexact OS alarms are armed; delivery
+has not been observed, and the schema-16 OTA remains withheld. Its F-62 tooling
+warning still needs adopter confirmation.
+
+Decision: preserve the frozen candidate and users' data. The new trace narrows
+the slow operation without identifying a corrective change; altering database
+opening, retry budgets or connection ownership on that evidence would risk data
+for an unproven fix. Keep F-33/F-35 open. The next useful diagnosis must identify
+what delayed the open, while preserving the database and account. Do not reopen
+S1 or the post-beta Playground; S2 still needs a Play account.
+
+This update changes reports only. Fresh validation is ancestry, report agreement,
+unchanged implementation trees and diff hygiene. The complete gate results in
+the refresh below remain evidence from their original run, not a new pass.
+No runtime/security-path review, full gates, emulator run, test-app writes,
+shared-branch changes, package-version changes, pushes or publications occurred.
+
 ## Adoption closeout - 2026-10-29
 
 All must-have items R1-R29 remain done. Both packages heads are unchanged:
