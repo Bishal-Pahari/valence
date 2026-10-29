@@ -499,7 +499,7 @@ prevents reporting a revision whose grown params the strict dispatcher rejects.
 Methods may still be omitted; gate their presence with `has()` as before.
 
 An app's schema `version` is its own history and it chooses it; a built-in's `since` is not. The floors
-the runtime reserves are `notify.*` and `badge.*` at 11, `push.*` at 12 and `share.image` at 14 — the
+the runtime reserves are `link.initial` at 9, `notify.*` and `badge.*` at 11, `push.*` at 12 and `share.image` at 14 — the
 names that were in use as app-owned methods before the built-ins existed. Every other built-in delegates
 at any `since`. `assertReservedSince` refuses a declaration below a floor **at the built-in's own signature** and names
 the reserved number: that is what copying the template and renumbering it produces. A declaration with a
@@ -1545,6 +1545,18 @@ It defaults to empty. HTTPS and custom schemes with a host are supported; HTTP,
 credentials, ports on custom schemes, wildcards and executable/file schemes are denied.
 An OTA cannot expand this list. OS intent filters alone do not grant trust.
 
+Pre-9 declarations of `link.initial` remain app-owned: for example, a shipped
+`since: 2` method returning `string?` keeps its abstract handler, and its custom
+`link.opened` payload stays unchanged. Keep those handlers and event delivery when
+migrating; do not renumber them, rewrite their signatures or rebaseline. The
+package delegates `link.initial` only at `since >= 9`, with the nullable `Link`
+shape above. `onLink` expects that modern shape; legacy clients keep their own
+routing adapter. The package's link mailbox and event delivery apply to configured
+`links.origins`; leave that allowlist empty when retaining app-owned listeners.
+Moving a shipped legacy API to the modern one needs new names or a separate app
+adapter, not a changed meaning for the existing names. Below 9, an unshipped copy
+of the modern built-in shape is refused with the reserved number, as in §4.
+
 The runtime instantiates app_links early on UI startup. It holds the latest accepted
 link until `link.initial()` is called, then consumes that pending link once. Subsequent
 links emit `link.opened`; a repeat tap on the same URL is a new event. Initial and
@@ -1841,6 +1853,7 @@ R12 regression rows: batch reads preserve requested order, deduplicate, isolate 
 
 | Layer | Tests |
 |---|---|
+| Legacy link migration (`valence.test.mjs`, app-c F-26) | A recorded schema-3 app's since-2 `link.initial(): string?` and custom `link.opened` survive codegen/check and a repeated store bundle without rewriting the baseline; removal, return/since changes and event payload changes remain refused. Schema-9 `Link?` delegates; a modern shape below 9 without a baseline and a redefined shape at 9 are refused. |
 | reference HTTP config (§4.5) | example source and generated config grant cleartext only to loopback; off-device hosts and wrong loopback ports denied before token lookup; release-device probe with a synthetic bearer distinguishes transport policy from origin permission |
 | seed completion (runtime, §5.2) | marker-only lock retries do not repeat imports; exhaustion retains rows and retries next launch without replacing newer synced rows; non-lock errors are not retried; row-import failure never stamps completion; failed upgrade retains the old marker; matching completion skips import; build, asset-length and missing-file changes trigger import |
 | native HTTP (§4.5) | deny unlisted schemes, hosts and ports before token lookup; generated strict decoding and nonce denial reach the runtime; host token callback takes precedence and token is read per request; page credential and transport headers rejected; real cross-origin redirects returned without contacting the target; authenticated 401 emits once; UTF-8 body and header limits, streamed response cap and total deadline (including late token lookup) enforced; malformed UTF-8 and transport errors disclose no remote text |
