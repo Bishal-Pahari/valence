@@ -1,5 +1,105 @@
 # Integration validation - 2026-10-29
 
+## Current packages refresh - 2026-10-29
+
+No must-have item is todo, in progress or awaiting changes. Refreshed
+`codex/integration` in both worktrees by fast-forwarding to packages code
+`472bd2f13f71702cd4abb59ede590783ecd8104c` and site
+`bb8d82fc509825f34d45cfd5ca06d72c7237030b`. Both worktrees were clean before
+the refresh. All 23 feature tips are ancestors of packages in both repositories:
+the original queue R8, R7, R6, R3, R4, R5, R9, R10, R14, followed by
+R15, R16, R17, R19, R20, R21, R22, R23, R24, R25, R26, R27, R28 and R29.
+No additional feature merge or conflict resolution was necessary. The earlier
+R27/R28/R29 merge order and full source SHAs remain recorded below; the older
+queue was already included in their packages base.
+
+The initial refresh reached code `52946e5`; packages then advanced to `d4424de`
+while gates ran. That commit changes only the Windows Python audit instructions
+in AGENTS.md. Integration fast-forwarded again and repeated the earlier gates.
+During closeout, packages advanced to code `472bd2f` / site `bb8d82f` with S3's
+plugin-directory documentation. Integration fast-forwarded once more and reran
+the complete gate set on those final heads. Earlier successful runs remain
+separate evidence below, not substitutes for that final verification.
+
+The refresh includes upstream tooling-age warnings, structured-return matching
+for custom notification handlers, required push-envelope metadata, labels for
+sync-owned database contention, restored Gradle wiring and plugin distribution
+documentation. The new directory distinguishes plugins from add-ons, requires
+fragment paths already on disk and makes no claim that a listing is a review.
+Schema/builtins 16,
+reserved delegation floors and package versions are unchanged.
+
+Decision: retain those upstream fixes and preserve data, shipped custom handlers,
+wire signatures, leases, retry budgets and activation checks. A tooling warning
+must not reject an existing app-owned method merely because its namespace also
+contains built-ins. Explicit push-envelope metadata preserves the data-only sync
+boundary. No speculative runtime change is justified by the app stall reports.
+
+Both apps' VALENCE_FINDINGS.md and newest reports (iteration 14) were read
+read-only. Kundalini's report is now complete: its installed schema-11 host has
+seven OS alarms armed through the package receiver, with inexact timing, but a
+reminder firing was not observed. The schema-16 adoption passes app tests but
+neither release nor debug APK completed, so its new signed OTA was deliberately
+withheld. Its swallowed reminder-read error was an app defect and is reported
+fixed there. App-a likewise has no fresh native build or valid boot baseline in
+iteration 14; its last proven installed OTA and retained shelf remain iteration
+13 evidence. Neither report establishes a cause for the historical lock/ANR
+observations. F-62/F-36 still require matched-snapshot adoption; current framework
+tests alone cannot close either app's findings.
+
+All gates passed on the final implementation, separately from the older evidence
+below. The confirmation after the packages movement passed without changing any
+assertion, timeout or source file:
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 99 passed, zero skips; generated Dart analyzed/exercised and strict/verbatim generated TypeScript included; 50.8 seconds reported by Node |
+| Core flutter test --no-pub --concurrency=1 | 542 passed; 113.7 seconds command wall time |
+| Core dart analyze --fatal-infos . | No issues |
+| Push-adapter tests / fatal-info analysis | 2 passed / no issues |
+| Example flutter test --no-pub | 27 passed |
+| Core / adapter pub publish --dry-run | Both zero warnings; adapter retains one documented local-override hint |
+| Bridge tests | 29 passed, zero skips |
+| Bridge strict/verbatim TypeScript / pack dry run | Passed / passed |
+| Site build and SEO | 43 pages passed, including the new plugin directory |
+| Example codegen / signed built-in verification | No stale files / seq 1793209750 verified, 2 files |
+| Example debug APK | Passed; 135.1 seconds command wall time, 129.6 seconds reported by Gradle |
+| Core graph / APK Firebase audit | Explicit PASS: no Firebase dependency, manifest component or SDK reference in all 19 DEX files |
+| Both repo diff checks | Passed |
+
+The initial root run also passed 99 tests with zero skips (454.5 seconds reported
+by Node), and the initial native run passed 542 core, 2 adapter and 27 example
+tests with clean analyzers. The d4424de confirmation passed 99 root tests with
+zero skips (133.6 seconds reported by Node), 542 core tests, 2 adapter tests,
+27 example tests and both analyzers. The earlier 42-page site build and 436.3-second
+APK build/audit also passed. Those are separate successful runs, not substitutes
+for the final-head verification in the table. Its logs and per-command exit
+codes/timings are `%TEMP%/valence-integration-20261029-latest-*.log` and
+`valence-integration-20261029-latest-results.json`. Earlier evidence remains under
+the separate `valence-integration-20261029-current-*` and `-final-*` prefixes.
+
+Native commands ran sequentially. The APK used only command-local Gradle settings:
+2 GiB heap, 1 GiB metaspace, two workers and ActiveProcessorCount=2; the daemon
+command line confirmed those limits. The existing app_badge_plus KGP migration
+warning remains. The audit ran through the real Python 3.13 interpreter located
+by `uv python find 3.13`, avoiding Windows Store aliases, and its exit code and
+explicit PASS output were captured directly. No cancellation or failed gate
+occurred in this refresh. A host-memory sample during the first root run showed
+183,984 KiB free of 32,827,764 KiB; this is context, not a proven cause of delay.
+
+Security checklist: the upstream delta preserves canonical OTA verification,
+nonce/strict decoding, navigation and subframe locks, atomic state writes and
+account/outbox isolation. Required push-envelope metadata keeps notification
+messages outside the data-only sync-hint path. Database diagnostics retain fixed
+operation labels without SQL, arguments or app data, and preserve transactions,
+errors and retry budgets. Release-only development exclusion is unchanged; its
+earlier AOT evidence retains its original date and scope. No new independent
+review or emulator session is claimed. iOS remains experimental and untested;
+Firebase delivery and test-app release acceptance remain open.
+
+Only this integration report is changed in each worktree. No test-app writes,
+shared-branch commits/merges, version changes, pushes or publications occurred.
+
 ## Adoption follow-up - 2026-10-29
 
 Both apps' findings and newest iteration reports were read without writing to
