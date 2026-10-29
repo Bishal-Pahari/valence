@@ -131,6 +131,57 @@ test('link origins compile into the native policy and built-in nullable shape st
   assert.throws(() => codegen({ root, cfg }), /must return/);
 });
 
+test('pre-9 custom links survive migration without rewriting the shipped schema', () => {
+  const { root, cfg, key } = fixture();
+  editSchema(root, (s) => {
+    s.version = 3;
+    delete s.methods['http.request'];
+    s.methods['link.initial'] = { since: 2, params: {}, returns: 'string?' };
+    s.events['link.opened'] = { since: 2, payload: { url: 'string' } };
+  });
+  const shipped = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
+  mkdirSync(join(root, '.valence'), { recursive: true });
+  const baselineFile = join(root, '.valence', 'baseline.json');
+  writeFileSync(baselineFile, JSON.stringify({ storeSeq: 1, storeSchema: shipped }));
+  const baseline = readFileSync(baselineFile, 'utf8');
+  codegen({ root, cfg });
+  codegen({ root, cfg, check: true });
+  assert.equal(readFileSync(baselineFile, 'utf8'), baseline);
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart, /Future<String\?> linkInitial\(/);
+  assert.doesNotMatch(dart.split('abstract class ValenceBuiltins')[1], /linkInitial\(/);
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  assert.match(ts, /'link.initial': \{ params: Record<string, never>; returns: string \| null \}/);
+  assert.match(ts, /'link.opened': \{\s+url: string;/);
+  bundle({ root, cfg, key, store: true, now: NOW });
+  assert.deepEqual(JSON.parse(readFileSync(baselineFile, 'utf8')).storeSchema, shipped);
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  for (const mutate of [
+    s => { delete s.methods['link.initial']; },
+    s => { s.methods['link.initial'].returns = 'int?'; },
+    s => { s.methods['link.initial'].since = 9; s.version = 9; },
+    s => { delete s.events['link.opened']; },
+    s => { s.events['link.opened'].payload.path = 'string'; },
+  ]) {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), /cannot|must return/);
+  }
+});
+
+test('schema-9 links delegate while misplaced built-ins and modern redefinitions are refused', () => {
+  const { root, cfg } = fixture({ latest: true });
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart.split('abstract class ValenceBuiltins')[1], /valence.linkInitial\(\)/);
+  editSchema(root, s => { s.methods['link.initial'].since = 8; });
+  assert.throws(() => codegen({ root, cfg }), /below the 9/);
+  editSchema(root, s => { s.methods['link.initial'].returns = 'string?'; });
+  codegen({ root, cfg }); // A custom return also remains app-owned without a baseline.
+  editSchema(root, s => { s.methods['link.initial'].since = 9; });
+  assert.throws(() => codegen({ root, cfg }), /must return/);
+});
+
 test('dev plans a Vite server and debug-only emulator/LAN commands without changing files', () => {
   const root = mkdtempSync(join(tmpdir(), 'valence-dev-'));
   try {
