@@ -1,3 +1,113 @@
+# Integration validation - 2026-10-30
+
+## Current decision and scope
+
+No must-have item is eligible: R1-R29 and the R30 compatibility correction are
+already done. Read both apps' VALENCE_FINDINGS.md and newest completed reports:
+Kundalini iteration 15 and app-c iteration 2. These replace the earlier app-a
+acceptance input for this period.
+
+Decision: preserve the frozen runtime, users' data and shipped signatures. The new
+reports establish adoption progress without isolating a new framework defect.
+Do not change SQLite retry budgets or launch semantics on recovered latency alone.
+S1 remains deliberately deferred during the freeze; S2 needs a Play account.
+Do not start the post-beta Playground as part of this acceptance refresh.
+
+## Bases and branch inclusion
+
+Code packages base: `d2e6970a983e8f1e1f030ea39b9861d487ea9db4`.
+Site packages base: `ce19151baa1fdac40ac3208e70bb69388a8b538a`.
+
+Checked the required queue in order: R8, R7, R6, R3, R4, R5, R9, R10, R14.
+Every feature tip is already an ancestor of packages in both repositories.
+All later numbered feature branches are also ancestors of packages in both repos.
+There are no ready, unmerged feature branches to assemble and no conflict to
+resolve. Code codex/integration fast-forwarded to packages; site
+codex/integration was recreated from packages after preserving its previous
+report-only tip as codex/integration-before-20261030-acceptance.
+No merge into a protected branch occurred. Schema/builtins revision stays 16.
+
+R30's legacy `link.initial` cutoff is already merged (code cdd39f0, site ead9e3b).
+The API-signature part of app-c F-27 is documented by code d2e6970 and site ce19151.
+This does not close the app's broader request for persistence, caps and cleanup
+recipes, or establish that it has received these newer docs.
+
+## App evidence and limits
+
+Kundalini iteration 15 reports its first installed schema-16 release upgrade,
+retaining 19,227 panchang rows, saved profiles and preferences; signed OTA
+1793303605 reached pending, trial and commitment. Its former reminder-delivery
+gap is now closed in the app findings. Checked
+`test-evidence/iteration-15/F27-notification-record.txt` and visually inspected
+`24-notification-fired.png`: package dev.lagna.panchang, id 2494,
+daily_panchang channel, title "Friday in Kathmandu" and matching panchang body
+are present. This establishes one observed delivery, not a universal timing,
+reboot or device guarantee. The report describes recovery from an emulator
+crash by rearming on launch. Its dayReady loading fix is app-owned; a slow first
+read must not be treated as proof that a stored day is absent.
+
+App-c iteration 2 reports retained release upgrade, fresh airplane seed launch,
+offline edit/reconnect, camera/gallery/removal, share sheets, placed widget
+updates, R3 denial/grant and a mixed task-history reminder tap. Checked its
+rollback-second-logcat.txt and final-logcat.txt: broken 1793305716 failed twice
+and was marked bad; final good 1793306236 committed. final-state.json confirms
+pending/trial null and the bad sequence retained. r28-queue.json records
+64 IDs in 674 bytes, replacement at cap and E_TOO_LARGE for overflow.
+background-state-comparison.txt reports byte-identical activation state across
+the worker; post-worker-sync-status.json records pending 0 and reason ok.
+This was an eligible forced periodic run with an already-empty outbox, so it
+does not prove natural scheduling or a fresh background push receipt.
+The tested mixed F-29 sequence passed without clean-task recovery, but does not
+reconstruct every historical intent flag/two-activity stack or isolate a package bug.
+
+App-c's supplied create-valence artifact still required its local F-26 workaround.
+snapshot-hashes.json records create-valence SHA256
+43de7c06988a9e30516f848f960c056a86fec456bd5438c1c91ae3fc9c63102f and
+bridge SHA256 0d77ac92993e130c7d9b6122ee1877d7d52ea26500689b038ed38296f02db820.
+The report says both match iteration 1. Independently hashed the supplied CLI
+tarball and read its CLI member without extracting files: the hash matches and
+its link.initial entry lacks minSince: 9. Current packages includes that cutoff.
+This confirms an older supplied artifact, not a fresh failure of current
+packages' already-merged R30 correction.
+Do not rewrite a shipped schema or baseline to accommodate that older tooling.
+F-28 describes a recovered migration collision, not established data loss or deadlock.
+
+## Fresh gates
+
+Validation is against the packages bases above; subsequent commits change only
+this report. Logs use the prefix `%TEMP%/valence-20261030-`.
+| Gate | Result |
+| --- | --- |
+| Root npm test | 101 passed, zero failures/skips; generated Dart and strict/verbatim generated TS included |
+| Core flutter test --no-pub --concurrency=2 | 542 passed |
+| Core dart analyze --fatal-infos . | No issues |
+| Core flutter pub publish --dry-run | Zero warnings |
+| Push adapter tests / fatal-info analysis | 2 passed / no issues |
+| Push adapter pub publish --dry-run | Zero warnings; one documented local-override hint |
+| Bridge tests | 29 passed, zero failures/skips |
+| Bridge strict/verbatim TypeScript / pack dry run | Passed / passed |
+| Example flutter test --no-pub | 27 passed |
+| Example codegen --check / signed built-in verification | written: [] / seq 1793209750 verified |
+| Site build and SEO | 43 pages passed |
+| Example flutter build apk --debug | Passed; 178.3 seconds command wall time (174.7 seconds Gradle) |
+| py example/tool/check_no_firebase.py | PASS: core graph, manifest and all 19 DEX files contain no Firebase SDK references |
+| Root npm pack --dry-run | Passed |
+| Both repository diff checks | Passed |
+
+The APK build used a 2 GiB Gradle heap, two workers and ActiveProcessorCount=2
+only in its command environment. Its existing app_badge_plus Kotlin-plugin
+migration warning remains. The Firebase audit ran through py on Windows and
+printed PASS; the APK build alone is not counted as that audit.
+All gates passed on their first completed run. No assertion or timeout was changed.
+No new independent runtime review is claimed for this report-only change.
+
+No emulator was acquired or operated in this run. App evidence was read only.
+Positive biometrics, Firebase delivery and exact natural background timing remain
+outside these checks; iOS remains experimental and untested. No package-version
+change, test-app write, push or publication.
+
+---
+
 # Integration validation - 2026-10-29
 
 ## Iteration-17 acceptance update - 2026-10-29
