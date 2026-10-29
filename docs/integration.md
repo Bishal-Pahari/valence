@@ -1,5 +1,74 @@
 # Integration validation - 2026-10-29
 
+## Adoption closeout - 2026-10-29
+
+All must-have items R1-R29 remain done. Both packages heads are unchanged:
+code `472bd2f13f71702cd4abb59ede590783ecd8104c`, site
+`bb8d82fc509825f34d45cfd5ca06d72c7237030b`. All 23 feature tips listed
+in the refresh below are ancestors of packages in both repositories. Integration
+differs from those bases only in this report; there is no outstanding feature
+merge or rebase. The prior gate results below retain their original run and scope.
+
+Read both apps' VALENCE_FINDINGS.md and newest reports read-only: Kundalini
+iteration 14 and app-a iteration 15. App-a's new report supersedes the earlier
+iteration-14 adoption limits recorded below:
+
+- F-36 is resolved for the supplied snapshot pair: unmodified codegen accepts
+  nullable SyncStatus.reason, and the app displays the last attempted scope
+  separately from authenticated shelf receipts and full-sync freshness.
+- F-29 is resolved for that snapshot. Its captured anonymous pull returned HTTP
+  401, sync.now and sync.status both reported `failed`, auth.expired stayed
+  zero, and same-account token repair retained 36 rows before authenticated
+  recovery. This does not test account switching or queued-write recovery.
+- Native release 1.8.3+13 installed over retained data. Offline upgrade preserved
+  15 plants, 36 shelf records, identity and receipt. The 618.73-second offline
+  background/resume observation kept PID 5674; it does not prove survival after
+  OS process reclamation or forced socket reclaim.
+- Foreground reconnect discovered the healthy update. Missing-ready seq
+  1793234392 failed twice and was explicitly refused as bad. Final normal OTA
+  1793234393 committed with floor 1792247440 and served again offline.
+- Firebase disappeared from the app's resolved dependencies. This is adopter
+  graph evidence; the separate all-DEX/manifest audit below covers the example
+  APK, not app-a's release APK.
+- Startup phase diagnostics are visible. F-33 database waits and F-35 ANRs still
+  have no established root cause. The app's commit-suffix probe false negative
+  was regression-fixed; its original 90.01-second timeout remains a failure.
+
+App-a's report records 10 web, 15 native and 7 diagnostic tests, clean fatal-info
+analysis, both doctors without FAILs, and a 335.7-second release build. These are
+app-reported results, not tests rerun here. Spot-checked its captured codegen
+warnings, snapshot hashes, anonymous-401 log, same-PID suspension JSON, final
+commit/offline logs and two-strike/bad-refusal logs against the report.
+
+Evidence is in the read-only app-a repo: ITERATION_15_REPORT.md and
+.shots/iteration15-{snapshot-hashes.txt,reason-codegen.txt,anonymous.log,
+suspension-result.json,rollback-3.log,rollback-4.log,final-2.log,
+final-offline-1.log}. The supplied archives are identified by SHA-256:
+wizard `43DE7C06988A9E30516F848F960C056A86FEC456BD5438C1C91AE3FC9C63102F`;
+bridge `0D77AC92993E130C7D9B6122EE1877D7D52EA26500689B038ED38296F02DB820`.
+Version labels alone do not establish snapshot identity.
+
+Kundalini iteration 14 remains the latest report: schema-16 source adoption and
+tests passed, but no schema-16 APK installed. Its seven armed alarms are observed
+on the schema-11 host; reminder delivery remains unobserved, and the schema-16 OTA
+was withheld. F-62's stale-tooling diagnostic still needs adoption confirmation
+there. Current source already warns about unknown methods in built-in namespaces
+and names `npx create-valence update`; app-a's captured codegen output exercises
+that warning without rejecting its historical custom handlers. This does not
+close Kundalini's finding on its behalf.
+
+Decision: preserve the frozen candidate, users' data and shipped signatures.
+There is no eligible must-have item to claim, no demonstrated new runtime defect
+to patch, and the latest app evidence does not justify reopening S1 or starting
+the post-beta Playground. S2 retains its Play-account blocker. Kundalini's native
+adoption, reminder delivery, broader device acceptance, Firebase delivery and
+iOS validation remain open; iOS is experimental and untested.
+
+Only this report changes in each worktree. Fresh checks are branch ancestry,
+unchanged implementation trees and diff hygiene. No full gates, emulator session
+or independent runtime review reran for this report-only update. No test-app
+writes, shared-branch changes, version changes, pushes or publications occurred.
+
 ## Current packages refresh - 2026-10-29
 
 No must-have item is todo, in progress or awaiting changes. Refreshed
