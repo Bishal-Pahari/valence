@@ -271,6 +271,44 @@ const BUILTIN_AREAS = new Set(Object.keys(BUILTINS).map((n) => n.split('.')[0]))
 ///
 /// A warning rather than a refusal: §6.5 promises an app-owned `notify.daily` keeps working, and refusing
 /// it to catch a stale generator would break the apps the promise was made to.
+// The fields a validated native notification response carries (§6.5). The runtime fills exactly these.
+const NOTIFICATION_RESPONSE_FIELDS = new Set(['id', 'payload', 'action']);
+const NOTIFICATION_EVENTS = new Set(['notify.tapped', 'notify.action']);
+
+/// Whether the runtime may emit this event by itself.
+///
+/// Reserved at 11, and `id` must be the `int` the native scheduler actually produces. An event that fails
+/// either test stays the app's own and is never emitted automatically, which is the whole point: app-c
+/// shipped `notify.tapped {id: string}` at `since: 1` and received the built-in's integer id over it
+/// (F-30). A host converts such a response itself, through `notificationEventAdapter`.
+///
+/// Deliberately not a refusal. Events are not shape-checked by `assertBuiltinShapes`, so a since-11
+/// declaration carrying an extra field or a required `payload` has always generated fine — and
+/// `assertAdditive` refuses changing a shipped event, so refusing one here would wedge that app with no
+/// move left but `--rebaseline`. It is also the same stale-tooling trap as the warning below: a field the
+/// runtime adds later is unknown to an older copy of this CLI.
+function autoNotificationEvent(e) {
+  return NOTIFICATION_EVENTS.has(e.name) && e.since >= 11 &&
+    e.payload.some((f) => f.name === 'id' && typeString(f.type) === 'int');
+}
+
+/// Warns about a notification event the runtime will not emit, and about declared fields it cannot fill.
+///
+/// Without this the failure is silent in the quietest possible way: `has('notify.tapped')` is answered
+/// from the schema and stays true, the page subscribes, and no tap ever arrives.
+export function notificationEventWarnings(s) {
+  return s.events.flatMap((e) => {
+    if (!NOTIFICATION_EVENTS.has(e.name)) return [];
+    if (!autoNotificationEvent(e)) {
+      return [`"${e.name}" stays your own event, so the runtime will not emit it: it is ${e.since < 11 ? `declared at since ${e.since}, below the reserved 11` : 'declared without "id" as an int, which is what the native scheduler produces'}. That is deliberate — a built-in shape must never go out over an event you have already shipped — but nothing else reports it, and has("${e.name}") answers from your schema either way, so a page would subscribe and receive nothing. Pass "notificationEventAdapter" to Valence.open to convert each response into your own generated event, and apply the same conversion to valence.notifications.initial() for a cold tap.`];
+    }
+    const extra = e.payload.filter((f) => !NOTIFICATION_RESPONSE_FIELDS.has(f.name)).map((f) => `"${f.name}"`);
+    return extra.length
+      ? [`"${e.name}" declares ${extra.join(', ')}, which a native notification response does not carry (${[...NOTIFICATION_RESPONSE_FIELDS].join(', ')}). ${extra.length > 1 ? 'Those fields are' : 'That field is'} left out of the emitted event rather than sent as null. If a guide introduced ${extra.length > 1 ? 'them' : 'it'} as part of the built-in event, your tooling is older than the runtime you are reading about: run "npx create-valence update".`]
+      : [];
+  });
+}
+
 export function staleToolingWarnings(s) {
   return s.methods
     .filter((m) => !m.plugin && !(m.name in BUILTINS) && BUILTIN_AREAS.has(m.name.split('.')[0]))
@@ -1244,19 +1282,13 @@ export function genDart(s) {
 // The built-in half of BridgeHandlers, implemented by delegating to the package's runtime. An app extends
 // this and overrides only its own methods, which is what keeps main.dart to about twenty lines.
 function dartBuiltins(s) {
-  const notificationEvents = s.events.filter((e) =>
-    ['notify.tapped', 'notify.action'].includes(e.name) && e.since >= 11);
-  for (const e of notificationEvents) {
-    const want = { id: 'int', payload: 'string?', action: 'string?' };
-    if (!e.payload.some((f) => f.name === 'id' && typeString(f.type) === 'int') ||
-        e.payload.some((f) => typeString(f.type) !== want[f.name])) {
-      throw new Error(`"${e.name}" since 11+ must declare id: int and only optional payload: string?, action: string?; keep a shipped pre-11 event unchanged and use a native notificationEventAdapter`);
-    }
-  }
+  const notificationEvents = s.events.filter(autoNotificationEvent);
   const o = [
     '/// Automatic notification events; pre-11 declarations remain app-owned.',
     'const hostNotificationEventFields = <String, Set<String>>{',
-    ...notificationEvents.map((e) => `  '${e.name}': {${e.payload.map((f) => `'${f.name}'`).join(', ')}},`),
+    // Only the fields the native response actually carries. A field the app declared on top of them is
+    // left out rather than emitted as null, and is warned about instead.
+    ...notificationEvents.map((e) => `  '${e.name}': {${e.payload.filter((f) => NOTIFICATION_RESPONSE_FIELDS.has(f.name)).map((f) => `'${f.name}'`).join(', ')}},`),
     '};',
     '',
     '/// Native plugin namespaces required by this app, including event-only fragments.',
@@ -1512,7 +1544,7 @@ export function codegen({ root, cfg, check = false }) {
     [p.dart, genDart(s)],
     [p.dartConfig, genDartConfig(cfg, keyring)],
   ];
-  const warnings = staleToolingWarnings(s);
+  const warnings = [...staleToolingWarnings(s), ...notificationEventWarnings(s)];
   const stale = outputs.filter(([f, text]) => !existsSync(f) || normalize(readFileSync(f, 'utf8')) !== normalize(text)).map(([f]) => f);
   if (check) {
     if (stale.length) throw new Error(`generated files are stale, run "valence codegen":\n  ${stale.join('\n  ')}`);

@@ -1,3 +1,5 @@
+import 'notifications.dart';
+
 /// How the host pulls read-only buckets (contracts §5.3).
 enum ValenceSyncMode {
   /// `GET {syncBase}/{bucket}?since=&schema=&limit=` against your own API.
@@ -39,10 +41,7 @@ final class ValenceConfig {
     this.permissionKinds = const {},
     this.notificationsEnabled = false,
     this.notificationIcon = 'ic_stat_valence',
-    this.notificationEventFields = const {
-      'notify.tapped': {'id', 'payload', 'action'},
-      'notify.action': {'id', 'payload', 'action'},
-    },
+    this.notificationEventFields = ValenceNotifications.defaultEventFields,
   });
 
   /// The reverse-domain id a manifest must carry (canonical check 2).

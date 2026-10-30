@@ -13,14 +13,20 @@ import 'wire.dart';
 
 /// The bounded local notification service. The native adapter never receives page file paths or URLs.
 final class ValenceNotifications {
+  /// The built-in notification events and the response fields they carry.
+  ///
+  /// One copy, so [ValenceConfig.notificationEventFields]'s default cannot drift from it. A generated
+  /// host passes its own table instead, which is the only one that knows what the app declared.
+  static const defaultEventFields = <String, Set<String>>{
+    'notify.tapped': {'id', 'payload', 'action'},
+    'notify.action': {'id', 'payload', 'action'},
+  };
+
   /// Creates an enabled service. [directory] is private host storage, never a page-supplied path.
   ValenceNotifications({
     required this.directory,
     required this.emit,
-    this.eventFields = const {
-      'notify.tapped': {'id', 'payload', 'action'},
-      'notify.action': {'id', 'payload', 'action'},
-    },
+    this.eventFields = defaultEventFields,
     this.eventAdapter,
     this.icon = 'ic_stat_valence',
     ValenceNotificationPlatform? platform,
@@ -52,6 +58,7 @@ final class ValenceNotifications {
   Future<void> _tail = Future.value();
   Map<String, Object?>? _initial;
   String? _unavailable;
+  final Set<String> _warnedOwnEvent = {};
 
   /// The native code for why the service could not start, or null when it did.
   ///
@@ -89,19 +96,35 @@ final class ValenceNotifications {
       if (adapter != null) {
         try {
           final script = adapter(Map.unmodifiable(value));
-          if (script != null) emit(script);
-        } catch (_) {
-          _log('notifications: event adapter failed; response dropped');
+          if (script == null) return;
+          if (!isEventScript(script)) {
+            _log('notifications: event adapter did not return a generated event '
+                'script; response dropped. Build it with BridgeEvents, which '
+                'escapes the payload.');
+            return;
+          }
+          emit(script);
+        } catch (e) {
+          // The type, never the exception's message: that can quote the payload.
+          _log('notifications: event adapter threw ${e.runtimeType}; response dropped');
         }
         return;
       }
       final name = value['action'] == null ? 'notify.tapped' : 'notify.action';
       final fields = eventFields[name];
-      if (fields != null) {
-        emit(eventScript(name, {
-          for (final field in fields) field: value[field],
-        }));
+      if (fields == null) {
+        // The quietest possible failure otherwise: `has()` is answered from the app's schema and stays
+        // true, so the page subscribes and no tap ever arrives. Said once, not once per tap.
+        if (_warnedOwnEvent.add(name)) {
+          _log('notifications: "$name" is not an automatic event for this app, '
+              'so the tap was not delivered. Pass notificationEventAdapter to '
+              'Valence.open to convert it into your own event.');
+        }
+        return;
       }
+      emit(eventScript(name, {
+        for (final field in fields) field: value[field],
+      }));
     }
   }
 

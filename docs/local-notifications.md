@@ -20,6 +20,15 @@ since-11+ events and only their declared fields. An omitted or legacy event is n
 automatically. Existing generated hosts need codegen and a new store build for this protection.
 Do not change the shipped event, its `since`, or the baseline to adopt native scheduling.
 
+An event qualifies for automatic emission at `since: 11` or above with `id` declared `int` — what the
+native scheduler actually produces. Anything else stays yours, and codegen **warns rather than
+refusing**, naming `notificationEventAdapter`: your shipped event cannot be changed (that is the
+additive-only rule), so a refusal would leave you nothing but a rebaseline. Read those warnings —
+without an adapter the tap is not delivered at all, and `has('notify.tapped')` is answered from your
+schema, so it stays `true` and your page waits for an event that never comes. The host logs that once
+per event name too. A field you declare that a response does not carry (`id`, `payload`, `action`) is
+left out of the emitted event rather than sent as null, and warned about.
+
 Pass `notificationEventAdapter` to `Valence.open` to convert warm responses into your generated
 event script. It replaces automatic warm emission for both taps and actions; return null for
 responses your event cannot represent. For example, for the shipped
@@ -69,7 +78,10 @@ inside the application's payload when scheduling; a hashed integer scheduler ID 
 Validate the payload's target against your domain before navigation. Neither this example nor the
 runtime evaluates a payload as code. The adapter runs after the native envelope/size/ID/action
 checks. An adapter exception drops the event and logs a fixed message without private contents.
-Use generated builders for escaping. Startup buffering remains bounded to the newest 16 warm events.
+Use generated builders for escaping — and the runtime checks that you did: an adapter result that is
+not something `BridgeEvents` could have produced is dropped with a log, so a hand-concatenated string
+whose payload contains a quote never reaches the page as code. Startup buffering remains bounded to
+the newest 16 warm events.
 
 Cold responses are separate and consumed once: they never also emit a warm event. Apply the same
 conversion in your existing cold accessor/replay, as `legacyInitial` illustrates; retain your own
