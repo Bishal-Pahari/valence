@@ -8,6 +8,54 @@ ID. Regenerated config names the compatible events and fields; a native adapter 
 event using the original ID carried inside the app's own payload. Warm and cold taps use the same
 conversion without changing the shipped schema or erasing its baseline.
 
+## Queue refresh after app-c iteration 7 - 2026-10-30
+
+Read both findings files and the newest reports: Kundalini iteration 15 and app-c iteration 7.
+Newest packages remains code `d2e6970a983e8f1e1f030ea39b9861d487ea9db4`, site
+`ce19151baa1fdac40ac3208e70bb69388a8b538a`; both merges report already up to date.
+All 26 earlier numbered-feature/link-compat tips remain ancestors of packages in both repos.
+This remains the only unmerged implementation branch; the two-branch integration rule does not
+require a fresh integration. No other must-have implementation is eligible.
+
+App-c's iteration-7 `event-contract-check.json` reports one string-ID violation for actual integer
+ID `1923145494`; its warm tap routes successfully, which does not repair the wire contract.
+The supplied npm hashes remain unchanged from iteration 6. Read-only inspection of the app's
+current main/config finds neither `notificationEventAdapter` nor `notificationEventFields`.
+The captured failure does not exercise this branch's adapter. Keep F-30 open until refreshed
+CLI/runtime adoption, regeneration, adapter wiring and warm/cold device acceptance. Preserve the
+shipped event and original application ID rather than coercing the native hash to a string.
+
+F-31 is confirmed against this site branch: both the bridge guide and homepage FAQ incorrectly
+dated permissions to schema 9. Corrected both to 10 in site commit `2d6afa6`, matching contracts
+section 4.9, the dedicated guide and starter schema. Searched site source/public files for other
+schema-9 permissions references; none remain. This is a documentation correction, without a
+schema, runtime or package version change. F-27's remaining host-file lifecycle guidance stays open.
+
+App-c's supplied background comparison records equal raw activation SHA256 values before/after
+its due-time forced periodic worker. Its final state commits `1793376496`, previous `1793376385`,
+pending/trial null, bad [`1793376329`], floor 0. These are inspected app captures, not a new
+device run here. Kundalini's latest report remains schema-16 device/OTA acceptance and observed
+reminder delivery, without a new package finding. Real Firebase delivery remains untested.
+
+Decision: preserve users' data and shipped event meanings; retain the existing correction until
+it is adopted instead of changing notification behavior again on unadopted evidence. Combined
+schema stays 16; R4 since 11 and pendingIds since 16 stay fixed. S1 remains deferred during the
+candidate freeze and S2 still requires a Play account. The existing security checklist/review
+retains its scope; this run adds no runtime change or new independent review.
+
+Fresh gates use `%TEMP%/valence-notify-i7-*.log`. Root tests pass 102/102 with zero skips,
+including real generated Dart and strict/verbatim generated TS. Core tests pass 546, push
+adapter 2, example 27 and bridge 29. Both fatal-info Dart analyzers and strict/verbatim bridge
+TypeScript pass. Both pub dry runs have zero warnings (push retains its local-override hint);
+both npm pack dry runs pass. Site build/SEO passes 43 pages. Example codegen writes nothing
+and built-in signature verification accepts seq `1793209750`, two files. Debug APK passes
+(assembleDebug 122.1 seconds, existing app_badge_plus KGP warning), using a command-local
+2 GiB heap, 1 GiB metaspace, two workers and ActiveProcessorCount=2. Standalone Windows
+`py example/tool/check_no_firebase.py` prints PASS for graph, manifest and all 19 DEX files.
+
+No new emulator run or device acceptance is claimed. No test-app writes, shared-branch
+commits/merges, schema/package version changes, pushes or publications were performed.
+
 ## Queue refresh after app-c iteration 6 - 2026-10-30
 
 Read both findings files and the newest reports: Kundalini iteration 15 and app-c iteration 6.
