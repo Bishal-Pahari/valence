@@ -1805,10 +1805,19 @@ it and the first thing to fail would be the store build, on a device.
   are untrusted data, never evaluated or navigated to. `notify.initial() -> json?` consumes the cold-start
   response once. Cold responses are available only there; warm callbacks emit the respective event.
   Action categories are compiled into the host. Call `notify.initial` after subscribing to warm events.
-  Codegen records only since-11+ compatible notification events and their declared fields in
-  `hostNotificationEventFields`, wired through `valenceConfig`. The scheduler automatically emits
-  only those events and fields. Pre-11 events remain app-owned, even when their methods delegate
-  scheduling to the native service; no integer ID is sent over a frozen string-ID event.
+  Codegen records only the notification events the runtime may emit in `hostNotificationEventFields`,
+  wired through `valenceConfig`, with only the fields a validated response carries (`id`, `payload`,
+  `action`). The scheduler automatically emits only those events and fields. An event qualifies at
+  `since >= 11` with `id` declared `int`; anything else stays app-owned, even when its methods delegate
+  scheduling to the native service, so no integer ID is sent over a frozen string-ID event.
+  Disqualification is a **codegen warning, never a refusal**: events are not shape-checked by
+  `assertBuiltinShapes`, so a since-11 declaration carrying an extra field or a required `payload` has
+  always generated, and §4.1 refuses changing a shipped event — a refusal would leave such an app
+  nothing but `--rebaseline`, and would be the §6.5 stale-tooling trap again for a field a later runtime
+  adds. A declared field the response does not carry is omitted from the emitted event, not sent as null,
+  and warned about. The runtime also logs once per event name when a tap arrives for an app-owned event
+  with no adapter, because `has()` answers from the app's schema and stays true either way, so a page
+  would subscribe and silently receive nothing.
   A host may pass `notificationEventAdapter` to `Valence.open`: it receives the validated response
   map (`id`, application `payload`, nullable `action`) and returns a generated `BridgeEvents` script,
   or null to drop it. It replaces automatic warm emission and uses the same bounded startup queue.
@@ -1817,7 +1826,13 @@ it and the first thing to fail would be the store build, on a device.
   Preserve application IDs inside the application's payload; a hashed scheduler ID is not reversible.
   Never reinitialize the shared notification plugin to adapt a callback. The adapter sees only
   responses that pass the existing envelope, size, ID and compiled-action checks. It must validate
-  its own domain payload; exceptions are logged without payload contents and the event is dropped.
+  its own domain payload; exceptions are logged by type only — never the message, which can quote the
+  payload — and the event is dropped. **Its result is checked structurally before it reaches the page:**
+  the script must be something `eventScript` could have produced (the `window.__valence` prefix, and
+  arguments that decode as `[string, payload]`), or it is dropped with a log naming `BridgeEvents`.
+  Every generated builder passes; a hand-concatenated payload carrying a quote or a brace does not.
+  Guidance alone is not enough here, because unlike `Valence.emit` this callback runs on every tap, on
+  data a bundle wrote and a later bundle reads.
 - `badge.set({n: int}) -> bool`, `badge.clear() -> bool` report whether a supported platform accepted
   the request, not whether the launcher visibly changed. `n` is 0..9999. Android badges are best effort
   and may require vendor permissions and an active notification; iOS requires badge authorization.
@@ -1832,12 +1847,18 @@ notification callback runs UI activation. iOS code paths are experimental and un
 
 ## 8. Test matrix (minimum; all must pass before "done")
 
-Notification event compatibility: a frozen pre-11 string-ID event survives codegen/check with its
-baseline unchanged and no automatic built-in emission. Modern events require integer IDs and known
-optional fields; emitted payloads contain only declared fields. Compile the documented legacy adapter
-against real generated code. Exercise warm/cold conversion, consume-once cold access without double
-emission, the newest-16 startup queue, invalid responses rejected before adaptation, and adapter
-failure dropping the event with no private contents in logs. Existing scheduler security checks hold.
+R4 notification event compatibility (§6.5): a frozen pre-11 string-ID event survives codegen/check with
+its baseline unchanged and no automatic built-in emission. An event qualifies for automatic emission only
+at since 11+ with an `int` id; a string id, an extra declared field and a required `payload` each
+**generate with a warning rather than being refused**, the extra field is omitted from the emitted event,
+and the disqualified event is absent from `hostNotificationEventFields`. A pre-11 declaration warns
+naming `notificationEventAdapter`. Compile the documented legacy adapter against real generated code.
+Exercise warm/cold conversion, consume-once cold access without double emission, the newest-16 startup
+queue, invalid responses rejected before adaptation, adapter failure dropping the event while logging
+the exception type and no payload contents, **an adapter result that is not a generated event script
+dropped with a log while the builder's own output passes**, and a tap for an app-owned event with no
+adapter logged once per event name rather than once per tap. The Dart default event table is one
+constant, so `ValenceConfig`'s default cannot drift from it. Existing scheduler security checks hold.
 
 R29 diagnostics (§5.1.1): startup reports ordered phases and monotonic elapsed times,
 failure names the active phase and preserves the original error; completion does not

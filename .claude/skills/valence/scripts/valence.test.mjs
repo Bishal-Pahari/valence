@@ -211,10 +211,32 @@ test('notification emission metadata preserves frozen legacy events and filters 
   codegen(modern);
   dart = readFileSync(join(modern.root, modern.cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
   assert.match(dart, /'notify.tapped': \{'id'\}/);
-  for (const payload of [{ id: 'string' }, { id: 'int', action: 'string' }, { id: 'int', extra: 'json?' }]) {
-    editSchema(modern.root, s => { s.events['notify.tapped'].payload = payload; });
-    assert.throws(() => codegen(modern), /since 11\+ must declare/);
-  }
+  // A declaration the runtime cannot emit is the app's own and warned about — never refused. Events are
+  // not shape-checked by assertBuiltinShapes, so these generated fine before, and assertAdditive refuses
+  // changing a shipped event: a refusal here would wedge such an app with nothing left but --rebaseline.
+  editSchema(modern.root, s => { s.events['notify.tapped'].payload = { id: 'string' }; });
+  let r = codegen(modern);
+  assert.doesNotMatch(readFileSync(join(modern.root, modern.cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8'),
+    /'notify.tapped':/, 'no int id goes out over a string-id event');
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /without "id" as an int/);
+  assert.match(r.warnings[0], /notificationEventAdapter/);
+
+  // A required payload and an extra app field are both emittable: the response always carries a payload,
+  // and a field the response does not carry is left out rather than sent as null.
+  editSchema(modern.root, s => { s.events['notify.tapped'].payload = { id: 'int', payload: 'string', extra: 'json?' }; });
+  r = codegen(modern);
+  dart = readFileSync(join(modern.root, modern.cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart, /'notify.tapped': \{'id', 'payload'\}/);
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /declares "extra", which a native notification response does not carry/);
+
+  // A pre-11 event is app-owned by its number alone, and that is reported rather than left silent:
+  // has() answers from the schema and stays true, so a page would subscribe and receive nothing.
+  const legacy = fixture();
+  editSchema(legacy.root, s => { s.events['notify.tapped'] = { since: 1, payload: { id: 'string' } }; });
+  r = codegen(legacy);
+  assert.ok(r.warnings.some((w) => /below the reserved 11/.test(w) && /notificationEventAdapter/.test(w)));
 });
 
 test('dev plans a Vite server and debug-only emulator/LAN commands without changing files', () => {

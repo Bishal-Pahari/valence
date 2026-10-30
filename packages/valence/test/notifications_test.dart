@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:valence/codegen.dart' show eventScript;
+import 'package:valence/src/wire.dart' show isEventScript;
 import 'package:valence/valence.dart';
 
 class FakeNotifications extends ValenceNotificationPlatform {
@@ -373,7 +374,60 @@ void main() {
     platform.respond(response(payload: 'secret'));
     expect(calls, 1);
     expect(events, isEmpty);
-    expect(logs, ['notifications: event adapter failed; response dropped']);
+    expect(logs.single, startsWith('notifications: event adapter threw '));
+    expect(logs.single, contains('StateError'));
+    expect(logs.single, isNot(contains('secret')));
+  });
+  test('an adapter that does not return a generated event script is dropped',
+      () async {
+    final logs = <String>[];
+    String? hand(Map<String, Object?> value) =>
+        // The shape a naive adapter reaches for, and the reason the guard exists: a payload with a
+        // quote in it closes the string and the rest reaches the page as code.
+        "window.__valence&&window.__valence.e('notify.tapped',{id:'${value['payload']}'})";
+    service = ValenceNotifications(
+        directory: directory,
+        emit: events.add,
+        platform: platform,
+        log: logs.add,
+        eventAdapter: hand);
+    await service.initialize();
+    platform.respond(response(payload: "'+alert(1)+'"));
+    expect(events, isEmpty, reason: 'an unescaped payload never reaches the page');
+    expect(logs.single, contains('did not return a generated event script'));
+
+    // The builder's own output passes, so the guard costs a correct adapter nothing.
+    events.clear();
+    final good = FakeNotifications();
+    service = ValenceNotifications(
+        directory: directory,
+        emit: events.add,
+        platform: good,
+        eventAdapter: (value) =>
+            eventScript('notify.tapped', {'id': '${value['id']}'}));
+    await service.initialize();
+    good.respond(response());
+    expect(events.single, eventScript('notify.tapped', {'id': '42'}));
+
+    expect(isEventScript('window.__valence&&window.__valence.e("a",1,2)'), isFalse);
+    expect(isEventScript('alert(1)'), isFalse);
+  });
+  test('an app-owned event reports that the tap was not delivered, once',
+      () async {
+    final logs = <String>[];
+    service = ValenceNotifications(
+        directory: directory,
+        emit: events.add,
+        platform: platform,
+        log: logs.add,
+        eventFields: const {});
+    await service.initialize();
+    platform.respond(response());
+    platform.respond(response());
+    expect(events, isEmpty);
+    expect(logs.length, 1, reason: 'said once, not once per tap');
+    expect(logs.single, contains('notify.tapped'));
+    expect(logs.single, contains('notificationEventAdapter'));
   });
   test(
       'cold response consumes once; warm action and tap are escaped; foreign callbacks are ignored',

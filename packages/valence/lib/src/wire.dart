@@ -130,6 +130,23 @@ String replyError(Object? id, String code, String message) {
 String eventScript(String name, Object? payload) =>
     _escapeScriptSeparators('window.__valence&&window.__valence.e(${jsonEncode(name)},${jsonEncode(payload)})');
 
+/// Whether [script] is something [eventScript] could have produced.
+///
+/// A generated `BridgeEvents` builder escapes its payload; a string an app concatenated by hand does not,
+/// and a notification payload reaching the page as code would be script injection from one bundle into
+/// another. Anywhere a host hands back a finished event script, check the shape rather than the guidance:
+/// every builder's output parses back, and a concatenated payload carrying a quote or a brace does not.
+bool isEventScript(String script) {
+  const prefix = 'window.__valence&&window.__valence.e(';
+  if (!script.startsWith(prefix) || !script.endsWith(')')) return false;
+  try {
+    final args = jsonDecode('[${script.substring(prefix.length, script.length - 1)}]');
+    return args is List && args.length == 2 && args.first is String;
+  } catch (_) {
+    return false; // Not valid JSON arguments, so not a generated builder's output.
+  }
+}
+
 /// Wraps a reply from the generated `bridgeDispatch` in the script the host passes to `runJavaScript`.
 String bridgeReplyScript(String reply) => _escapeScriptSeparators('window.__valence&&window.__valence.r($reply)');
 
