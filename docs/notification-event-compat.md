@@ -8,6 +8,91 @@ ID. Regenerated config names the compatible events and fields; a native adapter 
 event using the original ID carried inside the app's own payload. Warm and cold taps use the same
 conversion without changing the shipped schema or erasing its baseline.
 
+## Retirement-base R4 queue refresh - 2026-10-31
+
+### In plain terms
+
+The notification compatibility fix remains included on the newest shared candidate.
+This refresh also carries the upstream method-retirement feature and its follow-up tests
+and Doctor wording. No new runtime behavior is introduced on this branch. App-c still
+needs updated tooling, regeneration, its native adapter and fresh warm/cold tap acceptance;
+its iteration-9 event audit remains a failure rather than a closed finding.
+
+### Bases, evidence and decision
+
+Merged packages into codex/notify-event-compat in both worktrees without conflicts:
+code 118448095efa8527009b08a1f9331eb40e0ab73a and site
+f5ffebebcb588c375370e8a5a88df59d1bff7e0e (merge commits 1e9b6ce / e7594eb).
+Then incorporated code dec951dac80c7da20ae52d8f87339f2caedadad7 (merge 6c06ea3)
+and 3f21e11c5f2d62e516a1e15c7db6fb8a21b1799b (merge de526e5) as packages moved.
+Finally merged the reviewer and troubleshooting follow-ups: code
+b645179f459a247513a1f05927dde92285f65e7b and site
+6a219188edc5d5ccdb962cdb1b0d7b8611803bde (merge commits a40271c / 87b34d3).
+Those are the final packages bases.
+
+Read both apps' findings and newest reports, Kundalini 16 and app-c 9, read-only.
+App-c's actual event-contract-check.json reports one tap, numeric ID 1997876972,
+expected string and passed=false. Its current host has neither notificationEventAdapter
+nor notificationEventFields, so this capture does not validate the merged correction.
+The raw background-state comparison confirms equal activation hashes with 1793383609
+pending; final-state.json confirms that sequence later committed, with pending/trial null
+and bad 1793383520 retained. Preserve the distinction between successful routing,
+background execution, OTA commitment and typed-event compatibility.
+
+Kundalini confirms warm/cold/repeated links, rejected unsafe paths, pinned OTA commitment
+and restoration of seven alarms after reboot. F-63/F-65 fixes remain in the shared base.
+The earlier sections' statement that F-64/S4 is deferred is historical: packages now
+includes retirement and the site documents it. Retirement keeps the wire declaration and
+has() entry but returns E_UNSUPPORTED. A minimum bridge requirement alone does not prove
+that a bundle never calls an old method; retain the documented developer responsibility
+to inspect every still-servable caller. Do not retire any app method in this refresh.
+
+Decision: preserve users' data, original application IDs, additive declarations and the
+upstream adapter checks. Keep combined schema 16, notification/badge since 11 and
+notify.pendingIds since 16; both template and example were checked. Do not rewrite a
+shipped event or convert an integer hash to a supposed original string ID.
+No security code changed: the prior checklist remains applicable, including strict
+response decoding, compiled action checks, bounded buffering, structural script checking,
+and payload-free exception logs. Signature order, nonce, navigation/CSP, atomic activation
+and sync/data paths are untouched. No new independent runtime review is claimed.
+
+All 27 preceding numbered-feature/link/sync-fixes tips are ancestors of packages in both
+repos. Only this report refresh remains unmerged and ready; no second unmerged ready
+feature requires rebuilding integration. This run handles one queued branch. S1 remains
+deferred and S2 still needs a Play account; no new must-have is available.
+
+### Validation and limits
+
+Final logs use %TEMP%/valence-oct31-r4-handoff-*.log; earlier attempts under
+valence-oct31-retirement-* and valence-oct31-r4-current-* cover earlier bases.
+All gates were rerun after the final documentation-base merges.
+
+| Gate | Final result |
+| --- | --- |
+| npm test | 106 passed, zero failures/skips; generated Dart and strict/verbatim generated TS, including retirement, executed |
+| Core Flutter tests, --no-pub --concurrency=2 | 548 passed |
+| Core / push fatal-info Dart analysis | No issues in either package |
+| Push adapter / example Flutter tests | 2 / 27 passed |
+| Core / push pub publish --dry-run | Zero warnings; push retains one existing local-override hint |
+| Bridge tests / strict/verbatim TypeScript | 29 passed / passed |
+| Root / bridge npm pack --dry-run | Passed / passed |
+| Site build and SEO | 43 pages passed |
+| Example codegen --check / signed built-in verify | written: []; seq 1793209750 and 2 files verified |
+| Example debug APK | Passed; final cached assembleDebug 5.1 seconds, earlier build 236.7 seconds |
+| Windows py Firebase audit after final APK | PASS: resolved graph, manifest and all 19 DEX files contain no Firebase SDK references |
+
+The APK commands used a process-scoped 2 GiB Gradle heap, 1 GiB metaspace,
+ActiveProcessorCount=2 and two workers. The existing app_badge_plus Kotlin migration
+warning remains. No APK install, emulator session or new device acceptance is inferred.
+App-c F-30, real remote-push delivery and iOS remain unverified by these gates;
+iOS is experimental and untested. App-c F-27's remaining lifecycle documentation
+gap is still open; F-31 is corrected upstream but its captured preview remains old.
+
+The only delta beyond packages is this validation report in each repo. Versions,
+schemas, baselines and signed assets are unchanged. No test-app writes, commits or
+merges to shared branches, pushes or publication. Only R4's Status cell is changed
+in the shared roadmap; the existing integration entry and other owners' rows are retained.
+
 ## Post-review R4 queue refresh - 2026-10-31
 
 ### In plain terms
