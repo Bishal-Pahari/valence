@@ -311,7 +311,9 @@ export function notificationEventWarnings(s) {
 
 export function staleToolingWarnings(s) {
   return s.methods
-    .filter((m) => !m.plugin && !(m.name in BUILTINS) && BUILTIN_AREAS.has(m.name.split('.')[0]))
+    // A retirement already answers this warning's question — the method is deliberately the app's own and
+    // nothing calls it any more — so repeating it on every run for ever is how an output stops being read.
+    .filter((m) => !m.plugin && !m.retired && !(m.name in BUILTINS) && BUILTIN_AREAS.has(m.name.split('.')[0]))
     .map(
       (m) =>
         `"${m.name}" is generated as your own method, but "${m.name.split('.')[0]}." is an area the valence package ships built-ins in and this CLI has no built-in by that name. If a guide introduced it as a built-in, your tooling is older than the runtime you are reading about: run "npx create-valence update". If the method is genuinely yours, nothing is wrong — but note it will stay yours, so ValenceBuiltins will not implement it and your host must.`,
@@ -665,7 +667,9 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
   // and an unguarded call to a newer method throws E_UNSUPPORTED in the field with no build-time or store signal.
   if (bridge < schema.version) {
     const above = Object.entries(schema.methods ?? {})
-      .filter(([, d]) => (d?.since ?? 1) > bridge)
+      // A retired method is E_UNSUPPORTED on every host, old or new, so "needs a newer host" is not what
+      // is wrong with calling it — and naming it here would tell an app to guard a call it should delete.
+      .filter(([, d]) => (d?.since ?? 1) > bridge && d?.retired !== true)
       .map(([n]) => n);
     if (above.length) {
       warnings.push(
@@ -995,7 +999,23 @@ export function parseSchema(schema, pluginMethods = new Set(), pluginNamespaces 
   }
   const methods = Object.entries(schema.methods ?? {}).map(([name, m]) => {
     named(name, 'method');
-    return { name, plugin: pluginMethods.has(name), since: int(m.since, `${name}.since`, 1, version), params: fields(m.params, name), returns: parseType(m.returns, `${name}.returns`, true) };
+    const since = int(m.since, `${name}.since`, 1, version);
+    if (m.retired !== undefined && m.retired !== true) throw new Error(`${name}.retired must be true or absent`);
+    // Retirement replaces the handler with `E_UNSUPPORTED` (§4.1), so it is only ever the app's own
+    // method to retire. The three refusals below are the three ways it would otherwise delete behaviour
+    // the app does not own: a core method every page may call, a built-in the package implements, and a
+    // plugin method the native registry answers.
+    if (m.retired) {
+      const why = CORE_METHODS.includes(name)
+        ? 'every page may call it, so it must exist'
+        : pluginMethods.has(name)
+          ? 'a plugin method is answered by its native registration, not by a handler you wrote'
+          : (name in BUILTINS && since >= reservedSince(name))
+            ? 'the valence package implements it, so retiring it would answer E_UNSUPPORTED for a working built-in'
+            : null;
+      if (why) throw new Error(`"${name}" cannot be retired: ${why}. Retirement is for a method of your own that nothing calls any more.`);
+    }
+    return { name, plugin: pluginMethods.has(name), retired: m.retired === true, since, params: fields(m.params, name), returns: parseType(m.returns, `${name}.returns`, true) };
   });
   const events = Object.entries(schema.events ?? {}).map(([name, e]) => {
     named(name, 'event');
@@ -1061,15 +1081,24 @@ function isBuiltinParamGrowth(was, now, allowed) {
   return isBuiltinGrowth(was.params ?? {}, now.params ?? {}, allowed);
 }
 
+// `retired` says what the host does with a method, not what goes over the wire (§4.1): the name, its
+// `since`, its params and its return type are all unchanged, so marking a shipped method retired — and
+// unmarking it — is invisible to every bundle and must not read as a breaking change.
+const wireShape = (kind, def) =>
+  kind === 'methods' && def && typeof def === 'object' && Object.hasOwn(def, 'retired')
+    ? Object.fromEntries(Object.entries(def).filter(([k]) => k !== 'retired'))
+    : def;
+
 // The schema is additive only once a store build has shipped it (contracts §4.1).
 export function assertAdditive(shipped, current) {
   if (!shipped) return;
   if (current.version < shipped.version) throw new Error(`schema version went down: ${current.version} < shipped ${shipped.version}`);
   const grows = builtinOptionalFields(current);
   for (const kind of ['methods', 'events', 'types']) {
-    for (const [name, def] of Object.entries(shipped[kind] ?? {})) {
+    for (const [name, shippedDef] of Object.entries(shipped[kind] ?? {})) {
       if (!Object.hasOwn(current[kind] ?? {}, name)) throw new Error(`${kind} "${name}" shipped in a store build and cannot be removed`);
-      if (canonical(def) === canonical(current[kind][name])) continue;
+      const def = wireShape(kind, shippedDef);
+      if (canonical(def) === canonical(wireShape(kind, current[kind][name]))) continue;
       // A built-in's returned type may gain the fields the runtime added to it, and nothing else. Without
       // this the additive-only guard refuses the very upgrade §4.3 tells an adopter to make, and the only
       // way through would be --rebaseline, which overwrites the schema the stores reviewed.
@@ -1083,7 +1112,7 @@ export function assertAdditive(shipped, current) {
       // sibling needs a version to arrive at. Without this, an app could add `data.list.after` at the
       // shipped version, leaving has() unable to distinguish this host from the store build that answers
       // `E_PARAMS`. Note app.info().bridge is no help: it is this app's own schema version (§4.2).
-      if (kind === 'methods' && isBuiltinParamGrowth(def, current.methods[name], BUILTINS[name]?.optionalParams)) {
+      if (kind === 'methods' && isBuiltinParamGrowth(def, wireShape(kind, current.methods[name]), BUILTINS[name]?.optionalParams)) {
         if (current.version > shipped.version) continue;
         throw new Error(
           `"${name}" gained the param ${Object.keys(current.methods[name].params ?? {}).filter((p) => !Object.hasOwn(def.params ?? {}, p)).map((p) => `"${p}"`).join(', ')}, which needs "version" above the shipped ${shipped.version}. A param has no "since", so a page can only gate it on a sibling method or event at the new version — has("data.count") for data.list's "after".`,
@@ -1129,7 +1158,12 @@ export function genTs(s) {
   o.push(`export const BRIDGE_VERSION = ${s.version};`, '');
   for (const t of s.types) o.push(t.fields.length ? `export interface ${t.name} ${tsFields(t.fields, 0)}` : `export type ${t.name} = Record<string, never>;`, '');
   o.push('export interface Methods {');
-  for (const m of s.methods) o.push(`  '${m.name}': { params: ${tsFields(m.params, 2)}; returns: ${tsType(m.returns)} };`);
+  for (const m of s.methods) {
+    // Kept in the table so `has()` and every shipped bundle are unchanged (§4.1); marked so a call left
+    // in page code is struck through in the editor instead of found in the field.
+    if (m.retired) o.push(`  /** @deprecated retired by the host: the call answers E_UNSUPPORTED. */`);
+    o.push(`  '${m.name}': { params: ${tsFields(m.params, 2)}; returns: ${tsType(m.returns)} };`);
+  }
   o.push('}', '', 'export interface Events {');
   for (const e of s.events) o.push(`  '${e.name}': ${tsFields(e.payload, 2)};`);
   o.push('}', '');
@@ -1324,6 +1358,15 @@ function dartBuiltins(s) {
   ];
   for (const m of s.methods) {
     const builtin = builtinFor(m);
+    // A retired method is answered here rather than left abstract, which is what lets the app delete the
+    // handler and the native code behind it (§4.1). The name stays in `BridgeHandlers` and in `has()`.
+    if (m.retired) {
+      o.push(`  /// \`${m.name}\`, retired: the name is kept for bundles that shipped with it.`);
+      o.push(`  Future<${dartType(m.returns)}> ${camel(m.name)}(${m.params.length ? `${pascal(m.name)}Params p` : ''}) async =>`);
+      o.push(`      throw const BridgeError('E_UNSUPPORTED', '${m.name} is retired');`);
+      o.push('');
+      continue;
+    }
     if (!builtin && !m.plugin) continue;
     const typeName = m.returns.base === 'void' || PRIMS.has(m.returns.base) ? '' : m.returns.base;
     const arg = m.params.length ? `${pascal(m.name)}Params p` : '';
@@ -1580,10 +1623,14 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
     'Flutter dependencies': 'run flutter pub get in host.dir and correct dependency constraints',
     'test matrix': 'correct .valence/test-matrix.json using the documented IDs and host-relative test files',
   };
+  // A string is a warning; `{ msg }` is a passing row that still has something to report, the same shape
+  // the wizard's own checks use. Without it a row whose whole job is to publish a number would have to
+  // warn for ever to be seen, which is the failure mode F-64 names: a permanent warning stops being read.
   const check = async (name, fn, fix = fixes[name] ?? 'correct the mapped test path or failing test, then rerun valence doctor --tests') => {
     try {
-      const warning = await fn();
-      rows.push([warning ? 'WARN' : 'PASS', name, warning ?? 'verified']);
+      const r = await fn();
+      const warning = typeof r === 'object' && r !== null ? r.warn : r;
+      rows.push([warning ? 'WARN' : 'PASS', name, warning ?? (typeof r === 'object' && r !== null ? r.msg : undefined) ?? 'verified']);
     } catch (e) {
       rows.push(['FAIL', name, `${e.message.split('\n')[0]} | Fix: ${fix}`]);
     }
@@ -1629,6 +1676,39 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
     }
     if (storeBridge === null) return 'OTA signatures verified, but no recorded store bridge; compatibility unverified';
   }, 'rebuild OTA with --requires-bridge <store-version> and has() guards, or ship the new host first; archive obsolete local releases outside dist-ota');
+  // The one number a retirement (§4.1) turns on, and the arithmetic nobody does twice by hand: check 4
+  // refuses every release below the floor, so the oldest bundle a device can still be served is the lowest
+  // `requires.bridge` at or above it — together with the built-in bundle, which every install carries as
+  // its fallback. A method no bundle on that line calls is a method that can stop being implemented.
+  await check('oldest servable bundle', () => {
+    const baseline = readBaseline(p);
+    const floor = baseline.floor ?? 0;
+    const bridges = [];
+    let unreadable = 0;
+    // Signatures are not checked here: the OTA row above verifies every one of these manifests and fails
+    // on a bad one, so re-verifying would only duplicate its failure. This row is arithmetic over seq and
+    // requires.bridge, and a value it cannot trust is counted rather than used.
+    const add = (what, m) => {
+      if (Number.isSafeInteger(m.requires?.bridge) && m.requires.bridge >= 1) bridges.push({ what, bridge: m.requires.bridge });
+      else unreadable++;
+    };
+    const builtinPath = join(host, 'assets', 'valence', 'builtin', 'manifest.json');
+    if (existsSync(builtinPath)) {
+      const m = readJson(builtinPath);
+      add(`built-in seq ${m.seq}`, m);
+    }
+    const dir = join(p.ota, 'manifests');
+    const local = (existsSync(dir) ? readdirSync(dir).filter((f) => /^\d+\.json$/.test(f)) : [])
+      .map((f) => readJson(join(dir, f)))
+      .filter((m) => (m.seq ?? 0) >= floor);
+    for (const m of local) add(`OTA seq ${m.seq}`, m);
+    const { schema, owners, namespaces } = loadPluginSchema(root, cfg);
+    const retired = parseSchema(schema, owners, namespaces).methods.filter((m) => m.retired).map((m) => m.name);
+    const note = `${retired.length ? `retired: ${retired.join(', ')} — a retirement is safe only once no bundle on that line calls the method; ` : ''}only releases on this machine are visible here`;
+    if (!bridges.length) return `no readable local bundle${unreadable ? ` (${unreadable} manifest${unreadable > 1 ? 's' : ''} without a usable requires.bridge)` : ''}; ${note}`;
+    const oldest = bridges.reduce((a, b) => (b.bridge < a.bridge ? b : a));
+    return { msg: `requires bridge ${oldest.bridge} (${oldest.what}); floor ${floor}, ${local.length} local OTA manifest${local.length === 1 ? '' : 's'} at or above it${unreadable ? `, ${unreadable} skipped` : ''}; ${note}` };
+  }, 'rebuild the built-in bundle and keep the released manifests under dist-ota/manifests, then rerun valence doctor');
   await check('database directory', () => {
     const name = cfg.host.database ?? 'valence.db';
     if (typeof name !== 'string' || !name || name === '.' || name === '..' || /[<>:"/\\|?*\x00-\x1f]/.test(name) || /[. ]$/.test(name) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) throw new Error('host.database must be a plain file name, never a directory or path');

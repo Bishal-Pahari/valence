@@ -177,6 +177,11 @@ it proves host *policy* and never the OS WebView's own behaviour. iOS stays expe
 The bridge IDL and the manifest `format` are additive only. This package's version is independent of your
 schema's `BRIDGE_VERSION`.
 
+A method of your own that nothing calls any more can be marked `"retired": true` in the schema: the name
+and its shape stay, so `has()` and every shipped bundle are unchanged, and codegen answers it with
+`E_UNSUPPORTED` from `ValenceBuiltins` instead of leaving an abstract member — which is what lets the dead
+native code go. A built-in, `app.ready`/`app.info` and a plugin method cannot be retired.
+
 MIT. The spec is `contracts.md`, which ships inside the `/valence` Claude Code skill and is restated at
 <https://getvalence.pages.dev/docs/>.
 

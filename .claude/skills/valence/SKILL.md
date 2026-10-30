@@ -81,7 +81,7 @@ These are enforced by `valence.mjs`, the builder and the reviewer.
    - every message carries the per-launch nonce the server put in the entry page;
    - every message is decoded strictly by the generated code;
    - the CSP header comes from the signed manifest (§3, §4.2, §7).
-5. **The bridge schema is additive only.** Once a store build ships the schema, `codegen` refuses to change or remove anything in it; add `name.v2` instead (§4.1).
+5. **The bridge schema is additive only.** Once a store build ships the schema, `codegen` refuses to change or remove anything in it; add `name.v2` instead (§4.1). A method of the app's own that nothing calls any more can be marked `"retired": true`: the name, `since`, params and return type stay (so `has()` and every shipped bundle are unchanged) and codegen answers it with `E_UNSUPPORTED` instead of demanding a handler, which is what lets the dead native code go. A built-in, a core method and a plugin method cannot be retired, and doctor's `oldest servable bundle` row is the number that says whether a retirement is safe.
 6. **First launch works fully offline** from the built-in bundle plus `seed.db`, and never blocks on a download (§5.2, Apple guideline 4.2.3(ii)).
 7. **Durable state lives in native SQLite through the bridge.** The web app's localStorage and IndexedDB are only a cache (§3, origin note).
 8. **No CRDTs and no general two-way sync.** Server-published buckets are pulled, and user buckets use an outbox with last-writer-wins per key (§5.5).
@@ -331,7 +331,12 @@ obsolete OTA artifacts outside `dist-ota` before rerunning; never rewrite the st
 a compatibility failure. `web.connect` supports URL paths and grants browser CSP access only;
 `http.origins` grants native token access and requires exact origins plus a store build.
 Database location remains WARN: the CLI reports `<appSupport>/<host.database>` but cannot prove
-an installed phone's migration. Verify adoption on a device. Git scanning excludes ignored files
+an installed phone's migration. Verify adoption on a device.
+The `oldest servable bundle` row **passes with a number** rather than warning: it reports the lowest
+`requires.bridge` among the bundles a device can still be served — every local release at or above the
+floor, plus the built-in bundle — and names any retired method beside it. It is the number a retirement
+turns on (§4.1), and it sees only the releases on this machine, so a release built elsewhere still needs
+checking by hand. Git scanning excludes ignored files
 and history; unavailable Git is WARN. Rotate exposed keys and audit history separately.
 
 Run `node valence/valence.mjs doctor --tests` before the manual audit. Report every WARN separately: missing stack/baseline, current seed pairs, dependency resolution, native-value declarations, an intent filter `links.origins` does not declare, and unexecuted section 8 mappings. `.valence/test-matrix.json` maps `bridge`, `loopback`, `updater`, `store-sync`, `integration` to host-relative test files. The package owns its invariants; map app wiring and device evidence rather than duplicating the runtime suite.

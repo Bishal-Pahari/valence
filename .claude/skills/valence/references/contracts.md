@@ -602,6 +602,45 @@ The type language is `string | int | num | bool | json | void | <TypeName>`. A `
 - **`--store` checks the schema against the recorded baseline before replacing it,** with the same three rules, and refuses the build otherwise. `--rebaseline` overrides that, and warns. Without this, the guard above is one command away from being gone: `--store` is the only writer of `storeSchema`, so re-running it rewrites the record that the check is made against — and a change `codegen` had just refused then passes with nothing left to show it was ever refused. `baseline.json` is the only evidence of what the stores reviewed and nobody can reconstruct it afterwards, so `--store` also prints what it recorded (`bridge`, `routes`, and every name new since the last one). Treat the file as append-only in review.
 - **Additive-only is a *wire and store* guarantee, not source compatibility.** Old bundles keep working, `has()` degrades gracefully and the stores see a superset — but a new method lands in the generated `BridgeHandlers` interface, so the host and every test double stop compiling until it is implemented. That is intentional: the one thing worse than a compile error here is a shipped schema with no handler behind it. Bump the schema and write the handler in the same commit.
 
+**Retiring a method (`"retired": true`, K F-64).** Additive-only means a method an app invented and later
+replaced can never be *removed* — an old bundle on an old phone is entitled to the method it was built
+against — and until 0.4 that was the whole story, so the consequences were permanent: a declaration in
+every future baseline, an abstract member of `BridgeHandlers` backed by Dart that can never run, and a
+stale-tooling warning (§4.3) for ever about a method that is deliberately the app's own. A permanent
+warning is how a build output stops being read. `"retired": true` on a method says *this name is mine, it
+is finished, and nothing calls it*:
+
+```json
+"notify.daily": { "since": 1, "retired": true, "params": { "hour": "int" }, "returns": "void" }
+```
+
+- **The wire contract does not move.** The name, its `since`, its params and its return type stay in the
+  schema, in `baseline.storeSchema`, in `METHOD_SINCE` and therefore in `has()`, which still answers
+  `true`. Nothing an old bundle can observe changes except the reply.
+- **`codegen` generates the answer instead of demanding one.** The method keeps its place in the
+  `BridgeHandlers` interface, and `ValenceBuiltins` gains a concrete implementation that throws
+  `E_UNSUPPORTED` — so the app's own handler, and the native code behind it, can be deleted. That is the
+  point of the marker: before it, the only way to stop maintaining dead native code was to leave it there.
+- **The generated TypeScript keeps the method and marks it `@deprecated`**, so page code that still calls
+  it is struck through in the editor rather than discovered in the field.
+- **The stale-tooling warning is suppressed for it**, because a retirement *is* the deliberate statement
+  that warning asks for.
+- **`retired` is not part of the shape the additive guard compares**, so marking a shipped method retired
+  — and unmarking it — is never a breaking change. Unmarking restores the abstract handler, and the host
+  stops compiling until the method is implemented again, which is the right failure.
+- **A built-in, a core method and a plugin method cannot be retired.** None of the three is the app's to
+  retire: a built-in and a plugin method already have a generated implementation, so the marker would
+  replace working behaviour with `E_UNSUPPORTED`, and the core methods of §4.1 are required to exist.
+  `codegen` refuses all three by name.
+
+**Retirement is a claim about bundles, and only the developer can make it.** `has()` still answers `true`,
+so a bundle that *does* call the method stops working the moment the retiring host ships — the reply turns
+from a result into `E_UNSUPPORTED`. The number that decides it is the lowest `requires.bridge` among the
+bundles a device can still be served: every release at or above the floor (check 4) plus the built-in
+bundle. `valence doctor`'s **`oldest servable bundle`** row reports it, with the retired names beside it,
+because computing it by hand across `baseline.json` and `dist-ota/manifests/` is exactly the arithmetic
+nobody does twice. The row sees only the releases on this machine, so it says so.
+
 ### 4.2 Wire protocol
 
 | Direction | Mechanism | Payload |
@@ -1846,6 +1885,17 @@ USE_EXACT_ALARM by default. iOS installs the UNUserNotificationCenter delegate. 
 notification callback runs UI activation. iOS code paths are experimental and untested.
 
 ## 8. Test matrix (minimum; all must pass before "done")
+
+S4 method retirement (§4.1): a `"retired": true` method keeps its name, `since`, params and return type in
+the schema, in `METHOD_SINCE` and in the `BridgeHandlers` interface, is answered concretely by the
+generated `ValenceBuiltins` with `E_UNSUPPORTED` behind unchanged strict decoding, is marked
+`@deprecated` in the generated TypeScript, and stops producing the stale-tooling warning. Retiring and
+un-retiring a method a store build shipped both pass the additive guard while a real change to it stays
+refused; a core method, a built-in and a plugin method are each refused by name, and a non-`true` value is
+refused as a typo. Doctor's `oldest servable bundle` row **passes with** the lowest `requires.bridge`
+across the built-in bundle and the local releases at or above the floor, names the retired methods, and
+says that only releases on this machine are visible. The retired handler is compiled and dispatched in the
+generated-Dart suite.
 
 R4 notification event compatibility (§6.5): a frozen pre-11 string-ID event survives codegen/check with
 its baseline unchanged and no automatic built-in emission. An event qualifies for automatic emission only
