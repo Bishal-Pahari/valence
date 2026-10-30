@@ -8,6 +8,88 @@ ID. Regenerated config names the compatible events and fields; a native adapter 
 event using the original ID carried inside the app's own payload. Warm and cold taps use the same
 conversion without changing the shipped schema or erasing its baseline.
 
+## Merged R4 queue refresh - 2026-10-31
+
+### In plain terms
+
+The notification event correction is already merged into packages. Refreshed this branch
+onto the newest shared candidate and kept the existing adapter, shipped event meanings and
+application IDs intact. App-c still needs to adopt that correction before its failing tap
+contract can be closed. No new feature is part of this queue run.
+
+### Bases, queue and decisions
+
+Code packages: 27f134b6401d78c1919eaa9839d96609590c11c5.
+Site packages: f37747861f4723d504183a6346e6ce2df34763e9.
+Both codex/notify-event-compat branches fast-forwarded first through the notification merge
+(58db7ac / 9772ba5), then through the concurrent deep-link diagnostics changes. All 27 pre-refresh
+numbered-feature/link/notification tips are ancestors of packages in both repositories.
+Before these report commits, only historical backup branches remained outside packages; no two unmerged ready features
+require a new integration. This run handles the one queued R4 refresh only.
+
+Read both apps' VALENCE_FINDINGS.md and newest reports read-only: Kundalini iteration 16
+and app-c iteration 9. The initial full test/build checks began on 58db7ac / 9772ba5;
+packages moved during validation, so the full set was repeated on the final bases above.
+Earlier passes do not substitute for the final-base gates below.
+
+Kundalini reports installed schema 17, warm/cold/repeated deep links and a pinned
+requires.bridge=16 OTA commit. Its before/after reboot captures contain the identical seven
+06:00 alarm times from October 31 through November 6; the post-reboot capture records an
+initially empty queue and later recovery without manual launch. This is inspected app
+capture evidence, not a new emulator session here. Upstream now addresses F-63 with the
+scheme/host Doctor comparison and F-65 with an explicit refusal before overwriting an
+association file. That static comparison is not proof of installed OS routing. F-64's
+retirement proposal remains a separate compatibility question; do not remove a shipped
+handler or make has() promise an implementation that merely refuses old calls.
+
+App-c's actual warm-tap audit remains failed: one tap, integer ID 1997876972 where its
+frozen event requires a string. Current app main/config still contain neither
+notificationEventAdapter nor notificationEventFields. This is unadapted runtime evidence,
+not acceptance or failure of the merged correction. Preserve the event and original
+application ID; keep F-30 open for refreshed CLI/runtime adoption, regeneration, native
+adapter wiring and warm/cold device acceptance. F-31's schema floor is already corrected
+in the merged site; its stale docs snapshot does not exercise that correction. F-27's
+remaining host-file lifecycle guidance stays open. The latest successful camera attempt
+does not establish a cause or correction for F-32.
+
+Decision order: preserve trust boundaries, then users' data and shipped contracts. Retain
+upstream diagnostics and the reviewed adapter rather than adding notification behavior
+before adoption. Starter/example stay at schema 16, R4 methods/events at since 11 and
+pendingIds at since 16. Kundalini's app-specific schema 17 does not allocate a new framework
+schema number. Keep S1 deferred during candidate acceptance and S2 behind its Play-account
+blocker. Real Firebase delivery and iOS remain untested.
+
+### Fresh validation
+
+Final logs: %TEMP%/valence-refresh-oct31-final-*.log.
+
+| Gate | Result |
+| --- | --- |
+| npm test | 103 passed, zero failures/skips; generated Dart and strict/verbatim generated TS ran |
+| Core Flutter tests | 546 passed, concurrency 2 |
+| Core fatal-info analysis / pub dry run | No issues / zero warnings |
+| Push adapter tests / fatal-info analysis / pub dry run | 2 passed / no issues / zero warnings, one existing local-override hint |
+| Example Flutter tests | 27 passed |
+| Bridge tests / strict/verbatim TypeScript | 29 passed, zero failures/skips / passed |
+| Root and bridge npm pack --dry-run | Passed |
+| Site build / SEO | 43 pages passed |
+| Example codegen --check | written: [] |
+| Built-in signature and files | seq 1793209750, two files verified |
+
+Final debug APK passes (assembleDebug 10.8 seconds; the earlier-base build passed in
+200.2 seconds). Both builds used command-local 2 GiB heap, 1 GiB metaspace,
+ActiveProcessorCount=2 and two Gradle workers. The existing app_badge_plus KGP warning remains.
+Standalone Windows py example/tool/check_no_firebase.py prints PASS for the resolved graph,
+manifest and all 19 DEX files. No APK installation or new device acceptance is inferred.
+
+Security checklist: the final delta from packages is this report only. Signature ordering,
+nonce/navigation/CSP checks, strict decoding, atomic state writes, key handling, notification
+validation and data/sync behavior remain in their existing paths. The initial implementation's
+review retains its original scope; this refresh adds no independent runtime security review.
+No test-app writes, shared-branch commits/merges, package/schema version changes, pushes or
+publications occurred. Only R4's Status cell is updated in the shared roadmap; no integration
+top line or other item is changed.
+
 ## Queue refresh after app-c iteration 9 - 2026-10-31
 
 Reviewed both findings files and newest reports: Kundalini iteration 15 and app-c iteration 9
