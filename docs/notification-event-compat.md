@@ -8,7 +8,40 @@ ID. Regenerated config names the compatible events and fields; a native adapter 
 event using the original ID carried inside the app's own payload. Warm and cold taps use the same
 conversion without changing the shipped schema or erasing its baseline.
 
-## Inputs, ownership and decision
+## Queue refresh after app-c iteration 5 - 2026-10-30
+
+Read both findings files and the newest reports: Kundalini iteration 15 and app-c iteration 5.
+Rechecked all 26 previous feature/link-compat tips in both repositories; they are ancestors of
+packages. This R4 follow-up is the only unmerged implementation branch. Both merges of newest
+packages reported already up to date: code `d2e6970a983e8f1e1f030ea39b9861d487ea9db4`, site
+`ce19151baa1fdac40ac3208e70bb69388a8b538a`. No integration rebuild is required for a single branch.
+
+App-c's `evidence/iteration-5/warm-tap-events.json` still records integer ID `142341840`, the app's
+encoded payload and `action: null` over its frozen string-ID event. Correct routing does not close
+F-30. Its supplied npm hashes match iteration 4, and this correction is still outside packages;
+that device result does not test this branch or its adapter. Keep F-30 open until adoption,
+regeneration, adapter wiring and warm/cold device acceptance. Its background comparison records
+unchanged activation bytes; final state commits `1793336948` with pending/trial null. These are
+read-only app captures, not a new device run here. F-27's host-file lifecycle guidance remains open.
+
+Decision: preserve users' data and shipped event meanings. Keep R4's reserved `since: 11`, and
+`notify.pendingIds` at `since: 16`. The combined schema stays 16: lowering it to R4's original 11
+would invalidate the later merged capabilities. This is the explicit reason the ready status
+names combined schema 16 rather than renumbering the branch to 11. No schema or package version
+changes are made. The existing security checklist and independent review below retain their
+original scope; this report-only refresh adds no runtime change or new independent review.
+
+Fresh logs use `%TEMP%/valence-notify-refresh-*.log`. Root tests pass 102/102 with zero skips,
+including generated Dart and strict/verbatim generated TS; core tests pass 546, push adapter 2,
+example 27 and bridge 29. Both fatal-info analyzers and strict/verbatim bridge TypeScript pass.
+Both pub dry runs have zero warnings (the push adapter retains its local-override hint); both npm
+pack dry runs pass. The site build and SEO check pass all 43 pages. Example codegen writes nothing;
+signed builtin verification accepts seq `1793209750`, two files. The debug APK builds successfully
+(assembleDebug 134.6 seconds, existing app_badge_plus KGP warning). Standalone `py` Firebase audit
+prints PASS for the resolved graph, manifest and all 19 DEX files. No implementation changed after
+these checks. Device acceptance of this correction, real Firebase delivery and iOS remain untested.
+
+## Inputs, ownership and decision (initial implementation)
 
 Read both apps' VALENCE_FINDINGS.md and their newest completed reports: Kundalini iteration 15
 and app-c iteration 4. Kundalini reports installed schema-16 acceptance, observed reminder delivery
