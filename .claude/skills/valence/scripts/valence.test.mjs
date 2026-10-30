@@ -1980,6 +1980,8 @@ test(
   { skip: !existsSync(TSC) && 'run "npm install" in packages/bridge first', timeout: 300_000 },
   () => {
     const { root, cfg } = fixture({ latest: true });
+    // A retired method carries a JSDoc tag into the Methods map, so it type-checks here too (§4.1).
+    editSchema(root, (x) => (x.methods['notify.daily'] = { since: 1, retired: true, params: { hour: 'int' }, returns: 'void' }));
     codegen({ root, cfg });
     const lib = join(root, cfg.web.lib);
     // An app's web project is ESM; without this the compiler reads the file as CommonJS and every import
