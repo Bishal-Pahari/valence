@@ -56,7 +56,10 @@ test('association generators validate identity/certificates, write the website l
   assert.equal(android[0].target.package_name, 'com.example.app');
   assert.deepEqual(android[0].target.sha256_cert_fingerprints, [fingerprint.toUpperCase()]);
   assert.ok(r.file.endsWith(join('.well-known', 'assetlinks.json')));
-  assert.throws(() => association({ kind: 'assetlinks', packageId: 'com.example.app', fingerprints: fingerprint, out }), /EEXIST/);
+  // Refusing is policy, so the refusal names the policy and the fix. A bare Node errno reads as a
+  // permissions problem and leaves the reader to guess that it was deliberate.
+  assert.throws(() => association({ kind: 'assetlinks', packageId: 'com.example.app', fingerprints: fingerprint, out }),
+    (e) => /already exists/.test(e.message) && /never overwritten/.test(e.message) && /delete it to regenerate/.test(e.message) && !/EEXIST/.test(e.message));
   for (const value of ['ab', fingerprint + ',oops', '', '../bad']) {
     assert.throws(() => association({ kind: 'assetlinks', packageId: 'com.example.app', fingerprints: value, out }), /fingerprints/);
   }
@@ -1014,6 +1017,73 @@ test('doctor checks the notification icon exists and survives release resource s
   assert.equal((await row())[0], 'FAIL', 'a longer name that merely starts with the icon is not a keep');
 
   writeFileSync(join(res, 'raw', 'keep.xml'), '<resources tools:keep="@drawable/ic_stat_app,@raw/chime"/>');
+  assert.equal((await row())[0], 'PASS');
+});
+
+test('doctor pairs every declared link origin with the intent filter that serves it', async () => {
+  const { root, cfg } = fixture();
+  codegen({ root, cfg });
+  const main = join(root, cfg.host.dir, 'android', 'app', 'src', 'main');
+  const manifestPath = join(main, 'AndroidManifest.xml');
+  const row = async () => (await diagnose({ root, cfg })).find(([, n]) => n === 'deep links');
+  const manifest = (filters) => {
+    mkdirSync(main, { recursive: true });
+    writeFileSync(manifestPath, `<manifest><application><activity>
+      <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+      ${filters}</activity></application></manifest>`);
+  };
+
+  // An app with no links and no manifest is not asked about either half.
+  assert.equal((await row())[0], 'PASS');
+
+  // Origins declared, manifest unreadable: say so rather than claiming either result.
+  cfg.links = { origins: ['panchang://app'] };
+  codegen({ root, cfg });
+  let r = await row();
+  assert.equal(r[0], 'WARN');
+  assert.match(r[2], /manifest absent/);
+
+  // Origins set, filter missing. This is the half that fails hardest and most silently: codegen --check,
+  // bundle --store and every other doctor row pass, and the OS answers "unable to resolve Intent".
+  manifest('');
+  r = await row();
+  assert.equal(r[0], 'FAIL');
+  assert.match(r[2], /panchang:\/\/app with no matching <intent-filter>/);
+  assert.match(r[2], /Fix: .*AndroidManifest\.xml/);
+
+  // Filter present but for another host, which routes nothing for the declared one.
+  manifest('<intent-filter><action android:name="android.intent.action.VIEW"/><data android:scheme="panchang" android:host="other"/></intent-filter>');
+  assert.equal((await row())[0], 'FAIL');
+
+  manifest('<intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="panchang" android:host="app"/></intent-filter>');
+  assert.equal((await row())[0], 'PASS');
+
+  // Android combines every scheme with every host inside one filter, and a scheme with no host at all
+  // matches every host, so both of those serve the declared origin.
+  manifest('<intent-filter><action android:name="android.intent.action.VIEW"/><data android:scheme="other"/><data android:scheme="panchang"/><data android:host="app"/></intent-filter>');
+  assert.equal((await row())[0], 'WARN', 'the extra scheme is registered and undeclared');
+  manifest('<intent-filter><action android:name="android.intent.action.VIEW"/><data android:scheme="panchang"/></intent-filter>');
+  assert.equal((await row())[0], 'PASS');
+
+  // The other direction: the filter is there, the origin is not. The app launches on the link, so it
+  // looks like it worked, and then the host rejects the URL as untrusted and the page gets nothing.
+  cfg.links = { origins: [] };
+  codegen({ root, cfg });
+  manifest('<intent-filter><action android:name="android.intent.action.VIEW"/><data android:scheme="panchang" android:host="app"/></intent-filter>');
+  r = await row();
+  assert.equal(r[0], 'WARN');
+  assert.match(r[2], /registers panchang:\/\/app, which links\.origins does not declare/);
+
+  // A Gradle placeholder cannot be resolved here, so it must not become a complaint either way.
+  cfg.links = { origins: ['panchang://app'] };
+  codegen({ root, cfg });
+  manifest('<intent-filter><action android:name="android.intent.action.VIEW"/><data android:scheme="panchang" android:host="${applicationId}"/></intent-filter>');
+  assert.equal((await row())[0], 'PASS');
+
+  // An https origin's default port is canonical in links.origins and absent from the manifest.
+  cfg.links = { origins: ['https://example.com'] };
+  codegen({ root, cfg });
+  manifest('<intent-filter><action android:name="android.intent.action.VIEW"/><data android:scheme="https" android:host="example.com" android:port="443"/></intent-filter>');
   assert.equal((await row())[0], 'PASS');
 });
 

@@ -325,7 +325,8 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
 
 Both CLI doctors fail with a `Fix:` line on schema/generated bridge drift, invalid store baselines,
 verified local OTA requirements above the store bridge, database paths instead of file names,
-PEM signing keys in tracked or non-ignored Git files, and invalid browser/native origins. Archive
+PEM signing keys in tracked or non-ignored Git files, invalid browser/native origins, and a declared
+`links.origins` entry that no Android `VIEW` intent filter serves. Archive
 obsolete OTA artifacts outside `dist-ota` before rerunning; never rewrite the store baseline to silence
 a compatibility failure. `web.connect` supports URL paths and grants browser CSP access only;
 `http.origins` grants native token access and requires exact origins plus a store build.
@@ -333,7 +334,7 @@ Database location remains WARN: the CLI reports `<appSupport>/<host.database>` b
 an installed phone's migration. Verify adoption on a device. Git scanning excludes ignored files
 and history; unavailable Git is WARN. Rotate exposed keys and audit history separately.
 
-Run `node valence/valence.mjs doctor --tests` before the manual audit. Report every WARN separately: missing stack/baseline, current seed pairs, dependency resolution, native-value declarations, and unexecuted section 8 mappings. `.valence/test-matrix.json` maps `bridge`, `loopback`, `updater`, `store-sync`, `integration` to host-relative test files. The package owns its invariants; map app wiring and device evidence rather than duplicating the runtime suite.
+Run `node valence/valence.mjs doctor --tests` before the manual audit. Report every WARN separately: missing stack/baseline, current seed pairs, dependency resolution, native-value declarations, an intent filter `links.origins` does not declare, and unexecuted section 8 mappings. `.valence/test-matrix.json` maps `bridge`, `loopback`, `updater`, `store-sync`, `integration` to host-relative test files. The package owns its invariants; map app wiring and device evidence rather than duplicating the runtime suite.
 
 For batch reads, use `data.getMany` (since 3, max 500 keys). Read outbox depth from `sync.status`, including deletes; its offline flag is the last attempt, not connectivity. `SyncResult.pending` can be absent on older hosts. Set `ota.channel` before codegen; bundles are channel-neutral. OTA bridge defaults to the recorded store baseline; guard newer calls. Declare older seed schemas under `seedSchemas` and use versioned filenames. Test doubles can opt into `BridgeHandlersDefaults`; production hosts extend `ValenceBuiltins`.
 
@@ -436,7 +437,7 @@ Task restoration follows the recorded account: switch/sign-out clears route and 
 
 ## Deep-link setup
 
-When an app opens OS links, follow contracts ?6.3: compile exact `links.origins`, configure native registrations, install one generated `onLink()` subscription after `connect()`, and test cold/warm and repeated intents. `assetlinks` and `aasa` generate website association documents; review and host them separately. A forced Android approval proves delivery only. iOS stays experimental and untested.
+When an app opens OS links, follow contracts ?6.3: compile exact `links.origins`, configure native registrations, install one generated `onLink()` subscription after `connect()`, and test cold/warm and repeated intents. Both halves are mandatory and each fails silently alone — no route at all, or a launch whose URL the host rejects as untrusted — so add them in one commit and let `doctor`'s `deep links` row pair them. `assetlinks` and `aasa` generate website association documents; review and host them separately, and neither overwrites an existing one. A forced Android approval proves delivery only. iOS stays experimental and untested.
 
 ## OS permissions (contracts §4.9)
 

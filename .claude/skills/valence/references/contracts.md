@@ -1545,6 +1545,17 @@ It defaults to empty. HTTPS and custom schemes with a host are supported; HTTP,
 credentials, ports on custom schemes, wildcards and executable/file schemes are denied.
 An OTA cannot expand this list. OS intent filters alone do not grant trust.
 
+Both halves are mandatory and they live in different files: `links.origins` is store-compiled
+into `config.g.dart`, while the OS intent filter is hand-edited into the Android manifest, which
+codegen never reads. Each half failing alone is silent in its own direction — with no filter the
+OS never routes the intent at all, and with no origin the app launches on the link and the host
+then rejects the URL as untrusted, which looks like a working link. `doctor`'s `deep links` row
+pairs them: it reads `android/app/src/main/AndroidManifest.xml`, fails for a declared origin that
+no `VIEW` intent filter serves, and warns for a filter the allowlist does not declare. It compares
+scheme and host only, treats a scheme declared with no host as matching every host (as Android
+does), and skips a value holding a Gradle placeholder. Neither half can be proven by a unit test:
+exercise it with `adb shell am start -a android.intent.action.VIEW -d '<url>'` against a real build.
+
 Pre-9 declarations of `link.initial` remain app-owned: for example, a shipped
 `since: 2` method returning `string?` keeps its abstract handler, and its custom
 `link.opened` payload stays unchanged. Keep those handlers and event delivery when
@@ -1873,6 +1884,7 @@ R12 regression rows: batch reads preserve requested order, deduplicate, isolate 
 
 | Layer | Tests |
 |---|---|
+| Deep-link registration (`valence.test.mjs`, K F-63) | `doctor`'s `deep links` row passes with neither origins nor manifest; warns when origins are declared and the manifest is absent; **fails for a declared origin no `VIEW` intent filter serves, including a filter registering the same scheme on another host**; passes once a filter serves it; treats every scheme in a filter as combining with every host in that filter, and a scheme with no host as matching every host; **warns for a registered scheme/host the allowlist does not declare**; passes over a Gradle placeholder; and passes for a canonical HTTPS origin whose filter names the default port |
 | Legacy link migration (`valence.test.mjs`, app-c F-26) | A recorded schema-3 app's since-2 `link.initial(): string?` and custom `link.opened` survive codegen/check and a repeated store bundle without rewriting the baseline; removal, return/since changes and event payload changes remain refused. Schema-9 `Link?` delegates; a modern shape below 9 without a baseline and a redefined shape at 9 are refused. |
 | reference HTTP config (§4.5) | example source and generated config grant cleartext only to loopback; off-device hosts and wrong loopback ports denied before token lookup; release-device probe with a synthetic bearer distinguishes transport policy from origin permission |
 | seed completion (runtime, §5.2) | marker-only lock retries do not repeat imports; exhaustion retains rows and retries next launch without replacing newer synced rows; non-lock errors are not retried; row-import failure never stamps completion; failed upgrade retains the old marker; matching completion skips import; build, asset-length and missing-file changes trigger import |

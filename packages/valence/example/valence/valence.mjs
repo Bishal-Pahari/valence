@@ -1619,6 +1619,44 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
       throw new Error(`release resource shrinking deletes @drawable/${icon}: nothing but valence.config.json names it, and res/raw/keep.xml does not`);
     }
   }, 'add the drawable under android/app/src/main/res/drawable and name it in res/raw/keep.xml as tools:keep="@drawable/<icon>", then run a release build as well as debug');
+  await check('deep links', () => {
+    const origins = cfg.links?.origins ?? [];
+    const manifestPath = join(host, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+    // Both halves of a deep link are mandatory and they live in different files: links.origins is
+    // store-compiled into config.g.dart, the intent filter is hand-edited here and codegen never reads it.
+    // Each half failing alone is silent in its own direction — the OS never routes the intent, or it
+    // launches the app and the host rejects the URL as untrusted, so the page gets nothing either way.
+    if (!origins.length && !existsSync(manifestPath)) return;
+    if (!existsSync(manifestPath)) return `Android manifest absent; intent filters for ${origins.join(', ')} not checked`;
+    const xml = readFileSync(manifestPath, 'utf8');
+    const registered = new Set(); // exact scheme://host pairs an intent filter serves
+    const anyHost = new Set(); // schemes a filter registers with no host, which match every host
+    for (const [, filter] of xml.matchAll(/<intent-filter\b[^>]*>([\s\S]*?)<\/intent-filter>/g)) {
+      if (!/android\.intent\.action\.VIEW(?![.\w])/.test(filter)) continue; // MAIN/LAUNCHER and the rest are not links
+      const values = (attr) => [...filter.matchAll(new RegExp(`<data\\b[^>]*?android:${attr}\\s*=\\s*"([^"]*)"`, 'g'))]
+        .map((m) => m[1]).filter((v) => v && !v.includes('${')); // a manifest placeholder cannot be resolved here
+      // Android combines every scheme with every host declared anywhere in the same filter.
+      const schemes = values('scheme').map((s) => s.toLowerCase());
+      const hosts = values('host').map((h) => h.toLowerCase());
+      for (const scheme of schemes) {
+        if (!hosts.length) anyHost.add(scheme);
+        for (const host of hosts) registered.add(`${scheme}://${host}`);
+      }
+    }
+    // ponytail: compares scheme and host only. A declared https port with no matching android:port is not
+    // caught; add it if a port-only mismatch is ever reported.
+    const bare = (origin) => origin.replace(/:\d+$/, '').toLowerCase();
+    const unfiltered = origins.filter((o) => !registered.has(bare(o)) && !anyHost.has(bare(o).split('://')[0]));
+    const declared = new Set(origins.map(bare));
+    const undeclared = [...registered].filter((o) => !declared.has(o))
+      .concat([...anyHost].filter((s) => ![...declared].some((o) => o.startsWith(`${s}://`))).map((s) => `${s}://*`));
+    if (unfiltered.length) {
+      throw new Error(`links.origins declares ${unfiltered.join(', ')} with no matching <intent-filter> in android/app/src/main/AndroidManifest.xml; the OS will not route those links at all`);
+    }
+    if (undeclared.length) {
+      return `AndroidManifest.xml registers ${undeclared.join(', ')}, which links.origins does not declare; those links launch the app and the host then rejects the URL as untrusted. Declare them, or remove the filter if Valence does not serve them`;
+    }
+  }, 'declare every deep-link origin in valence.config.json links.origins and register the matching scheme/host <intent-filter> on the Flutter activity in android/app/src/main/AndroidManifest.xml, then run codegen and prove it with adb shell am start against a real build');
   await check('signing keys in Git', () => {
     if (insideGit(keyDir)) throw new Error('configured signing-key directory resolves inside a Git work tree');
     const repo = git(['rev-parse', '--show-toplevel']);
@@ -1758,6 +1796,12 @@ export function association({ kind, packageId, fingerprints, appId, out }) {
   const dir = join(resolve(out), '.well-known');
   mkdirSync(dir, { recursive: true });
   const target = join(dir, name);
+  // Refusing is deliberate policy, not a permissions problem: this document grants an app every URL path
+  // on the domain, it is reviewed before upload, and silently rewriting it is how a stale fingerprint
+  // survives a key rotation. Say that, rather than letting Node's errno stand as the whole explanation.
+  if (existsSync(target)) {
+    throw new Error(`${name} already exists at ${target}; it grants an app every URL path on the domain and is reviewed before upload, so it is never overwritten. Read it, then delete it to regenerate`);
+  }
   writeFileSync(target, `${JSON.stringify(document, null, 2)}\n`, { flag: 'wx' });
   return { file: target };
 }
