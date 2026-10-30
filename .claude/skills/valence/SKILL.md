@@ -333,10 +333,11 @@ a compatibility failure. `web.connect` supports URL paths and grants browser CSP
 Database location remains WARN: the CLI reports `<appSupport>/<host.database>` but cannot prove
 an installed phone's migration. Verify adoption on a device.
 The `oldest servable bundle` row **passes with a number** rather than warning: it reports the lowest
-`requires.bridge` among the bundles a device can still be served — every local release at or above the
-floor, plus the built-in bundle — and names any retired method beside it. It is the number a retirement
-turns on (§4.1), and it sees only the releases on this machine, so a release built elsewhere still needs
-checking by hand. Git scanning excludes ignored files
+`requires.bridge` among the bundles a device can still be served — every local release plus the built-in
+bundle, with the published floor **not** subtracted, because a floor binds only a device that has already
+committed a bundle carrying it (§2.2) — and names any retired method beside it. It is the number a
+retirement turns on (§4.1). It WARNs instead when `baseline.lastSeq` records a release whose manifest is
+not on disk, which is what a fresh clone or a CI release pipeline looks like. Git scanning excludes ignored files
 and history; unavailable Git is WARN. Rotate exposed keys and audit history separately.
 
 Run `node valence/valence.mjs doctor --tests` before the manual audit. Report every WARN separately: missing stack/baseline, current seed pairs, dependency resolution, native-value declarations, an intent filter `links.origins` does not declare, and unexecuted section 8 mappings. `.valence/test-matrix.json` maps `bridge`, `loopback`, `updater`, `store-sync`, `integration` to host-relative test files. The package owns its invariants; map app wiring and device evidence rather than duplicating the runtime suite.

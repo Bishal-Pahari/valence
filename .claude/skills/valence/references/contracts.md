@@ -621,8 +621,13 @@ is finished, and nothing calls it*:
   `BridgeHandlers` interface, and `ValenceBuiltins` gains a concrete implementation that throws
   `E_UNSUPPORTED` — so the app's own handler, and the native code behind it, can be deleted. That is the
   point of the marker: before it, the only way to stop maintaining dead native code was to leave it there.
-- **The generated TypeScript keeps the method and marks it `@deprecated`**, so page code that still calls
-  it is struck through in the editor rather than discovered in the field.
+- **The generated TypeScript keeps the method and marks it `@deprecated`** on its entry in the `Methods`
+  map, which shows in a hover or an explicit `Methods['name']` reference. It is **not** a diagnostic at a
+  `call('name', …)` site: the method name reaches `call` as a string argument, which TypeScript does not
+  treat as a reference to the property, and `tsc` never reports deprecations at all. So the marker is a
+  label, not a gate — deleting the page-side calls is a step you take, not one the compiler makes you
+  take. Making it a gate would mean excluding retired names from the callable key union, which is a
+  `@getvalence/bridge` change, because `METHOD_SINCE` is typed over `keyof Methods`.
 - **The stale-tooling warning is suppressed for it**, because a retirement *is* the deliberate statement
   that warning asks for.
 - **`retired` is not part of the shape the additive guard compares**, so marking a shipped method retired
@@ -636,8 +641,11 @@ is finished, and nothing calls it*:
 **Retirement is a claim about bundles, and only the developer can make it.** `has()` still answers `true`,
 so a bundle that *does* call the method stops working the moment the retiring host ships — the reply turns
 from a result into `E_UNSUPPORTED`. The number that decides it is the lowest `requires.bridge` among the
-bundles a device can still be served: every release at or above the floor (check 4) plus the built-in
-bundle. `valence doctor`'s **`oldest servable bundle`** row reports it, with the retired names beside it,
+bundles a device can still be served: **every** local release plus the built-in bundle. The published
+floor is deliberately not subtracted — it is a per-install high-water mark raised only when a device
+*commits* a bundle carrying it (§2.2), and §2.4 serves `current` without enforcing check 4, so a device
+whose last commit predates the raise keeps serving that older bundle. Subtracting the floor would report
+a safer number than the field, which is the one direction this row must never be wrong in. `valence doctor`'s **`oldest servable bundle`** row reports it, with the retired names beside it,
 because computing it by hand across `baseline.json` and `dist-ota/manifests/` is exactly the arithmetic
 nobody does twice. The row sees only the releases on this machine, so it says so.
 
@@ -1889,12 +1897,16 @@ notification callback runs UI activation. iOS code paths are experimental and un
 S4 method retirement (§4.1): a `"retired": true` method keeps its name, `since`, params and return type in
 the schema, in `METHOD_SINCE` and in the `BridgeHandlers` interface, is answered concretely by the
 generated `ValenceBuiltins` with `E_UNSUPPORTED` behind unchanged strict decoding, is marked
-`@deprecated` in the generated TypeScript, and stops producing the stale-tooling warning. Retiring and
-un-retiring a method a store build shipped both pass the additive guard while a real change to it stays
-refused; a core method, a built-in and a plugin method are each refused by name, and a non-`true` value is
-refused as a typo. Doctor's `oldest servable bundle` row **passes with** the lowest `requires.bridge`
-across the built-in bundle and the local releases at or above the floor, names the retired methods, and
-says that only releases on this machine are visible. The retired handler is compiled and dispatched in the
+`@deprecated` on its `Methods` entry — a label, not a call-site diagnostic — and stops producing the
+stale-tooling warning. Retiring and un-retiring a method a store build shipped both pass the additive
+guard while a real change to it stays refused; a core method, a built-in and a plugin method are each refused by name, and a non-`true` value is
+refused as a typo, as is `retired` on an event, which has no handler to retire. Doctor's `oldest servable bundle` row **passes with** the lowest `requires.bridge`
+across the built-in bundle and every local release — the published floor is not subtracted, because it
+binds only a device that has committed a bundle carrying it — names the retired methods, and says that
+only releases on this machine are visible. A release recorded in `baseline.lastSeq` whose manifest is not
+on disk (dist-ota is gitignored) makes the row WARN naming that seq instead of answering from the
+built-in bundle alone. A `--store` build prints a retirement or un-retirement in what it recorded, since
+the additive guard is deliberately blind to the key. The retired handler is compiled and dispatched in the
 generated-Dart suite.
 
 R4 notification event compatibility (§6.5): a frozen pre-11 string-ID event survives codegen/check with

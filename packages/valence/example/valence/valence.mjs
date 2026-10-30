@@ -726,6 +726,13 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
         if (!Object.hasOwn(baseline.storeSchema?.[kind] ?? {}, name)) added.push(`+ ${kind.slice(0, -1)} ${name}`);
       }
     }
+    // A retirement is the one change to a shipped method the additive guard forgives (§4.1), so this
+    // printout is the only place it can surface. Without it the record would change in silence.
+    for (const [name, def] of Object.entries(schema.methods ?? {})) {
+      const was = baseline.storeSchema?.methods?.[name];
+      if (!was || !!was.retired === !!def.retired) continue;
+      added.push(`~ method ${name} ${def.retired ? 'retired' : 'un-retired'}`);
+    }
     recorded = { bridge: schema.version, routes, added };
     // A store build always outranks the OTA release staged on top of the previous one (§2.4 step 1), so the channel
     // now points at a seq no device will ever install again, and an update-path test becomes a test that there is no
@@ -936,8 +943,11 @@ export function loadPluginSchema(root, cfg) {
       }
     }
   }
-  // Validate the combined IDL too: camel-case collisions and since bounds span fragments and app.
-  assertBuiltinShapes(parseSchema(schema));
+  // Validate the combined IDL too: camel-case collisions and since bounds span fragments and app. The
+  // owners and namespaces just computed are passed in, not dropped: every path that loads a schema without
+  // running codegen — `bundle --store`, which writes the baseline the additive guard is then made against —
+  // must refuse the same things codegen does, such as a fragment marking its own method retired.
+  assertBuiltinShapes(parseSchema(schema, owners, namespaces));
   return { schema, owners, namespaces };
 }
 
@@ -1019,6 +1029,10 @@ export function parseSchema(schema, pluginMethods = new Set(), pluginNamespaces 
   });
   const events = Object.entries(schema.events ?? {}).map(([name, e]) => {
     named(name, 'event');
+    // Retirement is defined for methods only (§4.1): there is nothing to retire on an event, which has no
+    // handler and is only ever emitted by the host. Accepted silently it would read as "this stops firing",
+    // and it would not — and on a shipped event the additive guard refuses it as an unexplained change.
+    if (e.retired !== undefined) throw new Error(`"${name}.retired" is only for methods: an event has no handler to retire, and stays emitted either way`);
     return { name, since: int(e.since, `${name}.since`, 1, version), payload: fields(e.payload, name) };
   });
   const typeList = Object.entries(types).map(([name, f]) => ({ name, fields: fields(f, name) }));
@@ -1676,13 +1690,18 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
     }
     if (storeBridge === null) return 'OTA signatures verified, but no recorded store bridge; compatibility unverified';
   }, 'rebuild OTA with --requires-bridge <store-version> and has() guards, or ship the new host first; archive obsolete local releases outside dist-ota');
-  // The one number a retirement (§4.1) turns on, and the arithmetic nobody does twice by hand: check 4
-  // refuses every release below the floor, so the oldest bundle a device can still be served is the lowest
-  // `requires.bridge` at or above it — together with the built-in bundle, which every install carries as
-  // its fallback. A method no bundle on that line calls is a method that can stop being implemented.
+  // The one number a retirement (§4.1) turns on, and the arithmetic nobody does twice by hand: the lowest
+  // `requires.bridge` across every bundle a device can still be serving, which is every local release plus
+  // the built-in bundle every install carries as its fallback. A method no bundle on that line calls is a
+  // method that can stop being implemented.
+  //
+  // The floor is deliberately *not* subtracted. It is a per-install high-water mark raised only when a
+  // device commits a bundle carrying it (§2.2), and `_serve` loads `current` without enforcing check 4 — so
+  // a device whose last commit predates the raise keeps serving that older bundle indefinitely. Filtering
+  // by the published floor would therefore report a higher number than the field, which is the one
+  // direction this row must never be wrong in.
   await check('oldest servable bundle', () => {
     const baseline = readBaseline(p);
-    const floor = baseline.floor ?? 0;
     const bridges = [];
     let unreadable = 0;
     // Signatures are not checked here: the OTA row above verifies every one of these manifests and fails
@@ -1698,19 +1717,27 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
       add(`built-in seq ${m.seq}`, m);
     }
     const dir = join(p.ota, 'manifests');
-    const local = (existsSync(dir) ? readdirSync(dir).filter((f) => /^\d+\.json$/.test(f)) : [])
-      .map((f) => readJson(join(dir, f)))
-      .filter((m) => (m.seq ?? 0) >= floor);
+    const local = (existsSync(dir) ? readdirSync(dir).filter((f) => /^\d+\.json$/.test(f)) : []).map((f) => readJson(join(dir, f)));
     for (const m of local) add(`OTA seq ${m.seq}`, m);
     const { schema, owners, namespaces } = loadPluginSchema(root, cfg);
     const retired = parseSchema(schema, owners, namespaces).methods.filter((m) => m.retired).map((m) => m.name);
-    const note = `${retired.length ? `retired: ${retired.join(', ')} — a retirement is safe only once no bundle on that line calls the method; ` : ''}only releases on this machine are visible here`;
-    if (!bridges.length) {
-      return `no readable local bundle${unreadable ? ` (${unreadable} manifest${unreadable > 1 ? 's' : ''} without a usable requires.bridge)` : ''}, so there is no line to compare against${retired.length ? `, and ${retired.join(', ')} ${retired.length > 1 ? 'are' : 'is'} retired` : ''}`;
+    const note = retired.length ? ` Retired: ${retired.join(', ')} — a retirement is safe only once no bundle at or above that line calls the method.` : '';
+    const oldest = bridges.length ? bridges.reduce((a, b) => (b.bridge < a.bridge ? b : a)) : null;
+    const seen = `${local.length} local OTA manifest${local.length === 1 ? '' : 's'}${existsSync(builtinPath) ? ' and the built-in bundle' : ''}${unreadable ? `, ${unreadable} without a usable requires.bridge` : ''}`;
+    // `.valence/dist-ota/` is gitignored and `baseline.json` is committed, so a fresh clone — or a project
+    // that releases from CI — sees the baseline's record of a release whose manifest is not on disk. Without
+    // this the row would answer with the built-in bundle alone, which carries the *newest* schema version:
+    // the most permissive number it can produce, on a PASS, for the project whose field bundle is oldest.
+    // `lastSeq` counts every build, so the built-in bundle in the host assets accounts for a `--builtin`
+    // or `--store` one; what cannot be accounted for is an OTA release cut on another machine.
+    const lastSeq = baseline.lastSeq ?? 0;
+    const accounted = new Set([...local.map((m) => m.seq), ...(existsSync(builtinPath) ? [readJson(builtinPath).seq] : [])]);
+    if (lastSeq > 0 && !accounted.has(lastSeq)) {
+      return `baseline.json records OTA seq ${lastSeq}, whose manifest is not under ${relative(root, dir)} — dist-ota is gitignored, so this checkout cannot see what was published and the lowest requires.bridge in the field is not computable here (${seen}).${note}`;
     }
-    const oldest = bridges.reduce((a, b) => (b.bridge < a.bridge ? b : a));
-    return { msg: `requires bridge ${oldest.bridge} (${oldest.what}); floor ${floor}, ${local.length} local OTA manifest${local.length === 1 ? '' : 's'} at or above it${unreadable ? `, ${unreadable} skipped` : ''}; ${note}` };
-  }, 'rebuild the built-in bundle and keep the released manifests under dist-ota/manifests, then rerun valence doctor');
+    if (!oldest) return `no readable local bundle (${seen}), so there is no line to compare against.${note}`;
+    return { msg: `requires bridge ${oldest.bridge} (${oldest.what}); ${seen}; only releases on this machine are visible, and the published floor is not subtracted because a device that never committed it keeps serving an older bundle.${note}` };
+  }, 'rebuild the built-in bundle and keep every released manifest under dist-ota/manifests, then rerun valence doctor');
   await check('database directory', () => {
     const name = cfg.host.database ?? 'valence.db';
     if (typeof name !== 'string' || !name || name === '.' || name === '..' || /[<>:"/\\|?*\x00-\x1f]/.test(name) || /[. ]$/.test(name) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) throw new Error('host.database must be a plain file name, never a directory or path');
