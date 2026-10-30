@@ -6,6 +6,7 @@ import {
   existsSync,
   symlinkSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs';
@@ -1357,14 +1358,43 @@ test('a retired method keeps its wire contract, loses its handler and stops warn
   editSchema(root, (s) => (s.methods['notify.daily'].params.hour = 'int'));
 
   // The number that says whether this retirement is safe, which was hand arithmetic across baseline.json
-  // and the manifests directory. The OTA release pinned to an older host is what sets the line.
+  // and the manifests directory.
+  const row = async () => (await diagnose({ root, cfg })).find(([, name]) => name === 'oldest servable bundle');
+  // With no release cut, the built-in bundle is the whole answer and it is at the current schema.
+  assert.match((await row())[2], /requires bridge 16 \(built-in seq \d+\)/);
+  // The OTA release pinned to an older host is what sets the line.
   bundle({ root, cfg, key, requiresBridge: 15, now: NOW + 1000 });
-  const rows = await diagnose({ root, cfg });
-  const servable = rows.find(([, name]) => name === 'oldest servable bundle');
+  const servable = await row();
   assert.equal(servable[0], 'PASS'); // a permanent WARN is the thing F-64 is about
   assert.match(servable[2], /requires bridge 15 \(OTA seq \d+\)/);
-  assert.match(servable[2], /retired: notify\.daily/);
+  assert.match(servable[2], /Retired: notify\.daily/);
   assert.match(servable[2], /only releases on this machine/);
+
+  // A release below the published floor still counts. The floor is a per-install high-water mark raised
+  // only when a device commits a bundle carrying it (§2.2), and the host serves `current` without
+  // enforcing check 4 — so a device that never committed the raise keeps serving the older bundle, and
+  // subtracting the floor here would report a safer number than the field.
+  const old = bundle({ root, cfg, key, requiresBridge: 12, now: NOW + 2000 });
+  const baselinePath = join(root, '.valence', 'baseline.json');
+  const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
+  writeFileSync(baselinePath, JSON.stringify({ ...baseline, floor: old.manifest.seq + 1 }));
+  assert.match((await row())[2], /requires bridge 12/);
+  writeFileSync(baselinePath, JSON.stringify(baseline));
+
+  // dist-ota is gitignored while baseline.json is committed, so a fresh clone sees a recorded release
+  // whose manifest is absent. Answering from the built-in bundle alone would report the newest schema —
+  // the most permissive number there is — as a pass, for the project whose field bundle is the oldest.
+  const manifests = join(root, '.valence', 'dist-ota', cfg.appId, 'manifests');
+  for (const f of readdirSync(manifests)) rmSync(join(manifests, f));
+  const blind = await row();
+  assert.equal(blind[0], 'WARN');
+  assert.match(blind[2], /baseline\.json records OTA seq \d+/);
+  assert.match(blind[2], /not computable here/);
+
+  // A --store build is the only writer of the baseline, and a retirement is the one change to a shipped
+  // method the guard forgives, so the printout is the only place it can surface.
+  editSchema(root, retire);
+  assert.deepEqual(bundle({ root, cfg, key, store: true, now: NOW + 4000 }).recorded.added, ['~ method notify.daily retired']);
 });
 
 test('retirement is refused for every method that is not the app\'s to retire', () => {
@@ -1381,6 +1411,11 @@ test('retirement is refused for every method that is not the app\'s to retire', 
   editSchema(root, (s) => (s.methods['data.get'].retired = 'yes'));
   assert.throws(() => codegen({ root, cfg }), /data\.get\.retired must be true or absent/);
   editSchema(root, (s) => delete s.methods['data.get'].retired);
+  // An event has no handler to retire and keeps firing, so accepting the marker silently would read as
+  // "this stops being emitted". On a shipped event it would also surface as an unexplained change.
+  editSchema(root, (s) => (s.events['sync.changed'].retired = true));
+  assert.throws(() => codegen({ root, cfg }), /"sync\.changed\.retired" is only for methods/);
+  editSchema(root, (s) => delete s.events['sync.changed'].retired);
   // An app-owned name in a reserved area below its built-in's since is the app's: retirement is allowed.
   editSchema(root, (s) => (s.methods['share.image'] = { since: 1, retired: true, params: { path: 'string' }, returns: 'void' }));
   assert.deepEqual(codegen({ root, cfg }).warnings, []);
@@ -1395,6 +1430,9 @@ test('a plugin method cannot be retired, because its native registration answers
   fragment.methods['probe.read'].retired = true;
   writeFileSync(path, JSON.stringify(fragment));
   assert.throws(() => codegen({ root, cfg }), /"probe\.read" cannot be retired: a plugin method/);
+  // And `bundle --store` refuses it too, rather than writing a marker into the baseline that the next
+  // codegen run then fails on: it is the only writer of the schema the additive guard is made against.
+  assert.throws(() => loadPluginSchema(root, cfg), /"probe\.read" cannot be retired: a plugin method/);
 });
 
 test('a built-in may be omitted but not redefined, because the package implements it', () => {

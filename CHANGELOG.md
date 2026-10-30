@@ -16,18 +16,20 @@ its return type stay in the schema and in the baseline, and `has()` still answer
 What changes is your host: `codegen` keeps the method in the `BridgeHandlers` interface
 and implements it in the generated `ValenceBuiltins` with `E_UNSUPPORTED`, **so you can
 delete your own handler and the native code behind it** — which was the whole point. The
-generated TypeScript marks it `@deprecated`, and the permanent "this CLI has no built-in
-by that name" warning stops, because a retirement is exactly the statement that warning
-asks for. Marking and unmarking are both additive against a recorded store baseline.
+generated TypeScript marks it `@deprecated` — a label on the `Methods` entry, not a
+compiler error at a `call()` site — and the permanent "this CLI has no built-in by that
+name" warning stops, because a retirement is exactly the statement that warning asks for. Marking and unmarking are both additive against a recorded store baseline.
 
 You cannot retire a built-in, `app.ready`/`app.info`, or a plugin method; `codegen`
 refuses each by name. **Delete the page-side calls first:** `has()` still answers true,
 so a bundle that still calls a retired method gets `E_UNSUPPORTED`. `doctor` has a new
 `oldest servable bundle` row — it passes with the lowest `requires.bridge` across the
-built-in bundle and your local releases at or above the floor, and names any retired
-method beside it. That is the number which says whether a retirement is safe, and it was
-arithmetic by hand across `baseline.json` and `dist-ota/manifests/` before. It only sees
-the releases on this machine.
+built-in bundle and every local release, and names any retired method beside it. That is
+the number which says whether a retirement is safe, and it was arithmetic by hand across
+`baseline.json` and `dist-ota/manifests/` before. It does not subtract the floor you
+published, because a floor only binds a device that has already committed a bundle
+carrying it. It only sees the releases on this machine, and warns rather than guessing
+when `baseline.json` records a release whose manifest is not in your checkout.
 
 ## Unreleased: preserve custom notification event payloads
 
