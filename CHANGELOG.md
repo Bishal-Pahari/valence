@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased: retire a bridge method you no longer call
+
+A method of your own that nothing calls any more — the classic case is a hand-written
+reminder method replaced by the built-in `notify.schedule` — can now be marked
+`"retired": true` in `bridge.schema.json`:
+
+```json
+"notify.daily": { "since": 1, "retired": true, "params": { "hour": "int" }, "returns": "void" }
+```
+
+It still cannot be *removed*: an old bundle on an old phone is entitled to the method it
+was built against. So nothing on the wire moves — the name, its `since`, its params and
+its return type stay in the schema and in the baseline, and `has()` still answers true.
+What changes is your host: `codegen` keeps the method in the `BridgeHandlers` interface
+and implements it in the generated `ValenceBuiltins` with `E_UNSUPPORTED`, **so you can
+delete your own handler and the native code behind it** — which was the whole point. The
+generated TypeScript marks it `@deprecated`, and the permanent "this CLI has no built-in
+by that name" warning stops, because a retirement is exactly the statement that warning
+asks for. Marking and unmarking are both additive against a recorded store baseline.
+
+You cannot retire a built-in, `app.ready`/`app.info`, or a plugin method; `codegen`
+refuses each by name. **Delete the page-side calls first:** `has()` still answers true,
+so a bundle that still calls a retired method gets `E_UNSUPPORTED`. `doctor` has a new
+`oldest servable bundle` row — it passes with the lowest `requires.bridge` across the
+built-in bundle and your local releases at or above the floor, and names any retired
+method beside it. That is the number which says whether a retirement is safe, and it was
+arithmetic by hand across `baseline.json` and `dist-ota/manifests/` before. It only sees
+the releases on this machine.
+
 ## Unreleased: preserve custom notification event payloads
 
 Native scheduling no longer emits integer IDs over a legacy string-ID notification event in

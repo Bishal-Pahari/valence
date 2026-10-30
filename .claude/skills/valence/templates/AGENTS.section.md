@@ -22,7 +22,7 @@ The spec is `valence` [contracts.md](https://github.com/Bishal-Pahari/valence/bl
 **Rules for every agent and contributor:**
 
 1. **Never edit `*.g.dart` or `bridge.g.ts`.** Edit `valence/bridge.schema.json` and run `node valence/valence.mjs codegen`. CI runs `codegen --check`, which also refuses to change anything a store build already shipped.
-2. **The bridge schema is additive only.** Bump `version`, give new methods `since = version`, and add `name.v2` instead of changing a method.
+2. **The bridge schema is additive only.** Bump `version`, give new methods `since = version`, and add `name.v2` instead of changing a method. A method of your own that nothing calls any more can be marked `"retired": true`: the name stays, codegen answers it with `E_UNSUPPORTED`, and the dead native code can go. Built-ins, `app.ready`/`app.info` and plugin methods cannot be retired.
 3. **Web code calls native features only through `<web lib>/bridge.g.ts`** (`call`, `has`, `on`, `ready`), never from `@getvalence/bridge` directly: the generated file is what types a call against this app's schema.
    - Guard methods newer than the oldest live host with `has()`.
    - Every browser fallback lives in `<web lib>/shim.ts`.

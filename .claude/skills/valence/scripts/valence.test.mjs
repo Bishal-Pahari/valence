@@ -1317,6 +1317,86 @@ test('a name in one of the package’s own areas that this CLI has never heard o
   assert.deepEqual(codegen({ root, cfg }).warnings, []);
 });
 
+test('a retired method keeps its wire contract, loses its handler and stops warning', async () => {
+  const { root, cfg, key } = fixture({ latest: true });
+  const retire = (s) => (s.methods['notify.daily'] = { since: 1, retired: true, params: { hour: 'int' }, returns: 'void' });
+
+  // K F-64: the app's own pre-built-in reminder method, replaced by notify.schedule. Without the marker it
+  // is a permanent abstract handler plus a permanent stale-tooling warning, for a name nothing calls.
+  editSchema(root, (s) => (s.methods['notify.daily'] = { since: 1, params: { hour: 'int' }, returns: 'void' }));
+  const before = codegen({ root, cfg });
+  assert.match(before.warnings.join('\n'), /"notify\.daily"/);
+  const dartPath = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
+  assert.doesNotMatch(readFileSync(dartPath, 'utf8'), /notify\.daily is retired/);
+
+  editSchema(root, retire);
+  assert.deepEqual(codegen({ root, cfg }).warnings, []);
+  const dart = readFileSync(dartPath, 'utf8');
+  // Still in the interface (the name is part of the contract), now answered by the generated built-ins, so
+  // the app can delete its own handler and the native code behind it.
+  assert.match(dart, /abstract interface class BridgeHandlers \{[\s\S]*Future<void> notifyDaily\(NotifyDailyParams p\);/);
+  assert.match(dart, /Future<void> notifyDaily\(NotifyDailyParams p\) async =>\s*\n?\s*throw const BridgeError\('E_UNSUPPORTED', 'notify\.daily is retired'\);/);
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  // has() must not move: METHOD_SINCE still carries it, and the page is told in the editor instead.
+  assert.match(ts, /@deprecated[^\n]*E_UNSUPPORTED[\s\S]*?'notify\.daily': \{ params:/);
+  assert.match(ts, /'notify\.daily': 1,/);
+
+  // Retiring and un-retiring a method a store build shipped is not a wire change, so the additive guard
+  // must let both through — while a real change to the same method stays refused.
+  editSchema(root, (s) => delete s.methods['notify.daily'].retired);
+  bundle({ root, cfg, key, store: true, now: NOW });
+  editSchema(root, retire);
+  codegen({ root, cfg });
+  editSchema(root, (s) => delete s.methods['notify.daily'].retired);
+  codegen({ root, cfg });
+  editSchema(root, (s) => {
+    retire(s);
+    s.methods['notify.daily'].params.hour = 'string';
+  });
+  assert.throws(() => codegen({ root, cfg }), /cannot change/);
+  editSchema(root, (s) => (s.methods['notify.daily'].params.hour = 'int'));
+
+  // The number that says whether this retirement is safe, which was hand arithmetic across baseline.json
+  // and the manifests directory. The OTA release pinned to an older host is what sets the line.
+  bundle({ root, cfg, key, requiresBridge: 15, now: NOW + 1000 });
+  const rows = await diagnose({ root, cfg });
+  const servable = rows.find(([, name]) => name === 'oldest servable bundle');
+  assert.equal(servable[0], 'PASS'); // a permanent WARN is the thing F-64 is about
+  assert.match(servable[2], /requires bridge 15 \(OTA seq \d+\)/);
+  assert.match(servable[2], /retired: notify\.daily/);
+  assert.match(servable[2], /only releases on this machine/);
+});
+
+test('retirement is refused for every method that is not the app\'s to retire', () => {
+  const { root, cfg } = fixture({ latest: true });
+  // A built-in: the package implements it, so the marker would answer E_UNSUPPORTED for working behaviour.
+  editSchema(root, (s) => (s.methods['sync.now'].retired = true));
+  assert.throws(() => codegen({ root, cfg }), /"sync\.now" cannot be retired: the valence package implements it/);
+  editSchema(root, (s) => delete s.methods['sync.now'].retired);
+  // A core method: every page may call it.
+  editSchema(root, (s) => (s.methods['app.ready'].retired = true));
+  assert.throws(() => codegen({ root, cfg }), /"app\.ready" cannot be retired: every page may call it/);
+  editSchema(root, (s) => delete s.methods['app.ready'].retired);
+  // Not a boolean is a typo, not a retirement.
+  editSchema(root, (s) => (s.methods['data.get'].retired = 'yes'));
+  assert.throws(() => codegen({ root, cfg }), /data\.get\.retired must be true or absent/);
+  editSchema(root, (s) => delete s.methods['data.get'].retired);
+  // An app-owned name in a reserved area below its built-in's since is the app's: retirement is allowed.
+  editSchema(root, (s) => (s.methods['share.image'] = { since: 1, retired: true, params: { path: 'string' }, returns: 'void' }));
+  assert.deepEqual(codegen({ root, cfg }).warnings, []);
+});
+
+test('a plugin method cannot be retired, because its native registration answers it', () => {
+  const { root, cfg } = pluginFixture();
+  codegen({ root, cfg });
+  // Only the fragment can carry it: the app may not redeclare a plugin method at all.
+  const path = join(root, 'probe.json');
+  const fragment = JSON.parse(readFileSync(path, 'utf8'));
+  fragment.methods['probe.read'].retired = true;
+  writeFileSync(path, JSON.stringify(fragment));
+  assert.throws(() => codegen({ root, cfg }), /"probe\.read" cannot be retired: a plugin method/);
+});
+
 test('a built-in may be omitted but not redefined, because the package implements it', () => {
   const { root, cfg } = fixture();
   // The generated ValenceBuiltins delegates these to the valence package. A schema that keeps the name
@@ -1955,6 +2035,7 @@ test(
     editSchema(root, (s) => {
       s.types.Empty = {};
       s.methods['x.edge'] = { since: 1, params: { blobs: 'json[]?', rows: 'Row[]?', type: 'string', empty: 'Empty?' }, returns: 'Row[]?' };
+      s.methods['notify.daily'] = { since: 1, retired: true, params: { hour: 'int' }, returns: 'void' };
       s.events['x.rowAdded'] = { since: 1, payload: { row: 'Row', more: 'Row[]?' } };
     });
     codegen({ root, cfg });
@@ -2129,6 +2210,20 @@ void main() {
     expect(hostPluginMethods, {'probe.read', 'probe.ping'});
     expect(() => _PluginHandlers(runtime, null), throwsStateError);
     expect(BridgeEvents.probeChanged(row: const ProbeRow(label: 'ok', count: 1)), contains('probe.changed'));
+  });
+  test('a retired method is answered by the generated built-ins, not by the app', () async {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    final support = await Directory.systemTemp.createTemp('valence-retired');
+    final runtime = await Valence.open(valenceConfig, supportDir: support, log: (_) {});
+    final h = _PluginHandlers(runtime, _Probe());
+    final r = jsonDecode(await bridgeDispatch(
+        h, '{"id":1,"n":"n1","m":"notify.daily","p":{"hour":7}}', nonce: 'n1')) as Map<String, Object?>;
+    expect(code(r), 'E_UNSUPPORTED');
+    expect((r['e']! as Map)['message'], contains('retired'));
+    // Strict decoding still runs first: retirement changes the answer, not the wire contract.
+    expect(code(jsonDecode(await bridgeDispatch(
+        h, '{"id":1,"n":"n1","m":"notify.daily","p":{}}', nonce: 'n1')) as Map<String, Object?>), 'E_PARAMS');
   });
   test('new methods default to E_UNSUPPORTED through strict dispatch', () async {
     expect(code(await call('{"id":1,"n":"n1","m":"sync.status","p":{}}')), 'E_UNSUPPORTED');

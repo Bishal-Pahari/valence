@@ -248,7 +248,12 @@ since-1 method, so gate it on `has("data.count")`, the sibling that ships with i
 `has("data.list")`. Not on `app.info().bridge >= 5` either: that is the app's **own** schema version,
 so it is already above 5 in any app that has added five methods of its own, and the comparison is true
 on the very hosts that reject the param. A built-in may now grow an optional param the same way it may grow an optional
-returned field, additive against a recorded store baseline.
+returned field, additive against a recorded store baseline. A method of your own that nothing calls any more
+can be marked `"retired": true`: it still cannot be removed, but the name and its shape stay — so `has()`
+and every shipped bundle are unchanged — while codegen answers it with `E_UNSUPPORTED` instead of leaving
+an abstract handler, which is what lets the dead native code go. `doctor`'s `oldest servable bundle` row
+reports the lowest `requires.bridge` a device can still be served, which is the number that says whether a
+retirement is safe.
 
 The database lives at `<applicationSupportDirectory>/<databaseName>`; `host.database` names the file and
 the directory is fixed. A 0.3 host may have used the application documents directory instead, so the

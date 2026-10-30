@@ -159,6 +159,15 @@ schema redefined a built-in method. The built-ins are delegated to the runtime, 
 compile and then pass the wrong arguments — only a device would notice. Restore the shape it names and add
 your variant under a new name; the schema is additive only anyway.
 
+Adopting a built-in that replaces a method of your own — `notify.schedule` for a hand-written
+`notify.daily`, say — leaves the old name behind, because `codegen` refuses to remove a method a store
+build shipped. That refusal is right, and the way out is to mark the old one `"retired": true` once
+nothing calls it: the declaration stays (so `has()` and every bundle in the field are unchanged) and the
+generated `ValenceBuiltins` answers it with `E_UNSUPPORTED`, so the handler and the native code behind it
+can be deleted. Check `doctor`'s `oldest servable bundle` row first: it reports the lowest
+`requires.bridge` a device can still be served, and a retirement is only safe once no bundle on that line
+calls the method.
+
 On the web side, your imports move from `client.ts` to the generated file:
 
 ```ts
