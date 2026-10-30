@@ -8,6 +8,77 @@ ID. Regenerated config names the compatible events and fields; a native adapter 
 event using the original ID carried inside the app's own payload. Warm and cold taps use the same
 conversion without changing the shipped schema or erasing its baseline.
 
+## Post-review R4 queue refresh - 2026-10-31
+
+### In plain terms
+
+The shared candidate now includes the review fixes for notification-event migration.
+This branch retains those fixes and the original application IDs. App-c's failing
+tap audit still needs a refreshed runtime/CLI, regenerated config and the documented
+adapter before a new warm/cold device run can accept it.
+
+### Bases and decision
+
+Merged newest packages into codex/notify-event-compat in both worktrees, without
+conflicts: code bc577b1e88665f3f58636215a7103109793d2b6b, site
+2467eb1f430ee8fe6554b813ceaa7288c3bc9392. The merge commits are code 0bcf8a7 and
+site c3c7bff. All preceding numbered-feature/link tips and sync-fixes are
+ancestors of packages in both repositories. This branch differs from packages
+only in this validation report; there are no two unmerged ready feature branches
+requiring a fresh integration. This run handles the queued R4 refresh only.
+
+The upstream correction makes incompatible notification events app-owned with a
+warning instead of refusing an already-shipped declaration. It reports a missing
+adapter once per event name, validates returned scripts structurally, and logs
+adapter exception types without private messages. Retain these changes: preserving
+shipped contracts and preventing script injection come before convenience.
+Do not coerce a native integer hash into the application's original string ID,
+erase the baseline or change notification behavior again before adoption.
+
+Read both findings files and newest reports, Kundalini iteration 16 and app-c
+iteration 9, read-only. Spot-checked app-c's actual event-contract-check.json:
+one observed tap, numeric 1997876972, expected string, passed false. Current app
+main/config still contain neither notificationEventAdapter nor
+notificationEventFields. This does not exercise the merged adapter correction.
+Keep F-30 open for adoption and warm/cold acceptance. F-31's permissions floor is
+already corrected upstream; F-27's remaining host-file lifecycle docs stay open.
+
+App-c's worker-full-logcat.txt records background begin, complete and WorkManager
+SUCCESS; worker-mock.log records the two-operation push. Its raw activation
+comparison has equal SHA256 values with 1793383609 pending; final-state.json
+then records that sequence committed with pending/trial null and bad 1793383520.
+This supports one observed natural due-time worker, not a cadence guarantee.
+Kundalini's before/after reboot captures contain the same seven 06:00 origWhen
+values. F-63/F-65 diagnostics remain included. F-64 retirement stays deferred:
+a bundle's minimum bridge version alone does not prove it never calls an older
+method, so keep shipped handlers and truthful capability reporting.
+
+Combined schema stays 16, R4 since 11 and pendingIds since 16. Package versions,
+shipped baselines, signed assets, data and activation behavior are unchanged.
+Keep S1 deferred during acceptance; S2 still needs a Play account.
+
+### Fresh validation
+
+Logs use %TEMP%/valence-oct31-r4-*.log. Root tests pass 103 with zero failures/skips,
+including generated Dart and strict/verbatim generated TS. Core tests pass 548,
+push adapter 2, example 27 and bridge 29. Both fatal-info Dart analyzers and
+strict/verbatim bridge TypeScript pass. Both pub dry runs have zero warnings
+(push retains its existing local-override hint), and both npm pack dry runs pass.
+Site build/SEO passes 43 pages. Example codegen writes nothing; built-in signature
+and files verification accepts seq 1793209750, two files.
+
+The debug APK passes (assembleDebug 109.7 seconds). Its process-scoped Gradle
+settings use a 2 GiB heap, 1 GiB metaspace, ActiveProcessorCount=2 and two workers;
+the daemon command confirms those memory/processor settings. The existing
+app_badge_plus KGP migration warning remains. Standalone Windows
+py example/tool/check_no_firebase.py prints PASS for the resolved core graph,
+manifest and all 19 DEX files. No APK installation or device acceptance is inferred.
+
+The delta beyond packages is this report only. No new independent runtime review
+or emulator session is claimed; the upstream review retains its original scope.
+No test-app writes, shared-branch changes, version/schema changes, pushes or
+publications occurred. Only R4's Status cell is updated in the shared roadmap.
+
 ## Merged R4 queue refresh - 2026-10-31
 
 ### In plain terms
