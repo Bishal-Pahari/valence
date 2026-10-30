@@ -1705,7 +1705,9 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
     const { schema, owners, namespaces } = loadPluginSchema(root, cfg);
     const retired = parseSchema(schema, owners, namespaces).methods.filter((m) => m.retired).map((m) => m.name);
     const note = `${retired.length ? `retired: ${retired.join(', ')} — a retirement is safe only once no bundle on that line calls the method; ` : ''}only releases on this machine are visible here`;
-    if (!bridges.length) return `no readable local bundle${unreadable ? ` (${unreadable} manifest${unreadable > 1 ? 's' : ''} without a usable requires.bridge)` : ''}; ${note}`;
+    if (!bridges.length) {
+      return `no readable local bundle${unreadable ? ` (${unreadable} manifest${unreadable > 1 ? 's' : ''} without a usable requires.bridge)` : ''}, so there is no line to compare against${retired.length ? `, and ${retired.join(', ')} ${retired.length > 1 ? 'are' : 'is'} retired` : ''}`;
+    }
     const oldest = bridges.reduce((a, b) => (b.bridge < a.bridge ? b : a));
     return { msg: `requires bridge ${oldest.bridge} (${oldest.what}); floor ${floor}, ${local.length} local OTA manifest${local.length === 1 ? '' : 's'} at or above it${unreadable ? `, ${unreadable} skipped` : ''}; ${note}` };
   }, 'rebuild the built-in bundle and keep the released manifests under dist-ota/manifests, then rerun valence doctor');
