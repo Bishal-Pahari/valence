@@ -17,6 +17,11 @@ final class ValenceNotifications {
   ValenceNotifications({
     required this.directory,
     required this.emit,
+    this.eventFields = const {
+      'notify.tapped': {'id', 'payload', 'action'},
+      'notify.action': {'id', 'payload', 'action'},
+    },
+    this.eventAdapter,
     this.icon = 'ic_stat_valence',
     ValenceNotificationPlatform? platform,
     DateTime Function()? now,
@@ -30,6 +35,13 @@ final class ValenceNotifications {
 
   /// Emits a warm response after escaping through the wire event builder.
   final void Function(String) emit;
+
+  /// Automatic event names/fields. Generated hosts exclude app-owned legacy events.
+  final Map<String, Set<String>> eventFields;
+
+  /// Replaces automatic warm emission. Return a generated event script or null.
+  /// Cold responses stay available through [initial] for explicit app-owned replay.
+  final String? Function(Map<String, Object?> response)? eventAdapter;
 
   /// A compiled Android drawable resource name.
   final String icon;
@@ -73,8 +85,23 @@ final class ValenceNotifications {
   void _respond(NotificationResponse response) {
     final value = _response(response);
     if (value != null) {
-      emit(eventScript(
-          value['action'] == null ? 'notify.tapped' : 'notify.action', value));
+      final adapter = eventAdapter;
+      if (adapter != null) {
+        try {
+          final script = adapter(Map.unmodifiable(value));
+          if (script != null) emit(script);
+        } catch (_) {
+          _log('notifications: event adapter failed; response dropped');
+        }
+        return;
+      }
+      final name = value['action'] == null ? 'notify.tapped' : 'notify.action';
+      final fields = eventFields[name];
+      if (fields != null) {
+        emit(eventScript(name, {
+          for (final field in fields) field: value[field],
+        }));
+      }
     }
   }
 

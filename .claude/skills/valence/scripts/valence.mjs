@@ -1244,7 +1244,21 @@ export function genDart(s) {
 // The built-in half of BridgeHandlers, implemented by delegating to the package's runtime. An app extends
 // this and overrides only its own methods, which is what keeps main.dart to about twenty lines.
 function dartBuiltins(s) {
+  const notificationEvents = s.events.filter((e) =>
+    ['notify.tapped', 'notify.action'].includes(e.name) && e.since >= 11);
+  for (const e of notificationEvents) {
+    const want = { id: 'int', payload: 'string?', action: 'string?' };
+    if (!e.payload.some((f) => f.name === 'id' && typeString(f.type) === 'int') ||
+        e.payload.some((f) => typeString(f.type) !== want[f.name])) {
+      throw new Error(`"${e.name}" since 11+ must declare id: int and only optional payload: string?, action: string?; keep a shipped pre-11 event unchanged and use a native notificationEventAdapter`);
+    }
+  }
   const o = [
+    '/// Automatic notification events; pre-11 declarations remain app-owned.',
+    'const hostNotificationEventFields = <String, Set<String>>{',
+    ...notificationEvents.map((e) => `  '${e.name}': {${e.payload.map((f) => `'${f.name}'`).join(', ')}},`),
+    '};',
+    '',
     '/// Native plugin namespaces required by this app, including event-only fragments.',
     `const hostPluginNamespaces = <String>{${s.pluginNamespaces.map((n) => `'${n}'`).join(', ')}};`,
     '/// Exact native method registrations required by the merged schema.',
@@ -1445,6 +1459,7 @@ export function genDartConfig(cfg, keyring) {
     // bridgeVersion is the generated constant, never a second literal: check 5 compares against it, and a
     // host that under-reports its version refuses its own built-in bundle on first launch.
     '  bridgeVersion: hostBridgeVersion,',
+    '  notificationEventFields: hostNotificationEventFields,',
     `  notificationsEnabled: ${cfg.notifications?.enabled ?? false},`,
     `  notificationIcon: ${dartStr(cfg.notifications?.icon ?? 'ic_stat_valence')},`,
     '  channel: valenceOtaChannel,',

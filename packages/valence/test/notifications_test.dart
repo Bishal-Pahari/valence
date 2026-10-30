@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:valence/codegen.dart' show eventScript;
 import 'package:valence/valence.dart';
 
 class FakeNotifications extends ValenceNotificationPlatform {
@@ -289,6 +290,90 @@ void main() {
     await expectLater(
         schedule(image: base64Encode([255, 216, 255, 192, 0, 255, 0])),
         throwsA(isA<BridgeError>()));
+  });
+  test('legacy string-id notification events retain their frozen payload shape',
+      () async {
+    String? legacyEvent(Map<String, Object?> value) {
+      final payload = value['payload'] as String;
+      final app = jsonDecode(payload) as Map;
+      return eventScript(
+          'notify.tapped', {'id': app['id'], 'payload': payload});
+    }
+
+    service = ValenceNotifications(
+        directory: directory,
+        emit: events.add,
+        platform: platform,
+        eventFields: const {},
+        eventAdapter: legacyEvent);
+    platform.launch = response(
+        id: 1885662976,
+        payload: jsonEncode({'id': 'inspection-reminder', 'p': 'unit-0101'}));
+    await service.initialize();
+    final cold = await service.initial() as Map<String, Object?>;
+    expect(events, isEmpty, reason: 'cold replay belongs to the app');
+    expect(await service.initial(), isNull);
+    final coldScript = legacyEvent(cold);
+    platform.respond(response(
+        id: 1885662976,
+        payload: jsonEncode({'id': 'inspection-reminder', 'p': 'unit-0101'})));
+    final encoded = events.single;
+    expect(encoded, coldScript);
+    final event = jsonDecode(
+            '[${encoded.substring(encoded.indexOf('(') + 1, encoded.lastIndexOf(')'))}]')
+        as List;
+    expect(event[1], {
+      'id': 'inspection-reminder',
+      'payload': jsonEncode({'id': 'inspection-reminder', 'p': 'unit-0101'}),
+    });
+  });
+  test('automatic events use only declared modern names and fields', () async {
+    service = ValenceNotifications(
+        directory: directory,
+        emit: events.add,
+        platform: platform,
+        eventFields: const {
+          'notify.tapped': {'id'}
+        });
+    await service.initialize();
+    platform.respond(response());
+    platform.respond(response(action: 'done'));
+    expect(events, [
+      eventScript('notify.tapped', {'id': 42})
+    ]);
+    final legacy = FakeNotifications();
+    await ValenceNotifications(
+        directory: directory,
+        emit: events.add,
+        platform: legacy,
+        eventFields: const {}).initialize();
+    legacy.respond(response());
+    expect(events.length, 1,
+        reason: 'app-owned/absent events are never emitted');
+  });
+  test(
+      'adapter sees only validated responses and failures do not disclose payloads',
+      () async {
+    var calls = 0;
+    final logs = <String>[];
+    service = ValenceNotifications(
+        directory: directory,
+        emit: events.add,
+        platform: platform,
+        log: logs.add,
+        eventAdapter: (value) {
+          calls++;
+          throw StateError('private ${value['payload']}');
+        });
+    await service.initialize();
+    platform.respond(response(action: 'unknown'));
+    platform.respond(response(payload: 'x' * 4097));
+    platform.respond(response(id: -1));
+    expect(calls, 0);
+    platform.respond(response(payload: 'secret'));
+    expect(calls, 1);
+    expect(events, isEmpty);
+    expect(logs, ['notifications: event adapter failed; response dropped']);
   });
   test(
       'cold response consumes once; warm action and tap are escaped; foreign callbacks are ignored',

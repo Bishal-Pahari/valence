@@ -182,6 +182,38 @@ test('schema-9 links delegate while misplaced built-ins and modern redefinitions
   assert.throws(() => codegen({ root, cfg }), /must return/);
 });
 
+test('notification emission metadata preserves frozen legacy events and filters modern fields', () => {
+  const { root, cfg, key } = fixture({ latest: true });
+  editSchema(root, s => {
+    s.events['notify.tapped'] = { since: 1, payload: { id: 'string', payload: 'string?' } };
+    delete s.events['notify.action'];
+  });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const baselineFile = join(root, '.valence/baseline.json');
+  const baseline = readFileSync(baselineFile, 'utf8');
+  codegen({ root, cfg });
+  codegen({ root, cfg, check: true });
+  const dartFile = join(root, cfg.host.dir, 'lib/valence/bridge.g.dart');
+  let dart = readFileSync(dartFile, 'utf8');
+  assert.match(dart, /hostNotificationEventFields = <String, Set<String>>\{\s*\};/);
+  assert.match(dart, /notifyTapped\(\{required String id, required String\? payload\}\)/);
+  assert.match(readFileSync(join(root, cfg.host.dir, 'lib/valence/config.g.dart'), 'utf8'),
+    /notificationEventFields: hostNotificationEventFields/);
+  assert.equal(readFileSync(baselineFile, 'utf8'), baseline);
+  editSchema(root, s => { s.events['notify.tapped'].payload.id = 'int'; });
+  assert.throws(() => codegen({ root, cfg }), /cannot change/);
+
+  const modern = fixture({ latest: true });
+  editSchema(modern.root, s => { s.events['notify.tapped'].payload = { id: 'int' }; });
+  codegen(modern);
+  dart = readFileSync(join(modern.root, modern.cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart, /'notify.tapped': \{'id'\}/);
+  for (const payload of [{ id: 'string' }, { id: 'int', action: 'string' }, { id: 'int', extra: 'json?' }]) {
+    editSchema(modern.root, s => { s.events['notify.tapped'].payload = payload; });
+    assert.throws(() => codegen(modern), /since 11\+ must declare/);
+  }
+});
+
 test('dev plans a Vite server and debug-only emulator/LAN commands without changing files', () => {
   const root = mkdtempSync(join(tmpdir(), 'valence-dev-'));
   try {
@@ -1835,6 +1867,18 @@ test(
     });
     codegen({ root, cfg });
     const app = join(root, cfg.host.dir);
+    const legacy = fixture({ latest: true });
+    editSchema(legacy.root, s => {
+      s.events['notify.tapped'] = { since: 1, payload: { id: 'string', payload: 'string?' } };
+      delete s.events['notify.action'];
+    });
+    codegen(legacy);
+    const legacyLib = join(app, 'lib/legacy');
+    mkdirSync(legacyLib, { recursive: true });
+    cpSync(join(legacy.root, legacy.cfg.host.dir, 'lib/valence'), join(legacyLib, 'valence'), { recursive: true });
+    // Compile the documented adapter against an actual generated string-ID event.
+    const guide = readFileSync(join(import.meta.dirname, '../../../../docs/local-notifications.md'), 'utf8');
+    writeFileSync(join(legacyLib, 'adapter.dart'), guide.match(/```dart\r?\n([\s\S]*?)```/)[1]);
     writeFileSync(join(app, 'pubspec.yaml'), PROBE_PUBSPEC);
     writeFileSync(join(app, 'analysis_options.yaml'), 'include: package:flutter_lints/flutter.yaml\n');
     mkdirSync(join(app, 'test'), { recursive: true });
@@ -1877,6 +1921,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:valence/valence.dart';
 import 'package:valence_probe/valence/bridge.g.dart';
 import 'package:valence_probe/valence/config.g.dart';
+import 'package:valence_probe/legacy/adapter.dart' as legacy;
 
 final class H with BridgeHandlersDefaults {
   @override
@@ -1958,6 +2003,16 @@ class _PluginHandlers extends ValenceBuiltins implements BridgeHandlers {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('documented adapter uses the generated frozen string-ID builder for warm and cold values', () {
+    final payload = jsonEncode({'id': 'original-id', 'p': 'unit-0101'});
+    final response = <String, Object?>{'id': 1885662976, 'payload': payload, 'action': null};
+    expect(legacy.legacyTap(response), {'id': 'original-id', 'payload': payload});
+    final script = legacy.legacyTapScript(response)!;
+    final args = jsonDecode('[' + script.substring(script.indexOf('(') + 1, script.lastIndexOf(')')) + ']') as List;
+    expect(args, ['notify.tapped', {'id': 'original-id', 'payload': payload}]);
+    expect(legacy.legacyTapScript({...response, 'action': 'done'}), isNull);
+    expect(legacy.legacyTapScript({...response, 'payload': '{'}), isNull);
+  });
   test('plugin delegation stays behind strict nonce/parameter decoding and decodes results', () async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
@@ -1989,6 +2044,8 @@ void main() {
   });
   test('the generated config is wired to the generated bridge version', () {
     expect(valenceConfig.bridgeVersion, hostBridgeVersion);
+    expect(valenceConfig.notificationEventFields, hostNotificationEventFields);
+    expect(hostNotificationEventFields['notify.tapped'], {'id', 'payload', 'action'});
   });
 
   test('CLI and runtime reserve the same plugin namespaces', () {

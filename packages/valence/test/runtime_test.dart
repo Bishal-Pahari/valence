@@ -15,8 +15,10 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:valence/valence.dart';
+import 'package:valence/codegen.dart' show eventScript;
 
 import 'helpers.dart';
+import 'notifications_test.dart' show FakeNotifications, response;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -62,6 +64,31 @@ void main() {
             .having((e) => e.code, 'code', BridgeErrorCode.denied)
             .having((e) => e.message, 'message', contains(fragment)),
       );
+
+  test('legacy notification adapter retains startup buffering and consume-once cold access', () async {
+    final native = FakeNotifications()..launch = response();
+    final config = ValenceConfig(appId: 'com.example.legacy', keyring: const {},
+        bridgeVersion: 16, notificationsEnabled: true,
+        notificationEventFields: const {});
+    expect(config.copyWith(channel: 'beta').notificationEventFields, isEmpty);
+    final v = await Valence.open(config, supportDir: support,
+        secure: testSecure({}), log: (_) {}, notificationPlatform: native,
+        notificationEventAdapter: (value) => eventScript('notify.tapped', {
+          'id': 'legacy-${value['id']}', 'payload': value['payload'],
+        }));
+    expect((await v.notifications.initial() as Map)['id'], 42);
+    expect(await v.notifications.initial(), isNull);
+    for (var id = 0; id < 18; id++) {
+      native.respond(response(id: id));
+    }
+    final view = _ScriptSpy();
+    v.attach(view);
+    expect(view.scripts.length, 16);
+    expect(view.scripts.first, contains('legacy-2'));
+    expect(view.scripts.last, contains('legacy-17'));
+    native.respond(response(id: 99));
+    expect(view.scripts.last, contains('legacy-99'));
+  });
 
   group('startup diagnostics', () {
     test('phase order and elapsed times distinguish open from page readiness', () async {

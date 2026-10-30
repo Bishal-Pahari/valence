@@ -39,6 +39,10 @@ final class ValenceConfig {
     this.permissionKinds = const {},
     this.notificationsEnabled = false,
     this.notificationIcon = 'ic_stat_valence',
+    this.notificationEventFields = const {
+      'notify.tapped': {'id', 'payload', 'action'},
+      'notify.action': {'id', 'payload', 'action'},
+    },
   });
 
   /// The reverse-domain id a manifest must carry (canonical check 2).
@@ -127,6 +131,11 @@ final class ValenceConfig {
   /// Bundled Android drawable for the notification status icon.
   final String notificationIcon;
 
+  /// Built-in notification events and fields declared by the generated schema.
+  /// Pre-11 events are app-owned and excluded. A native adapter handles those.
+  /// The default preserves manually constructed configurations predating codegen metadata.
+  final Map<String, Set<String>> notificationEventFields;
+
   /// Copy with overrides. Handy in tests and for pointing a debug build at a local OTA host.
   ValenceConfig copyWith({
     String? otaBase,
@@ -168,5 +177,6 @@ final class ValenceConfig {
         permissionKinds: permissionKinds ?? this.permissionKinds,
         notificationsEnabled: notificationsEnabled,
         notificationIcon: notificationIcon,
+        notificationEventFields: notificationEventFields,
       );
 }
