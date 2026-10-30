@@ -8,6 +8,42 @@ ID. Regenerated config names the compatible events and fields; a native adapter 
 event using the original ID carried inside the app's own payload. Warm and cold taps use the same
 conversion without changing the shipped schema or erasing its baseline.
 
+## Queue refresh after app-c iteration 8 - 2026-10-30
+
+Reviewed both findings files and newest reports: Kundalini iteration 15 and app-c iteration 8.
+Both branches already contain newest packages: code `d2e6970a983e8f1e1f030ea39b9861d487ea9db4`
+and site `ce19151baa1fdac40ac3208e70bb69388a8b538a`. All 26 earlier numbered-feature/link-compat
+tips remain ancestors of packages in both repositories. This is the only unmerged implementation
+branch, so the two-branch integration rule does not require a fresh integration. No other must-have
+is eligible; S1 remains deferred during the candidate freeze and S2 needs a Play account.
+
+App-c's real warm-tap capture now contains integer ID `578327257`, application payload
+`{"id":"iteration-8-warm","p":"unit-0101"}` and `action: null`. Its contract audit reports
+one string-ID violation. Routing to Flat 1 succeeds but does not close F-30. Supplied npm hashes
+match iteration 7, and the app's current main/config still contain neither
+`notificationEventAdapter` nor `notificationEventFields`. This is further evidence against the
+unadapted runtime, not device acceptance of this branch. Keep the finding open until refreshed
+CLI/runtime adoption, regeneration, adapter wiring and warm/cold acceptance. F-31's correction
+is already on this site branch; its stale documentation capture does not exercise that correction.
+F-27's remaining host-file limits/lifecycle guidance stays open.
+
+Spot-checked the eligible forced-worker comparison: exact raw activation SHA256 values match
+`3d9de373251ea0fe9d9ebe46a2b95483a72afb9008ab5dd90d471f0587116030`, with good OTA
+`1793380006` pending. Final activation commits that seq, previous `1793379875`, pending/trial
+null, bad [`1793379749`], floor 0. The report excludes an earlier contaminated foreground receipt.
+These are inspected app captures, not a new device run here. New F-32's ANR capture names
+`com.android.camera2` with a 5003ms input timeout, followed by a reported successful retry;
+it establishes no Valence cause. Kundalini's latest report remains schema-16 device/OTA
+acceptance and observed reminder delivery, with no new package finding.
+
+Decision: preserve users' data and shipped event meanings. Do not coerce a native hash to a
+string, rewrite the frozen event, change database behavior on recovered latency, or change
+notification behavior again before the reviewed adapter is adopted. Combined schema remains
+16, R4 since 11 and pendingIds since 16. This refresh changes evidence only; the existing
+security checklist and review retain their original scope. Real Firebase delivery and iOS
+remain untested. No test-app writes, emulator run, shared-branch changes, pushes, publication
+or package/schema version changes occurred.
+
 ## Queue refresh after app-c iteration 7 - 2026-10-30
 
 Read both findings files and the newest reports: Kundalini iteration 15 and app-c iteration 7.
