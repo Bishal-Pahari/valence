@@ -8,6 +8,55 @@ ID. Regenerated config names the compatible events and fields; a native adapter 
 event using the original ID carried inside the app's own payload. Warm and cold taps use the same
 conversion without changing the shipped schema or erasing its baseline.
 
+## Queue refresh after app-c iteration 6 - 2026-10-30
+
+Read both findings files and the newest reports: Kundalini iteration 15 and app-c iteration 6.
+Newest packages remains code `d2e6970a983e8f1e1f030ea39b9861d487ea9db4`, site
+`ce19151baa1fdac40ac3208e70bb69388a8b538a`; both branch merges report already up to date.
+All 26 numbered-feature/link-compat tips remain ancestors of packages in both repositories.
+This is the only unmerged implementation branch; integration history/backup branches do not
+constitute a second ready feature. No integration rebuild or new must-have item is due.
+
+App-c now independently audits the observed ID against its frozen event. Its iteration-6
+`warm-tap-events.json` records integer ID `1536160051`, the application's encoded payload and
+`action: null`; `event-contract-check.json` reports one string-ID violation and the report
+records exit 1. Routing to Flat 1 does not repair the wire contract. Its npm snapshot hashes match
+iteration 5. Read-only inspection of its current `mobile/lib/main.dart` finds no
+`notificationEventAdapter`, and generated `config.g.dart` has no `notificationEventFields`.
+This still does not exercise this branch's correction. Keep F-30 open until refreshed CLI/runtime
+adoption, regeneration, native adapter wiring and warm/cold device acceptance. Do not ask the
+app to rewrite its shipped event or infer the original application ID from a hash.
+
+Spot-checked iteration-6 background activation comparison: before/after SHA256 are equal while
+the worker runs. Final activation records current `1793340382`, previous `1793340295`, null
+pending/trial, bad `1793340198` and floor 0. These are app-provided captures, not an independent
+device run here. Its retained media, notification delivery and rollback claims keep the scope
+and exclusions in its report. F-27's remaining host-file lifecycle documentation gap stays open.
+Kundalini's latest report is unchanged: schema-16 device/OTA acceptance and observed delivery,
+with no new platform finding. Real Firebase delivery remains outside both apps' coverage.
+
+Decision: preserve users' data and the shipped event's meaning. Retain this reviewed correction
+and its migration adapter rather than adding another runtime change against an unadopted fix.
+Combined schema remains 16, R4's reserved since remains 11 and pendingIds remains since 16.
+S1 remains deferred during the candidate freeze; S2 still needs a Play account. No package or
+schema version, shipped baseline, signed asset, activation or data behavior changed in this run.
+
+Fresh logs use `%TEMP%/valence-notify-i6-*.log`. Root tests pass 102/102 with zero skips
+(real generated Dart and strict/verbatim generated TS included); core 546, push adapter 2,
+example 27 and bridge 29 pass. Both fatal-info analyzers, strict/verbatim bridge TypeScript,
+both zero-warning pub dry runs (push retains its override hint), both npm pack dry runs and
+43-page site/SEO build pass. Example codegen writes nothing; signed builtin verification accepts
+seq `1793209750`, two files. The first manual verification used the builtin parent for --files
+and was correctly refused; the corrected content-addressed files/ invocation passes.
+Debug APK build passes (assembleDebug 125.7 seconds, existing app_badge_plus KGP warning).
+Standalone Windows py audit prints PASS for the resolved graph, manifest and all 19 DEX files.
+The build uses a 2 GiB Gradle heap, two workers and ActiveProcessorCount=2 in its command
+environment. No APK installation or device acceptance of this correction is inferred.
+
+This report-only refresh adds no implementation change or new independent security review;
+the existing checklist/review retains its original scope. No test-app write, emulator session,
+shared-branch commit/merge, push or publication was performed.
+
 ## Queue refresh after app-c iteration 5 - 2026-10-30
 
 Read both findings files and the newest reports: Kundalini iteration 15 and app-c iteration 5.
