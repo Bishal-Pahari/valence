@@ -1,4 +1,6 @@
 <!-- Merge into the application's AndroidManifest.xml when enabling notifications. -->
+<!-- Preserve Valence's callback for legacy events: use notificationEventAdapter on Valence.open
+     and convert cold initial() separately. Do not reinitialize the shared notification plugin. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>

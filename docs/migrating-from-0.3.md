@@ -259,7 +259,7 @@ This update prevents new cursor skips. It cannot infer rows omitted by an older 
 Schema 5 adds `link.initial` and `link.opened`; existing schema methods retain their meaning. Regenerate, compile `links.origins` and add native registrations in a store build. `onLink()` is inert on older hosts. See [deep links](deep-links.md).
 
 
-Local reminders: enable Android core library desugaring even in hosts that leave notifications disabled. To adopt schema-11 notify.* and badge.*, add native receivers and a status drawable, set notifications.enabled, regenerate and ship a store build. Coordinate IDs with existing custom reminders; preserve any shipped pre-schema-11 custom notify.schedule shape and handler. See [the guide](local-notifications.md).
+Local reminders: enable Android core library desugaring even in hosts that leave notifications disabled. To adopt schema-11 notify.* and badge.*, add native receivers and a status drawable, set notifications.enabled, regenerate and ship a store build. Coordinate IDs with existing custom reminders; preserve any shipped pre-schema-11 custom notify.schedule shape and handler. Preserve custom events too: regenerated config excludes pre-11 notification events from automatic emission. Pass a native `notificationEventAdapter` to keep a string-ID event, and apply the same conversion to the consume-once cold response. Never reinitialize the shared plugin to adapt its callback. See [the migration recipe](local-notifications.md#keeping-a-shipped-custom-tap-event).
 
 ## Optional remote push
 

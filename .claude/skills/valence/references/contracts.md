@@ -1794,6 +1794,19 @@ it and the first thing to fail would be the store build, on a device.
   are untrusted data, never evaluated or navigated to. `notify.initial() -> json?` consumes the cold-start
   response once. Cold responses are available only there; warm callbacks emit the respective event.
   Action categories are compiled into the host. Call `notify.initial` after subscribing to warm events.
+  Codegen records only since-11+ compatible notification events and their declared fields in
+  `hostNotificationEventFields`, wired through `valenceConfig`. The scheduler automatically emits
+  only those events and fields. Pre-11 events remain app-owned, even when their methods delegate
+  scheduling to the native service; no integer ID is sent over a frozen string-ID event.
+  A host may pass `notificationEventAdapter` to `Valence.open`: it receives the validated response
+  map (`id`, application `payload`, nullable `action`) and returns a generated `BridgeEvents` script,
+  or null to drop it. It replaces automatic warm emission and uses the same bounded startup queue.
+  Cold responses remain consume-once through `valence.notifications.initial()` and never emit
+  automatically; the app applies the same conversion explicitly in its cold replay/accessor.
+  Preserve application IDs inside the application's payload; a hashed scheduler ID is not reversible.
+  Never reinitialize the shared notification plugin to adapt a callback. The adapter sees only
+  responses that pass the existing envelope, size, ID and compiled-action checks. It must validate
+  its own domain payload; exceptions are logged without payload contents and the event is dropped.
 - `badge.set({n: int}) -> bool`, `badge.clear() -> bool` report whether a supported platform accepted
   the request, not whether the launcher visibly changed. `n` is 0..9999. Android badges are best effort
   and may require vendor permissions and an active notification; iOS requires badge authorization.
@@ -1807,6 +1820,13 @@ USE_EXACT_ALARM by default. iOS installs the UNUserNotificationCenter delegate. 
 notification callback runs UI activation. iOS code paths are experimental and untested.
 
 ## 8. Test matrix (minimum; all must pass before "done")
+
+Notification event compatibility: a frozen pre-11 string-ID event survives codegen/check with its
+baseline unchanged and no automatic built-in emission. Modern events require integer IDs and known
+optional fields; emitted payloads contain only declared fields. Compile the documented legacy adapter
+against real generated code. Exercise warm/cold conversion, consume-once cold access without double
+emission, the newest-16 startup queue, invalid responses rejected before adaptation, and adapter
+failure dropping the event with no private contents in logs. Existing scheduler security checks hold.
 
 R29 diagnostics (§5.1.1): startup reports ordered phases and monotonic elapsed times,
 failure names the active phase and preserves the original error; completion does not

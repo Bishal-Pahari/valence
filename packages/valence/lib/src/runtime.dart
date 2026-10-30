@@ -226,6 +226,10 @@ final class Valence {
   ///
   /// [hostBuild] is your native build number, reported by `app.info` so the web app can tell which store
   /// build it is running on.
+  ///
+  /// [notificationEventAdapter] replaces warm notification scripts for an app-owned
+  /// pre-11 event. Use its generated BridgeEvents builder, or return null to drop.
+  /// Cold responses remain consume-once through [ValenceNotifications.initial].
   static Future<Valence> open(
     ValenceConfig config, {
     int hostBuild = 0,
@@ -238,6 +242,7 @@ final class Valence {
     DatabaseFactory? databaseFactory,
     ValencePermissionBackend? permissionBackend,
     ValenceNotificationPlatform? notificationPlatform,
+    String? Function(Map<String, Object?> response)? notificationEventAdapter,
   }) async {
     // `open` is awaited in `main()` **before** `runApp`, and `runApp` is what would otherwise create the
     // binding — but the store's directory (path_provider), the seed (rootBundle) and secure storage all
@@ -335,6 +340,8 @@ final class Valence {
         valence._notifications = ValenceNotifications(
           directory: Directory('${dir.path}/notifications'),
           emit: valence._notificationEmit,
+          eventFields: config.notificationEventFields,
+          eventAdapter: notificationEventAdapter,
           icon: config.notificationIcon,
           platform: notificationPlatform,
           log: log,

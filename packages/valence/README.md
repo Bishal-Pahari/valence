@@ -33,6 +33,12 @@ restoration identifier in Main.storyboard; iOS is experimental and untested.
 
 ## Setup
 
+Migrating custom notification events requires preserving their payload types as well as methods.
+Regenerate config to exclude pre-11 events from automatic native emission, and pass
+`notificationEventAdapter` to `Valence.open` for your generated legacy event builder.
+Cold taps stay consume-once and need the same app-owned conversion.
+[Migration recipe](https://getvalence.pages.dev/docs/guides/local-notifications/#keeping-a-shipped-custom-tap-event).
+
 Seed imports record completion separately from row insertion. A locked completion marker retries
 up to five times, one second apart; exhausted retries retain rows and leave the marker for the
 next launch. [Recovery and log meanings](../../docs/seed-recovery.md). No app codegen change is needed.

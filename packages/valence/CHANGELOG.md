@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased: custom notification event adapters
+
+Regenerated config declares compatible notification events/fields, so the native service cannot
+emit its integer-ID payload over a pre-11 app-owned event. `Valence.open` accepts a native
+`notificationEventAdapter` returning a generated event script or null. It replaces automatic warm
+emission and keeps startup buffering; cold access remains consume-once for explicit conversion.
+Adopters must regenerate and ship a store build, preserving shipped schemas and baselines.
+
 ## Unreleased: `hasNotification` is required, and sync's waits name a lock
 
 **Breaking for hosts with their own `ValencePushTransport`.** `ValencePushMessage`'s `hasNotification`

@@ -905,6 +905,12 @@ abstract final class BridgeEvents {
   static String pushTokenChanged({required String token}) => eventScript('push.tokenChanged', {'token': token});
 }
 
+/// Automatic notification events; pre-11 declarations remain app-owned.
+const hostNotificationEventFields = <String, Set<String>>{
+  'notify.tapped': {'id', 'payload', 'action'},
+  'notify.action': {'id', 'payload', 'action'},
+};
+
 /// Native plugin namespaces required by this app, including event-only fragments.
 const hostPluginNamespaces = <String>{'haptics'};
 /// Exact native method registrations required by the merged schema.

@@ -12,6 +12,74 @@ Opt in in `valence.config.json`, run codegen, and ship a store build:
 The default is disabled. A schema can omit the group. Existing app-specific `notify.daily` handlers
 can coexist, but their IDs share the same native scheduler: reserve distinct ID ranges. Custom notification or badge methods declared with since below 11 remain app-owned, with their shipped signatures intact. Only since-11+ declarations use the built-in delegation. Keep a shipped custom method unchanged; use your app adapter to call the native service, or adopt the standard name only if it has never shipped.
 
+## Keeping a shipped custom tap event
+
+A pre-11 `notify.tapped` event stays app-owned, including a string ID. Regenerate with the
+updated CLI: `hostNotificationEventFields` in `bridge.g.dart` lets the runtime emit only compatible
+since-11+ events and only their declared fields. An omitted or legacy event is not emitted
+automatically. Existing generated hosts need codegen and a new store build for this protection.
+Do not change the shipped event, its `since`, or the baseline to adopt native scheduling.
+
+Pass `notificationEventAdapter` to `Valence.open` to convert warm responses into your generated
+event script. It replaces automatic warm emission for both taps and actions; return null for
+responses your event cannot represent. For example, for the shipped
+`notify.tapped {id: string, payload: string?}` and an app payload `{id, p}`:
+
+```dart
+import 'dart:convert';
+
+import 'package:valence/valence.dart';
+
+import 'valence/bridge.g.dart';
+import 'valence/config.g.dart';
+
+Map<String, Object?>? legacyTap(Map<String, Object?> response) {
+  if (response['action'] != null) return null; // No action event shipped in this app.
+  final payload = response['payload'];
+  if (payload is! String) return null;
+  try {
+    final app = jsonDecode(payload);
+    if (app is! Map || app['id'] is! String || app['p'] is! String) return null;
+    return {'id': app['id'], 'payload': payload};
+  } on FormatException {
+    return null;
+  }
+}
+
+String? legacyTapScript(Map<String, Object?> response) {
+  final tap = legacyTap(response);
+  return tap == null ? null : BridgeEvents.notifyTapped(
+    id: tap['id'] as String, payload: tap['payload'] as String?,
+  );
+}
+
+Future<Valence> openHost() => Valence.open(
+  valenceConfig, notificationEventAdapter: legacyTapScript,
+);
+
+// Call from your app-owned launch accessor after the page subscribes to warm events.
+Future<Map<String, Object?>?> legacyInitial(Valence valence) async {
+  final response = await valence.notifications.initial();
+  return response is Map<String, Object?> ? legacyTap(response) : null;
+}
+```
+
+The service unwraps its internal envelope before the adapter. Keep the original application ID
+inside the application's payload when scheduling; a hashed integer scheduler ID cannot recover it.
+Validate the payload's target against your domain before navigation. Neither this example nor the
+runtime evaluates a payload as code. The adapter runs after the native envelope/size/ID/action
+checks. An adapter exception drops the event and logs a fixed message without private contents.
+Use generated builders for escaping. Startup buffering remains bounded to the newest 16 warm events.
+
+Cold responses are separate and consumed once: they never also emit a warm event. Apply the same
+conversion in your existing cold accessor/replay, as `legacyInitial` illustrates; retain your own
+contract for whether that accessor consumes or caches its result. Never initialize
+`FlutterLocalNotificationsPlugin` a second time to replace Valence's callback: that bypasses the
+runtime's envelope decoder. Old alarms scheduled by a legacy plugin remain the app's migration
+responsibility. This adapter handles responses scheduled by Valence's native service.
+
+## Standard notification events
+
 Import `call`, `has` and `on` from your generated `bridge.g.ts`. Guard new calls with `has()` when
 the same web bundle serves older store builds. Install listeners before consuming the launch tap:
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased: preserve custom notification event payloads
+
+Native scheduling no longer emits integer IDs over a legacy string-ID notification event in
+regenerated hosts. Refresh tooling, regenerate config and ship a store build. Hosts retaining
+pre-11 events pass `notificationEventAdapter` to `Valence.open` and reuse their conversion for
+consume-once cold responses. Keep shipped schemas and baselines intact. See the local-reminder
+migration recipe; automatic modern events emit only their declared fields.
+
 ## Unreleased: preserve custom deep links during migration
 
 Updating 0.3 tooling now preserves a custom `link.initial` declared before schema 9,
