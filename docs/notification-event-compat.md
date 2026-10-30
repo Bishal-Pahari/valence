@@ -44,6 +44,18 @@ security checklist and review retain their original scope. Real Firebase deliver
 remain untested. No test-app writes, emulator run, shared-branch changes, pushes, publication
 or package/schema version changes occurred.
 
+Fresh gates use `%TEMP%/valence-notify-i8-*.log`. Root tests pass 102/102 with zero skips,
+including real generated Dart and strict/verbatim generated TS. Core tests pass 546, push
+adapter 2, example 27 and bridge 29. Both fatal-info Dart analyzers and strict/verbatim bridge
+TypeScript pass. Both pub dry runs have zero warnings (push retains its local-override hint);
+both npm pack dry runs pass. Site build/SEO passes 43 pages. Example codegen writes nothing
+and built-in signature verification accepts seq `1793209750`, two files. Debug APK passes
+(assembleDebug 106.6 seconds, existing app_badge_plus KGP warning), with a command-local
+2 GiB heap, 1 GiB metaspace, two workers and ActiveProcessorCount=2. Standalone Windows
+`py example/tool/check_no_firebase.py` prints PASS for the graph, manifest and all 19 DEX files.
+Implementation trees are unchanged from the preceding iteration-7 validation; only this report
+changed in either repository. No APK installation or device acceptance is inferred.
+
 ## Queue refresh after app-c iteration 7 - 2026-10-30
 
 Read both findings files and the newest reports: Kundalini iteration 15 and app-c iteration 7.
