@@ -1,0 +1,59 @@
+{
+  "appId": "com.getvalence.example",
+  "keyId": "k1",
+  "web": {
+    "out": "web",
+    "lib": "web-src/lib",
+    "entry": "index.html",
+    "declaredRoutes": [
+      "/",
+      "/shelf"
+    ],
+    "connect": []
+  },
+  "host": {
+    "dir": "."
+  },
+  "ota": {
+    "base": "https://ota.example.invalid",
+    "channel": "production"
+  },
+  "sync": {
+    "base": "https://sync.example.invalid"
+  },
+  "data": {
+    "plants": 1
+  },
+  "writable": [
+    "shelf"
+  ],
+  "http": {
+    "origins": [
+      "http://127.0.0.1:8787"
+    ]
+  },
+  "links": {
+    "origins": [
+      "https://links.example.invalid",
+      "valence-example://app"
+    ]
+  },
+  "permissions": {
+    "kinds": [
+      "camera",
+      "location",
+      "notifications",
+      "contacts",
+      "bluetooth",
+      "microphone",
+      "photos"
+    ]
+  },
+  "notifications": {
+    "enabled": true,
+    "icon": "ic_stat_valence"
+  },
+  "plugins": [
+    { "path": "plugins/haptics/valence.plugin.json", "since": { "haptics.tap": 1 } }
+  ]
+}

@@ -1,0 +1,334 @@
+# Changelog
+
+## Unreleased: custom notification event adapters
+
+Regenerated config declares compatible notification events/fields, so the native service cannot
+emit its integer-ID payload over a pre-11 app-owned event. `Valence.open` accepts a native
+`notificationEventAdapter` returning a generated event script or null. It replaces automatic warm
+emission and keeps startup buffering; cold access remains consume-once for explicit conversion.
+Adopters must regenerate and ship a store build, preserving shipped schemas and baselines.
+
+## Unreleased: `hasNotification` is required, and sync's waits name a lock
+
+**Breaking for hosts with their own `ValencePushTransport`.** `ValencePushMessage`'s `hasNotification`
+is now a required argument with no default. Hosts using `valence_push` are unaffected — it already
+passes `message.notification != null`. `false` is the permissive answer, because it is the half of the
+data-only check that lets a payload trigger a sync, and core no longer derives it now that the transport
+belongs to the host. The default meant a transport that never considered the field turned every
+notification carrying `{"valence":"sync"}` into a background sync; omitting it is now a compile error.
+
+Sync's own lease transaction and observation write go through the same wrapper as the store's queries, so
+a confirmed `SQLITE_BUSY` on either is labelled `store: database locked operation=sync.acquireLease`
+rather than only timed (§5.1.1). No SQL, bind argument, bucket, key or path is logged, as before.
+
+An app-owned method under a built-in's name that differed only in its return type is accepted again:
+the generator's signature comparison looked only at the params, so every structured-return built-in
+matched and `notify.pending` returning `string[]` was refused, against §6.5.
+
+## Unreleased: Firebase is an opt-in native package
+
+Core-only Valence hosts no longer depend on Firebase. Remote push hosts must add
+`valence_push: ^0.4.0-beta.0`, import `package:valence_push/valence_push.dart` and
+replace `ValencePush()` with `createFirebasePush()` after Firebase initialization.
+Keep direct Firebase dependencies when importing their APIs. Rebuild the native
+host; an OTA cannot install or remove SDKs. Custom transports now exchange
+`ValencePushMessage` rather than `RemoteMessage` and preserve `hasNotification`.
+The Firebase-specific `ValencePushMessage.fromRemote` constructor is removed;
+custom transports construct the provider-neutral record directly.
+
+Bridge schema/signatures, background sync, notification data, caps and consent
+rules are unchanged. Local notifications and badges remain core dependencies;
+Android desugaring is still needed for local notifications. The core example has
+no Firebase dependency, and `VALENCE_PUSH=true` no longer enables it: follow the
+remote-push guide to add the native package and initialization. Firebase's iOS
+15.0 minimum applies to push hosts. Device delivery still needs a Firebase project;
+iOS is experimental and untested. This supersedes the earlier SDK-disclosure
+mitigation below. Audit other app dependencies and final binaries independently.
+
+## Unreleased: `pendingIds()`, because a full reminder queue cannot be read back
+
+`ValenceNotifications.pendingIds()` returns the native pending queue's IDs as `List<int>`, from the
+same snapshot `pending()` reads. Schema 16 delegates `notify.pendingIds` to it.
+
+`pending()` carries each request's title, body and payload, capped at 256, 4096 and 4096 bytes, so a
+full queue of 64 maximum-size requests is about 540 KB — over the 256 KB bridge reply cap, which
+means `replyOk` answers `E_TOO_LARGE`. That broke the documented cancel-and-refill-by-difference
+workflow on exactly the apps that keep the most reminders queued. `pending()` is unchanged: trimming
+its fields would have made an absent body and an empty one the same answer on the method whose whole
+purpose is reconciliation.
+
+A host whose notification service could not start returns an empty list from both.
+`AppInfo.builtins` is now 16.
+
+## Unreleased: startup timings and named database waits
+
+Native startup reports phase entry, completion and elapsed milliseconds through
+the existing logger. Database operations still pending after ten seconds name
+their operation and report completion or failure. No schema or app configuration
+change is needed; ship an updated Flutter host. These diagnostics preserve retries,
+transactions and user data. They provide evidence for a recurrence and do not
+establish a cause or fix for earlier Android stalls.
+
+## Unreleased: say which SDKs every Valence binary carries
+
+The docs said a host that does not configure push needs no Firebase. That is true of the runtime and
+false of the binary: `firebase_core` and `firebase_messaging` are unconditional dependencies of the
+`valence` package, alongside `flutter_local_notifications` and `app_badge_plus`, so an offline app
+with no account, no push and no reminders still ships them. `FirebaseInitProvider` runs on every
+launch and logs that it found no default options, and FCM registers a service in the merged manifest.
+
+Play's Data safety form and Apple's privacy manifest ask about SDKs that are **present**, not SDKs
+that are reached, so if you are submitting a Valence app, declare them as present and unused: no
+token is registered and nothing is collected without a configured push adapter. You cannot remove
+them — `dependency_overrides` re-points a package, it does not drop one.
+
+No code changed. Moving push into a separate `valence_push` package that an app adds when it declares
+`push.*` is the real fix and is not in 0.4. The store-policy, remote-push and contracts text now say
+all of this where an adopter will read it.
+
+## Unreleased: codegen refuses a built-in declared below its reserved since
+
+A built-in's `since` is the version the runtime reserved for that name, not a number your app
+chooses — the delegation is only generated at or above it. Declaring one below made the name
+app-owned silently: codegen emitted an abstract handler, `ValenceBuiltins` did not satisfy it, the
+host stopped compiling with a message that looked like the package had forgotten to ship something,
+and writing the handler by hand compiled and reimplemented a built-in.
+
+`codegen` now refuses it and names the number to use. Four names carry a floor, because they were in
+use as app-owned methods before the built-ins existed: `notify.*` and `badge.*` at 11, `push.*` at
+12, and `share.image` at 14. Every other built-in still delegates at any `since`.
+
+Only a declaration carrying the built-in's **own signature** is refused — that is what copying the
+template and renumbering it produces. A method of your own under one of those names, with its own
+params and return, keeps its abstract handler exactly as before, and so does a name your recorded
+store schema already shipped.
+
+If codegen now fails for you, raise that method's `since` to the number the message gives. Your
+schema's own `version` is unaffected. The permissions guide, which told you to assign your app's next
+version to copied built-ins, is corrected, and the bridge guide has the floors in one table.
+
+## Unreleased: a sync scoped to nothing can no longer report success
+
+`sync.now({ buckets })` naming only buckets the host does not have — a typo, or a
+bucket a newer bundle renamed — attempted nothing and reported `reason: "ok"`, and
+persisted that over a stored `unauthorized`. A page's "sign in again" banner reads
+`sync.status()`, so one scoped call could make a refused account look healthy.
+
+A scoped run that matches no read pair, no writable bucket and no outbox bucket now
+reports `failed`, logs the names it was given, and writes no observation, so the last
+real outcome stands. A scope that does match any bucket is unchanged. Upgrade the
+native host package; no schema or app change is needed.
+
+## Unreleased: a missing notification icon no longer takes the app down
+
+- A native notification service that refuses to start no longer throws out of `Valence.open`. The
+  host logs the native code and the reason and runs with notifications unavailable: `notify.schedule`
+  reports `blocked`, `notify.pending` is empty, `badge.set` is false, and the rest of the app is
+  unaffected. A host that cannot post a notification is still an app.
+- The usual cause is Android's release resource shrinker. `notifications.icon` is named only as a
+  string in `valence.config.json`, so nothing references the drawable and R8 deletes it — which no
+  debug-build check can see. `valence doctor` now has a `notification icon` row that fails when the
+  drawable is missing from `android/app/src/main/res` or when `res/raw/keep.xml` does not name it.
+  If you have notifications enabled, add `res/raw/keep.xml` with
+  `tools:keep="@drawable/<your icon>"` and run a release build.
+- The notifications guide says this where the icon is introduced, as a requirement rather than a tip,
+  and now shows the three-line adapter for delegating a shipped custom `notify.*` method to the
+  built-in scheduler — there is no separate service class to import.
+
+## Unreleased: a replaced OS snapshot cannot cross an account or a bundle
+
+A replacement task snapshot handed to an already-running host is now checked against the
+account fingerprint and bundle seq that startup verified, and dropped whole on a mismatch.
+Before this, restoring a snapshot saved under one account after switching to another served
+the first account's route and draft through `state.restore()`, and an older bundle's blob
+skipped the seq check. Upgrade the native host package; no schema, config or app handler
+change is needed.
+
+## Unreleased: native plugin registration checks
+
+Regenerated handlers reject missing plugin namespaces and exact native methods at startup
+in every build mode. Register the matching plugin instances, regenerate with matching
+tooling/runtime snapshots, test your real app handlers and rebuild the host. Doctor lists
+requirements as a warning; native setup and successful behavior still need testing.
+
+## Unreleased: development mode identifies skipped OTA operations
+
+Debug hosts now log the upstream origin and disabled OTA behavior at startup. Calls to ready,
+signed reload, update checks and applyUpdate log their development bypass rather than appearing
+silent. Restart without VALENCE_DEV_URL to validate signed offline starts and rollback. No
+schema, package version or host setup changes are required.
+
+## Unreleased: explicit LAN development trust
+
+- `valence dev` now binds loopback by default. A LAN address or hostname requires
+  `--allow-lan`; that mode binds all interfaces and names the cleartext full-bridge
+  risk before starting. Add the flag to existing physical-device dev commands.
+  Manual Flutter defines remain explicit trust grants; release/profile exclusion
+  is unchanged. Refresh vendored tooling when upgrading.
+
+
+## Unreleased: capability and status fields
+
+Schema 15 adds nullable builtins, persisted sync reason and signed pending urgency. Regenerate and ship a store build; declaring builtins also requires current optional params on declared built-ins. Earlier hosts and schemas keep working. Account changes clear the new sync observation.
+
+## Unreleased: dev-mode and plugin hardening
+
+- `Valence.emit` enforces the §4.2 256 KB envelope cap, so an oversized event — now possible because
+  §4.10 lets a plugin emit one — is dropped with a log line instead of killing the WebView and spending
+  a trial strike.
+- A test asserts every `VALENCE_DEV_URL` read in `lib/` is guarded by `kDebugMode` in the same
+  expression, which is what makes the §3.1 dev path compile-time absent from release builds.
+- `tool/check-release-dev.mjs` matches app-bundle AOT paths (`base/lib/<abi>/libapp.so`) as well as APK
+  ones.
+
+## Unreleased: account-switch hardening (§4.4)
+
+- `Valence.dataPut` throws `E_INTERNAL` for the duration of an account transition, which now spans the
+  sync-lease wait as well as the clear. Writes already in flight are drained before `clearWritable`, so
+  one cannot commit after the delete and be pushed under the next account's token.
+- `ValenceStore.clearWritable` no longer returns early on an empty bucket set: the outbox check, the
+  outbox delete and the sync-observation reset are not bucket-specific and always run. Only the
+  `kv`/`bucket` deletes are conditional.
+- `auth.setToken` records the account id before writing the token on the non-switch paths too, matching
+  the switch, so an interrupted adoption cannot leave a token with no recorded identity.
+
+## Unreleased: task restoration
+
+Task restoration now checks the native account before loading a restored route, clears drafts on account switch/sign-out and refuses late route captures from the previous account. Refresh and first-account adoption keep the live draft.
+
+Schema 8 adds `state.save({json})` and `state.restore()` for a task-local UI blob (65,536 JSON UTF-8 bytes). ValenceApp restores the local path/query/hash after OS process reclamation. Explicit task closure starts fresh; a different bundle seq clears the snapshot. Save promptly and keep durable records in SQLite. iOS is experimental and untested.
+
+## Unreleased - permissions (R3)
+
+- Added schema-9 permission checks, serialized foreground requests, app settings and resume changes. Hosts opt in with `permissions.kinds`, native declarations, codegen and a store build. Android checks preserve uncertain denial; iOS remains experimental and untested.
+
+## Unreleased - local reminders
+
+Schema 11 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. iOS is experimental and untested. Android hosts now need core library desugaring even when the feature is disabled, because the native plugin ships with the runtime. Existing custom notification IDs must be coordinated; pre-schema-11 custom methods retain their shipped shapes and app-owned handlers.
+
+
+## Unreleased - remote push
+
+Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** Existing hosts must add the additive schema, regenerate, configure Firebase and ship a store build. Unicode line separators are escaped in event/reply scripts without changing JSON values.
+
+## Unreleased: image sharing
+
+`Valence.shareImage` backs schema-14 `share.image` with capped base64 input or a
+re-verified active signed bundle image, filename and caption validation, and native
+PNG/JPEG sharing through `share_plus`. Selection is not proof of delivery.
+iOS remains experimental and untested. Add the method through codegen and a store
+build; existing custom pre-14 declarations retain their own handlers.
+
+Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
+
+## Unreleased - native HTTP and REST adapter
+
+Call your API with `http.request` (schema 4): the host enforces compiled `http.origins` origins, attaches the stored token, and never follows redirects. Existing hosts need codegen and a store build to add the capability or origins. A reference Node REST-to-sync adapter demonstrates durable pagination, tombstones and idempotent pushes. iOS remains experimental and untested.
+## Unreleased - account switching is safe
+
+Schema version 13. `Valence.authSetToken` takes `account` and `discardPending`, and `Valence.authAccount()`
+is new. Recording a different opaque account id, or signing out with one recorded, clears every writable
+bucket's rows, `max_usn` cursor and the whole outbox in one transaction under the sync lease, before the
+new token is stored, and emits `sync.changed` for those buckets. It throws the new `E_PENDING`
+(`BridgeErrorCode.pending`) and changes nothing while the outbox is not empty, unless `discardPending` is
+set; it fails with `E_INTERNAL` rather than clearing underneath a sync that holds the lease, and it keeps
+the lease until the new token is written, so a sync starting in between cannot pull the previous
+account's rows back under the previous account's token. Only `null` is the sign-out — an empty token
+clears the token and no data. A refresh of the recorded id, a first id with none recorded, and an app
+that never passes one all clear nothing, so a host upgrade cannot wipe an existing user's data. An
+account id the Keystore cannot return throws `E_INTERNAL` instead of reading as "none recorded", which
+would have made the next sign-in an adoption over the previous account's rows. iOS remains experimental
+and untested.
+
+## Unreleased - lifecycle, connectivity and update status
+
+Bridge version 6. `ValenceApp` maps Flutter's five lifecycle states onto four and emits `app.lifecycle`
+only on a change (`hidden` and `paused` are both `background`, because Android delivers both for one
+backgrounding); it emits `app.online` from the connectivity it already watched, reading the current
+value at start-up rather than waiting for a change; and it emits `sync.done` with the whole
+`ValenceSyncResult` after every completed run, after `sync.changed` for the same run.
+`Valence.appState()` and `Valence.bundleStatus()` back the new `app.state` and `bundle.status`
+built-ins and never start a request. Every stop in the §2.3 check now records a `ValenceBundleReason`,
+so a page can tell a rollout gate from a release waiting for its data from a release no device will
+take. Persist on `background`, not `detached`. iOS remains experimental and untested.
+
+## Unreleased: offline tooling
+
+- Add schema-3 data.getMany and sync.status, and optional SyncResult.pending. Regenerate an additive schema and guard the new methods on older hosts.
+- Seed multiple declared read-only schemas using seedSchemas and versioned files; the runtime imports each declared pair.
+- OTA bundle bridge requirements now default to the recorded store baseline. Guard newer methods; explicitly pin lower if older store builds remain supported. Built-in/store defaults still use the current schema.
+- Compile ota.channel and generate opt-in BridgeHandlersDefaults for test doubles.
+- Run mechanical doctor diagnostics and mapped unit tests without an interactive session. Unexecuted evidence stays WARN.
+- Constrain path_provider_android to the pre-JNI range >=2.2.17 <2.3.0 while compatibility is validated (U-7, 2026-10-21).
+
+## 0.4.0-beta.0
+
+- Native extensions can implement `ValencePlugin`, with namespaced schema fragments
+  and matching npm types. Generated adapters keep strict decoding; the built-in
+  open group uses the same registry without allowing its owner to be replaced.
+  The example haptic handler is now a separate local plugin package.
+
+First release. The Flutter host runtime that `/valence init` used to generate into every app now ships as
+a package, so a fix reaches every adopter with `flutter pub upgrade` instead of being hand-applied.
+
+Implements contracts.md:
+
+- **§2.3, §2.4** — the canonical manifest check order, the activation state machine with its two-strike
+  rollback, roll-forward, and garbage collection that keeps `current`, `previous`, `pending`, `trial` and
+  the built-in bundle. Step 7 **pulls** the `requires.data` pairs a bundle needs, under the §5.6 lease.
+- **§3** — the loopback server: a per-install port in 10000..29999, a per-launch nonce in the entry page,
+  the three serving branches in their contractual order with the reserved `/_host/` prefix matched first,
+  path normalisation, and lazy content-addressed integrity re-checking.
+- **§4.4** — secure storage and the bearer token: `secure.get/set/delete` over the Android Keystore and
+  the iOS Keychain, `auth.setToken` / `auth.hasToken` keeping the token at the reserved
+  `valence.auth.token` where the page cannot read it back, `Authorization: Bearer` on every writable
+  bucket's pull and push, and `auth.expired` plus `ValenceSyncReason.unauthorized` on a 401. Needs
+  `minSdk 23` on Android.
+- **§4.2** — the strict decoders, the closed error-code set, the 256 KB UTF-8 message cap in both
+  directions, and event scripts built only through `jsonEncode`.
+- **§5** — the SQLite store with the pragmas through `rawQuery`, a never-closed connection shared across
+  isolates, the seed import counted with `changes()`, per-`(bucket, schema)` storage, the outbox, pull
+  paging, push with its echo skip, and the sync lease.
+- **§3 back gesture, console capture and resume** — `PopScope` asking the WebView first,
+  `setOnConsoleMessage` plus the page callbacks, and port reclaiming on resume that keeps the nonce when
+  the same port comes back.
+
+Also here, and not in the generated hosts it replaces:
+
+- `ValenceConfig.authToken`, so an app with its own refresh loop in Dart can own the token instead;
+  when it is unset, the host uses whatever the page stored through `auth.setToken`.
+- `ValenceConfig.syncMode: staticChunks`, the CDN-only pull from §5.3's static variant.
+- `ValenceConfig.databaseName`, so a 0.3 app whose generated host chose its own file name keeps its data.
+- `Valence.publishHostFile`, the only path from native bytes to the page.
+- `Valence.pendingWrites()`, which counts queued deletes a `usn == -1` scan cannot see.
+
+Corrections an independent review found before this first release, each with a regression test:
+
+- **A writable bucket is pulled as well as pushed**, at schema 1. It can never appear in a manifest’s
+  `requires.data`, so a host that pulls only those pairs leaves user data push-only: a second device
+  never sees a row, and a reinstall comes back empty.
+- **A mid-session reload runs §2.4 step 4 only.** Re-running the UI-start transitions made
+  `bundle.applyUpdate` spend a strike on the bundle it was promoting, and made a ready timeout re-serve
+  the failing trial instead of `current`.
+- **Garbage collection keeps the files of a download in flight.** Step 6 writes CAS before step 8 writes
+  the manifest, so a collection in that window could delete what had just been fetched — after which
+  nothing re-fetched it and a healthy release failed its trial twice.
+- **A refused built-in bundle is remembered by its manifest bytes and the host’s bridge version**, not by
+  its seq, so the host upgrade that fixes a check-5 mismatch is not skipped by the record meant to save
+  work. The seq gate also runs before the verify, so an ordinary launch does not check a signature.
+- **A corrupt file of the *active* bundle is re-fetched** by a repair pass before step 1. Step 1 stops
+  before step 6 for a bundle that is already `current`, so a rotted entry page was a permanent blank
+  screen.
+- **The seed is extracted once per host build**, not on every launch in front of the first frame.
+- **`ValenceStore` enforces the reserved `valence.` pref prefix itself**, so an app that defines its own
+  settings method cannot become a route to the sync lease.
+
+284 tests. `dart analyze --fatal-infos` clean. `flutter pub publish --dry-run` has 0 warnings.
+
+## Unreleased - adaptive layout and accessibility
+
+ValenceApp requests edge-to-edge layout, publishes system-bar/cutout inset CSS variables on load and metrics changes, follows Android system text zoom and emits schema-7 app.appearance snapshots. Add optional AppInfo.fontScale: "num?" and regenerate; old schemas remain supported. Existing pages must pad content/fixed controls using the variables and avoid double-scaling Android text. Custom hosts can pass their FlutterView to Valence.attach for matching font-scale reporting. iOS root-font scaling remains experimental and untested.
+
+Firebase dependencies now require iOS 15.0 or later, even with push disabled. Upgrade Runner/extension target settings; iOS remains experimental and untested.
+
+Bridge success and error reply caps now include Unicode separator escaping; oversized errors retain only safe numeric correlation ids.

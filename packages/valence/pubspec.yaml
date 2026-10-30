@@ -1,0 +1,62 @@
+name: valence
+description: >-
+  The Flutter host runtime for Valence. A signed over-the-air web bundle on a loopback server, an
+  offline-first SQLite store with incremental sync, and a typed bridge generated from one schema.
+version: 0.4.0-beta.0
+repository: https://github.com/Bishal-Pahari/valence
+issue_tracker: https://github.com/Bishal-Pahari/valence/issues
+homepage: https://getvalence.pages.dev
+documentation: https://getvalence.pages.dev/docs/guides/host/
+topics:
+  - webview
+  - ota
+  - offline-first
+  - sqlite
+  - code-push
+
+environment:
+  sdk: ^3.6.0
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Ed25519 verification of the manifest signature (contracts check 1).
+  cryptography: ^2.9.0
+  # crypto gives the *synchronous* sha256.convert(bytes) that check 7 needs inside the
+  # download-and-rename loop; cryptography only has an async hash().
+  crypto: ^3.0.7
+  connectivity_plus: ^7.3.2
+  # OS deep-link delivery; store-compiled trust policy stays in the runtime (§6.3).
+  app_links: ^7.2.2
+  # Android Keystore / iOS Keychain for the bearer token and secure.* (contracts §4.4).
+  flutter_secure_storage: ^11.2.0
+  http: ^1.6.0
+  flutter_local_notifications: ^22.3.2
+  timezone: ^0.11.0
+  app_badge_plus: ^1.3.5
+  path_provider: ^2.1.6
+  # Temporary tested compatibility pin (U-7, scout 2026-10-21). Overrides do not propagate to apps.
+  path_provider_android: ">=2.2.17 <2.3.0"
+  sqflite: ^2.4.4+2
+  url_launcher: ^6.3.3
+  webview_flutter: ^4.14.1
+  # Android text zoom follows the system accessibility font scale (§4.7).
+  webview_flutter_android: ^4.14.1
+
+  # OS dialogs; Android SDK selects legacy photos/Bluetooth groups (contracts section 4.9).
+  # ponytail: stay on 12.x until SDK 37 target resolution is verified with Flutter/AGP.
+  permission_handler: ^12.0.3
+  device_info_plus: ^13.3.0
+
+  share_plus: ^13.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  # The widget harness replaces only native WebView calls, not host policy.
+  webview_flutter_platform_interface: ^2.15.1
+  # So a test can swap in flutter_secure_storage's own in-memory platform instead of the Keystore.
+  flutter_secure_storage_platform_interface: ^2.1.1
+  sqflite_common_ffi: ^2.4.4

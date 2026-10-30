@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 
 import { VALENCE_VERSION } from '../.claude/skills/valence/scripts/valence.mjs';
 import { run, doctor, detectWeb, detectHost, detectAppId } from './valence.mjs';
@@ -49,6 +49,10 @@ const quiet = async (fn) => {
   }
 };
 
+test('dev options before the command pass through to the CLI', async () => {
+  await assert.doesNotReject(() => quiet(() => run(['--web-dir', 'web', '--port', '5173', '--device-host', 'localhost', 'dev', '--help'])));
+});
+
 test('detects the web app, package manager, Flutter host and app id', () => {
   const { root } = project();
   const [web, ...rest] = detectWeb(root);
@@ -70,7 +74,7 @@ test('init sets up config, CLI, skill, agents, keys and generated code, and is i
 
   const cfg = JSON.parse(readFileSync(join(root, 'valence', 'valence.config.json'), 'utf8'));
   assert.equal(cfg.appId, 'com.acme.trail');
-  assert.deepEqual(cfg.web, { out: 'web/build', lib: 'web/src/lib/valence', routes: 'web/src/routes', entry: 'index.html' });
+  assert.deepEqual(cfg.web, { out: 'web/build', lib: 'web/src/lib/valence', routes: 'web/src/routes', entry: 'index.html', connect: [] });
   assert.equal(cfg.host.dir, 'mobile');
   assert.ok(readFileSync(join(root, 'valence', 'valence.mjs')).equals(readFileSync(join(PKG, '.claude', 'skills', 'valence', 'scripts', 'valence.mjs'))));
   for (const f of [
@@ -79,11 +83,15 @@ test('init sets up config, CLI, skill, agents, keys and generated code, and is i
     '.claude/agents/valence-reviewer.md',
     'valence/bridge.schema.json',
     'valence/keyring.json',
-    'web/src/lib/valence/client.ts',
     'web/src/lib/valence/bridge.g.ts',
     'mobile/lib/valence/bridge.g.dart',
     'mobile/lib/valence/config.g.dart',
   ]) assert.ok(existsSync(join(root, f)), f);
+  // The runtimes are packages now, so init declares the web one rather than copying a client in.
+  assert.ok(!existsSync(join(root, 'web', 'src', 'lib', 'valence', 'client.ts')), 'no client is copied');
+  const webPkg = JSON.parse(readFileSync(join(root, 'web', 'package.json'), 'utf8'));
+  assert.match(webPkg.dependencies['@getvalence/bridge'], /^\^\d+\.\d+\.\d+/);
+  assert.equal(webPkg.devDependencies['@sveltejs/kit'], '^3.1.0', 'their own dependencies are left alone');
   assert.ok(!existsSync(join(root, '.claude', 'skills', 'valence', 'scripts', 'valence.test.mjs')), 'tests are not installed');
   assert.ok(existsSync(join(keyDir, 'com.acme.trail.k1.pem')));
 
@@ -131,10 +139,76 @@ test('CLI commands pass through to valence.mjs, and versions agree', () => {
   assert.equal(JSON.parse(readFileSync(join(PKG, 'package.json'), 'utf8')).version, VALENCE_VERSION);
 });
 
+test('both doctor entry points exit nonzero with a fix for a broken mechanical setup', async () => {
+  const { root, keyDir } = project();
+  await quiet(() => run(['--root', root, '--yes', '--no-launch', '--key-dir', keyDir]));
+  const configPath = join(root, 'valence', 'valence.config.json');
+  const cfg = JSON.parse(readFileSync(configPath, 'utf8'));
+  cfg.host.database = '../wrong.db';
+  writeFileSync(configPath, JSON.stringify(cfg));
+  for (const cli of [join(PKG, 'bin', 'valence.mjs'), join(root, 'valence', 'valence.mjs')]) {
+    const result = spawnSync(process.execPath, [cli, 'doctor', '--root', root], { encoding: 'utf8' });
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /database directory/);
+    assert.match(result.stdout, /Fix:/);
+  }
+});
+
+test('the runtime version the wizard declares matches all runtime packages in this repo', () => {
+  // The wizard writes "@getvalence/bridge": "^<RUNTIME_VERSION>" into an app's package.json, and the
+  // skill tells the builder to run "flutter pub add valence". Both have to name a version that exists.
+  const declared = readFileSync(join(PKG, 'bin', 'valence.mjs'), 'utf8').match(/RUNTIME_VERSION = '([^']+)'/)[1];
+  const bridge = JSON.parse(readFileSync(join(PKG, 'packages', 'bridge', 'package.json'), 'utf8')).version;
+  assert.equal(bridge, declared, 'packages/bridge');
+  const pubspec = readFileSync(join(PKG, 'packages', 'valence', 'pubspec.yaml'), 'utf8');
+  assert.equal(pubspec.match(/^version: (.+)$/m)[1].trim(), declared, 'packages/valence');
+  const push = readFileSync(join(PKG, 'packages', 'valence_push', 'pubspec.yaml'), 'utf8');
+  assert.equal(push.match(/^version: (.+)$/m)[1].trim(), declared, 'packages/valence_push');
+});
+
+test('the example vendors the skill’s CLI byte for byte, so the reference app cannot run a different generator', () => {
+  // `packages/valence/example` is the repo's own Valence app, and like every app it vendors
+  // `valence/valence.mjs`. Nothing compared the two copies, and `VALENCE_VERSION` is equal in both
+  // whatever they contain — so the skill's copy gained a line in one merge and the example's did not,
+  // which is exactly the stale-vendored-CLI state K F-62 reports from the other side. Inert while the
+  // drift is a comment; the next one generates different Dart in the app the gates are run against.
+  const skill = readFileSync(join(PKG, '.claude', 'skills', 'valence', 'scripts', 'valence.mjs'), 'utf8');
+  const vendored = readFileSync(join(PKG, 'packages', 'valence', 'example', 'valence', 'valence.mjs'), 'utf8');
+  assert.equal(
+    vendored,
+    skill,
+    'packages/valence/example/valence/valence.mjs has drifted; re-copy .claude/skills/valence/scripts/valence.mjs over it',
+  );
+});
+
+test('packing the bridge rebuilds dist, so a tarball can never ship stale compiled types', () => {
+  // K F-52: packages/bridge ships `files: ["dist"]`, and dist/ is gitignored build output. From
+  // 2026-10-17 to 2026-10-27 nobody ran `npm run build` there, so every `npm pack` — the release
+  // recipe's and the test harness's — tarballed a ten-day-old dist under the current version. An app
+  // generated against the new codegen got `createBridge(METHOD_SINCE, EVENT_SINCE)` and a package
+  // declaring one parameter: a TS2554 in generated code, and silently `has(<any event>) === false`
+  // at runtime if it was suppressed. A `prepack` hook is what makes the build un-skippable; this
+  // test is what stops the hook being dropped again.
+  const bridge = join(PKG, 'packages', 'bridge');
+  const dts = join(bridge, 'dist', 'index.d.ts');
+  write(dts, 'export declare const STALE: true;\n');
+  const dest = mkdtempSync(join(tmpdir(), 'mrw-pack-'));
+  execSync('npm pack --pack-destination ' + JSON.stringify(dest), { cwd: bridge, stdio: 'pipe' });
+  const version = JSON.parse(readFileSync(join(bridge, 'package.json'), 'utf8')).version;
+  // The basename, not the full path: tar reads "C:" in an absolute Windows path as a remote host.
+  execSync(`tar -xzf getvalence-bridge-${version}.tgz`, { cwd: dest, stdio: 'pipe' });
+  const packed = readFileSync(join(dest, 'package', 'dist', 'index.d.ts'), 'utf8');
+  assert.doesNotMatch(packed, /STALE/, 'npm pack shipped the stale dist it found instead of rebuilding it');
+  assert.match(packed, /export declare function createBridge/, 'packed types are not the bridge');
+  // The surface the generated bridge.g.ts actually calls, which is what F-52 was missing.
+  assert.match(packed, /eventSince/, 'packed types predate event gating');
+  assert.doesNotMatch(readFileSync(dts, 'utf8'), /STALE/, 'prepack left the working dist stale');
+});
+
 test('the npm package ships the wizard, skill and agents, and no tests', () => {
   const [{ files }] = JSON.parse(execSync('npm pack --dry-run --json', { cwd: PKG, encoding: 'utf8' }));
   const paths = files.map((f) => f.path);
-  for (const p of ['bin/valence.mjs', '.claude/skills/valence/SKILL.md', '.claude/skills/valence/scripts/valence.mjs', '.claude/skills/valence/templates/client.ts', '.claude/agents/valence-builder.md', 'package.json']) {
+  for (const p of ['bin/valence.mjs', '.claude/skills/valence/SKILL.md', '.claude/skills/valence/scripts/valence.mjs', '.claude/agents/valence-builder.md', 'package.json']) {
     assert.ok(paths.includes(p), `missing ${p}`);
   }
   assert.ok(!paths.some((p) => p.endsWith('.test.mjs')), `tests packed: ${paths.filter((p) => p.endsWith('.test.mjs'))}`);

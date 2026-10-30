@@ -1,10 +1,12 @@
-// node --test scripts/valence.test.mjs   (Node >= 22.18 for the client.ts test: it imports .ts via type stripping)
+// node --test scripts/valence.test.mjs   (Node >= 22.18: the bridge test imports .ts through type stripping)
 import {
   cpSync,
   rmSync,
   mkdirSync,
+  existsSync,
   symlinkSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs';
@@ -14,28 +16,308 @@ import { join } from 'node:path';
 import { sign } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
-import { execSync } from 'node:child_process';
+import { runInNewContext } from 'node:vm';
+import { execSync, spawnSync } from 'node:child_process';
 
 import {
   seed,
   bundle,
   keygen,
   codegen,
+  devPlan,
   pointer,
+  diagnose,
   loadConfig,
+  association,
   parseSchema,
   verifyBundle,
   loadSigningKey,
   VALENCE_VERSION,
+  PLUGIN_RESERVED,
+  loadPluginSchema,
 } from './valence.mjs';
 
 const TEMPLATES = join(import.meta.dirname, '..', 'templates');
+
+// Everything the template declares above version 4, so a fixture can be the app that has not regenerated.
+// Listed here rather than per test, because every new runtime capability has to land in exactly one place
+// for the "an older app still codegens" cases to keep meaning what they say.
+const SINCE_ABOVE_4 = {
+  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings', 'notify.permission', 'notify.schedule', 'notify.cancel', 'notify.pending', 'notify.pendingIds', 'notify.initial', 'notify.channels.set', 'badge.set', 'badge.clear', 'push.token', 'push.permission', 'push.initial', 'share.image'],
+  events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online', 'link.opened', 'permissions.changed', 'notify.tapped', 'notify.action', 'push.received', 'push.tapped', 'push.tokenChanged'],
+  types: ['SyncStatus', 'AppState', 'BundleStatus', 'Link', 'PermissionState', 'NotifyScheduled', 'NotifyPending', 'PushMessage'],
+};
 const NOW = Date.UTC(2026, 9, 15);
 
-function fixture({ data = { calendar: 1 } } = {}) {
+test('association generators validate identity/certificates, write the website layout and refuse overwrites', () => {
+  const out = mkdtempSync(join(tmpdir(), 'valence-links-'));
+  const fingerprint = Array(32).fill('ab').join(':');
+  const r = association({ kind: 'assetlinks', packageId: 'com.example.app', fingerprints: fingerprint, out });
+  const android = JSON.parse(readFileSync(r.file, 'utf8'));
+  assert.equal(android[0].target.package_name, 'com.example.app');
+  assert.deepEqual(android[0].target.sha256_cert_fingerprints, [fingerprint.toUpperCase()]);
+  assert.ok(r.file.endsWith(join('.well-known', 'assetlinks.json')));
+  // Refusing is policy, so the refusal names the policy and the fix. A bare Node errno reads as a
+  // permissions problem and leaves the reader to guess that it was deliberate.
+  assert.throws(() => association({ kind: 'assetlinks', packageId: 'com.example.app', fingerprints: fingerprint, out }),
+    (e) => /already exists/.test(e.message) && /never overwritten/.test(e.message) && /delete it to regenerate/.test(e.message) && !/EEXIST/.test(e.message));
+  for (const value of ['ab', fingerprint + ',oops', '', '../bad']) {
+    assert.throws(() => association({ kind: 'assetlinks', packageId: 'com.example.app', fingerprints: value, out }), /fingerprints/);
+  }
+  assert.throws(() => association({ kind: 'assetlinks', packageId: '../bad', fingerprints: fingerprint, out }), /applicationId/);
+  const aasa = association({ kind: 'aasa', appId: 'ABCDE12345.com.example.app', out });
+  assert.deepEqual(JSON.parse(readFileSync(aasa.file, 'utf8')).applinks.details, [{ appID: 'ABCDE12345.com.example.app', paths: ['*'] }]);
+  assert.throws(() => association({ kind: 'aasa', appId: 'com.example.app', out }), /TEAMID/);
+  assert.throws(() => association({ kind: 'aasa', appId: 'ABCDE12345.com.example.bad_app', out }), /TEAMID/);
+  const hyphenated = mkdtempSync(join(tmpdir(), 'valence-aasa-'));
+  const hyphen = association({ kind: 'aasa', appId: 'ABCDE12345.com.example.my-app', out: hyphenated });
+  assert.equal(JSON.parse(readFileSync(hyphen.file, 'utf8')).applinks.details[0].appID, 'ABCDE12345.com.example.my-app');
+  const other = mkdtempSync(join(tmpdir(), 'valence-links-cli-'));
+  execSync(`node "${join(import.meta.dirname, '../../../../bin/valence.mjs')}" aasa --app-id ABCDE12345.com.example.app --out "${other}"`, { stdio: 'pipe' });
+  assert.ok(existsSync(join(other, '.well-known', 'apple-app-site-association')));
+});
+
+
+test('the signed example keeps a live link newer than its delayed initial reply', async () => {
+  const html = readFileSync(join(import.meta.dirname, '../../../../packages/valence/example/web/index.html'), 'utf8');
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  for (const liveAt of [null, 'beforeInfo', 'duringInitial']) {
+    const sent = [], routed = [];
+    const location = new URL('http://127.0.0.1:18000/');
+    const elements = new Map();
+    const window = { Valence: { postMessage: (raw) => sent.push(JSON.parse(raw)) } };
+    const document = {
+      querySelector: () => ({ content: 'nonce' }),
+      getElementById(id) {
+        if (!elements.has(id)) elements.set(id, { addEventListener() {} });
+        return elements.get(id);
+      },
+    };
+    runInNewContext(script, {
+      window, document, location, URL,
+      history: { pushState: (_, __, path) => { routed.push(path); location.href = new URL(path, location).href; } },
+      console: { info() {} }, dispatchEvent() {}, PopStateEvent: class {},
+    });
+    const live = () => window.__valence.e('link.opened', { url: 'valence-example://app/warm', path: '/warm?q=1#x' });
+    if (liveAt === 'beforeInfo') live();
+    const infoRequest = sent.find((r) => r.m === 'app.info');
+    assert.ok(infoRequest);
+    window.__valence.r({ id: infoRequest.id, ok: true, v: { bridge: 14 } });
+    await flush();
+    const restoredRequest = sent.find((r) => r.m === 'state.restore');
+    assert.ok(restoredRequest);
+    window.__valence.r({ id: restoredRequest.id, ok: true, v: null });
+    await flush();
+    const initialRequest = sent.find((r) => r.m === 'link.initial');
+    assert.ok(initialRequest);
+    if (liveAt === 'duringInitial') live();
+    window.__valence.r({ id: initialRequest.id, ok: true, v: { url: 'valence-example://app/cold', path: '/cold' } });
+    await flush();
+    assert.deepEqual(routed, [liveAt ? '/warm?q=1#x' : '/cold']);
+    live(); live();
+    assert.deepEqual(routed.slice(-2), ['/warm?q=1#x', '/warm?q=1#x']);
+  }
+});
+
+test('link origins compile into the native policy and built-in nullable shape stays frozen', () => {
+  const { root, cfg } = fixture({ latest: true });
+  cfg.links = { origins: ['https://links.example.com', 'myapp://app'] };
+  codegen({ root, cfg });
+  const generated = readFileSync(join(root, cfg.host.dir, 'lib/valence/config.g.dart'), 'utf8');
+  assert.match(generated, /linkOrigins: \{'https:\/\/links.example.com', 'myapp:\/\/app'\}/);
+  for (const value of ['http://example.com', 'javascript://app', 'https://example.com/x', 'myapp://app:80', 'https://example.com:443', 'https://u@example.com', 'https://*.example.com', 'https://EXAMPLE.COM', 'myapp://app\\evil']) {
+    cfg.links.origins = [value];
+    assert.throws(() => codegen({ root, cfg }), /links.origins/);
+  }
+  cfg.links.origins = [];
+  editSchema(root, (s) => { s.methods['link.initial'].returns = 'Link'; });
+  assert.throws(() => codegen({ root, cfg }), /must return/);
+});
+
+test('pre-9 custom links survive migration without rewriting the shipped schema', () => {
+  const { root, cfg, key } = fixture();
+  editSchema(root, (s) => {
+    s.version = 3;
+    delete s.methods['http.request'];
+    s.methods['link.initial'] = { since: 2, params: {}, returns: 'string?' };
+    s.events['link.opened'] = { since: 2, payload: { url: 'string' } };
+  });
+  const shipped = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
+  mkdirSync(join(root, '.valence'), { recursive: true });
+  const baselineFile = join(root, '.valence', 'baseline.json');
+  writeFileSync(baselineFile, JSON.stringify({ storeSeq: 1, storeSchema: shipped }));
+  const baseline = readFileSync(baselineFile, 'utf8');
+  codegen({ root, cfg });
+  codegen({ root, cfg, check: true });
+  assert.equal(readFileSync(baselineFile, 'utf8'), baseline);
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart, /Future<String\?> linkInitial\(/);
+  assert.doesNotMatch(dart.split('abstract class ValenceBuiltins')[1], /linkInitial\(/);
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  assert.match(ts, /'link.initial': \{ params: Record<string, never>; returns: string \| null \}/);
+  assert.match(ts, /'link.opened': \{\s+url: string;/);
+  bundle({ root, cfg, key, store: true, now: NOW });
+  assert.deepEqual(JSON.parse(readFileSync(baselineFile, 'utf8')).storeSchema, shipped);
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  for (const mutate of [
+    s => { delete s.methods['link.initial']; },
+    s => { s.methods['link.initial'].returns = 'int?'; },
+    s => { s.methods['link.initial'].since = 9; s.version = 9; },
+    s => { delete s.events['link.opened']; },
+    s => { s.events['link.opened'].payload.path = 'string'; },
+  ]) {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), /cannot|must return/);
+  }
+});
+
+test('schema-9 links delegate while misplaced built-ins and modern redefinitions are refused', () => {
+  const { root, cfg } = fixture({ latest: true });
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart.split('abstract class ValenceBuiltins')[1], /valence.linkInitial\(\)/);
+  editSchema(root, s => { s.methods['link.initial'].since = 8; });
+  assert.throws(() => codegen({ root, cfg }), /below the 9/);
+  editSchema(root, s => { s.methods['link.initial'].returns = 'string?'; });
+  codegen({ root, cfg }); // A custom return also remains app-owned without a baseline.
+  editSchema(root, s => { s.methods['link.initial'].since = 9; });
+  assert.throws(() => codegen({ root, cfg }), /must return/);
+});
+
+test('notification emission metadata preserves frozen legacy events and filters modern fields', () => {
+  const { root, cfg, key } = fixture({ latest: true });
+  editSchema(root, s => {
+    s.events['notify.tapped'] = { since: 1, payload: { id: 'string', payload: 'string?' } };
+    delete s.events['notify.action'];
+  });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const baselineFile = join(root, '.valence/baseline.json');
+  const baseline = readFileSync(baselineFile, 'utf8');
+  codegen({ root, cfg });
+  codegen({ root, cfg, check: true });
+  const dartFile = join(root, cfg.host.dir, 'lib/valence/bridge.g.dart');
+  let dart = readFileSync(dartFile, 'utf8');
+  assert.match(dart, /hostNotificationEventFields = <String, Set<String>>\{\s*\};/);
+  assert.match(dart, /notifyTapped\(\{required String id, required String\? payload\}\)/);
+  assert.match(readFileSync(join(root, cfg.host.dir, 'lib/valence/config.g.dart'), 'utf8'),
+    /notificationEventFields: hostNotificationEventFields/);
+  assert.equal(readFileSync(baselineFile, 'utf8'), baseline);
+  editSchema(root, s => { s.events['notify.tapped'].payload.id = 'int'; });
+  assert.throws(() => codegen({ root, cfg }), /cannot change/);
+
+  const modern = fixture({ latest: true });
+  editSchema(modern.root, s => { s.events['notify.tapped'].payload = { id: 'int' }; });
+  codegen(modern);
+  dart = readFileSync(join(modern.root, modern.cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart, /'notify.tapped': \{'id'\}/);
+  // A declaration the runtime cannot emit is the app's own and warned about — never refused. Events are
+  // not shape-checked by assertBuiltinShapes, so these generated fine before, and assertAdditive refuses
+  // changing a shipped event: a refusal here would wedge such an app with nothing left but --rebaseline.
+  editSchema(modern.root, s => { s.events['notify.tapped'].payload = { id: 'string' }; });
+  let r = codegen(modern);
+  assert.doesNotMatch(readFileSync(join(modern.root, modern.cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8'),
+    /'notify.tapped':/, 'no int id goes out over a string-id event');
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /without "id" as an int/);
+  assert.match(r.warnings[0], /notificationEventAdapter/);
+
+  // A required payload and an extra app field are both emittable: the response always carries a payload,
+  // and a field the response does not carry is left out rather than sent as null.
+  editSchema(modern.root, s => { s.events['notify.tapped'].payload = { id: 'int', payload: 'string', extra: 'json?' }; });
+  r = codegen(modern);
+  dart = readFileSync(join(modern.root, modern.cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart, /'notify.tapped': \{'id', 'payload'\}/);
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /declares "extra", which a native notification response does not carry/);
+
+  // A pre-11 event is app-owned by its number alone, and that is reported rather than left silent:
+  // has() answers from the schema and stays true, so a page would subscribe and receive nothing.
+  const legacy = fixture();
+  editSchema(legacy.root, s => { s.events['notify.tapped'] = { since: 1, payload: { id: 'string' } }; });
+  r = codegen(legacy);
+  assert.ok(r.warnings.some((w) => /below the reserved 11/.test(w) && /notificationEventAdapter/.test(w)));
+});
+
+test('dev plans a Vite server and debug-only emulator/LAN commands without changing files', () => {
+  const root = mkdtempSync(join(tmpdir(), 'valence-dev-'));
+  try {
+    mkdirSync(join(root, 'ui'));
+    const pkg = JSON.stringify({ scripts: { dev: 'vite' } });
+    writeFileSync(join(root, 'ui/package.json'), pkg);
+    const cfg = { host: { dir: 'mobile' } };
+    const plan = devPlan({ root, cfg, webDir: 'ui' });
+    assert.deepEqual(plan.args, ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173', '--strictPort']);
+    assert.match(plan.command, /flutter run --debug --dart-define=VALENCE_DEV_URL=http:\/\/10.0.2.2:5173/);
+    const lan = devPlan({ root, cfg, webDir: 'ui', deviceHost: '192.168.1.2', port: '6000', allowLan: true });
+    assert.match(lan.command, /192.168.1.2:6000/);
+    assert.equal(lan.args[4], '0.0.0.0');
+    assert.match(lan.warning, /LAN mode:.*full native bridge.*cleartext HTTP/);
+    for (const deviceHost of ['192.168.1.2', '10.0.2.3', '0.0.0.0', 'dev.example', 'localhost.evil', '2130706433']) {
+      assert.throws(() => devPlan({ root, cfg, webDir: 'ui', deviceHost }), /requires --allow-lan/);
+    }
+    for (const deviceHost of ['localhost', 'LOCALHOST', '127.0.0.1', '10.0.2.2']) {
+      assert.equal(devPlan({ root, cfg, webDir: 'ui', deviceHost }).args[4], '127.0.0.1');
+    }
+    for (const port of ['80', '65536', '5173 & echo unsafe', '-1']) assert.throws(() => devPlan({ root, cfg, webDir: 'ui', port }));
+    for (const deviceHost of ['x/path', 'x:80', 'x;echo', 'user@x', 'localhost.']) assert.throws(() => devPlan({ root, cfg, webDir: 'ui', deviceHost }));
+    assert.equal(readFileSync(join(root, 'ui/package.json'), 'utf8'), pkg);
+    writeFileSync(join(root, 'ui/package.json'), '{}');
+    assert.throws(() => devPlan({ root, cfg, webDir: 'ui' }), /dev script/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('dev CLI denies LAN before spawning and passes explicit LAN consent through the wizard', () => {
+  const { root } = fixture();
+  const web = join(root, 'web');
+  writeFileSync(join(web, 'package.json'), JSON.stringify({ scripts: { dev: 'node probe.cjs' } }));
+  writeFileSync(join(web, 'probe.cjs'), "require('node:fs').writeFileSync('started.json', JSON.stringify(process.argv.slice(2)))");
+  const entry = join(import.meta.dirname, '../../../../bin/valence.mjs');
+  // The two accepted invocations each spawn the real `npm run dev` the wizard spawns, so each pays an npm
+  // cold start — minutes under load on Windows, and a 30-second budget timed out here on 2026-10-28 with
+  // nothing in the assertion to say why. The budget is generous and the timeout is now named, because this
+  // is the only end-to-end proof that --allow-lan is required before the child starts.
+  const runDev = (args) => {
+    const r = spawnSync(process.execPath, [entry, '--root', root, ...args], { encoding: 'utf8', timeout: 120_000 });
+    assert.ok(!r.error || r.error.code !== 'ETIMEDOUT', `valence ${args.join(' ')} exceeded its 120s budget rather than failing a check`);
+    return r;
+  };
+  const denied = runDev(['dev', '--device-host', '192.168.1.20']);
+  assert.equal(denied.status, 1);
+  assert.match(denied.stderr, /requires --allow-lan/);
+  assert.equal(existsSync(join(web, 'started.json')), false);
+  const local = runDev(['dev']);
+  assert.equal(local.status, 0, local.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(join(web, 'started.json'), 'utf8')), ['--host', '127.0.0.1', '--port', '5173', '--strictPort']);
+  const lan = runDev(['--allow-lan', '--device-host', '192.168.1.20', 'dev']);
+  assert.equal(lan.status, 0, lan.stderr);
+  assert.match(lan.stderr, /LAN mode: http:\/\/192\.168\.1\.20:5173.*secure storage and SQLite/);
+  assert.match(lan.stdout, /VALENCE_DEV_URL=http:\/\/192\.168\.1\.20:5173/);
+  assert.deepEqual(JSON.parse(readFileSync(join(web, 'started.json'), 'utf8')), ['--host', '0.0.0.0', '--port', '5173', '--strictPort']);
+});
+
+function fixture({ data = { calendar: 1 }, latest = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'mr-'));
   mkdirSync(join(root, 'valence'));
   cpSync(join(TEMPLATES, 'bridge.schema.json'), join(root, 'valence', 'bridge.schema.json'));
+  // Field evolution cases omit the optional batch/status/paging/lifecycle additions: this is the shape of
+  // an app that has not regenerated against the newer runtime, which must still codegen and compile.
+  if (!latest) {
+    const p = join(root, 'valence', 'bridge.schema.json');
+    const s = JSON.parse(readFileSync(p, 'utf8'));
+    s.version = 4;
+    for (const m of SINCE_ABOVE_4.methods) delete s.methods[m];
+    for (const e of SINCE_ABOVE_4.events) delete s.events[e];
+    for (const t of SINCE_ABOVE_4.types) delete s.types[t];
+    delete s.methods['data.list'].params.after;
+    delete s.types.AppInfo.fontScale;
+    delete s.types.AppInfo.builtins;
+    delete s.methods['auth.setToken'].params.account;
+    delete s.methods['auth.setToken'].params.discardPending;
+    delete s.types.SyncResult.pending;
+    writeFileSync(p, JSON.stringify(s));
+  }
   const cfg = JSON.parse(readFileSync(join(TEMPLATES, 'valence.config.json'), 'utf8'));
   cfg.data = data;
   cfg.writable = ['user'];
@@ -60,6 +342,196 @@ const editSchema = (root, fn) => {
   fn(s);
   writeFileSync(schemaFile(root), JSON.stringify(s));
 };
+
+test('task restoration is optional, shape-frozen and delegated to the package', () => {
+  const { root, cfg } = fixture({ latest: true });
+  const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
+  assert.equal(schema.version, 16);
+  assert.equal(schema.methods['state.save'].since, 8);
+  assert.equal(schema.methods['state.restore'].since, 8);
+  codegen({ root, cfg });
+  const ts = readFileSync(join(root, 'web', 'src', 'lib', 'valence', 'bridge.g.ts'), 'utf8');
+  assert.match(ts, /'state.save': 8/);
+  assert.match(ts, /'state.restore': 8/);
+  const dart = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(dart, /valence.stateSave\(p.json\)/);
+  assert.match(dart, /return valence.stateRestore\(\)/);
+  editSchema(root, (s) => (s.methods['state.save'].params.json = 'string?'));
+  assert.throws(() => codegen({ root, cfg }), /must stay/);
+});
+
+const probePlugin = () => ({
+  namespace: 'probe', dartPackage: 'probe_native', npmPackage: '@example/probe', setup: 'README.md',
+  types: { ProbeRow: { label: 'string', count: 'int' } },
+  methods: { 'probe.read': { since: 2, params: { key: 'string' }, returns: 'ProbeRow[]?' } },
+  events: { 'probe.changed': { since: 2, payload: { row: 'ProbeRow' } } },
+});
+function pluginFixture() {
+  const f = fixture();
+  f.cfg.plugins = ['probe.json'];
+  writeFileSync(join(f.root, 'probe.json'), JSON.stringify(probePlugin()));
+  return f;
+}
+
+test('plugin fragments generate typed delegations and are frozen in the store baseline', () => {
+  const { root, cfg, key } = pluginFixture();
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart, /plugins.invoke\(valence, 'probe.read', p.toJson\(\)\)/);
+  assert.match(dart, /ProbeRow.fromJson/);
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  assert.match(ts, /'probe.read'/);
+  assert.match(ts, /'probe.changed'/);
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const baseline = JSON.parse(readFileSync(join(root, '.valence/baseline.json'), 'utf8'));
+  assert.deepEqual(baseline.storeSchema.methods['probe.read'], probePlugin().methods['probe.read']);
+  cfg.plugins = [];
+  assert.throws(() => codegen({ root, cfg }), /cannot be removed/);
+  assert.throws(() => bundle({ root, cfg, key, now: NOW + 1000 }), /cannot be removed/);
+});
+
+test('doctor includes plugin fragments in shipped baseline checks', async () => {
+  const { root, cfg, key } = pluginFixture();
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const rows = await diagnose({ root, cfg });
+  for (const name of ['generated code', 'bridge version', 'store baseline']) {
+    assert.ok(rows.some(([status, label]) => status === 'PASS' && label === name), JSON.stringify(rows));
+  }
+  // A removed or modified shipped fragment must still fail closed.
+  const fragment = probePlugin();
+  fragment.methods['probe.read'].returns = 'string';
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(fragment));
+  assert.ok((await diagnose({ root, cfg })).some(([status, name]) => status === 'FAIL' && name === 'store baseline'));
+  cfg.plugins = [];
+  assert.ok((await diagnose({ root, cfg })).some(([status, name]) => status === 'FAIL' && name === 'store baseline'));
+});
+
+test('plugin edits make codegen stale and cannot change shipped definitions', () => {
+  const { root, cfg, key } = pluginFixture();
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const plugin = probePlugin();
+  plugin.types.ProbeRow.count = 'string';
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(plugin));
+  assert.throws(() => codegen({ root, cfg }), /cannot change/);
+  assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW + 1000 }), /cannot change/);
+  // An unshipped addition is still caught by --check, before a store build.
+  delete plugin.types.ProbeRow.count;
+  plugin.types.ProbeRow.extra = 'bool';
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(plugin));
+  // Remove the local store record only in this throwaway fixture.
+  rmSync(join(root, '.valence/baseline.json'));
+  assert.throws(() => codegen({ root, cfg, check: true }), /stale/);
+});
+
+test('plugin conflicts, reserved namespaces, foreign references and malformed fragments fail closed', () => {
+  const { root, cfg } = pluginFixture();
+  const reject = (change, pattern) => {
+    const p = probePlugin();
+    change(p);
+    writeFileSync(join(root, 'probe.json'), JSON.stringify(p));
+    assert.throws(() => codegen({ root, cfg }), pattern);
+  };
+  for (const namespace of ['auth', 'share']) {
+    reject(p => { p.namespace = namespace; }, /reserved namespace/);
+  }
+  reject(p => { p.version = 3; }, /unknown field/);
+  reject(p => { p.methods['probe.read'].returns = 'Row'; }, /unknown local type/);
+  reject(p => { p.methods['other.read'] = p.methods['probe.read']; }, /must use namespace/);
+  reject(p => { p.types.OtherRow = {}; }, /must use namespace/);
+  reject(p => { p.methods['probe.read'].since = 99; }, /since/);
+  reject(p => { p.methods = []; }, /must be an object/);
+  reject(p => { delete p.npmPackage; }, /npmPackage is required/);
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(probePlugin()));
+  cfg.plugins.push('probe.json');
+  assert.throws(() => loadPluginSchema(root, cfg), /duplicate plugin namespace/);
+  cfg.plugins.pop();
+  cfg.plugins = [join(root, 'probe.json')];
+  assert.throws(() => loadPluginSchema(root, cfg), /project-relative/);
+  // Relative is not the same as contained. A fragment reached through `..` builds on the author's
+  // machine and dies with ENOENT on a fresh clone, and the merged schema that .valence/baseline.json
+  // records as "what the stores reviewed" then has no source in the repo.
+  for (const outside of ['../probe.json', 'plugins/../../probe.json', '..\\probe.json']) {
+    cfg.plugins = [outside];
+    assert.throws(() => loadPluginSchema(root, cfg), /inside the project/, outside);
+  }
+  cfg.plugins = ['probe.json'];
+  editSchema(root, s => { s.methods['probe.read'] = probePlugin().methods['probe.read']; });
+  assert.throws(() => codegen({ root, cfg }), /conflicts with the app/);
+});
+
+test('a new plugin method needs since above the shipped host', () => {
+  const { root, cfg, key } = fixture();
+  const shippedVersion = JSON.parse(readFileSync(schemaFile(root), 'utf8')).version;
+  bundle({ root, cfg, key, store: true, now: NOW });
+  cfg.plugins = ['probe.json'];
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(probePlugin()));
+  assert.throws(() => codegen({ root, cfg }), new RegExp(`needs since > ${shippedVersion}`));
+  const plugin = probePlugin();
+  plugin.methods['probe.read'].since = shippedVersion + 1;
+  plugin.events['probe.changed'].since = shippedVersion + 1;
+  editSchema(root, s => { s.version = shippedVersion + 1; });
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(plugin));
+  codegen({ root, cfg });
+  codegen({ root, cfg, check: true });
+});
+
+test('an app stamps since for a published fragment that declares none', () => {
+  const { root, cfg, key } = fixture();
+  const shipped = JSON.parse(readFileSync(schemaFile(root), 'utf8')).version;
+  bundle({ root, cfg, key, store: true, now: NOW });
+  // What a published plugin actually ships: no since anywhere, because it cannot know this app's baseline.
+  const published = probePlugin();
+  delete published.methods['probe.read'].since;
+  delete published.events['probe.changed'].since;
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(published));
+  cfg.plugins = ['probe.json'];
+  assert.throws(() => codegen({ root, cfg }), /needs a since/);
+  cfg.plugins = [{ path: 'probe.json', since: { 'probe.read': shipped + 1, 'probe.changed': shipped + 1 } }];
+  editSchema(root, s => { s.version = shipped + 1; });
+  codegen({ root, cfg });
+  codegen({ root, cfg, check: true });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart, /plugins.invoke.valence, 'probe.read'/);
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  assert.match(ts, new RegExp(`'probe.read': ${shipped + 1}`));
+  // The resolved number, not the fragment, is what the stores reviewed, so a later restamp is a change.
+  bundle({ root, cfg, key, store: true, now: NOW + 1000 });
+  const baseline = JSON.parse(readFileSync(join(root, '.valence/baseline.json'), 'utf8'));
+  assert.equal(baseline.storeSchema.methods['probe.read'].since, shipped + 1);
+  cfg.plugins = [{ path: 'probe.json', since: { 'probe.read': shipped, 'probe.changed': shipped + 1 } }];
+  assert.throws(() => codegen({ root, cfg }), /cannot change/);
+});
+
+test('a stamp and a fragment cannot both answer for since, and neither can half answer', () => {
+  const { root, cfg } = pluginFixture();
+  const reject = (plugins, change, pattern) => {
+    const p = probePlugin();
+    change(p);
+    writeFileSync(join(root, 'probe.json'), JSON.stringify(p));
+    cfg.plugins = plugins;
+    assert.throws(() => codegen({ root, cfg }), pattern);
+  };
+  const stamp = (since) => [{ path: 'probe.json', since }];
+  reject(stamp({ 'probe.read': 2, 'probe.changed': 2 }), () => {}, /declares since and the plugins entry stamps it/);
+  const bare = (p) => { delete p.methods['probe.read'].since; delete p.events['probe.changed'].since; };
+  reject(stamp({ 'probe.read': 2 }), bare, /add "probe.changed" to this entry's since/);
+  reject(stamp({ 'probe.read': 2, 'probe.changed': 2, 'probe.gone': 2 }), bare, /since names "probe.gone"/);
+  reject(stamp({ 'probe.read': 2, 'probe.changed': 99 }), bare, /probe.changed.since/);
+  reject([{ path: 'probe.json' }], bare, /since must be an object/);
+  reject([{ path: 'probe.json', since: { 'probe.read': 2, 'probe.changed': 2 }, extra: 1 }], bare, /unknown field "extra"/);
+  // A digit string must not freeze into the store baseline as a string: correcting it to a number
+  // later would then read as changing a shipped method, and only --rebaseline could escape it.
+  const p = probePlugin();
+  bare(p);
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(p));
+  cfg.plugins = [{ path: 'probe.json', since: { 'probe.read': '2', 'probe.changed': 2 } }];
+  assert.strictEqual(loadPluginSchema(root, cfg).schema.methods['probe.read'].since, 2);
+  reject(stamp({ 'probe.read': '2.5', 'probe.changed': 2 }), bare, /since."probe.read"/);
+  reject([{ since: { 'probe.read': 2 } }], bare, /project-relative/);
+  reject([{ path: '../probe.json', since: { 'probe.read': 2 } }], bare, /inside the project/);
+});
 
 // ---------- keys ----------
 
@@ -93,12 +565,14 @@ test('store build signs, verifies and records the store baseline', () => {
   const m = verifyBundle({ manifestPath: r.manifestPath, filesDir: r.filesDir, keyring, appId: cfg.appId });
   assert.equal(m.seq, NOW / 1000);
   assert.deepEqual(m.routes, ['/', '/calendar', '/settings']);
-  assert.deepEqual(m.requires, { bridge: 1, data: { calendar: 1 } });
+  // The template schema is at version 4 since §4.5 added http.request, and requires.bridge
+  // defaults to it.
+  assert.deepEqual(m.requires, { bridge: 4, data: { calendar: 1 } });
   assert.equal(Object.keys(m.files).length, 2);
   assert.ok(!readFileSync(r.manifestPath + '.sig', 'utf8').includes('\n'), 'sig has no trailing newline');
   const b = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8'));
   assert.deepEqual(b.storeRoutes, m.routes);
-  assert.equal(b.storeSchema.version, 1);
+  assert.equal(b.storeSchema.version, 4);
   assert.equal(b.lastSeq, m.seq);
 });
 
@@ -139,11 +613,193 @@ test('seq is monotonic (same clock, slow clock) and new routes warn', () => {
   assert.ok(!b.warnings.some((w) => w.includes('/Counter') || w.includes('/helpers')), 'SvelteKit co-located files are not routes');
 });
 
+test('a project with no detectable routes is told the store route check is off', () => {
+  const { root, cfg, key } = fixture();
+  // A client-side-routed SPA: nothing to scan, so every bundle would report just ["/"].
+  rmSync(join(root, 'web', 'src'), { recursive: true });
+  const spa = loadConfig(root);
+  const a = bundle({ root, cfg: spa, key, store: true, now: NOW });
+  assert.deepEqual(a.manifest.routes, ['/']);
+  assert.ok(a.warnings.some((w) => w.includes('INACTIVE')), 'a store build with no routes warns that the check is off');
+  assert.ok(bundle({ root, cfg: spa, key, now: NOW }).warnings.some((w) => w.includes('INACTIVE')), 'and so does an OTA build');
+
+  // declaredRoutes turns it back on: it feeds the manifest and the baseline, and the diff warns again.
+  const decl = { ...spa, web: { ...spa.web, declaredRoutes: ['/shelf', '/'] } };
+  const b = bundle({ root, cfg: decl, key, store: true, now: NOW });
+  assert.deepEqual(b.manifest.routes, ['/', '/shelf']);
+  assert.ok(!b.warnings.some((w) => w.includes('INACTIVE')));
+  const c = bundle({ root, cfg: { ...decl, web: { ...decl.web, declaredRoutes: ['/shelf', '/about'] } }, key, now: NOW });
+  assert.ok(c.warnings.some((w) => w.includes('/about')), 'a declared route the store build never had still warns');
+
+  // ["/"] is a deliberate single-route claim and does not warn. [] claims nothing, so it is rejected rather than
+  // silently silencing the warning it was added to raise.
+  const one = bundle({ root, cfg: { ...spa, web: { ...spa.web, declaredRoutes: ['/'] } }, key, now: NOW });
+  assert.deepEqual(one.manifest.routes, ['/']);
+  assert.ok(!one.warnings.some((w) => w.includes('INACTIVE')));
+  for (const bad of ['/shelf', [], ['shelf'], [1], ['/a/b']]) {
+    assert.throws(() => bundle({ root, cfg: { ...spa, web: { ...spa.web, declaredRoutes: bad } }, key, now: NOW }), /declaredRoutes/);
+  }
+  // A trailing slash is the same route, so editing one in must not look like a new feature area.
+  assert.deepEqual(bundle({ root, cfg: { ...decl, web: { ...decl.web, declaredRoutes: ['/shelf/'] } }, key, now: NOW }).manifest.routes, ['/', '/shelf']);
+});
+
+test('declared routes are unioned with a scan, and a scan that finds one route says so differently', () => {
+  const { root, cfg, key } = fixture();
+  // Scanning works here (the fixture has web/src/routes with calendar and (app)/settings), so declaring a route adds
+  // to it rather than switching it off: a project that declares routes still gets warned about a new directory.
+  const both = bundle({ root, cfg: { ...cfg, web: { ...cfg.web, declaredRoutes: ['/shelf'] } }, key, store: true, now: NOW });
+  assert.deepEqual(both.manifest.routes, ['/', '/calendar', '/settings', '/shelf']);
+  mkdirSync(join(root, 'web', 'src', 'routes', 'admin'));
+  const after = bundle({ root, cfg: { ...cfg, web: { ...cfg.web, declaredRoutes: ['/shelf'] } }, key, now: NOW });
+  assert.ok(after.warnings.some((w) => w.includes('/admin')), 'declaring routes must not turn the scan off');
+
+  // A scannable app with exactly one route is not "INACTIVE": the check runs, it just has one route to report.
+  rmSync(join(root, 'web', 'src', 'routes'), { recursive: true });
+  mkdirSync(join(root, 'web', 'src', 'routes'));
+  writeFileSync(join(root, 'web', 'src', 'routes', '+page.svelte'), '');
+  const single = bundle({ root, cfg: loadConfig(root), key, now: NOW });
+  assert.deepEqual(single.manifest.routes, ['/']);
+  assert.ok(!single.warnings.some((w) => w.includes('INACTIVE')), 'a working scan is never reported as inactive');
+  assert.ok(single.warnings.some((w) => w.includes('found only "/"')));
+});
+
+test('_host/ is reserved for the host, and a relative asset base in the entry page warns', () => {
+  const { root, cfg, key } = fixture();
+  const html = (head) => writeFileSync(join(root, 'web', 'build', 'index.html'), `<!doctype html><head>${head}</head>`);
+
+  // `base: './'` is what you reach for when you hear "static files, no server". §3's fallback serves the entry page at
+  // any depth, so the webview resolves these against the request path: a nested route reloads to a blank screen.
+  html('<script type="module" src="./_app/a.js"></script><link rel="icon" href="favicon.png">');
+  const w = bundle({ root, cfg, key, now: NOW }).warnings;
+  assert.ok(w.some((x) => x.includes('relative URL') && x.includes('./_app/a.js') && x.includes('favicon.png')));
+
+  // Root-relative, scheme-relative, scheme and fragment refs all resolve the same at any depth, so none of them warn.
+  html('<script type="module" src="/_app/a.js"></script><link rel="icon" href="data:,"><img src="//cdn/x.png"><a href="#x">');
+  assert.ok(!bundle({ root, cfg, key, now: NOW }).warnings.some((x) => x.includes('relative URL')));
+
+  // The server answers /_host/ before the manifest lookup, so a bundle file under it could never be reached.
+  mkdirSync(join(root, 'web', 'build', '_host'));
+  writeFileSync(join(root, 'web', 'build', '_host', 'x.js'), '');
+  assert.throws(() => bundle({ root, cfg, key, now: NOW }), /_host\/ is reserved/);
+});
+
+test('OTA defaults to the store bridge while explicit and built-in builds can require the newer host', () => {
+  const { root, cfg, key } = fixture();
+  bundle({ root, cfg, key, store: true, now: NOW }); // ships bridge 4 to the stores
+  const bridgeWarn = (r) => r.warnings.filter((w) => w.includes('requires.bridge'));
+
+  // A guarded method added at since: 5 bumps the schema version, and the default silently inherits it.
+  editSchema(root, (s) => {
+    s.version = 5;
+    s.methods['share.image'] = { since: 5, params: { png: 'string' }, returns: 'bool' };
+  });
+  const bumped = bundle({ root, cfg, key, now: NOW });
+  assert.equal(bumped.manifest.requires.bridge, 4);
+  assert.match(bridgeWarn(bumped).join('\n'), /pinned to 4.*share\.image.*has\(\)/s);
+  const explicit = bundle({ root, cfg, key, requiresBridge: 5, now: NOW });
+  assert.match(bridgeWarn(explicit).join('\n'), /--requires-bridge 4/);
+  assert.equal(bundle({ root, cfg, key, builtin: true, now: NOW }).manifest.requires.bridge, 5);
+
+  // Pinning to the oldest host in the field is the lever, and it is the right move — but it is not silent: an
+  // unguarded call to a since: 5 method would then be dead in the field with no build-time or store signal.
+  const pinned = bundle({ root, cfg, key, requiresBridge: 4, now: NOW });
+  assert.equal(pinned.manifest.requires.bridge, 4);
+  assert.ok(!bridgeWarn(pinned).some((w) => w.includes('above the bridge version')));
+  assert.match(bridgeWarn(pinned).join('\n'), /pinned to 4.*share\.image.*has\(\)/s);
+
+  // A store build is allowed to raise it — that build *is* the new floor — and so a fresh project has nothing to say.
+  assert.deepEqual(bridgeWarn(bundle({ root, cfg, key, store: true, now: NOW })), []);
+  assert.deepEqual(bridgeWarn(bundle({ root, cfg, key, now: NOW })), []);
+});
+
+test('a service worker in the output warns, because it answers before the host server does', () => {
+  // The host makes bundle files revalidate against their hash (§3). A service worker serving from Cache
+  // Storage is never asked, so a precaching build reopens the whole stale-bundle hole: the new release
+  // activates, the old page renders, and the trial commits on that old page's ready().
+  const { root, cfg, key } = fixture();
+  const clean = bundle({ root, cfg, key, now: NOW }).warnings;
+  assert.ok(!clean.some((x) => x.includes('service worker')));
+
+  writeFileSync(join(root, 'web', 'build', 'registerSW.js'), "navigator.serviceWorker.register('/sw.js', { scope: '/' });\n");
+  const w = bundle({ root, cfg, key, now: NOW + 1000 }).warnings;
+  assert.ok(w.some((x) => x.includes('service worker') && x.includes('inHost()')), w.join('\n'));
+});
+
+test('the relative-asset warning ignores script bodies and an absolute base href, and reads srcset', () => {
+  const { root, cfg, key } = fixture();
+  const html = (head) => writeFileSync(join(root, 'web', 'build', 'index.html'), `<!doctype html><head>${head}</head>`);
+  const relWarn = (r) => r.warnings.filter((w) => w.includes('relative URL'));
+
+  // A URL inside a template literal is not a reference a browser resolves, so it must not warn.
+  html('<script type="module" src="/_app/a.js"></script><script>const r = "x.html";</script><style>/* y.css */</style>');
+  assert.deepEqual(relWarn(bundle({ root, cfg, key, now: NOW })), []);
+
+  // An absolute <base href> re-roots every relative reference in the document, so there is nothing to report.
+  html('<base href="/"><script type="module" src="./_app/a.js"></script>');
+  assert.deepEqual(relWarn(bundle({ root, cfg, key, now: NOW })), []);
+
+  // srcset candidate lists and unquoted attributes are references too.
+  html('<script type="module" src="/_app/a.js"></script><img srcset="a.png 1x, ./b.png 2x"><link rel=icon href=c.png>');
+  const w = relWarn(bundle({ root, cfg, key, now: NOW }))[0];
+  assert.match(w, /a\.png/);
+  assert.match(w, /\.\/b\.png/);
+  assert.match(w, /c\.png/);
+});
+
 test('floor only goes up and never exceeds seq', () => {
   const { root, cfg, key } = fixture();
   bundle({ root, cfg, key, floor: 5, now: NOW });
   assert.throws(() => bundle({ root, cfg, key, floor: 0, now: NOW }), /only goes up/);
   assert.throws(() => bundle({ root, cfg, key, floor: Number.MAX_SAFE_INTEGER, now: NOW }), /above this bundle/);
+});
+
+test('a floor above the store build retires the one bundle every device is guaranteed to have', () => {
+  // §2.2: the floor applies to the built-in bundle too, so one unreviewed OTA can strand both fallbacks a
+  // device has — its `previous` *and* the bundle inside the APK, which is the only code the store review
+  // saw. §2.4's ladder is then `current` and nothing underneath, and recovery is a full store review: the
+  // thing OTA exists to avoid. Observed in the field, with `doctor` green and no warning anywhere.
+  const { root, cfg, key } = fixture();
+  const store = bundle({ root, cfg, key, store: true, now: NOW });
+  const ota = bundle({ root, cfg, key, now: NOW + 1000 });
+  assert.ok(ota.manifest.seq > store.manifest.seq);
+
+  assert.throws(
+    () => bundle({ root, cfg, key, floor: ota.manifest.seq, now: NOW + 2000 }),
+    /above the store build's seq \d+/,
+    'the number that makes this checkable was already in baseline.json',
+  );
+  // Up to the store build is the useful case and stays allowed: it strands every OTA below it and leaves
+  // the APK runnable.
+  const safe = bundle({ root, cfg, key, floor: store.manifest.seq, now: NOW + 3000 });
+  assert.equal(safe.manifest.floor, store.manifest.seq);
+  assert.equal(safe.warnings.filter((w) => w.includes('no fallback')).length, 0);
+
+  // A store build is its own fallback, so it may raise the floor to its own seq.
+  const next = bundle({ root, cfg, key, store: true, floor: store.manifest.seq + 1, now: NOW + 4000 });
+  assert.ok(next.manifest.floor > store.manifest.seq);
+
+  // A project already in that state before the check existed is warned, not blocked — refusing would make
+  // every later release unbuildable, and the floor carries forward on its own.
+  const baselinePath = join(root, '.valence', 'baseline.json');
+  const b = JSON.parse(readFileSync(baselinePath, 'utf8'));
+  writeFileSync(baselinePath, JSON.stringify({ ...b, floor: b.storeSeq + 1 }));
+  const carried = bundle({ root, cfg, key, now: NOW + 5000 });
+  assert.match(carried.warnings.join('\n'), /carried forward .* above the store build's seq/);
+  assert.equal(carried.manifest.floor, b.storeSeq + 1, 'and it still carries forward');
+
+  // And restating that floor explicitly — what a pipeline passing --floor $FLOOR every run does — must
+  // take the same warn path. Refusing it deadlocked: every value at or below the carried floor is refused
+  // by "the floor only goes up", and every value above it by the check here, leaving no buildable number.
+  writeFileSync(baselinePath, JSON.stringify({ ...b, floor: b.storeSeq + 1 }));
+  const restated = bundle({ root, cfg, key, floor: b.storeSeq + 1, now: NOW + 6000 });
+  assert.match(restated.warnings.join('\n'), /carried forward .* above the store build's seq/);
+  assert.equal(restated.manifest.floor, b.storeSeq + 1);
+
+  // A --builtin build is the fallback being produced, so it is exempt like --store. floor <= seq already
+  // keeps it runnable, and the OTA message ("devices would refuse their own built-in bundle") is false of it.
+  writeFileSync(baselinePath, JSON.stringify({ ...b, floor: b.floor ?? 0 }));
+  const own = bundle({ root, cfg, key, builtin: true, floor: b.storeSeq + 1, now: NOW + 7000 });
+  assert.equal(own.manifest.floor, b.storeSeq + 1);
 });
 
 test('bundle rejects native code anywhere in the path', () => {
@@ -180,6 +836,39 @@ test('verify rejects tampering, bad signatures, unknown keys, other apps and uns
   writeFileSync(r.manifestPath, evilBytes);
   writeFileSync(r.manifestPath + '.sig', sign(null, evilBytes, key).toString('base64'));
   assert.throws(() => verifyBundle(args), /unsafe path/);
+
+  // A validly signed manifest claiming the host's own prefix is refused too: §3 serves /_host/ before the manifest,
+  // so such a file would be shadowed by host content on an origin the page trusts.
+  const reserved = { ...parsed, files: { ...parsed.files, '_host/app.js': { h, n: original.length } } };
+  const reservedBytes = Buffer.from(JSON.stringify(reserved));
+  writeFileSync(r.manifestPath, reservedBytes);
+  writeFileSync(r.manifestPath + '.sig', sign(null, reservedBytes, key).toString('base64'));
+  assert.throws(() => verifyBundle(args), /unsafe path in manifest: _host\/app\.js/);
+
+  // A malformed entry is still named as malformed, even when --files is wrong: the entry checks run first.
+  const malformed = { ...parsed, files: { ...parsed.files, 'bad.js': { h: 'nothex', n: 1 } } };
+  const malformedBytes = Buffer.from(JSON.stringify(malformed));
+  writeFileSync(r.manifestPath, malformedBytes);
+  writeFileSync(r.manifestPath + '.sig', sign(null, malformedBytes, key).toString('base64'));
+  assert.throws(() => verifyBundle({ ...args, filesDir: root }), /bad file entry for bad\.js/);
+
+});
+
+test('a wrong --files level is reported as a wrong directory, not a corrupted bundle', () => {
+  const { root, cfg, key, keyring } = fixture();
+  const { manifestPath, filesDir } = bundle({ root, cfg, key, builtin: true, now: NOW });
+  const bundleDir = join(filesDir, '..'); // the built-in bundle directory: manifest.json plus files/
+  verifyBundle({ manifestPath, filesDir, keyring, appId: cfg.appId });
+
+  // Pointing --files one level up is the common slip, and it used to name the first entry as "missing" — which is
+  // exactly what a corrupted bundle looks like, the one thing verify is reached for to tell apart.
+  assert.throws(
+    () => verifyBundle({ manifestPath, filesDir: bundleDir, keyring, appId: cfg.appId }),
+    (e) => /no manifest files found under/.test(e.message) && /files/.test(e.message),
+  );
+  // A genuinely partial bundle still reports the file that is gone.
+  rmSync(join(filesDir, JSON.parse(readFileSync(manifestPath, 'utf8')).files['_app/a.js'].h));
+  assert.throws(() => verifyBundle({ manifestPath, filesDir, keyring, appId: cfg.appId }), /missing file _app\/a\.js/);
 });
 
 test('pointer defaults to the newest manifest', () => {
@@ -192,6 +881,288 @@ test('pointer defaults to the newest manifest', () => {
 
 // ---------- codegen ----------
 
+test('multi-schema seeds require declarations, retain both versions and fail atomically on duplicates', async () => {
+  const { root, cfg } = fixture({ data: { calendar: 2 } });
+  cfg.seedSchemas = { calendar: [1] };
+  const from = mkdtempSync(join(tmpdir(), 'mr-multi-seed-'));
+  const doc = (schema, v) => JSON.stringify({ schema, rows: [{ k: 'day', v, u: 1 }] });
+  writeFileSync(join(from, 'calendar.v1.json'), doc(1, 'old'));
+  const old = await seed({ root, cfg, from });
+  assert.equal(old.warnings.length, 1, 'old seed does not satisfy current offline coverage');
+  writeFileSync(join(from, 'calendar.v2.json'), doc(2, 'new'));
+  const r = await seed({ root, cfg, from });
+  assert.equal(r.warnings.length, 0);
+  const { DatabaseSync } = await import('node:sqlite');
+  const db = new DatabaseSync(r.out, { readOnly: true });
+  assert.deepEqual(db.prepare('SELECT schema, value FROM kv ORDER BY schema').all().map((r) => [r.schema, JSON.parse(r.value)]), [[1, 'old'], [2, 'new']]);
+  db.close();
+  const before = readFileSync(r.out);
+  writeFileSync(join(from, 'calendar.json'), doc(1, 'duplicate'));
+  await assert.rejects(seed({ root, cfg, from }), /duplicate seed pair/);
+  assert.deepEqual(readFileSync(r.out), before);
+  rmSync(join(from, 'calendar.json'));
+  cfg.seedSchemas = {};
+  await assert.rejects(seed({ root, cfg, from }), /declared schema/);
+  cfg.seedSchemas = { calendar: [1] };
+  writeFileSync(join(from, 'calendar.v1.json'), doc(2, 'wrong filename'));
+  await assert.rejects(seed({ root, cfg, from }), /filename schema/);
+});
+
+test('ota.channel validates and codegen emits a named constant wired to the host', () => {
+  const { root, cfg } = fixture({ latest: true });
+  cfg.ota.channel = 'beta';
+  writeFileSync(join(root, 'valence', 'valence.config.json'), JSON.stringify(cfg));
+  codegen({ root, cfg: loadConfig(root) });
+  const generated = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'config.g.dart'), 'utf8');
+  assert.match(generated, /const valenceOtaChannel = 'beta';/);
+  assert.match(generated, /channel: valenceOtaChannel/);
+  cfg.ota.channel = '../production';
+  writeFileSync(join(root, 'valence', 'valence.config.json'), JSON.stringify(cfg));
+  assert.throws(() => loadConfig(root), /ota.channel/);
+});
+
+test('doctor names plugin requirements without claiming native registration was executed', async () => {
+  const { root, cfg } = pluginFixture();
+  codegen({ root, cfg });
+  const rows = await diagnose({ root, cfg });
+  const row = rows.find(([, name]) => name === 'native plugin registration');
+  assert.equal(row[0], 'WARN');
+  assert.match(row[2], /probe.*probe.read.*construct the real app handlers/);
+  const plain = fixture();
+  codegen(plain);
+  assert.equal((await diagnose(plain)).find(([, name]) => name === 'native plugin registration')[0], 'PASS');
+});
+
+test('codegen requires event-only plugin namespaces without adding wire methods', () => {
+  const { root, cfg } = pluginFixture();
+  const fragment = probePlugin();
+  fragment.methods = {};
+  writeFileSync(join(root, 'probe.json'), JSON.stringify(fragment));
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart, /const hostPluginNamespaces = <String>\{'probe'\}/);
+  assert.match(dart, /const hostPluginMethods = <String>\{\}/);
+  assert.match(dart, /ValencePluginRegistry.checked\(plugins,/);
+  assert.match(dart, /requiredNamespaces: hostPluginNamespaces, requiredMethods: hostPluginMethods/);
+});
+
+test('doctor reports absent evidence as warnings, compatibility errors as failures and mapped execution honestly', async () => {
+  const { root, cfg, key } = fixture({ latest: true });
+  codegen({ root, cfg });
+  const first = await diagnose({ root, cfg });
+  assert.equal(first.filter(([s]) => s === 'FAIL').length, 0);
+  for (const id of ['bridge', 'loopback', 'updater', 'store-sync', 'integration']) {
+    assert.ok(first.some(([s, name]) => s === 'WARN' && name === `§8 ${id}`));
+  }
+  mkdirSync(join(root, '.valence'), { recursive: true });
+  mkdirSync(join(root, cfg.host.dir, 'test'), { recursive: true });
+  writeFileSync(join(root, cfg.host.dir, 'test', 'wiring_test.dart'), 'void main() {}');
+  writeFileSync(join(root, '.valence', 'test-matrix.json'), JSON.stringify({ bridge: ['test/wiring_test.dart'] }));
+  const unrun = await diagnose({ root, cfg });
+  assert.ok(unrun.some(([s, n, msg]) => s === 'WARN' && n === '§8 bridge' && msg.includes('not executed')));
+  const ran = await diagnose({ root, cfg, tests: true, run: () => ({ status: 0 }) });
+  assert.ok(ran.some(([s, n]) => s === 'PASS' && n === '§8 bridge'));
+  const failed = await diagnose({ root, cfg, tests: true, run: () => ({ status: 1 }) });
+  assert.ok(failed.some(([s, n]) => s === 'FAIL' && n === '§8 bridge'));
+  writeFileSync(join(root, '.valence', 'test-matrix.json'), JSON.stringify({ bridge: ['test/../../outside_test.dart'] }));
+  assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === '§8 bridge'));
+  cfg.nativeValue = ['offline', 'offline'];
+  assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'native value'));
+  bundle({ root, cfg, key, builtin: true, now: NOW });
+  const dart = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
+  writeFileSync(dart, readFileSync(dart, 'utf8').replace(/const hostBridgeVersion = \d+;/, 'const hostBridgeVersion = 1;'));
+  assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'built-in compatibility'));
+});
+
+test('doctor fails unsafe database names and browser/native origins with actionable fixes', async () => {
+  const { root, cfg } = fixture();
+  codegen({ root, cfg });
+  for (const name of ['../lost.db', 'C:\\lost.db', '/tmp/lost.db', '.', '', 'bad.db ', 'CON.db']) {
+    cfg.host.database = name;
+    const row = (await diagnose({ root, cfg })).find(([, n]) => n === 'database directory');
+    assert.equal(row[0], 'FAIL', name);
+    assert.match(row[2], /Fix:/);
+  }
+  cfg.host.database = 'legacy-data.db';
+  assert.ok((await diagnose({ root, cfg })).some(([s, n, m]) => s === 'WARN' && n === 'database directory' && m.includes('<appSupport>/legacy-data.db')));
+  for (const value of ["https://api.example.com; script-src *", 'https://user:secret@example.com', '*', 'file:///tmp', 'https://*.example.com', null]) {
+    cfg.web.connect = [value];
+    assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'connection origins'), String(value));
+  }
+  cfg.web.connect = ['https://api.example.com/v1?q=1'];
+  assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'PASS' && n === 'connection origins'));
+  for (const origin of ['https://api.example.com/v1', 'https://exam\tple.com', 'https://example.com\\']) {
+    cfg.http = { origins: [origin] };
+    assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'connection origins'));
+  }
+  // §4.5: a native origin grant is live in release builds and carries the host token, and Android's
+  // network security XML does not bound native Dart HTTP — so an emulator-host or LAN origin left in a
+  // config is a cleartext token leak that nothing else in the toolchain mentions.
+  for (const origin of ['http://10.0.2.2:8787', 'http://192.168.0.5:8787', 'http://api.internal']) {
+    cfg.http = { origins: [origin] };
+    const row = (await diagnose({ root, cfg })).find(([, n]) => n === 'connection origins');
+    assert.equal(row[0], 'WARN', origin);
+    assert.match(row[2], /grants cleartext/);
+  }
+  for (const origin of ['http://127.0.0.1:8787', 'http://localhost:4330', 'https://api.example.com']) {
+    cfg.http = { origins: [origin] };
+    assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'PASS' && n === 'connection origins'), origin);
+  }
+});
+
+test('doctor checks the notification icon exists and survives release resource shrinking', async () => {
+  const { root, cfg } = fixture();
+  codegen({ root, cfg });
+  const res = join(root, cfg.host.dir, 'android', 'app', 'src', 'main', 'res');
+  const row = async () => (await diagnose({ root, cfg })).find(([, n]) => n === 'notification icon');
+
+  // A host that never enabled notifications is not asked about an icon at all.
+  assert.equal((await row())[0], 'PASS');
+
+  cfg.notifications = { enabled: true, icon: 'ic_stat_app' };
+  assert.match((await row())[2], /res directory absent/);
+
+  mkdirSync(join(res, 'drawable'), { recursive: true });
+  let r = await row();
+  assert.equal(r[0], 'FAIL');
+  assert.match(r[2], /not under android\/app\/src\/main\/res/);
+
+  writeFileSync(join(res, 'drawable', 'ic_stat_app.xml'), '<vector/>');
+  // The icon is there and debug builds work. This is exactly the state that took a release build
+  // down: the shrinker deletes a drawable nothing but valence.config.json names.
+  r = await row();
+  assert.equal(r[0], 'FAIL');
+  assert.match(r[2], /resource shrinking deletes @drawable\/ic_stat_app/);
+  assert.match(r[2], /Fix: .*keep\.xml/);
+
+  mkdirSync(join(res, 'raw'), { recursive: true });
+  writeFileSync(join(res, 'raw', 'keep.xml'), '<resources tools:keep="@drawable/ic_stat_app_header"/>');
+  assert.equal((await row())[0], 'FAIL', 'a longer name that merely starts with the icon is not a keep');
+
+  writeFileSync(join(res, 'raw', 'keep.xml'), '<resources tools:keep="@drawable/ic_stat_app,@raw/chime"/>');
+  assert.equal((await row())[0], 'PASS');
+});
+
+test('doctor pairs every declared link origin with the intent filter that serves it', async () => {
+  const { root, cfg } = fixture();
+  codegen({ root, cfg });
+  const main = join(root, cfg.host.dir, 'android', 'app', 'src', 'main');
+  const manifestPath = join(main, 'AndroidManifest.xml');
+  const row = async () => (await diagnose({ root, cfg })).find(([, n]) => n === 'deep links');
+  const manifest = (filters) => {
+    mkdirSync(main, { recursive: true });
+    writeFileSync(manifestPath, `<manifest><application><activity>
+      <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+      ${filters}</activity></application></manifest>`);
+  };
+
+  // An app with no links and no manifest is not asked about either half.
+  assert.equal((await row())[0], 'PASS');
+
+  // Origins declared, manifest unreadable: say so rather than claiming either result.
+  cfg.links = { origins: ['panchang://app'] };
+  codegen({ root, cfg });
+  let r = await row();
+  assert.equal(r[0], 'WARN');
+  assert.match(r[2], /manifest absent/);
+
+  // Origins set, filter missing. This is the half that fails hardest and most silently: codegen --check,
+  // bundle --store and every other doctor row pass, and the OS answers "unable to resolve Intent".
+  manifest('');
+  r = await row();
+  assert.equal(r[0], 'FAIL');
+  assert.match(r[2], /panchang:\/\/app with no matching <intent-filter>/);
+  assert.match(r[2], /Fix: .*AndroidManifest\.xml/);
+
+  // Filter present but for another host, which routes nothing for the declared one.
+  manifest('<intent-filter><action android:name="android.intent.action.VIEW"/><data android:scheme="panchang" android:host="other"/></intent-filter>');
+  assert.equal((await row())[0], 'FAIL');
+
+  manifest('<intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="panchang" android:host="app"/></intent-filter>');
+  assert.equal((await row())[0], 'PASS');
+
+  // Android combines every scheme with every host inside one filter, and a scheme with no host at all
+  // matches every host, so both of those serve the declared origin.
+  manifest('<intent-filter><action android:name="android.intent.action.VIEW"/><data android:scheme="other"/><data android:scheme="panchang"/><data android:host="app"/></intent-filter>');
+  assert.equal((await row())[0], 'WARN', 'the extra scheme is registered and undeclared');
+  manifest('<intent-filter><action android:name="android.intent.action.VIEW"/><data android:scheme="panchang"/></intent-filter>');
+  assert.equal((await row())[0], 'PASS');
+
+  // The other direction: the filter is there, the origin is not. The app launches on the link, so it
+  // looks like it worked, and then the host rejects the URL as untrusted and the page gets nothing.
+  cfg.links = { origins: [] };
+  codegen({ root, cfg });
+  manifest('<intent-filter><action android:name="android.intent.action.VIEW"/><data android:scheme="panchang" android:host="app"/></intent-filter>');
+  r = await row();
+  assert.equal(r[0], 'WARN');
+  assert.match(r[2], /registers panchang:\/\/app, which links\.origins does not declare/);
+
+  // A Gradle placeholder cannot be resolved here, so it must not become a complaint either way.
+  cfg.links = { origins: ['panchang://app'] };
+  codegen({ root, cfg });
+  manifest('<intent-filter><action android:name="android.intent.action.VIEW"/><data android:scheme="panchang" android:host="${applicationId}"/></intent-filter>');
+  assert.equal((await row())[0], 'PASS');
+
+  // An https origin's default port is canonical in links.origins and absent from the manifest.
+  cfg.links = { origins: ['https://example.com'] };
+  codegen({ root, cfg });
+  manifest('<intent-filter><action android:name="android.intent.action.VIEW"/><data android:scheme="https" android:host="example.com" android:port="443"/></intent-filter>');
+  assert.equal((await row())[0], 'PASS');
+});
+
+test('doctor compares generated bridge, baseline and verified OTA requirements', async () => {
+  const { root, cfg, key } = fixture();
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const baselinePath = join(root, '.valence', 'baseline.json');
+  const baseline = readFileSync(baselinePath, 'utf8');
+  writeFileSync(baselinePath, JSON.stringify({ storeSeq: 1 }));
+  assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'store baseline'));
+  writeFileSync(baselinePath, baseline);
+  const dart = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
+  writeFileSync(dart, readFileSync(dart, 'utf8').replace('hostBridgeVersion = 4', 'hostBridgeVersion = 3'));
+  assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'bridge version'));
+  codegen({ root, cfg });
+  const ota = bundle({ root, cfg, key, requiresBridge: 5, now: NOW + 1000 });
+  assert.ok((await diagnose({ root, cfg })).some(([s, n, m]) => s === 'FAIL' && n === 'OTA bridge compatibility' && m.includes('store baseline is 4')));
+  const original = readFileSync(ota.manifestPath, 'utf8');
+  for (const bridge of [null, -1, 'not-a-version', {}, '4']) {
+    const manifest = JSON.parse(original);
+    manifest.requires.bridge = bridge;
+    const bytes = Buffer.from(JSON.stringify(manifest));
+    writeFileSync(ota.manifestPath, bytes);
+    writeFileSync(ota.manifestPath + '.sig', sign(null, bytes, key).toString('base64'));
+    assert.ok((await diagnose({ root, cfg })).some(([s, n, m]) => s === 'FAIL' && n === 'OTA bridge compatibility' && m.includes('positive integer')));
+  }
+  writeFileSync(ota.manifestPath, original);
+  // A bad signature must fail before the compatibility comparison.
+  writeFileSync(ota.manifestPath + '.sig', Buffer.alloc(64).toString('base64'));
+  assert.ok((await diagnose({ root, cfg })).some(([s, n, m]) => s === 'FAIL' && n === 'OTA bridge compatibility' && !m.includes('store baseline is 4')));
+});
+
+test('doctor scans tracked and untracked keys without disclosing private material, and checks linked key directories', async () => {
+  const { root, cfg, keyDir } = fixture();
+  codegen({ root, cfg });
+  execSync('git init -q', { cwd: root });
+  const header = ['-----BEGIN', 'PRIVATE KEY-----'].join(' ');
+  const secret = 'DO_NOT_DISCLOSE_KEY_BYTES';
+  writeFileSync(join(root, 'leaked.pem'), `${header}\n${secret}\n\0`);
+  for (const tracked of [false, true]) {
+    if (tracked) execSync('git add leaked.pem', { cwd: root });
+    const rows = await diagnose({ root, cfg, keyDir });
+    assert.ok(rows.some(([s, n]) => s === 'FAIL' && n === 'signing keys in Git'));
+    assert.ok(!JSON.stringify(rows).includes(secret));
+    assert.ok(!JSON.stringify(rows).includes(header));
+  }
+  execSync('git rm --cached -q leaked.pem', { cwd: root });
+  rmSync(join(root, 'leaked.pem'));
+  assert.ok((await diagnose({ root, cfg, keyDir })).some(([s, n]) => s === 'PASS' && n === 'signing keys in Git'));
+  const link = join(mkdtempSync(join(tmpdir(), 'doctor-link-')), 'keys');
+  symlinkSync(root, link, 'junction');
+  assert.ok((await diagnose({ root, cfg, keyDir: join(link, 'keys') })).some(([s, n]) => s === 'FAIL' && n === 'signing keys in Git'));
+  assert.ok((await diagnose({ root, cfg, keyDir, git: () => ({ error: { code: 'ENOENT' } }) })).some(([s, n]) => s === 'WARN' && n === 'signing keys in Git'));
+});
+
 test('codegen writes once, is stable, survives formatters, and --check detects real staleness', () => {
   const { root, cfg } = fixture();
   assert.equal(codegen({ root, cfg }).written.length, 3);
@@ -200,7 +1171,7 @@ test('codegen writes once, is stable, survives formatters, and --check detects r
   writeFileSync(dart, readFileSync(dart, 'utf8').replace(/\n/g, '\r\n').replace(/\);/g, ',\n);'));
   codegen({ root, cfg, check: true });
   editSchema(root, (s) => {
-    s.version = 2;
+    s.version = 5;
     s.methods['share.text'] = { since: 2, params: { text: 'string' }, returns: 'void' };
   });
   assert.throws(() => codegen({ root, cfg, check: true }), /stale/);
@@ -208,24 +1179,686 @@ test('codegen writes once, is stable, survives formatters, and --check detects r
 
 test('a schema shipped in a store build is additive only', () => {
   const { root, cfg, key } = fixture();
+  // The additive rules are exercised on a method the app owns: a built-in's shape is frozen by
+  // assertBuiltinShapes before assertAdditive ever runs, so it cannot be used to probe this.
+  editSchema(root, (s) => (s.methods['haptics.tap'] = { since: 1, params: { heavy: 'bool?' }, returns: 'void' }));
   codegen({ root, cfg });
   bundle({ root, cfg, key, builtin: true, now: NOW });
-  editSchema(root, (s) => (s.methods['data.list'].params.limit = 'int'));
+  editSchema(root, (s) => (s.methods['haptics.tap'].params.heavy = 'bool'));
   codegen({ root, cfg }); // a plain --builtin build (init, local testing) does not freeze the schema
-  editSchema(root, (s) => (s.methods['data.list'].params.limit = 'int?'));
+  editSchema(root, (s) => (s.methods['haptics.tap'].params.heavy = 'bool?'));
   bundle({ root, cfg, key, store: true, now: NOW });
-  editSchema(root, (s) => (s.methods['share.early'] = { since: 1, params: {}, returns: 'void' }));
-  assert.throws(() => codegen({ root, cfg }), /needs since > 1/);
+  editSchema(root, (s) => (s.methods['share.early'] = { since: 2, params: {}, returns: 'void' }));
+  assert.throws(() => codegen({ root, cfg }), /needs since > 4/);
   editSchema(root, (s) => {
     delete s.methods['share.early'];
-    s.version = 2;
-    s.methods['share.text'] = { since: 2, params: { text: 'string' }, returns: 'void' };
+    s.version = 5;
+    s.methods['share.text'] = { since: 5, params: { text: 'string' }, returns: 'void' };
   });
   codegen({ root, cfg });
-  editSchema(root, (s) => (s.methods['data.get'].returns = 'string'));
+  editSchema(root, (s) => (s.methods['haptics.tap'].returns = 'string'));
   assert.throws(() => codegen({ root, cfg }), /cannot change/);
-  editSchema(root, (s) => delete s.methods['data.get']);
+  editSchema(root, (s) => delete s.methods['haptics.tap']);
   assert.throws(() => codegen({ root, cfg }), /cannot be removed/);
+});
+
+test('the package reports the built-in revision the template schema is at', () => {
+  // `AppInfo.builtins` is the runtime's own capability revision (§4), in the same number space as the
+  // reserved schema versions the CLI owns. Nothing else compares the two, and both sides are literals:
+  // a release that bumps the template and adds an optional param to a built-in would leave every page's
+  // `(info.builtins ?? 0) >= <new>` gate false for ever, with every gate in the repo still green.
+  const schema = JSON.parse(readFileSync(join(TEMPLATES, 'bridge.schema.json'), 'utf8'));
+  const declared = /this\.builtins = (\d+)[,;]/.exec(readFileSync(join(PKG, 'lib', 'src', 'runtime.dart'), 'utf8'));
+  assert.ok(declared, 'AppInfo.builtins default not found in packages/valence/lib/src/runtime.dart');
+  assert.equal(Number(declared[1]), schema.version,
+    'AppInfo.builtins and the template schema version must move together');
+});
+
+test('a built-in declared below its reserved since is refused, unless the store build shipped it', () => {
+  const { root, cfg } = fixture({ latest: true });
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  const at = (name, since) => {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, (s) => {
+      // The app numbers its own history, so a reader of the permissions guide picks "the next reserved
+      // version for your app" — which for most apps is below the number the runtime reserved.
+      s.methods[name].since = since;
+    });
+  };
+
+  // Below the reserved number the delegation is not generated: codegen emits an abstract handler that
+  // ValenceBuiltins does not implement, so the host stops compiling with a message that points at the
+  // package. Writing that handler by hand compiles, and silently reimplements a built-in.
+  at('notify.schedule', 8);
+  assert.throws(() => codegen({ root, cfg }), /"since": 8, below the 11/);
+  at('badge.set', 10);
+  assert.throws(() => codegen({ root, cfg }), /below the 11/);
+  at('push.token', 8);
+  assert.throws(() => codegen({ root, cfg }), /below the 12/);
+  at('share.image', 13);
+  assert.throws(() => codegen({ root, cfg }), /"since": 13, below the 14/);
+
+  // §6.5 promises to preserve a method of the app's own under one of these names, and the signature is
+  // what tells the two apart: a renumbered copy of the template has the built-in's shape, a method that
+  // predates the built-in has its own. This is the shape a 0.3 app carried before push existed.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => (s.methods['push.token'] = { since: 8, params: { provider: 'string' }, returns: 'bool' }));
+  assert.ok(codegen({ root, cfg }).written.length);
+
+  // The same promise when only the *return* differs. `notify.pending` takes no params, so the params
+  // cannot tell a renumbered copy of the template from an app's own reminder list — and comparing only
+  // them made every structured-return built-in match, refusing this schema with no baseline recorded
+  // (CR-20261029-1). An app-owned list of reminder ids as strings is exactly what §6.5 preserves.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => (s.methods['notify.pending'] = { since: 8, params: {}, returns: 'string[]' }));
+  assert.ok(codegen({ root, cfg }).written.length);
+
+  // And the renumbered copy of the template is still caught, structured return and all.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => (s.methods['notify.pending'].since = 8));
+  assert.throws(() => codegen({ root, cfg }), /"since": 8, below the 11/);
+
+  // Only names the runtime actually reserves have a floor. `permissions.*` has none, so an app that
+  // numbers it from its own history still delegates — which is why the permissions guide's "assign the
+  // next reserved version for your app" is true of permissions and wrong everywhere else.
+  at('permissions.check', 2);
+  assert.ok(codegen({ root, cfg }).written.length);
+
+  // At the reserved number it delegates, which is the whole fix: nothing else about the schema changes.
+  writeFileSync(schemaFile(root), pristine);
+  assert.ok(codegen({ root, cfg }).written.length);
+
+  // An app-owned method that merely shares the namespace is untouched: that is the documented way to keep
+  // a reminder method you shipped before schema 11 existed.
+  editSchema(root, (s) => (s.methods['notify.daily'] = { since: 8, params: { title: 'string', at: 'int' }, returns: 'void' }));
+  assert.ok(codegen({ root, cfg }).written.length);
+
+  // And a built-in *name* below the reserved number is allowed when the recorded store build shipped it:
+  // then it really is the app's, with a signature its pages already call. That is the only way an app
+  // reaches this state, because the guard refuses the declaration that has never shipped.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => {
+    s.methods['notify.cancel'] = { since: 8, params: { id: 'int' }, returns: 'void' };
+  });
+  const shipped = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
+  mkdirSync(join(root, '.valence'), { recursive: true });
+  writeFileSync(join(root, '.valence', 'baseline.json'), JSON.stringify({ storeSeq: 1, storeSchema: shipped }));
+  assert.ok(codegen({ root, cfg }).written.length);
+});
+
+test('a name in one of the package’s own areas that this CLI has never heard of is named as stale tooling', async () => {
+  const { root, cfg } = fixture({ latest: true });
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+
+  // K F-62: the app adopted a real built-in at its real reserved `since`, against a vendored CLI that
+  // predated the method. codegen wrote both files and said nothing, because an unrecognised name in a
+  // reserved area is generated as the app's own — so the host stopped compiling with "Missing concrete
+  // implementation", which reads as "the package has not shipped this yet" and sends you off to write a
+  // native implementation of something the package already has.
+  editSchema(root, (s) => (s.methods['notify.somethingNewer'] = { since: 16, params: {}, returns: 'void' }));
+  const r = codegen({ root, cfg });
+  assert.ok(r.written.length); // still generated: it may genuinely be the app's method (§6.5)
+  assert.match(r.warnings.join('\n'), /"notify\.somethingNewer"/);
+  assert.match(r.warnings.join('\n'), /create-valence update/);
+
+  // doctor is the first thing run when a built-in "has not shipped yet", so the row warns rather than
+  // passing silently — and it is still a WARN, because the generated code really is current for this CLI.
+  const rows = await diagnose({ root, cfg, run: () => ({ status: 0, stdout: '' }) });
+  const generated = rows.find(([, name]) => name === 'generated code');
+  assert.equal(generated[0], 'WARN');
+  assert.match(generated[2], /create-valence update/);
+
+  // The template says nothing: every built-in it declares is one this CLI knows, including the
+  // three-part `notify.channels.set`.
+  writeFileSync(schemaFile(root), pristine);
+  assert.deepEqual(codegen({ root, cfg }).warnings, []);
+
+  // And a method outside every built-in area is the ordinary case, with nothing to warn about.
+  editSchema(root, (s) => (s.methods['shelf.list'] = { since: 1, params: {}, returns: 'void' }));
+  assert.deepEqual(codegen({ root, cfg }).warnings, []);
+});
+
+test('a retired method keeps its wire contract, loses its handler and stops warning', async () => {
+  const { root, cfg, key } = fixture({ latest: true });
+  const retire = (s) => (s.methods['notify.daily'] = { since: 1, retired: true, params: { hour: 'int' }, returns: 'void' });
+
+  // K F-64: the app's own pre-built-in reminder method, replaced by notify.schedule. Without the marker it
+  // is a permanent abstract handler plus a permanent stale-tooling warning, for a name nothing calls.
+  editSchema(root, (s) => (s.methods['notify.daily'] = { since: 1, params: { hour: 'int' }, returns: 'void' }));
+  const before = codegen({ root, cfg });
+  assert.match(before.warnings.join('\n'), /"notify\.daily"/);
+  const dartPath = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
+  assert.doesNotMatch(readFileSync(dartPath, 'utf8'), /notify\.daily is retired/);
+
+  editSchema(root, retire);
+  assert.deepEqual(codegen({ root, cfg }).warnings, []);
+  const dart = readFileSync(dartPath, 'utf8');
+  // Still in the interface (the name is part of the contract), now answered by the generated built-ins, so
+  // the app can delete its own handler and the native code behind it.
+  assert.match(dart, /abstract interface class BridgeHandlers \{[\s\S]*Future<void> notifyDaily\(NotifyDailyParams p\);/);
+  assert.match(dart, /Future<void> notifyDaily\(NotifyDailyParams p\) async =>\s*\n?\s*throw const BridgeError\('E_UNSUPPORTED', 'notify\.daily is retired'\);/);
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  // has() must not move: METHOD_SINCE still carries it, and the page is told in the editor instead.
+  assert.match(ts, /@deprecated[^\n]*E_UNSUPPORTED[\s\S]*?'notify\.daily': \{ params:/);
+  assert.match(ts, /'notify\.daily': 1,/);
+
+  // Retiring and un-retiring a method a store build shipped is not a wire change, so the additive guard
+  // must let both through — while a real change to the same method stays refused.
+  editSchema(root, (s) => delete s.methods['notify.daily'].retired);
+  bundle({ root, cfg, key, store: true, now: NOW });
+  editSchema(root, retire);
+  codegen({ root, cfg });
+  editSchema(root, (s) => delete s.methods['notify.daily'].retired);
+  codegen({ root, cfg });
+  editSchema(root, (s) => {
+    retire(s);
+    s.methods['notify.daily'].params.hour = 'string';
+  });
+  assert.throws(() => codegen({ root, cfg }), /cannot change/);
+  editSchema(root, (s) => (s.methods['notify.daily'].params.hour = 'int'));
+
+  // The number that says whether this retirement is safe, which was hand arithmetic across baseline.json
+  // and the manifests directory.
+  const row = async () => (await diagnose({ root, cfg })).find(([, name]) => name === 'oldest servable bundle');
+  // With no release cut, the built-in bundle is the whole answer and it is at the current schema.
+  assert.match((await row())[2], /requires bridge 16 \(built-in seq \d+\)/);
+  // The OTA release pinned to an older host is what sets the line.
+  bundle({ root, cfg, key, requiresBridge: 15, now: NOW + 1000 });
+  const servable = await row();
+  assert.equal(servable[0], 'PASS'); // a permanent WARN is the thing F-64 is about
+  assert.match(servable[2], /requires bridge 15 \(OTA seq \d+\)/);
+  assert.match(servable[2], /Retired: notify\.daily/);
+  assert.match(servable[2], /only releases on this machine/);
+
+  // A release below the published floor still counts. The floor is a per-install high-water mark raised
+  // only when a device commits a bundle carrying it (§2.2), and the host serves `current` without
+  // enforcing check 4 — so a device that never committed the raise keeps serving the older bundle, and
+  // subtracting the floor here would report a safer number than the field.
+  const old = bundle({ root, cfg, key, requiresBridge: 12, now: NOW + 2000 });
+  const baselinePath = join(root, '.valence', 'baseline.json');
+  const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
+  writeFileSync(baselinePath, JSON.stringify({ ...baseline, floor: old.manifest.seq + 1 }));
+  assert.match((await row())[2], /requires bridge 12/);
+  writeFileSync(baselinePath, JSON.stringify(baseline));
+
+  // dist-ota is gitignored while baseline.json is committed, so a fresh clone sees a recorded release
+  // whose manifest is absent. Answering from the built-in bundle alone would report the newest schema —
+  // the most permissive number there is — as a pass, for the project whose field bundle is the oldest.
+  const manifests = join(root, '.valence', 'dist-ota', cfg.appId, 'manifests');
+  for (const f of readdirSync(manifests)) rmSync(join(manifests, f));
+  const blind = await row();
+  assert.equal(blind[0], 'WARN');
+  assert.match(blind[2], /baseline\.json records OTA seq \d+/);
+  assert.match(blind[2], /not computable here/);
+
+  // A --store build is the only writer of the baseline, and a retirement is the one change to a shipped
+  // method the guard forgives, so the printout is the only place it can surface.
+  editSchema(root, retire);
+  assert.deepEqual(bundle({ root, cfg, key, store: true, now: NOW + 4000 }).recorded.added, ['~ method notify.daily retired']);
+});
+
+test('retirement is refused for every method that is not the app\'s to retire', () => {
+  const { root, cfg } = fixture({ latest: true });
+  // A built-in: the package implements it, so the marker would answer E_UNSUPPORTED for working behaviour.
+  editSchema(root, (s) => (s.methods['sync.now'].retired = true));
+  assert.throws(() => codegen({ root, cfg }), /"sync\.now" cannot be retired: the valence package implements it/);
+  editSchema(root, (s) => delete s.methods['sync.now'].retired);
+  // A core method: every page may call it.
+  editSchema(root, (s) => (s.methods['app.ready'].retired = true));
+  assert.throws(() => codegen({ root, cfg }), /"app\.ready" cannot be retired: every page may call it/);
+  editSchema(root, (s) => delete s.methods['app.ready'].retired);
+  // Not a boolean is a typo, not a retirement.
+  editSchema(root, (s) => (s.methods['data.get'].retired = 'yes'));
+  assert.throws(() => codegen({ root, cfg }), /data\.get\.retired must be true or absent/);
+  editSchema(root, (s) => delete s.methods['data.get'].retired);
+  // An event has no handler to retire and keeps firing, so accepting the marker silently would read as
+  // "this stops being emitted". On a shipped event it would also surface as an unexplained change.
+  editSchema(root, (s) => (s.events['sync.changed'].retired = true));
+  assert.throws(() => codegen({ root, cfg }), /"sync\.changed\.retired" is only for methods/);
+  editSchema(root, (s) => delete s.events['sync.changed'].retired);
+  // An app-owned name in a reserved area below its built-in's since is the app's: retirement is allowed.
+  editSchema(root, (s) => (s.methods['share.image'] = { since: 1, retired: true, params: { path: 'string' }, returns: 'void' }));
+  assert.deepEqual(codegen({ root, cfg }).warnings, []);
+});
+
+test('a plugin method cannot be retired, because its native registration answers it', () => {
+  const { root, cfg } = pluginFixture();
+  codegen({ root, cfg });
+  // Only the fragment can carry it: the app may not redeclare a plugin method at all.
+  const path = join(root, 'probe.json');
+  const fragment = JSON.parse(readFileSync(path, 'utf8'));
+  fragment.methods['probe.read'].retired = true;
+  writeFileSync(path, JSON.stringify(fragment));
+  assert.throws(() => codegen({ root, cfg }), /"probe\.read" cannot be retired: a plugin method/);
+  // And `bundle --store` refuses it too, rather than writing a marker into the baseline that the next
+  // codegen run then fails on: it is the only writer of the schema the additive guard is made against.
+  assert.throws(() => loadPluginSchema(root, cfg), /"probe\.read" cannot be retired: a plugin method/);
+});
+
+test('a built-in may be omitted but not redefined, because the package implements it', () => {
+  const { root, cfg } = fixture();
+  // The generated ValenceBuiltins delegates these to the valence package. A schema that keeps the name
+  // and changes the shape would compile and then pass the wrong arguments to the runtime, so codegen
+  // refuses it rather than leaving a wrong host to find on a device.
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  const bad = (mutate, re) => {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), re);
+  };
+  bad((s) => (s.methods['data.list'].params.limit = 'int'), /must stay/);
+  // `after` is a declared optional param, so it is allowed — but only at the type the runtime declares,
+  // and no other new param is.
+  bad((s) => (s.methods['data.list'].params.after = 'string'), /must stay/);
+  bad((s) => (s.methods['data.list'].params.offset = 'int?'), /must stay/);
+  bad((s) => (s.methods['prefs.get'].returns = 'string'), /must return string\?/);
+  bad((s) => (s.types.SyncResult.changed = 'num'), /fields are not/);
+  bad((s) => (s.methods['data.list'].returns = 'Row'), /a type with \{key, value, usn\}\[\]/);
+  // A field the runtime added is still refused at the wrong type.
+  bad((s) => (s.types.SyncResult.reason = 'int'), /fields are not/);
+  // A F-36: a field this generator has never heard of is the shape a *stale* vendored CLI produces — the
+  // runtime grew an optional field, the guide documenting it is newer than the generator, and the message
+  // blamed the schema for declaring exactly what the docs said to. It now names the field and the command.
+  bad((s) => (s.types.SyncResult.queuedFor = 'string?'), /does not know the field "queuedFor"[\s\S]*create-valence update/);
+  bad(
+    (s) => Object.assign(s.types.SyncResult, { queuedFor: 'string?', attemptedAt: 'int?' }),
+    /does not know the fields "queuedFor", "attemptedAt"[\s\S]*create-valence update/,
+  );
+  // A field it does know, at the wrong type, is the app's own mistake and says nothing about tooling.
+  bad((s) => (s.types.SyncResult.reason = 'int'), /its fields are not\.(?![\s\S]*create-valence update)/);
+  // §4.4's methods are built-ins like the rest. A nullable `value` would make secure.set a second delete,
+  // silently, on a method whose whole point is that clearing a credential is explicit.
+  bad((s) => (s.methods['secure.set'].params.value = 'string?'), /must stay/);
+  bad((s) => (s.methods['auth.hasToken'].returns = 'string?'), /must return bool/);
+  bad((s) => (s.methods['auth.setToken'].params.token = 'string'), /must stay/);
+  // Omitting one is fine: an app that never syncs simply has no sync.now, and ValenceBuiltins drops it.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => delete s.methods['sync.now']);
+  assert.ok(codegen({ root, cfg }).written.length);
+  // And an app with no login drops the whole of §4.4 the same way.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => {
+    for (const m of ['secure.get', 'secure.set', 'secure.delete', 'auth.setToken', 'auth.hasToken']) {
+      delete s.methods[m];
+    }
+    delete s.events['auth.expired'];
+  });
+  assert.ok(codegen({ root, cfg }).written.length);
+});
+
+test('§4.6 lifecycle and update status are built-ins, frozen by shape and droppable', () => {
+  const { root, cfg } = fixture({ latest: true });
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  const bad = (mutate, re) => {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), re);
+  };
+  // The reason sets are closed (§4.2's rule for error codes), and both are carried as strings whose
+  // values are the Dart enum names. Typing one as anything else would silently drop the .name.
+  bad((s) => (s.types.AppState.lifecycle = 'int'), /fields are not/);
+  bad((s) => (s.types.BundleStatus.reason = 'int'), /fields are not/);
+  // serving is never null: 0 is "no bundle on screen yet", which a page can render.
+  bad((s) => (s.types.BundleStatus.serving = 'int?'), /fields are not/);
+  // And the four that *are* nullable stay nullable, or a host with no pending cannot answer at all.
+  bad((s) => (s.types.BundleStatus.pending = 'int'), /fields are not/);
+  bad((s) => (s.methods['app.state'].params.verbose = 'bool?'), /must stay/);
+
+  writeFileSync(schemaFile(root), pristine);
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(dart, /final s = valence\.appState\(\);/);
+  assert.match(dart, /lifecycle: s\.lifecycle\.name/);
+  assert.match(dart, /final s = await valence\.bundleStatusWithUrgency\(\);/);
+  assert.match(dart, /reason: s\.reason\.name/);
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  // sync.done carries the whole record rather than a copy of its fields, so a page reuses one type for
+  // the reply and the event.
+  assert.match(ts, /'sync\.done': \{\n\s+result: SyncResult;/);
+  // All three are gated at version 6, which is what has()/EVENT_SINCE read.
+  for (const e of ["'sync.done': 6", "'app.lifecycle': 6", "'app.online': 6"]) assert.ok(ts.includes(e), e);
+
+  // An app that wants none of it drops all five, and the rest still generates.
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => {
+    delete s.methods['app.state'];
+    delete s.methods['bundle.status'];
+    delete s.types.AppState;
+    delete s.types.BundleStatus;
+    for (const e of ['sync.done', 'app.lifecycle', 'app.online']) delete s.events[e];
+  });
+  assert.ok(codegen({ root, cfg }).written.length);
+});
+
+test('a built-in grows a field without breaking an app that has not taken it', () => {
+  // Rule 5: the IDL is additive only. Before this, every built-in's shape was compared literally, so a
+  // runtime could never add a field to one — the next codegen in every existing app would fail. The two
+  // directions that matter: an app that declares the new field gets it passed through, and an app still
+  // on the old shape keeps generating code that compiles.
+  const { root, cfg } = fixture();
+  codegen({ root, cfg });
+  const withReason = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(withReason, /reason: r\.reason\.name/, 'the template schema takes reason, so the delegation passes it');
+
+  editSchema(root, (s) => delete s.types.SyncResult.reason);
+  assert.ok(codegen({ root, cfg }).written.length, 'an app on the old three-field shape still generates');
+  const without = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.doesNotMatch(without, /reason:/, 'and the delegation does not pass a field its type does not have');
+  assert.match(without, /offline: r\.offline/);
+});
+
+test('a built-in grows a param without breaking an app that has not taken it', () => {
+  // The params half of rule 5. `data.list` gained `after` — the key cursor that makes a bucket past the
+  // 500-row clamp readable at all — and a built-in's params were compared literally, so adding one would
+  // have failed the next codegen in every existing app.
+  const { root, cfg } = fixture({ latest: true });
+  codegen({ root, cfg });
+  const withAfter = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(withAfter, /after: p\.after/, 'the template schema takes after, so the delegation passes it');
+
+  editSchema(root, (s) => { delete s.methods['data.list'].params.after; delete s.types.AppInfo.builtins; });
+  assert.ok(codegen({ root, cfg }).written.length, 'an app on the old three-param shape still generates');
+  const without = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.doesNotMatch(without, /after: p\.after/, 'and the delegation does not pass a param its schema lacks');
+  assert.match(without, /limit: p\.limit/);
+
+  // The allowance is per built-in: `after` belongs to data.list, not to every method with a bucket.
+  editSchema(root, (s) => (s.methods['data.count'].params.after = 'string?'));
+  assert.throws(() => codegen({ root, cfg }), /must stay/);
+});
+
+test('an app that already shipped a store build can take a built-in\'s new param', () => {
+  // The same trap as the new-field case: `bundle --store` records the schema the stores reviewed, and
+  // §4.1 refuses any later change to a method in it. Without the params allowance, every adopter who has
+  // ever cut a store build could not take `after` except through --rebaseline, which overwrites that
+  // reviewed record.
+  const { root, cfg, key } = fixture();
+  editSchema(root, (s) => {
+    // An app-owned method in the same store build, to prove the relaxation does not leak to one.
+    s.methods['mine.list'] = { since: 1, params: { bucket: 'string' }, returns: 'Row[]' };
+  });
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const shipped = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8')).storeSchema;
+  assert.deepEqual(Object.keys(shipped.methods['data.list'].params), ['bucket', 'prefix', 'limit']);
+
+  editSchema(root, (s) => {
+    s.methods['data.list'].params.after = 'string?';
+    // `data.count` is `after`'s gate: the param has no `since`, so without a sibling at the new version
+    // the page has nothing to ask. assertBuiltinShapes requires it.
+    s.methods['data.count'] = { since: 5, params: { bucket: 'string', prefix: 'string?' }, returns: 'int' };
+    s.version = 5;
+  });
+  assert.ok(codegen({ root, cfg }).written.length, 'the runtime param is additive against the recorded schema');
+  assert.match(readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8'), /after: p\.after/);
+
+  // The relaxation is exactly that param at exactly that type, and nothing else about the method.
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  const bad = (mutate, re) => {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), re);
+  };
+  bad((s) => (s.methods['data.list'].params.after = 'string'), /must stay/); // the runtime declares it nullable
+  bad((s) => (s.methods['data.list'].params.cursor = 'string?'), /must stay/); // not a param the runtime added
+  bad((s) => (s.methods['mine.list'].params.after = 'string?'), /cannot change/); // an app's own method may not grow
+  bad((s) => (s.methods['data.list'].since = 2), /cannot change/); // since is not negotiable
+  // A grown param needs the version bump with it. A param has no `since`, so the only thing a page can
+  // gate on is a sibling method or event at the new version — without this an app could add `after` at
+  // the shipped version and leave the page no way to tell it from a host that answers E_PARAMS.
+  // (app.info().bridge is not a second gate: it is the app's own schema version. See §4.2.)
+  bad((s) => {
+    s.methods['data.list'].params.after = 'string?';
+    s.methods['data.count'].since = 4; // the sibling is here, but at the shipped version, so it gates nothing
+    s.version = 4; // and neither does the version
+  }, /needs "version" above the shipped 4/);
+  // And a method-level key the IDL has not defined is not exempt from the baseline guard either.
+  bad((s) => {
+    s.methods['data.list'].deprecated = true;
+    s.version = 5;
+  }, /cannot change/);
+  // The sibling is not optional. Dropping `data.count` leaves `has('data.count')` false on every host
+  // the app will ever ship — including the ones that accept the cursor — so a page that follows the docs
+  // never pages, and the bucket `after` was added for still has no complete read. The version bump
+  // alone does not help: nothing in it is a name.
+  bad((s) => {
+    delete s.methods['data.count'];
+    s.version = 5;
+  }, /the only thing a page can gate it on is "data\.count"/);
+});
+
+test('a grown param needs its sibling even in a brand-new schema, with no store baseline', () => {
+  // The trap does not need a shipped baseline: an app can declare `after` on day one and never declare
+  // `data.count`, and then the one gate §4.2 permits is false for ever. So this lives in
+  // assertBuiltinShapes, which always runs, rather than in assertAdditive, which needs a baseline.
+  const { root, cfg } = fixture();
+  editSchema(root, (s) => {
+    s.methods['data.list'].params.after = 'string?';
+    s.version = 5;
+  });
+  assert.throws(() => codegen({ root, cfg }), /the only thing a page can gate it on is "data\.count"/);
+  // An event counts as a sibling too — it is a name `has()` can answer for.
+  editSchema(root, (s) => (s.events['data.counted'] = { since: 5, payload: {} }));
+  assert.throws(() => codegen({ root, cfg }), /gate it on is "data\.count"/, 'but it must be *the* sibling');
+  editSchema(root, (s) => {
+    delete s.events['data.counted'];
+    s.methods['data.count'] = { since: 5, params: { bucket: 'string', prefix: 'string?' }, returns: 'int' };
+  });
+  assert.ok(codegen({ root, cfg }).written.length);
+});
+
+test('the account-switch params are gated by auth.account, and the old shape still codegens', () => {
+  // §4.4, R13. `account` and `discardPending` are params on a `since: 2` method, so `has('auth.setToken')`
+  // cannot gate them and `app.info().bridge` is the app's own version. The sibling is the whole gate, and
+  // getting it wrong here is not an error the page can see: an older host rejects the params, a page that
+  // stopped sending them gets no switch at all, and user B reads user A's rows.
+  const { root, cfg } = fixture();
+  assert.ok(codegen({ root, cfg }).written.length, 'an app that has not regenerated keeps compiling');
+  const old = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(old, /await valence\.authSetToken\(p\.token\);/);
+  assert.ok(!old.includes('authAccount'), 'and gets none of the switch');
+
+  editSchema(root, (s) => {
+    s.methods['auth.setToken'].params.account = 'string?';
+    s.version = 13;
+  });
+  assert.throws(() => codegen({ root, cfg }), /the only thing a page can gate it on is "auth\.account"/);
+  editSchema(root, (s) => {
+    s.methods['auth.setToken'].params.discardPending = 'bool?';
+    s.methods['auth.account'] = { since: 13, params: {}, returns: 'string?' };
+  });
+  assert.ok(codegen({ root, cfg }).written.length);
+  const now = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(now, /authSetToken\(p\.token, account: p\.account, discardPending: p\.discardPending \?\? false\)/);
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  assert.match(ts, /'auth\.account': 13,/, 'METHOD_SINCE carries the gate the page reads');
+  assert.match(ts, /account\?: string \| null;/);
+  // Half of it is still a trap: `discardPending` without the sibling is the call that deletes a user's
+  // queued writes, so it is gated by the same name.
+  editSchema(root, (s) => delete s.methods['auth.account']);
+  assert.throws(() => codegen({ root, cfg }), /the only thing a page can gate it on is "auth\.account"/);
+});
+
+test('one name cannot be both a method and an event, because has() resolves it to one answer', () => {
+  // has() takes either kind and reads one merged table (§4.3). A name declared as both answers for
+  // whichever wins, so `has('x')` could report false for an event the host really does emit.
+  const { root, cfg } = fixture();
+  editSchema(root, (s) => {
+    // Different `since` on purpose: that is the case where the merged lookup is observably wrong, since
+    // a bridge-6 host emits the event (since 6) while the method (since 7) makes has() say false.
+    s.methods['thing.happened'] = { since: 7, params: {}, returns: 'void' };
+    s.events['thing.happened'] = { since: 6, payload: {} };
+    s.version = 7;
+  });
+  assert.throws(() => codegen({ root, cfg }), /declared as both a method and an event/);
+});
+
+test('an app that already shipped a store build can take a built-in\'s new field', () => {
+  // The case that matters and the one a fresh fixture misses: `bundle --store` records the schema the
+  // stores reviewed, and §4.1 refuses any later change to a type in it. Relaxing only assertBuiltinShapes
+  // would leave every real adopter — anyone who has ever cut a store build — unable to take the field the
+  // docs tell them to take, with --rebaseline (which overwrites that reviewed record) as the only way out.
+  const { root, cfg, key } = fixture();
+  editSchema(root, (s) => {
+    delete s.types.SyncResult.reason;
+    // An app-owned type in the same store build, to prove the relaxation does not leak to one.
+    s.types.Mine = { a: 'string' };
+    s.methods['mine.get'] = { since: 1, params: {}, returns: 'Mine' };
+  });
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const shipped = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8')).storeSchema;
+  assert.deepEqual(Object.keys(shipped.types.SyncResult), ['buckets', 'changed', 'offline']);
+
+  editSchema(root, (s) => (s.types.SyncResult.reason = 'string?'));
+  assert.ok(codegen({ root, cfg }).written.length, 'the runtime field is additive against the recorded schema');
+  assert.match(readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8'), /reason: r\.reason\.name/);
+
+  // The relaxation is exactly that field at exactly that type, and nothing else.
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  const bad = (mutate, re) => {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), re);
+  };
+  bad((s) => (s.types.SyncResult.reason = 'string'), /fields are not/); // the runtime declares it nullable
+  bad((s) => (s.types.SyncResult.other = 'string?'), /fields are not/); // not a field the runtime added
+  bad((s) => delete s.types.SyncResult.offline, /fields are not/);
+  // An app's own type gets no such latitude: §4.1 still refuses any change to a shipped one, even to a
+  // field a built-in happens to have grown.
+  bad((s) => (s.types.Mine.reason = 'string?'), /"Mine" shipped in a store build and cannot change/);
+  bad((s) => (s.types.Mine.a = 'int'), /"Mine" shipped in a store build and cannot change/);
+});
+
+test('schema 15 fields are nullable and additive against a recorded schema 14', () => {
+  const { root, cfg, key } = fixture({ latest: true });
+  editSchema(root, s => {
+    s.version = 14;
+    delete s.methods['notify.pendingIds'];
+    delete s.types.AppInfo.builtins;
+    delete s.types.SyncStatus.reason;
+    delete s.types.BundleStatus.urgent;
+  });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  codegen({ root, cfg });
+  const output = join(root, cfg.host.dir, 'lib/valence/bridge.g.dart');
+  assert.doesNotMatch(readFileSync(output, 'utf8'), /builtins: i.builtins|reason: r.reason[,)]|bundleStatusWithUrgency/);
+  editSchema(root, s => {
+    s.version = 15;
+    s.types.AppInfo.builtins = 'int?';
+    s.types.SyncStatus.reason = 'string?';
+    s.types.BundleStatus.urgent = 'bool?';
+  });
+  codegen({ root, cfg });
+  const dart = readFileSync(output, 'utf8');
+  assert.match(dart, /builtins: i.builtins/);
+  assert.match(dart, /reason: r.reason/);
+  assert.match(dart, /await valence.bundleStatusWithUrgency/);
+  assert.match(dart, /urgent: s.urgent/);
+  editSchema(root, s => { delete s.methods['data.list'].params.after; });
+  assert.throws(() => codegen({ root, cfg }), /declares builtins.*after/);
+  editSchema(root, s => { s.methods['data.list'].params.after = 'string?'; delete s.methods['auth.setToken'].params.account; });
+  assert.throws(() => codegen({ root, cfg }), /declares builtins.*account/);
+  editSchema(root, s => { s.methods['auth.setToken'].params.account = 'string?'; });
+  editSchema(root, s => { s.types.AppInfo.builtins = 'int'; });
+  assert.throws(() => codegen({ root, cfg }), /fields are not/);
+});
+
+test('fontScale is optional, additive against store AppInfo, and frozen by type', () => {
+  const { root, cfg, key } = fixture();
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const output = join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart');
+  assert.doesNotMatch(readFileSync(output, 'utf8'), /fontScale: i\.fontScale/);
+  editSchema(root, (s) => { s.types.AppInfo.fontScale = 'num?'; });
+  codegen({ root, cfg });
+  assert.match(readFileSync(output, 'utf8'), /fontScale: i\.fontScale/);
+  editSchema(root, (s) => { s.types.AppInfo.fontScale = 'num'; });
+  assert.throws(() => codegen({ root, cfg }), /fields are not/);
+});
+
+test('schema-14 image sharing delegates strictly and preserves older custom handlers', () => {
+  const { root, cfg } = fixture({ latest: true });
+  const pristine = readFileSync(schemaFile(root), 'utf8');
+  codegen({ root, cfg });
+  const dartPath = join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart');
+  assert.match(readFileSync(dartPath, 'utf8'), /return valence\.shareImage\(bytes: p\.bytes, path: p\.path, fileName: p\.fileName, caption: p\.caption\);/);
+  assert.match(readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8'), /'share.image': 14/);
+  for (const mutate of [
+    (s) => (s.methods['share.image'].params.bytes = 'json?'),
+    (s) => (s.methods['share.image'].returns = 'bool'),
+  ]) {
+    writeFileSync(schemaFile(root), pristine);
+    editSchema(root, mutate);
+    assert.throws(() => codegen({ root, cfg }), /implemented by the valence package/);
+  }
+  writeFileSync(schemaFile(root), pristine);
+  editSchema(root, (s) => {
+    s.methods['share.image'] = { since: 3, params: { base64: 'string' }, returns: 'void' };
+  });
+  codegen({ root, cfg });
+  assert.doesNotMatch(readFileSync(dartPath, 'utf8'), /valence\.shareImage/);
+  assert.match(readFileSync(dartPath, 'utf8'), /Future<void> shareImage\(ShareImageParams p\)/);
+});
+
+test('a second --store build cannot quietly rewrite the schema the stores reviewed', () => {
+  const { root, cfg, key } = fixture();
+  codegen({ root, cfg });
+  const first = bundle({ root, cfg, key, store: true, now: NOW });
+  assert.equal(first.recorded.bridge, 4);
+  assert.deepEqual(first.recorded.routes, ['/', '/calendar', '/settings']);
+  assert.ok(first.recorded.added.includes('+ method app.ready'), 'the first baseline records the whole schema as new');
+  // The exact hole: codegen refuses a method added at the shipped `since`, and re-running --store used to erase
+  // the baseline that refusal was made against.
+  editSchema(root, (s) => (s.methods['share.early'] = { since: 2, params: {}, returns: 'void' }));
+  assert.throws(() => codegen({ root, cfg }), /needs since > 4/);
+  assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW + 1000 }), /needs since > 4/);
+  const b = JSON.parse(readFileSync(join(root, '.valence', 'baseline.json'), 'utf8'));
+  assert.ok(!Object.hasOwn(b.storeSchema.methods, 'share.early'), 'the refused build left the baseline alone');
+  // --rebaseline is the deliberate way out, and it says so.
+  const forced = bundle({ root, cfg, key, store: true, rebaseline: true, now: NOW + 1000 });
+  assert.match(forced.warnings.join('\n'), /--rebaseline overwrote the recorded store schema/);
+  assert.deepEqual(forced.recorded.added, ['+ method share.early']);
+  // An additive bump still goes through untouched, and reports what it added.
+  editSchema(root, (s) => {
+    s.version = 5;
+    s.methods['share.text'] = { since: 5, params: { text: 'string' }, returns: 'void' };
+  });
+  codegen({ root, cfg });
+  const bumped = bundle({ root, cfg, key, store: true, now: NOW + 2000 });
+  assert.deepEqual(bumped.recorded.added, ['+ method share.text']);
+  // A bump is also the moment the OTA pin stops being warned about, so the build names the number while it still can.
+  assert.match(bumped.warnings.join('\n'), /takes the bridge from 4 to 5[\s\S]*--requires-bridge 4/);
+});
+
+test('a built-in build cannot require a bridge its own host does not have', () => {
+  const { root, cfg, key } = fixture();
+  assert.throws(
+    () => bundle({ root, cfg, key, store: true, requiresBridge: 5, now: NOW }),
+    /refuses its own built-in bundle at check 5/,
+  );
+  // The common way to get here is a schema bumped without a codegen run, so compare against the generated constant.
+  codegen({ root, cfg });
+  editSchema(root, (s) => {
+    s.version = 5;
+    s.methods['share.text'] = { since: 5, params: { text: 'string' }, returns: 'void' };
+  });
+  assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW }), /the generated constant is behind the schema/);
+  codegen({ root, cfg });
+  assert.equal(bundle({ root, cfg, key, store: true, now: NOW }).manifest.requires.bridge, 5);
+  // Pinning an OTA release down is the legitimate use of the flag and stays allowed.
+  assert.equal(bundle({ root, cfg, key, requiresBridge: 1, now: NOW }).manifest.requires.bridge, 1);
+});
+
+test('a store build warns when a channel still points below it', () => {
+  const { root, cfg, key } = fixture();
+  // A project with no channel yet has nothing to be stale.
+  assert.equal(bundle({ root, cfg, key, store: true, now: NOW }).warnings.length, 0);
+  const ota = bundle({ root, cfg, key, now: NOW + 1000 });
+  pointer({ root, cfg, channel: 'production', rollout: 100 });
+  const store = bundle({ root, cfg, key, store: true, now: NOW + 2000 });
+  assert.ok(store.manifest.seq > ota.manifest.seq, 'a store build outranks the release staged before it');
+  assert.match(store.warnings.join('\n'), /channel "production" points at \d+, below this store build's seq/);
 });
 
 test('schema validation catches names that would break the generated code', () => {
@@ -236,7 +1869,7 @@ test('schema validation catches names that would break the generated code', () =
     assert.throws(() => parseSchema(s), re);
   };
   bad((s) => (s.methods['data.get'].returns = 'Nope'), /unknown type/);
-  bad((s) => (s.methods['data.get'].since = 9), /since/);
+  bad((s) => (s.methods['data.get'].since = s.version + 1), /since/);
   bad((s) => delete s.methods['app.info'], /must define app.info/);
   bad((s) => (s.methods['data.get'].params.key = 'void'), /void/);
   bad((s) => (s.methods['data.get'].params.default = 'string'), /reserved field/);
@@ -292,21 +1925,44 @@ test('the CLI runs through a linked path (npm bin links, junctions)', () => {
 
 // ---------- web client ----------
 
-test('client.ts round-trips calls with the nonce, errors, events and the web shim', async () => {
+// The runtime is @getvalence/bridge now, and it has its own tests. What is under test here is the
+// generated binding: that bridge.g.ts wires METHOD_SINCE into createBridge and re-exports the pieces an
+// app imports. The temp project has no node_modules, so the bare import is pointed at the package's
+// source — which Node runs directly through type stripping, same as the generated .ts itself.
+const BRIDGE_SRC = join(import.meta.dirname, '..', '..', '..', '..', 'packages', 'bridge', 'src', 'index.ts');
+
+test('the generated bridge binds the package: nonce, errors, events, the cap and the web shim', async () => {
   const { root, cfg } = fixture();
+  editSchema(root, (s) => {
+    s.version = 5;
+    s.methods['later.method'] = { since: 2, params: {}, returns: 'void' };
+    s.events['later.event'] = { since: 2, payload: {} };
+  });
   codegen({ root, cfg });
   const lib = join(root, cfg.web.lib);
-  const src = readFileSync(join(TEMPLATES, 'client.ts'), 'utf8').replace("from './bridge.g'", "from './bridge.g.ts'");
-  writeFileSync(join(lib, 'client.ts'), src);
+  const gen = join(lib, 'bridge.g.ts');
+  writeFileSync(gen, readFileSync(gen, 'utf8').replaceAll("'@getvalence/bridge'", JSON.stringify(pathToFileURL(BRIDGE_SRC).href)));
   const sent = [];
   globalThis.document = { querySelector: () => ({ content: 'nonce-1' }) };
   globalThis.window = { Valence: { postMessage: (s) => sent.push(JSON.parse(s)) } };
-  const c = await import(pathToFileURL(join(lib, 'client.ts')).href);
+  const c = await import(pathToFileURL(gen).href);
 
-  const info = c.call('app.info');
-  window.__valence.r({ id: sent[0].id, ok: true, v: { bridge: 1 } });
-  assert.equal((await info).bridge, 1);
+  // connect() is what makes has() answerable: it asks the host which bridge version it implements.
+  const connected = c.connect();
+  assert.equal(sent[0].m, 'app.info');
   assert.equal(sent[0].n, 'nonce-1');
+  window.__valence.r({ id: sent[0].id, ok: true, v: { bridge: 1 } });
+  await connected;
+  assert.equal(c.has('data.get'), true);
+  // METHOD_SINCE is generated, and this is what it is for: a method added in a later release is refused
+  // against an older host without a round trip, instead of coming back as E_UNKNOWN.
+  assert.equal(c.has('later.method'), false);
+  await assert.rejects(c.call('later.method'), (e) => e.code === 'E_UNSUPPORTED');
+  // EVENT_SINCE is wired in too, so an event is gateable. `on()` for an event the host never emits
+  // subscribes and silently never fires — harmless for the listener, not harmless for the feature
+  // behind it — and until this was passed there was no way to ask.
+  assert.equal(c.has('sync.changed'), true);
+  assert.equal(c.has('later.event'), false);
 
   const get = c.call('data.get', { bucket: 'b', key: 'k' });
   assert.deepEqual(sent[1], { id: sent[1].id, n: 'nonce-1', m: 'data.get', p: { bucket: 'b', key: 'k' } });
@@ -316,9 +1972,30 @@ test('client.ts round-trips calls with the nonce, errors, events and the web shi
   const seen = [];
   const off = c.on('sync.changed', (p) => seen.push(p.buckets));
   window.__valence.e('sync.changed', { buckets: ['a'] });
-  off();
+  // void, not Set.delete's boolean: a React useEffect cleanup must return void or a destructor.
+  assert.equal(off(), undefined, "on()'s unsubscribe must return void");
   window.__valence.e('sync.changed', { buckets: ['b'] });
   assert.deepEqual(seen, [['a']]);
+
+  // Over the cap, the client rejects before postMessage: Binder would otherwise kill the webview with no reply and
+  // no error either side can catch, so there has to be a promise left to reject (§4.2).
+  const before = sent.length;
+  await assert.rejects(
+    c.call('prefs.set', { key: 'big', value: 'x'.repeat(c.MAX_MESSAGE_BYTES) }),
+    (e) => e instanceof c.BridgeError && e.code === 'E_TOO_LARGE',
+  );
+  assert.equal(sent.length, before, 'nothing was posted');
+
+  // The cap is bytes, not UTF-16 code units: this string is well under the cap by length and well over it by size,
+  // and a host rejecting it before decoding has no id to reply with, so the client has to be the one that refuses.
+  const multibyte = 'ゆ'.repeat(Math.floor(c.MAX_MESSAGE_BYTES / 2));
+  assert.ok(multibyte.length < c.MAX_MESSAGE_BYTES, 'under the cap measured in code units');
+  await assert.rejects(
+    c.call('prefs.set', { key: 'big', value: multibyte }),
+    (e) => e instanceof c.BridgeError && e.code === 'E_TOO_LARGE',
+  );
+  assert.equal(sent.length, before, 'still nothing posted');
+
 
   delete window.Valence;
   c.installShim({ 'prefs.get': async ({ key }) => `web:${key}` });
@@ -329,39 +2006,139 @@ test('client.ts round-trips calls with the nonce, errors, events and the web shi
   delete globalThis.document;
 });
 
+// The other half of AGENTS.md rule 4: the generated TS has to type-check under the settings an app's own
+// CI will use, not merely run. The import test above proves the binding works; this proves the types do.
+//
+// ponytail: mapped to the package's source rather than its built dist/, which is gitignored and would make
+// this gate depend on a build step. If a .d.ts emit ever diverges from the source, add the dist path here.
+const TSC = join(import.meta.dirname, '..', '..', '..', '..', 'packages', 'bridge', 'node_modules', '.bin', 'tsc');
+
+test(
+  'the generated TS type-checks under --strict --verbatimModuleSyntax',
+  { skip: !existsSync(TSC) && 'run "npm install" in packages/bridge first', timeout: 300_000 },
+  () => {
+    const { root, cfg } = fixture({ latest: true });
+    // A retired method carries a JSDoc tag into the Methods map, so it type-checks here too (§4.1).
+    editSchema(root, (x) => (x.methods['notify.daily'] = { since: 1, retired: true, params: { hour: 'int' }, returns: 'void' }));
+    codegen({ root, cfg });
+    const lib = join(root, cfg.web.lib);
+    // An app's web project is ESM; without this the compiler reads the file as CommonJS and every import
+    // in it is an error, which says nothing about the generated code.
+    writeFileSync(join(lib, 'package.json'), JSON.stringify({ name: 'gen', private: true, type: 'module' }));
+    writeFileSync(
+      join(lib, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ES2022',
+          lib: ['ES2022', 'DOM'],
+          module: 'nodenext',
+          moduleResolution: 'nodenext',
+          strict: true,
+          verbatimModuleSyntax: true,
+          noEmit: true,
+          skipLibCheck: true,
+          paths: { '@getvalence/bridge': [BRIDGE_SRC.replaceAll('\\', '/')] },
+        },
+        include: ['bridge.g.ts'],
+      }),
+    );
+    execSync(`"${TSC}" -p tsconfig.json`, { cwd: lib, stdio: 'pipe' });
+  },
+);
+
 // ---------- generated Dart ----------
 
-const hasDart = (() => {
+const hasFlutter = (() => {
   try {
-    execSync('dart --version', { stdio: 'ignore' });
+    execSync('flutter --version', { stdio: 'ignore' });
     return true;
   } catch {
     return false;
   }
 })();
 
-test('generated Dart analyzes cleanly and dispatch behaves per contracts §4.2', { skip: !hasDart && 'dart is not on PATH' }, () => {
-  const { root, cfg } = fixture();
-  editSchema(root, (s) => {
-    s.types.Empty = {};
-    s.methods['x.edge'] = { since: 1, params: { blobs: 'json[]?', rows: 'Row[]?', type: 'string', empty: 'Empty?' }, returns: 'Row[]?' };
-    s.events['x.rowAdded'] = { since: 1, payload: { row: 'Row', more: 'Row[]?' } };
-  });
-  codegen({ root, cfg });
-  const dir = join(root, cfg.host.dir, 'lib', 'valence');
-  writeFileSync(join(dir, 'main.dart'), DART_MAIN);
-  execSync(`dart analyze --fatal-infos "${dir}"`, { stdio: 'pipe' });
-  const out = execSync(`dart run "${join(dir, 'main.dart')}"`, { encoding: 'utf8' });
-  assert.match(out, /ALL OK/);
-});
+const PKG = join(import.meta.dirname, '..', '..', '..', '..', 'packages', 'valence').replaceAll('\\', '/');
 
-const DART_MAIN = `
+// The generated Dart imports package:valence, and ValenceConfig and Valence are Flutter types, so the
+// compile gate is a throwaway Flutter project with a path dependency on the package in this repo, not
+// `dart run` on a loose file. `--offline` keeps it off the network; the package's own pub get fills the
+// cache. The behaviour below is the same §4.2 matrix the generated dispatcher has always had to satisfy.
+test(
+  'generated Dart analyzes cleanly against the package, and dispatch behaves per contracts §4.2',
+  { skip: !hasFlutter && 'flutter is not on PATH', timeout: 600_000 },
+  () => {
+    const { root, cfg } = fixture({ latest: true });
+    cfg.plugins = ['probe.json'];
+    const plugin = probePlugin();
+    plugin.methods['probe.ping'] = { since: 1, params: {}, returns: 'void' };
+    writeFileSync(join(root, 'probe.json'), JSON.stringify(plugin));
+    editSchema(root, (s) => {
+      s.types.Empty = {};
+      s.methods['x.edge'] = { since: 1, params: { blobs: 'json[]?', rows: 'Row[]?', type: 'string', empty: 'Empty?' }, returns: 'Row[]?' };
+      s.methods['notify.daily'] = { since: 1, retired: true, params: { hour: 'int' }, returns: 'void' };
+      s.events['x.rowAdded'] = { since: 1, payload: { row: 'Row', more: 'Row[]?' } };
+    });
+    codegen({ root, cfg });
+    const app = join(root, cfg.host.dir);
+    const legacy = fixture({ latest: true });
+    editSchema(legacy.root, s => {
+      s.events['notify.tapped'] = { since: 1, payload: { id: 'string', payload: 'string?' } };
+      delete s.events['notify.action'];
+    });
+    codegen(legacy);
+    const legacyLib = join(app, 'lib/legacy');
+    mkdirSync(legacyLib, { recursive: true });
+    cpSync(join(legacy.root, legacy.cfg.host.dir, 'lib/valence'), join(legacyLib, 'valence'), { recursive: true });
+    // Compile the documented adapter against an actual generated string-ID event.
+    const guide = readFileSync(join(import.meta.dirname, '../../../../docs/local-notifications.md'), 'utf8');
+    writeFileSync(join(legacyLib, 'adapter.dart'), guide.match(/```dart\r?\n([\s\S]*?)```/)[1]);
+    writeFileSync(join(app, 'pubspec.yaml'), PROBE_PUBSPEC);
+    writeFileSync(join(app, 'analysis_options.yaml'), 'include: package:flutter_lints/flutter.yaml\n');
+    mkdirSync(join(app, 'test'), { recursive: true });
+    writeFileSync(join(app, 'test', 'dispatch_test.dart'), DART_TEST);
+    execSync('flutter pub get --offline', { cwd: app, stdio: 'pipe' });
+    const dependencies = JSON.parse(readFileSync(join(app, '.dart_tool/package_config.json'), 'utf8')).packages.map((p) => p.name);
+    assert.equal(dependencies.some((name) => name.startsWith('firebase_')), false, 'a core-only host must not resolve Firebase');
+    assert.equal(dependencies.includes('valence_push'), false, 'push transport is a native package opt-in');
+    // The generated code is held to the analyzer's strictest setting, because an app's CI will be.
+    execSync(`dart analyze --fatal-infos "${join(app, 'lib')}"`, { stdio: 'pipe' });
+    assert.match(execSync('flutter test', { cwd: app, encoding: 'utf8' }), /All tests passed/);
+  },
+);
+
+const PROBE_PUBSPEC = `name: valence_probe
+publish_to: none
+environment:
+  sdk: ^3.6.0
+dependencies:
+  flutter:
+    sdk: flutter
+  valence:
+    path: ${PKG}
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  sqflite_common_ffi: ^2.4.4
+`;
+
+// Implements BridgeHandlers directly rather than extending the generated ValenceBuiltins: what is under
+// test here is the generated marshalling, and ValenceBuiltins would need a live runtime behind it. The
+// example app covers the other direction — the built-ins reaching the package for real.
+const DART_TEST = `
 import 'dart:convert';
+import 'dart:io';
 
-import 'bridge.g.dart';
-import 'config.g.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:valence/valence.dart';
+import 'package:valence_probe/valence/bridge.g.dart';
+import 'package:valence_probe/valence/config.g.dart';
+import 'package:valence_probe/legacy/adapter.dart' as legacy;
 
-final class H implements BridgeHandlers {
+final class H with BridgeHandlersDefaults {
+  @override
+  Future<List<ProbeRow>?> probeRead(ProbeReadParams p) async => null;
   @override
   Future<void> appReady() async {}
   @override
@@ -372,10 +2149,12 @@ final class H implements BridgeHandlers {
   Future<List<Row>> dataList(DataListParams p) async => [Row(key: p.prefix ?? '-', value: p.limit, usn: 1)];
   @override
   Future<void> dataPut(DataPutParams p) async {
-    if (!valenceWritableBuckets.contains(p.bucket)) throw const BridgeError('E_DENIED', 'read-only bucket');
+    if (!valenceConfig.writableBuckets.contains(p.bucket)) {
+      throw const BridgeError(BridgeErrorCode.denied, 'read-only bucket');
+    }
   }
   @override
-  Future<SyncResult> syncNow(SyncNowParams p) async => SyncResult(buckets: p.buckets ?? const [], changed: 0, offline: true);
+  Future<SyncResult> syncNow(SyncNowParams p) async => SyncResult(buckets: p.buckets ?? const [], changed: 0, offline: true, reason: 'offline');
   @override
   Future<String?> prefsGet(PrefsGetParams p) async => null;
   @override
@@ -385,47 +2164,355 @@ final class H implements BridgeHandlers {
   @override
   Future<void> bundleApplyUpdate() async {}
   @override
+  Future<String?> secureGet(SecureGetParams p) async => null;
+  @override
+  Future<void> secureSet(SecureSetParams p) async {}
+  @override
+  Future<void> secureDelete(SecureDeleteParams p) async {}
+  @override
+  Future<void> authSetToken(AuthSetTokenParams p) async {}
+  @override
+  Future<bool> authHasToken() async => true;
+  @override
+  Future<HttpResponse> httpRequest(HttpRequestParams p) async => const HttpResponse(status: 200, headers: {}, body: 'ok');
+  @override
   Future<List<Row>?> xEdge(XEdgeParams p) async => p.blobs == null ? null : [Row(key: p.type, value: p.blobs, usn: p.rows?.length ?? 0)];
+  // A legal queue at the cap: 64 requests at the §6.5 title/body/payload byte limits.
+  @override
+  Future<List<NotifyPending>> notifyPending() async => [
+        for (var i = 0; i < 64; i++)
+          NotifyPending(id: i, title: 'a' * 256, body: 'b' * 4096, payload: 'c' * 4096),
+      ];
+  @override
+  Future<List<int>> notifyPendingIds() async => [for (var i = 0; i < 64; i++) i];
 }
 
-const n = 'n1';
-Future<Map<String, Object?>> call(String raw) async => jsonDecode(await bridgeDispatch(H(), raw, nonce: n)) as Map<String, Object?>;
-String code(Map<String, Object?> r) => (r['e'] as Map)['code'] as String;
+Future<Map<String, Object?>> call(String raw) async =>
+    jsonDecode(await bridgeDispatch(H(), raw, nonce: 'n1')) as Map<String, Object?>;
+String code(Map<String, Object?> r) => (r['e']! as Map)['code'] as String;
 
-void check(bool ok, String what) {
-  if (!ok) throw StateError('FAILED: \$what');
+class _Probe implements ValencePlugin {
+  int calls = 0;
+  @override
+  String get namespace => 'probe';
+  @override
+  Set<String> get methods => {'probe.read', 'probe.hidden', 'probe.ping'};
+  @override
+  Future<Object?> invoke(Valence valence, String method, Map<String, Object?> params) async {
+    calls++;
+    if (method == 'probe.ping') return 'not void';
+    if (params['key'] == 'denied') throw const BridgeError('E_DENIED', 'plugin denied');
+    if (params['key'] == 'params') throw const BridgeError('E_PARAMS', 'plugin params');
+    if (params['key'] == 'none') return null;
+    if (params['key'] == 'bad') return [{'label': 12, 'count': 1}];
+    return [{'label': params['key'], 'count': 1}];
+  }
+}
+class _PluginHandlers extends ValenceBuiltins implements BridgeHandlers {
+  _PluginHandlers(Valence runtime, _Probe? plugin) : super(runtime, plugins: [if (plugin != null) plugin]);
+  @override
+  Future<List<Row>?> xEdge(XEdgeParams p) async => null;
 }
 
-Future<void> main() async {
-  var r = await call('{"id":1,"n":"n1","m":"data.get","p":{"bucket":"calendar","key":"2026-01"}}');
-  check(r['ok'] == true && (r['v'] as Map)['line'] == '\\u2028"', 'data.get round trip incl. U+2028 and quote');
-  r = await call('{"id":1,"m":"data.get","p":{"bucket":"calendar","key":"x"}}');
-  check(code(r) == 'E_DENIED', 'missing nonce');
-  r = await call('{"id":1,"n":"guess","m":"app.info"}');
-  check(code(r) == 'E_DENIED', 'wrong nonce');
-  r = await call('{"id":2,"n":"n1","m":"nope.nope","p":{}}');
-  check(code(r) == 'E_UNKNOWN', 'unknown method');
-  r = await call('{"id":3,"n":"n1","m":"data.get","p":{"bucket":1,"key":"x"}}');
-  check(code(r) == 'E_PARAMS', 'wrong param type');
-  r = await call('{"id":4,"n":"n1","m":"data.get","p":{"bucket":"a","key":"b","evil":1}}');
-  check(code(r) == 'E_PARAMS', 'unknown field');
-  r = await call('{"id":5,"n":"n1","m":"data.put","p":{"bucket":"calendar","key":"k","value":1}}');
-  check(code(r) == 'E_DENIED', 'read-only bucket');
-  r = await call('{"id":6,"n":"n1","m":"data.list","p":{"bucket":"b","limit":2}}');
-  check(((r['v'] as List).first as Map)['value'] == 2, 'list of typed rows');
-  r = await call('{"id":7,"n":"n1","m":"sync.now"}');
-  check(r['ok'] == true && (r['v'] as Map)['offline'] == true, 'missing p means empty params');
-  r = await call('not json');
-  check(code(r) == 'E_PARAMS' && r['id'] == null, 'garbage input');
-  r = await call('{"id":8,"n":"n1","m":"app.ready","p":{"x":1}}');
-  check(code(r) == 'E_PARAMS', 'no-param method rejects fields');
-  r = await call('{"id":9,"n":"n1","m":"x.edge","p":{"type":"t","blobs":null}}');
-  check(r['ok'] == true && r['v'] == null, 'json[]? accepts null');
-  r = await call('{"id":10,"n":"n1","m":"x.edge","p":{"type":"t","blobs":[1,{"a":null}],"rows":[{"key":"k","value":1,"usn":1}],"empty":{}}}');
-  check(((r['v'] as List).first as Map)['usn'] == 1, 'Row[]? and Empty? decode');
-  check(BridgeEvents.syncChanged(buckets: ['a']) == 'window.__valence&&window.__valence.e("sync.changed",{"buckets":["a"]})', 'event script');
-  check(BridgeEvents.xRowAdded(row: const Row(key: 'k', value: null, usn: 1), more: null).contains('"more":null'), 'custom-type event payload');
-  check(bridgeReplyScript('{}') == 'window.__valence&&window.__valence.r({})', 'reply script');
-  print('ALL OK');
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  test('documented adapter uses the generated frozen string-ID builder for warm and cold values', () {
+    final payload = jsonEncode({'id': 'original-id', 'p': 'unit-0101'});
+    final response = <String, Object?>{'id': 1885662976, 'payload': payload, 'action': null};
+    expect(legacy.legacyTap(response), {'id': 'original-id', 'payload': payload});
+    final script = legacy.legacyTapScript(response)!;
+    final args = jsonDecode('[' + script.substring(script.indexOf('(') + 1, script.lastIndexOf(')')) + ']') as List;
+    expect(args, ['notify.tapped', {'id': 'original-id', 'payload': payload}]);
+    expect(legacy.legacyTapScript({...response, 'action': 'done'}), isNull);
+    expect(legacy.legacyTapScript({...response, 'payload': '{'}), isNull);
+  });
+  test('plugin delegation stays behind strict nonce/parameter decoding and decodes results', () async {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    final support = await Directory.systemTemp.createTemp('valence-plugin-probe');
+    final runtime = await Valence.open(valenceConfig, supportDir: support, log: (_) {});
+    final plugin = _Probe();
+    final h = _PluginHandlers(runtime, plugin);
+    Future<Map<String, Object?>> send(String method, Object? params, [String nonce = 'n1']) async =>
+        jsonDecode(await bridgeDispatch(h, jsonEncode({'id': 1, 'n': nonce, 'm': method, 'p': params}), nonce: 'n1')) as Map<String, Object?>;
+    expect(code(await send('probe.read', {'key': 'ok'}, 'wrong')), 'E_DENIED');
+    expect(code(await send('probe.read', {'key': 1})), 'E_PARAMS');
+    expect(code(await send('probe.read', {'key': 'ok', 'extra': true})), 'E_PARAMS');
+    expect(code(await send('probe.hidden', {})), 'E_UNKNOWN');
+    expect(plugin.calls, 0);
+    expect((await send('probe.read', {'key': 'ok'}))['v'], [{'label': 'ok', 'count': 1}]);
+    expect((await send('probe.read', {'key': 'none'}))['v'], isNull);
+    expect(code(await send('probe.read', {'key': 'bad'})), 'E_INTERNAL');
+    expect(code(await send('probe.ping', {})), 'E_INTERNAL');
+    expect(code(await send('probe.read', {'key': 'denied'})), 'E_DENIED');
+    expect(code(await send('probe.read', {'key': 'params'})), 'E_PARAMS');
+    expect(hostPluginNamespaces, {'probe'});
+    expect(hostPluginMethods, {'probe.read', 'probe.ping'});
+    expect(() => _PluginHandlers(runtime, null), throwsStateError);
+    expect(BridgeEvents.probeChanged(row: const ProbeRow(label: 'ok', count: 1)), contains('probe.changed'));
+  });
+  test('a retired method is answered by the generated built-ins, not by the app', () async {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    final support = await Directory.systemTemp.createTemp('valence-retired');
+    final runtime = await Valence.open(valenceConfig, supportDir: support, log: (_) {});
+    final h = _PluginHandlers(runtime, _Probe());
+    final r = jsonDecode(await bridgeDispatch(
+        h, '{"id":1,"n":"n1","m":"notify.daily","p":{"hour":7}}', nonce: 'n1')) as Map<String, Object?>;
+    expect(code(r), 'E_UNSUPPORTED');
+    expect((r['e']! as Map)['message'], contains('retired'));
+    // Strict decoding still runs first: retirement changes the answer, not the wire contract.
+    expect(code(jsonDecode(await bridgeDispatch(
+        h, '{"id":1,"n":"n1","m":"notify.daily","p":{}}', nonce: 'n1')) as Map<String, Object?>), 'E_PARAMS');
+  });
+  test('new methods default to E_UNSUPPORTED through strict dispatch', () async {
+    expect(code(await call('{"id":1,"n":"n1","m":"sync.status","p":{}}')), 'E_UNSUPPORTED');
+    expect(code(await call('{"id":1,"n":"n1","m":"data.getMany","p":{"bucket":"calendar","keys":[3]}}')), 'E_PARAMS');
+  });
+  test('the generated config is wired to the generated bridge version', () {
+    expect(valenceConfig.bridgeVersion, hostBridgeVersion);
+    expect(valenceConfig.notificationEventFields, hostNotificationEventFields);
+    expect(hostNotificationEventFields['notify.tapped'], {'id', 'payload', 'action'});
+  });
+
+  test('CLI and runtime reserve the same plugin namespaces', () {
+    expect(ValencePluginRegistry.reservedNamespaces,
+        unorderedEquals(${JSON.stringify([...PLUGIN_RESERVED])}));
+  });
+
+  test('a reply round-trips, escaping U+2028 and quotes', () async {
+    final r = await call('{"id":1,"n":"n1","m":"data.get","p":{"bucket":"calendar","key":"2026-01"}}');
+    expect(r['ok'], isTrue, reason: '\${r['e']}');
+    expect((r['v']! as Map)['line'], '\\u2028"');
+  });
+
+  test('a missing or wrong nonce is denied', () async {
+    expect(code(await call('{"id":1,"m":"data.get","p":{"bucket":"calendar","key":"x"}}')), BridgeErrorCode.denied);
+    expect(code(await call('{"id":1,"n":"guess","m":"app.info"}')), BridgeErrorCode.denied);
+  });
+
+  test('an unknown method is E_UNKNOWN', () async {
+    expect(code(await call('{"id":2,"n":"n1","m":"nope.nope","p":{}}')), BridgeErrorCode.unknown);
+  });
+
+  test('bad params are E_PARAMS, and so is an unknown field', () async {
+    expect(code(await call('{"id":3,"n":"n1","m":"data.get","p":{"bucket":1,"key":"x"}}')), BridgeErrorCode.params);
+    expect(code(await call('{"id":4,"n":"n1","m":"data.get","p":{"bucket":"a","key":"b","evil":1}}')), BridgeErrorCode.params);
+    expect(code(await call('{"id":8,"n":"n1","m":"app.ready","p":{"x":1}}')), BridgeErrorCode.params);
+    expect(code(await call('not json')), BridgeErrorCode.params);
+    expect((await call('not json'))['id'], isNull);
+  });
+
+  test('a handler may deny, and a typed list comes back typed', () async {
+    expect(code(await call('{"id":5,"n":"n1","m":"data.put","p":{"bucket":"calendar","key":"k","value":1}}')), BridgeErrorCode.denied);
+    final r = await call('{"id":6,"n":"n1","m":"data.list","p":{"bucket":"b","limit":2}}');
+    expect(((r['v']! as List).first as Map)['value'], 2);
+  });
+
+  test('a missing p means empty params', () async {
+    final r = await call('{"id":7,"n":"n1","m":"sync.now"}');
+    expect((r['v']! as Map)['offline'], isTrue);
+  });
+
+  test('the §4.4 built-ins are marshalled like any other', () async {
+    // The delegation itself is the example app's test; here it is the generated params and reply.
+    final has = await call('{"id":11,"n":"n1","m":"auth.hasToken"}');
+    expect(has['v'], isTrue);
+    final cleared = await call('{"id":12,"n":"n1","m":"auth.setToken","p":{"token":null}}');
+    expect(cleared['ok'], isTrue, reason: '\${cleared['e']}');
+    // secure.set takes a non-null value: secure.delete is the only delete (§4.4).
+    expect(code(await call('{"id":13,"n":"n1","m":"secure.set","p":{"key":"k","value":null}}')), BridgeErrorCode.params);
+  });
+
+  test('nullable lists, nullable list returns and an empty type decode', () async {
+    final none = await call('{"id":9,"n":"n1","m":"x.edge","p":{"type":"t","blobs":null}}');
+    expect(none['ok'], isTrue, reason: '\${none['e']}');
+    expect(none['v'], isNull);
+    final some = await call('{"id":10,"n":"n1","m":"x.edge","p":{"type":"t","blobs":[1,{"a":null}],"rows":[{"key":"k","value":1,"usn":1}],"empty":{}}}');
+    expect(((some['v']! as List).first as Map)['usn'], 1);
+  });
+
+  test('a full pending queue is over the reply cap, and its IDs are not', () async {
+    // R28: 64 x (256 + 4096 + 4096) bytes of fields cannot come back through the 262,144-byte cap, so
+    // the only documented way to discover pending IDs was unusable exactly on the apps that schedule
+    // the most. notify.pending keeps every field it has; notify.pendingIds answers the reconciliation.
+    expect(code(await call('{"id":30,"n":"n1","m":"notify.pending","p":{}}')), BridgeErrorCode.tooLarge);
+    final ids = await call('{"id":31,"n":"n1","m":"notify.pendingIds","p":{}}');
+    expect(ids['ok'], isTrue, reason: '\${ids['e']}');
+    expect(ids['v'], List<int>.generate(64, (i) => i));
+    expect(code(await call('{"id":32,"n":"n1","m":"notify.pendingIds","p":{"x":1}}')), BridgeErrorCode.params);
+  });
+
+  test('event scripts are built by the package', () {
+    expect(
+      BridgeEvents.syncChanged(buckets: ['a']),
+      'window.__valence&&window.__valence.e("sync.changed",{"buckets":["a"]})',
+    );
+    expect(BridgeEvents.xRowAdded(row: const Row(key: 'k', value: null, usn: 1), more: null), contains('"more":null'));
+  });
 }
 `;
+
+// Native HTTP policy is compiled into the host, not inferred from an OTA CSP.
+test('codegen freezes native HTTP shape and compiles only exact http.origins', () => {
+  const { root, cfg } = fixture();
+  cfg.http = { origins: [] };
+  cfg.http.origins = ['https://API.example.com:443', 'http://127.0.0.1:8787'];
+  codegen({ root, cfg });
+  const config = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'config.g.dart'), 'utf8');
+  assert.match(config, /httpOrigins: \{'https:\/\/api.example.com', 'http:\/\/127.0.0.1:8787'\}/);
+  for (const origin of ['https://api.test/path', 'https://user@api.test', 'https://*.test', 'file:///tmp', 'https://api.test?x=1', 'https://api.test/#', 'https://api.test/..']) {
+    cfg.http.origins = [origin];
+    assert.throws(() => codegen({ root, cfg }), /exact HTTP/);
+  }
+  cfg.http.origins = [];
+  editSchema(root, (s) => (s.methods['http.request'].params.body = 'json?'));
+  assert.throws(() => codegen({ root, cfg }), /must stay/);
+});
+
+
+test('legacy CSP origins do not grant native credentials or break codegen', () => {
+  const { root, cfg } = fixture();
+  cfg.web.connect = ['https://analytics.example.test/collect', 'https://maps.example.test'];
+  codegen({ root, cfg });
+  const config = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'config.g.dart'), 'utf8');
+  assert.match(config, /httpOrigins: \{\}/);
+  assert.ok(!config.includes('analytics.example.test'));
+  assert.ok(!config.includes('maps.example.test'));
+});
+
+
+test('R3 codegen compiles only configured permission kinds and freezes built-in shapes', () => {
+  const { root, cfg } = fixture({ latest: true });
+  cfg.permissions = { kinds: ['camera', 'photos'] };
+  codegen({ root, cfg });
+  const config = readFileSync(join(root, cfg.host.dir, 'lib/valence/config.g.dart'), 'utf8');
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(config, /permissionKinds: \{'camera', 'photos'\}/);
+  assert.match(dart, /valence.permissions.request\(p.kind\)/);
+  for (const kinds of [['camera', 'camera'], ['storage'], 'camera', [null]]) {
+    cfg.permissions = { kinds };
+    assert.throws(() => codegen({ root, cfg }), /permissions.kinds/);
+  }
+  cfg.permissions = { kinds: [] };
+  editSchema(root, (s) => { s.methods['permissions.request'].returns = 'bool'; });
+  assert.throws(() => codegen({ root, cfg }), /permissions.request/);
+});
+
+test('notification builtins are frozen and compiled opt-in validates drawable names', () => {
+  const { root, cfg } = fixture({ latest: true });
+  cfg.notifications = { enabled: true, icon: 'ic_stat_demo' };
+  const result = codegen({ root, cfg });
+  const config = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'config.g.dart'), 'utf8');
+  assert.match(config, /notificationsEnabled: true/);
+  assert.match(config, /notificationIcon: 'ic_stat_demo'/);
+  cfg.notifications.icon = '../secret';
+  assert.throws(() => codegen({ root, cfg }), /notifications accepts/);
+  cfg.notifications.icon = 'ic_stat_demo';
+  editSchema(root, (s) => { s.methods['notify.schedule'].params.at = 'string'; });
+  assert.throws(() => codegen({ root, cfg }), /params must stay/);
+});
+
+
+test('notify.pendingIds is a schema-16 built-in that returns bare IDs and cannot be reshaped', () => {
+  const { root, cfg, key } = fixture({ latest: true });
+  cfg.notifications = { enabled: true, icon: 'ic_stat_demo' };
+  const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
+  assert.equal(schema.version, 16);
+  assert.equal(schema.methods['notify.pendingIds'].since, 16);
+  // notify.pending keeps every field it has: an app that reads it still gets titles and payloads.
+  assert.equal(schema.methods['notify.pending'].returns, 'NotifyPending[]');
+  codegen({ root, cfg });
+  assert.match(
+    readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8'),
+    /Future<List<int>> notifyPendingIds\(\) async \{\s*return valence\.notifications\.pendingIds\(\);/,
+  );
+  assert.match(readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8'), /'notify.pendingIds': 16,/);
+  // A store build at 16 records it, so it may not then be renamed into something the runtime does not have.
+  bundle({ root, cfg, key, store: true, now: NOW });
+  editSchema(root, (s) => { s.methods['notify.pendingIds'].returns = 'NotifyPending[]'; });
+  assert.throws(() => codegen({ root, cfg }), /must return int\[\]|changed|additive|shipped/);
+  editSchema(root, (s) => { s.methods['notify.pendingIds'].returns = 'int[]'; s.methods['notify.pendingIds'].params = { after: 'int?' }; });
+  assert.throws(() => codegen({ root, cfg }), /must stay|changed|additive|shipped/);
+});
+
+for (const since of [1, 10]) test(`schema-${since} custom notification names retain app-owned shapes`, () => {
+  const { root, cfg, key } = fixture();
+  editSchema(root, (s) => {
+    s.version = Math.max(s.version, since);
+    s.methods['notify.schedule'] = { since, params: { hour: 'int' }, returns: 'void' };
+  });
+  codegen({ root, cfg });
+  const source = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(source, /Future<void> notifySchedule/);
+  assert.doesNotMatch(source, /valence.notifications.schedule/);
+  // Freezing that old signature remains enforced by the additive baseline.
+  bundle({ root, cfg, key, store: true, now: NOW });
+  editSchema(root, (s) => { s.methods['notify.schedule'].params.hour = 'string'; });
+  assert.throws(() => codegen({ root, cfg }), /changed|additive|shipped/);
+});
+
+test('push builtins freeze permission and nullable initial-message shapes', () => {
+  const { root, cfg } = fixture({ latest: true });
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(dart, /Future<PushMessage\?> pushInitial\(\)/);
+  assert.match(dart, /valence.pushPermission\(request: p.request \?\? false\)/);
+  editSchema(root, (s) => { s.methods['push.initial'].returns = 'PushMessage'; });
+  assert.throws(() => codegen({ root, cfg }), /must return/);
+  editSchema(root, (s) => { s.methods['push.initial'].returns = 'PushMessage?'; s.methods['push.permission'].params.request = 'string?'; });
+  assert.throws(() => codegen({ root, cfg }), /must stay/);
+});
+
+test('push uses reserved schema 12 while older app-owned push shapes remain custom', () => {
+  const { root, cfg } = fixture({ latest: true });
+  const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
+  assert.equal(schema.version, 16);
+  assert.equal(schema.methods['auth.account'].since, 13);
+  for (const group of ['methods', 'events']) {
+    for (const [name, def] of Object.entries(schema[group])) {
+      if (name.startsWith('push.')) assert.equal(def.since, 12, name);
+    }
+  }
+  codegen({ root, cfg });
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  assert.match(ts, /'push.token': 12/);
+  assert.match(ts, /'push.permission': 12/);
+  assert.match(ts, /'push.initial': 12/);
+  editSchema(root, (s) => {
+    s.version = 11;
+    delete s.types.AppInfo.builtins;
+    delete s.methods['notify.pendingIds'];
+    delete s.methods['share.image'];
+    delete s.methods['auth.account'];
+    delete s.methods['auth.setToken'].params.account;
+    delete s.methods['auth.setToken'].params.discardPending;
+    for (const group of ['methods', 'events']) {
+      for (const name of Object.keys(s[group])) if (name.startsWith('push.')) delete s[group][name];
+    }
+    delete s.types.PushMessage;
+    s.methods['push.token'] = { since: 11, params: { provider: 'string' }, returns: 'bool' };
+  });
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(dart, /Future<bool> pushToken\(PushTokenParams p\)/);
+  assert.doesNotMatch(dart, /valence.pushToken\(/);
+});
+
+ test('schema 16 pending IDs are additive, shape-frozen and delegated', () => {
+  const { root, cfg, key } = fixture({ latest: true });
+  const latest = readFileSync(schemaFile(root), 'utf8');
+  editSchema(root, s => { s.version = 15; delete s.methods['notify.pendingIds']; });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  writeFileSync(schemaFile(root), latest);
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+  assert.match(dart, /return valence.notifications.pendingIds\(\)/);
+  assert.match(ts, /'notify.pendingIds': 16/);
+  editSchema(root, s => { s.methods['notify.pendingIds'].returns = 'string[]'; });
+  assert.throws(() => codegen({ root, cfg }), /must return/);
+  writeFileSync(schemaFile(root), latest);
+  editSchema(root, s => { s.methods['notify.pendingIds'].since = 15; });
+  assert.throws(() => codegen({ root, cfg }), /since|below/);
+});

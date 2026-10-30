@@ -23,6 +23,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
   keygen,
   codegen,
+  diagnose,
   loadConfig,
   main as cli,
   verifyBundle,
@@ -36,9 +37,17 @@ const NPX = `npx ${NPM}@latest`;
 const SKILL_SRC = join(PKG, '.claude', 'skills', 'valence');
 const AGENTS_SRC = join(PKG, '.claude', 'agents');
 const AGENT_PREFIX = 'valence-';
-const CLI = new Set(['keygen', 'codegen', 'bundle', 'verify', 'pointer', 'seed', 'version']);
+const CLI = new Set(['dev', 'keygen', 'codegen', 'bundle', 'verify', 'pointer', 'seed', 'version', 'assetlinks', 'aasa']);
+// The two published runtimes the generated code imports. Their version is deliberately independent of
+// this CLI's: a fix to a runtime ships with "flutter pub upgrade" or "npm update", with no new wizard.
+// A test keeps it equal to both packages/*/ versions in this repo.
+const RUNTIME_VERSION = '0.4.0-beta.0';
+const BRIDGE_PKG = '@getvalence/bridge';
+const HOST_PKG = 'valence';
+// pnpm, yarn and bun all take "add"; npm is the odd one.
+const PM_ADD = { npm: 'install', pnpm: 'add', yarn: 'add', bun: 'add' };
 // String options of both the wizard and valence.mjs, so the command word is found wherever it appears.
-const STRING_OPTS = Object.fromEntries('root web host app-id ota sync key-dir channel seq rollout from manifest files key floor requires-bridge'.split(' ').map((k) => [k, { type: 'string' }]));
+const STRING_OPTS = Object.fromEntries('root web host app-id ota sync key-dir channel seq rollout from manifest files key floor requires-bridge package fingerprints out web-dir port device-host'.split(' ').map((k) => [k, { type: 'string' }]));
 // example/ and examples/ hold plugin demo apps, which must not be taken for the host.
 const SKIP_DIRS = new Set(['node_modules', 'build', 'dist', 'out', 'android', 'ios', 'valence', 'vendor', 'target', 'example', 'examples']);
 const APP_ID_RE = /^[a-zA-Z]\w*(\.[a-zA-Z]\w*)+$/;
@@ -162,6 +171,48 @@ export function detectAppId(root, host, webName) {
   }
   const slug = String(webName ?? 'app').replace(/^@[^/]+\//, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
   return `com.${/^[a-z]/.test(slug) ? slug : `app${slug}`}.app`;
+}
+
+// The web app's package.json, found by walking up from the directory the generated client goes in: the
+// config records where generated files land, not where the web project root is.
+function webPackageJson(root, cfg) {
+  let dir = join(root, cfg.web.lib);
+  for (;;) {
+    if (existsSync(join(dir, 'package.json'))) return join(dir, 'package.json');
+    const up = dirname(dir);
+    if (up === dir || !up.startsWith(root)) return undefined;
+    dir = up;
+  }
+}
+
+/**
+ * Declares @getvalence/bridge in the web app's package.json.
+ *
+ * The runtime used to be copied in as client.ts, which meant every app carried its own copy and a fix
+ * reached nobody. Declaring it is what makes the generated bridge.g.ts importable.
+ *
+ * ponytail: the dependency is declared, not installed. Running a package manager from inside an npx
+ * wizard is slow, needs the network, and fights whatever install the user is about to run anyway — so
+ * the install command is printed instead, and codegen does not depend on it having happened.
+ */
+export function addBridgeDependency(root, cfg) {
+  const file = webPackageJson(root, cfg);
+  if (file === undefined) return { file };
+  const raw = readFileSync(file, 'utf8');
+  const pkg = JSON.parse(raw);
+  const had = pkg.dependencies?.[BRIDGE_PKG] ?? pkg.devDependencies?.[BRIDGE_PKG];
+  if (had !== undefined) return { file, had };
+  const range = `^${RUNTIME_VERSION}`;
+  pkg.dependencies = { ...pkg.dependencies, [BRIDGE_PKG]: range };
+  // Their indentation, not ours: this is a file the project owns and reads in diffs.
+  writeFileSync(file, JSON.stringify(pkg, null, raw.match(/^[ \t]+/m)?.[0] ?? 2) + '\n');
+  return { file, added: range };
+}
+
+// The lockfile nearest the web app wins, then the repo root's, then npm.
+function packageManager(root, pkgFile) {
+  const dirs = [pkgFile === undefined ? root : dirname(pkgFile), root];
+  return dirs.flatMap((d) => LOCKS.filter(([f]) => existsSync(join(d, f))).map(([, n]) => n))[0] ?? 'npm';
 }
 
 function tool(cmd, cwd) {
@@ -364,7 +415,7 @@ async function init(o) {
       const config = {
         appId,
         keyId: 'k1',
-        web: { out: web.out, lib: web.lib, routes: web.routes, entry: 'index.html' },
+        web: { out: web.out, lib: web.lib, routes: web.routes, entry: 'index.html', connect: [] },
         host: { dir: host },
         ota: { base: ota },
         sync: syncBase ? { base: syncBase } : {},
@@ -382,7 +433,10 @@ async function init(o) {
     if (valenceState === 'kept') warn('valence.mjs', `kept your copy (v${vendoredVersion(valencePath)}); run "${NPX} update" to replace it`);
     else ok('valence.mjs', `valence/valence.mjs v${VALENCE_VERSION}`);
     if (writeIfMissing(join(root, 'valence', 'bridge.schema.json'), readFileSync(join(SKILL_SRC, 'templates', 'bridge.schema.json')))) ok('bridge schema', 'valence/bridge.schema.json');
-    if (writeIfMissing(join(root, cfg.web.lib, 'client.ts'), readFileSync(join(SKILL_SRC, 'templates', 'client.ts')))) ok('web client', `${cfg.web.lib}/client.ts`);
+    const dep = addBridgeDependency(root, cfg);
+    if (dep.file === undefined) warn('web bridge', `no package.json above ${cfg.web.lib}; add ${BRIDGE_PKG} yourself`);
+    else if (dep.added) ok('web bridge', `${BRIDGE_PKG} ${dep.added} in ${posix(relative(root, dep.file))}`);
+    else ok('web bridge', `${BRIDGE_PKG} ${dep.had} already in ${posix(relative(root, dep.file))}`);
     const attrs = ensureLines(join(root, '.gitattributes'), gitattributes(cfg.host.dir));
     const ignores = ensureLines(join(root, '.gitignore'), ['.valence/dist-ota/']);
     if (attrs || ignores) ok('git config', `.gitattributes +${attrs}, .gitignore +${ignores}`);
@@ -411,18 +465,31 @@ async function init(o) {
     } else {
       const gen = codegen({ root, cfg });
       ok('codegen', gen.written.length ? gen.written.map((f) => posix(relative(root, f))).join(', ') : 'up to date');
+      for (const w of gen.warnings) warn('codegen', w);
     }
 
-    console.log(`\n${bold('  Next')}  Claude Code builds the Flutter host runtime, wires the web app, runs the tests and an independent review.`);
+    const pm = packageManager(root, dep.file);
+    console.log(`\n${bold('  Install the two runtimes')}`);
+    console.log(`    ${bold(`${pm} ${PM_ADD[pm]}`)} ${dim('(in ' + (dep.file ? posix(relative(root, dirname(dep.file))) || '.' : '.') + ', for the web bridge)')}`);
+    console.log(`    ${bold(`flutter pub add ${HOST_PKG}`)} ${dim(`(in ${cfg.host.dir}/, once it exists — Claude does this)`)}`);
+    console.log(`\n${bold('  Next')}  Claude Code adds the host package, writes the ~20-line setup, wires your own bridge methods, runs the tests and an independent review.`);
     const command = 'claude "/valence init"';
+    // A skill installed during this run is not registered in a session that is already open, so /valence would
+    // come back unknown there. Say so, and name the alternative for anyone not using Claude Code at all.
+    const freshSession = [
+      dim('  That starts a new session, which matters: the skill was installed during this run, so'),
+      dim('  /valence is not registered in a session that is already open. Without Claude Code, add'),
+      dim('  the two runtimes above and follow https://getvalence.pages.dev/docs/getting-started/quick-start/'),
+      '',
+    ].join('\n');
     const claude = tool('claude --version', root);
     if (!claude) {
-      console.log(`  Install Claude Code (https://code.claude.com/docs), then run in this folder:\n\n    ${bold(command)}\n`);
+      console.log(`  Install Claude Code (https://code.claude.com/docs), then run in this folder:\n\n    ${bold(command)}\n${freshSession}`);
       return;
     }
     // claude is interactive: never start it without a terminal (CI, pipes).
     if (!o.launch || !interactive() || /^n/i.test(await ask('Launch Claude Code now? (Y/n)', 'Y'))) {
-      console.log(`  When you're ready, run in this folder:\n\n    ${bold(command)}\n`);
+      console.log(`  When you're ready, run in this folder:\n\n    ${bold(command)}\n${freshSession}`);
       return;
     }
     ask.close();
@@ -451,10 +518,13 @@ function update(o) {
   for (const f of s.backedUp) warn('removed', `${f} (no longer shipped; you had edited it, so it was renamed to .bak)`);
   if (attrs) ok('git config', `.gitattributes +${attrs}`);
   ok('codegen', gen.written.length ? gen.written.map((f) => posix(relative(root, f))).join(', ') : 'up to date');
+  // `update` is the fix for a generator older than the runtime, so it is also the best place to say a
+  // name still looks unrecognised — if one survives this run, updating was not what the schema needed.
+  for (const w of gen.warnings) warn('codegen', w);
   console.log(`\n  Review the diff, run your tests, and commit. ${dim('Then: claude "/valence doctor"')}\n`);
 }
 
-export function doctor(o) {
+export async function doctor(o) {
   const root = resolve(o.root);
   const rows = [];
   const check = (name, fn) => {
@@ -499,7 +569,11 @@ export function doctor(o) {
       if (missing.length) throw new Error(`missing: ${missing.join(' | ')} (${NPX} update adds them)`);
     });
   }
-  console.log(`\n${bold('Valence doctor')} ${dim('(quick checks; full audit: claude "/valence doctor")')}`);
+  if (cfg) rows.push(...await diagnose({ root, cfg, tests: o.tests, keyDir: o.keyDir }));
+  for (const row of rows) {
+    if (row[0] === 'FAIL' && !row[2].includes('Fix:')) row[2] += ' | Fix: correct the reported input, then rerun valence doctor';
+  }
+  console.log(`\n${bold('Valence doctor')} ${dim('(mechanical checks; device evidence still needs review)')}`);
   for (const [s, name, msg] of rows) say(s === 'PASS' ? green('✓') : s === 'WARN' ? yellow('!') : red('✗'), name, msg);
   console.log();
   if (rows.some(([s]) => s === 'FAIL')) process.exitCode = 1;
@@ -512,7 +586,7 @@ const HELP = `${bold('Valence')} ${VALENCE_VERSION}
                                     then launch Claude Code to build the Flutter host
   ${NPX} update    update the vendored CLI, skill and agents to this version
   ${NPX} doctor    quick health check (full audit: claude "/valence doctor")
-  ${NPX} <command> keygen | codegen | bundle | verify | pointer | seed | version
+  ${NPX} <command> dev | keygen | codegen | bundle | verify | pointer | seed | version | assetlinks | aasa
 
 Options for init
   -y, --yes          accept detected defaults, no prompts
@@ -545,6 +619,7 @@ export async function run(argv) {
       sync: { type: 'string' },
       global: { type: 'boolean', default: false },
       force: { type: 'boolean', default: false },
+      tests: { type: 'boolean', default: false },
       launch: { type: 'boolean', default: true },
       'key-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },

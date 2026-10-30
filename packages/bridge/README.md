@@ -1,0 +1,145 @@
+# @getvalence/bridge
+
+The web half of the [Valence](https://getvalence.pages.dev) typed bridge. Your web app calls native
+methods, subscribes to host events, and the **same build still runs as a plain website**.
+
+This package holds the runtime. The typed surface — which methods exist, what they take and return — is
+generated into `bridge.g.ts` by `valence codegen` from your `valence/bridge.schema.json`. You import from
+the generated file, not from here.
+
+```bash
+npm install @getvalence/bridge
+npx valence codegen
+```
+
+```ts
+import { call, connect, has, on, ready } from '$lib/valence/bridge.g';
+
+await connect();                                  // once at startup, before has()
+const plant = await call('data.get', { bucket: 'plants', key: 'fern' });
+const off = on('sync.changed', ({ buckets }) => refresh(buckets));
+on('sync.done', ({ result }) => setFreshness(result));          // every completed run, changed: 0 included
+on('app.lifecycle', ({ state }) => state === 'background' && saveDraft());
+on('app.online', ({ online }) => setBanner(!online));           // interface state, not reachability
+await ready();                                    // on every path that paints, once per page load
+```
+
+`connect()` asks the host which bridge version it has, so `has()` can tell you whether a method **or an
+event** added in a later release is available on *this* install. That is what lets one OTA bundle serve old
+and new hosts.
+
+Gate the *feature* behind an event rather than the subscription: `on()` for an event an older host has
+never heard of subscribes and then never fires, so the feature quietly stops happening with nothing to
+say so.
+
+```ts
+if (has('app.lifecycle')) on('app.lifecycle', ({ state }) => state === 'background' && saveDraft());
+else window.addEventListener('beforeunload', saveDraft);
+```
+
+## Running as a website
+
+Plugin fragments listed in config `plugins` are merged by codegen into the same
+`Methods`, `Events` and `METHOD_SINCE` tables. Use the generated client for plugin
+calls, `has()` on older store hosts, and `installShim` for web fallbacks. A matching
+npm types package can export the plugin method shapes for shim authors; it does
+not need a separate client. See [Writing a plugin](https://getvalence.pages.dev/docs/guides/plugins/).
+
+Outside the host there is no native side, so `call` routes to a shim you install. Anything unshimmed
+rejects with `E_UNSUPPORTED`.
+
+```ts
+import { inHost, installShim } from '$lib/valence/bridge.g';
+
+if (!inHost()) {
+  installShim({
+    'data.get': async ({ bucket, key }) => (await fetch(`/api/${bucket}/${key}`)).json(),
+    // A `string?` param is optional *and* nullable in TypeScript, so narrow with `== null`.
+    'prefs.set': async ({ key, value }) => {
+      if (value == null) localStorage.removeItem(`prefs:${key}`);
+      else localStorage.setItem(`prefs:${key}`, value);
+    },
+  });
+}
+```
+
+## API
+
+| Export | What it does |
+|---|---|
+| `call(method, params?)` | Sends one message and resolves its reply. `params` is required whenever any field is required. Rejects with `BridgeError`. |
+| `has(name)` | True when this host can serve that method **or emit that event**. Call `connect()` first. On the web: true for a method your shim implements, false for every event, since no host is there to emit one. Unknown names are `false`, not a throw. |
+| `on(event, fn)` | Subscribes. Returns an unsubscribe that returns **void**, so it is a valid React `useEffect` cleanup. |
+| `ready()` | Tells the host this page is on screen. This is what commits a trial bundle — without it every OTA release rolls back. Call it once per page load, from **every path that paints**: a first-run gate, an empty state and an error screen all paint without a data load finishing. |
+| `connect()` | Reads the host's bridge version. Call once at startup. |
+| `installShim(shim)` | Browser fallbacks for running the same build as a website. |
+| `inHost()` | True inside the Valence host, false in a normal browser. |
+| `BridgeError` | `code` is one of `E_UNKNOWN`, `E_PARAMS`, `E_UNSUPPORTED`, `E_DENIED`, `E_CANCELLED`, `E_TOO_LARGE`, `E_PENDING`, `E_INTERNAL`. |
+| `MAX_MESSAGE_BYTES` | 262144. The per-message cap, in UTF-8 bytes. |
+| `createBridge(methodSince, eventSince)` | Binds the generated tables to the runtime. `valence codegen` emits the only call you need. Both arguments are required, so upgrading this package without regenerating is a build error rather than `has()` silently answering `false` for every event. |
+
+## Two things that bite
+
+**The bridge is not a path for bytes.** Messages are capped at 256 KB of UTF-8 in each direction, because on
+Android they travel through Binder, whose transaction buffer is shared across the process; overrunning it
+kills the WebView with no error either side can catch. `call` refuses an over-cap message before sending it
+and rejects with `E_TOO_LARGE`. Native bytes reach the page over the host's `/_host/` URLs instead.
+
+**A round trip is not free** — budget on the order of 15 ms on mid-range Android. Prefer one `data.list`
+with a prefix over N `data.get` calls, and keep per-row fetches off the first-paint path.
+
+## Versioning
+
+Zero runtime dependencies, ESM only, ships `.d.ts`. Type-checks under `--strict --verbatimModuleSyntax`.
+
+The generated `bridge.g.ts` and this package move together: `BRIDGE_VERSION` in the generated file is your
+schema's version, independent of this package's version.
+
+MIT. Spec: `contracts.md` §4.
+
+## Call your own API
+
+After codegen, import `call`, `connect` and `has` from your app's `bridge.g.ts`. The schema-4 `http.request` method returns typed `{status, headers, body}`; the generic bridge needs no HTTP-specific transport. Guard it with `has('http.request')` after `connect()`. The native host enforces compiled `http.origins` origins and attaches the user token. A browser shim uses ordinary `fetch` with ordinary CORS rules. [Native HTTP and REST adapters](https://getvalence.pages.dev/docs/guides/your-backend/).
+## Offline status (schema 3)
+
+Import through your generated `bridge.g.ts`. After `connect()`, guard `has("data.getMany")` and `has("sync.status")` for older hosts. `call("data.getMany", {bucket, keys})` returns distinct live rows in first-requested order, omitting missing/deleted keys (max 500 inputs). `call("sync.status")` returns outbox operation count (including deletes), nullable last-success timestamp, and the last attempt's offline flag. It makes no network request. `SyncResult.pending` is nullable for older hosts.
+
+Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
+
+## System appearance
+
+Declare schema-7 app.appearance with bool darkMode, highContrast and reducedMotion fields, then subscribe through the generated on() during bootstrap before ready(). The host publishes an initial snapshot after every load and later preference changes. Optional AppInfo.fontScale is num?; default missing values to 1. Android already applies native text zoom, so do not scale it again in CSS. Use --valence-inset-top/right/bottom/left for content padding. [Guide](../../docs/accessibility.md).
+
+
+## Task restoration
+
+Schema 8 adds `state.save({json})` and `state.restore()` for a task-local UI blob (65,536 JSON UTF-8 bytes). ValenceApp restores the local path/query/hash after OS process reclamation. Explicit task closure starts fresh; a different bundle seq clears the snapshot. Save promptly and keep durable records in SQLite. iOS is experimental and untested. [Guide](https://getvalence.pages.dev/docs/guides/state-restoration/).
+
+## Push events
+
+Import `call`, `has` and `on` from your generated `bridge.g.ts`. Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** Subscribe to `push.tapped` before calling `push.initial`; render push contents as text and validate route identifiers yourself. [Guide](https://getvalence.pages.dev/docs/guides/remote-push/).
+
+Guard `has("data.count")` to page `data.list` with `after`: pass the last key of the previous page and the scan resumes strictly after it, which is the only complete read of a bucket larger than `data.list`'s 500-row clamp. `has("data.list")` cannot gate `after` — it is a new parameter on a method that has existed since version 1, and a host older than version 5 rejects the unknown field with `E_PARAMS`. `call("data.count", {bucket, prefix})` returns the number of live rows without reading any of them.
+
+## Route OS links
+
+After `connect()`, install one `onLink()` subscription at the app root. It consumes `link.initial`, subscribes to `link.opened`, and defaults to a local `history.pushState` plus `popstate`. Pass `onLink(({path}) => router.navigate(path), reportError)` for your own router and call its returned cleanup on unmount. Import from your generated `bridge.g.ts`; unsupported hosts are a no-op. See [deep-link setup](../../docs/deep-links.md).
+
+## OS permissions
+
+Schema 9 bindings expose `permissions.check`, `permissions.request`, `permissions.openSettings` and `permissions.changed`. Import them through your generated client and guard calls with `has()`. The native host enforces its store-compiled allowlist. Checks do not prompt; request from a user action. Status strings include denial, permanent denial, restriction and limited access; see the [guide](https://getvalence.pages.dev/docs/guides/permissions/). iOS is experimental and untested.
+
+
+Guard `has("data.count")` to page `data.list` with `after`: pass the last key of the previous page and the scan resumes strictly after it, which is the only complete read of a bucket larger than `data.list`'s 500-row clamp. `has("data.list")` cannot gate `after` — it is a new parameter on a method that has existed since version 1, and a host older than version 5 rejects the unknown field with `E_PARAMS`. `call("data.count", {bucket, prefix})` returns the number of live rows without reading any of them.
+
+## Local reminders (schema 11)
+
+Use the generated call/has/on surface for notify.* and badge.*. Guard notify.schedule with has() on older hosts; subscribe to notify.tapped and notify.action before consuming notify.initial. Payloads are untrusted data. Read pending IDs with notify.pendingIds (schema 16) rather than notify.pending when the queue may be full: the full snapshot can exceed the reply cap. The host needs compiled opt-in and native setup; see [local reminders](https://getvalence.pages.dev/docs/guides/local-notifications/).
+
+## Image sharing (schema 14)
+
+Import `call` and `has` through the generated `bridge.g.ts`. Guard `has("share.image")`, then call with exactly one of canonical base64 `bytes` (128 KiB decoded maximum) or active signed bundle `path` (5 MiB), optional `fileName` and `caption`. PNG/JPEG only. The string result is `selected`, `dismissed` or `unavailable`; selection is not proof of delivery. Adding the method requires a native store build. [Image sharing and legacy custom handlers](https://getvalence.pages.dev/docs/guides/image-sharing/). iOS remains experimental and untested.
+
+Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent. Older hosts omit them. See [capability revisions and durable status](https://getvalence.pages.dev/docs/guides/capabilities-and-status/).
+
+Schema 16 adds `notify.pendingIds()` for cancellation by difference even when full notification content exceeds the bridge reply cap. Keep `notify.pending()` unchanged; declare the new method at `since: 16`, regenerate, ship a store build and guard it with `has()`. Disabled hosts still deny the group. No delivery guarantee is added; iOS remains experimental and untested.

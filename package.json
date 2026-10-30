@@ -28,7 +28,7 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "test": "node --test bin/valence.test.mjs .claude/skills/valence/scripts/valence.test.mjs"
+    "test": "node --test bin/valence.test.mjs .claude/skills/valence/scripts/valence.test.mjs examples/rest-sync-adapter/server.test.mjs"
   },
   "keywords": [
     "flutter",

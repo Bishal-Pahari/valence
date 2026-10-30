@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "rows": [
+    { "k": "fern", "v": { "name": "Boston fern", "light": "indirect" }, "u": 1 },
+    { "k": "monstera", "v": { "name": "Monstera deliciosa", "light": "bright indirect" }, "u": 2 },
+    { "k": "snake", "v": { "name": "Snake plant", "light": "anything" }, "u": 3 }
+  ]
+}

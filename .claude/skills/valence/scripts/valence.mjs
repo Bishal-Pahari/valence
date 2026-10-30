@@ -21,28 +21,315 @@ import {
 import { homedir } from 'node:os';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { dirname, extname, join, relative, resolve, sep } from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 export const VALENCE_VERSION = '0.3.0'; // keep equal to package.json "version" (tested)
 const NATIVE = new Set(['.so', '.dex', '.jar', '.apk', '.aab', '.ipa', '.dylib', '.framework', '.a', '.o', '.class', '.exe', '.dll']);
 const PRIMS = new Set(['string', 'int', 'num', 'bool', 'json', 'void']);
 const CORE_METHODS = ['app.ready', 'app.info'];
+export const PLUGIN_RESERVED = new Set('app data prefs sync open bundle secure auth permissions notify badge push link state http share'.split(' '));
 const SPKI_ED25519 = Buffer.from('302a300506032b6570032100', 'hex');
 const HASH_RE = /^[0-9a-f]{64}$/;
+// A service worker can only take over the page by being registered from it, and every framework's helper
+// ends up calling this. Matching the registration rather than a file name covers Workbox, vite-plugin-pwa
+// and a hand-written one alike.
+const SERVICE_WORKER_RE = /serviceWorker\s*\.\s*register\s*\(/;
 // Names that break the generated Dart (reserved words, built-in identifiers, Object members, generated members).
 const DART_RESERVED = new Set(`abstract as assert await break case catch class const continue covariant default deferred do dynamic else enum export extends extension external factory false final finally for Function get if implements import in interface is late library mixin new null operator part required rethrow return set static super switch this throw true try typedef var void while with yield hashCode runtimeType toString noSuchMethod toJson fromJson`.split(' '));
 // Type names that collide with Dart/TS builtins or with names the generator emits.
-const RESERVED_TYPES = new Set('Json Methods Events Object String Number Boolean Array Record Promise Map Set List Future Function Iterable Never Null Symbol BigInt Error Date Type Enum BridgeError BridgeHandlers BridgeEvents'.split(' '));
+const RESERVED_TYPES = new Set('Json Methods Events Object String Number Boolean Array Record Promise Map Set List Future Function Iterable Never Null Symbol BigInt Error Date Type Enum BridgeError BridgeHandlers BridgeHandlersDefaults BridgeEvents ValencePlugin ValencePluginRegistry ValenceOpenPlugin'.split(' '));
+// The methods the `valence` pub package implements. codegen emits a `ValenceBuiltins` base class whose
+// bodies delegate to the runtime, so the logic ships in the package and only the schema-shaped
+// marshalling is generated. A schema may leave any of them out; it may not redefine one with a different
+// shape, because the delegation would then be wrong in a way nothing else would catch.
+//
+// `params` is compared literally against the IDL. `returns` is either an IDL type string or
+// {fields, list}, meaning "a named type with exactly these fields" — the app picks the type's name.
+//
+// `returns.optional` holds fields a later runtime added, which rule 5 (the IDL is additive only) requires
+// be possible without breaking every app already on the older shape. An app's type may carry any subset of
+// them, including none, and `call` is handed the names it actually declared so the delegation only passes
+// what exists. A field never moves from `fields` to `optional` or back: `fields` is the shape every host
+// has always returned.
+const BUILTINS = {
+  'state.save': { params: { json: 'json?' }, returns: 'void', call: () => 'valence.stateSave(p.json);' },
+  'state.restore': { params: {}, returns: 'json?', call: () => 'return valence.stateRestore();' },
+
+  'permissions.check': { params: { kind: 'string' }, returns: 'string', call: () => 'return valence.permissions.check(p.kind);' },
+  'permissions.request': { params: { kind: 'string' }, returns: 'string', call: () => 'return valence.permissions.request(p.kind);' },
+  'permissions.openSettings': { params: {}, returns: 'bool', call: () => 'return valence.permissions.openSettings();' },
+
+  'notify.permission': { params: { request: 'bool?' }, returns: 'bool', call: () => 'return valence.notifications.permission(request: p.request ?? false);' },
+  'notify.schedule': {
+    params: { id: 'int', title: 'string', body: 'string?', at: 'int', channel: 'string?', exact: 'bool?', payload: 'string?', image: 'string?', actions: 'string[]?', group: 'string?' },
+    returns: { fields: { id: 'int', timing: 'string' } },
+    call: (t) => `return ${t}.fromJson(await valence.notifications.schedule(id: p.id, title: p.title, body: p.body, at: p.at, channel: p.channel, exact: p.exact ?? false, payload: p.payload, image: p.image, actionIds: p.actions ?? const [], group: p.group));`,
+  },
+  'notify.cancel': { params: { id: 'int' }, returns: 'void', call: () => 'await valence.notifications.cancel(p.id);' },
+  'notify.pending': {
+    params: {}, returns: { list: true, fields: { id: 'int', title: 'string?', body: 'string?', payload: 'string?' } },
+    call: (t) => `return [for (final r in await valence.notifications.pending()) ${t}.fromJson(r)];`,
+  },
+  // The IDs alone, because `notify.pending`'s full snapshot cannot be read at the cap: 64 requests at
+  // the 256/4096/4096-byte title/body/payload limits is over the 262,144-byte reply cap, so the only
+  // documented way to discover pending IDs answers E_TOO_LARGE on the apps that schedule the most.
+  // `notify.pending` keeps every field it has: trimming them would make an absent body and an empty one
+  // the same answer, silently, on the method whose whole purpose is reconciliation.
+  'notify.pendingIds': { minSince: 16, params: {}, returns: 'int[]', call: () => 'return valence.notifications.pendingIds();' },
+  'notify.initial': { params: {}, returns: 'json?', call: () => 'return valence.notifications.initial();' },
+  'notify.channels.set': {
+    params: { id: 'string', name: 'string', importance: 'string?', sound: 'string?', group: 'string?', groupName: 'string?' },
+    returns: 'void',
+    call: () => "await valence.notifications.channel(id: p.id, name: p.name, importance: p.importance ?? 'default', sound: p.sound, group: p.group, groupName: p.groupName);",
+  },
+  'badge.set': { params: { n: 'int' }, returns: 'bool', call: () => 'return valence.notifications.badge(p.n);' },
+  'badge.clear': { params: {}, returns: 'bool', call: () => 'return valence.notifications.badge(0);' },
+
+  // The optional valence_push transport is injected natively; wire delegation stays in core.
+  'push.token': { params: {}, returns: 'string?', call: () => 'return valence.pushToken();' },
+  'push.permission': {
+    params: { request: 'bool?' }, returns: 'string',
+    call: () => 'return valence.pushPermission(request: p.request ?? false);',
+  },
+  'push.initial': {
+    params: {},
+    returns: { nullable: true, fields: { id: 'string?', data: 'json', title: 'string?', body: 'string?', image: 'string?' } },
+    call: (t) => `final m = await valence.pushInitial();\n        return m == null ? null : ${t}(id: m.id, data: m.data, title: m.title, body: m.body, image: m.toJson()['image'] as String?);`,
+  },
+  'app.ready': { params: {}, returns: 'void', call: () => 'await valence.appReady();' },
+  'app.info': {
+    params: {},
+    returns: {
+      fields: { platform: 'string', host: 'int', bridge: 'int', bundle: 'int', locale: 'string' },
+      optional: { fontScale: 'num?', builtins: 'int?' },
+    },
+    call: (t, has) =>
+      `final i = valence.appInfo();\n        return ${t}(platform: i.platform, host: i.host, bridge: i.bridge, bundle: i.bundle, locale: i.locale${has('fontScale') ? ', fontScale: i.fontScale' : ''}${has('builtins') ? ', builtins: i.builtins' : ''});`,
+  },
+  // §4.6. Both read state the host already keeps, so neither starts a request and a page may poll them.
+  'app.state': {
+    params: {},
+    returns: { fields: { lifecycle: 'string', online: 'bool' } },
+    call: (t) => `final s = valence.appState();
+        return ${t}(lifecycle: s.lifecycle.name, online: s.online);`,
+  },
+  'bundle.status': {
+    params: {},
+    returns: {
+      fields: { serving: 'int', pending: 'int?', trial: 'int?', reason: 'string', offered: 'int?', checkedAt: 'int?' },
+      optional: { urgent: 'bool?' },
+    },
+    call: (t, has) =>
+      `final s = ${has('urgent') ? 'await valence.bundleStatusWithUrgency()' : 'valence.bundleStatus()'};
+        return ${t}(serving: s.serving, pending: s.pending, trial: s.trial, reason: s.reason.name, offered: s.offered, checkedAt: s.checkedAt${has('urgent') ? ', urgent: s.urgent' : ''});`,
+  },
+  'data.get': {
+    params: { bucket: 'string', key: 'string' },
+    returns: 'json?',
+    call: () => 'return valence.dataGet(p.bucket, p.key);',
+  },
+  'data.list': {
+    params: { bucket: 'string', prefix: 'string?', limit: 'int?' },
+    // `after` is the key cursor that makes a bucket past `maxListLimit` readable at all. Optional, because
+    // the returns are a plain `Row[]` and an app on the older shape must keep compiling (rule 5).
+    optionalParams: { after: 'string?' },
+    // A param has no `since`, so the only gate a page can read is a sibling *name* that shipped with it
+    // (§4.2). `data.count` is `after`'s. Declaring `after` without it leaves the documented gate —
+    // `has('data.count')` — false on every host the app will ever ship, including the ones that accept
+    // the cursor, so a page following the docs never pages and the bucket still has no complete read.
+    paramSiblings: { after: 'data.count' },
+    returns: { list: true, fields: { key: 'string', value: 'json', usn: 'int' } },
+    call: (t, _has, hasParam) =>
+      `final rows = await valence.dataList(p.bucket, prefix: p.prefix, limit: p.limit${hasParam('after') ? ', after: p.after' : ''});\n        return [for (final r in rows) ${t}(key: r.key, value: r.value, usn: r.usn)];`,
+  },
+  'data.count': {
+    params: { bucket: 'string', prefix: 'string?' },
+    returns: 'int',
+    call: () => 'return valence.dataCount(p.bucket, prefix: p.prefix);',
+  },
+  'data.getMany': {
+    params: { bucket: 'string', keys: 'string[]' },
+    returns: { list: true, fields: { key: 'string', value: 'json', usn: 'int' } },
+    call: (t) =>
+      `final rows = await valence.dataGetMany(p.bucket, p.keys);\n        return [for (final r in rows) ${t}(key: r.key, value: r.value, usn: r.usn)];`,
+  },
+  'sync.status': {
+    params: {},
+    returns: { fields: { pending: 'int', lastSyncedAt: 'int?', offline: 'bool' }, optional: { reason: 'string?' } },
+    call: (t, has) =>
+      `final r = await valence.syncStatus();\n        return ${t}(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline${has('reason') ? ', reason: r.reason' : ''});`,
+  },
+  'data.put': {
+    params: { bucket: 'string', key: 'string', value: 'json?' },
+    returns: 'void',
+    call: () => 'await valence.dataPut(p.bucket, p.key, p.value);',
+  },
+  'sync.now': {
+    params: { buckets: 'string[]?' },
+    returns: {
+      fields: { buckets: 'string[]', changed: 'int', offline: 'bool' },
+      // "nothing was attempted" and "nothing changed" are otherwise the same answer, so an app that shows
+      // freshness reports confident freshness over stale data. `"ok"`, `"busy"` or `"offline"`.
+      optional: { reason: 'string?', pending: 'int?' },
+    },
+    call: (t, has) =>
+      `final r = await valence.syncNow(buckets: p.buckets);\n        return ${t}(buckets: r.buckets, changed: r.changed, offline: r.offline${has('reason') ? ', reason: r.reason.name' : ''}${has('pending') ? ', pending: r.pending' : ''});`,
+  },
+  'prefs.get': { params: { key: 'string' }, returns: 'string?', call: () => 'return valence.prefsGet(p.key);' },
+  'prefs.set': {
+    params: { key: 'string', value: 'string?' },
+    returns: 'void',
+    call: () => 'await valence.prefsSet(p.key, p.value);',
+  },
+  'open.external': {
+    params: { url: 'string' },
+    returns: 'void',
+    call: () => "await plugins.invoke(valence, 'open.external', {'url': p.url});",
+  },
+  'bundle.applyUpdate': {
+    params: {},
+    returns: 'void',
+    call: () => 'await valence.applyUpdate();',
+  },
+  // §4.4. secure.set takes a non-null value on purpose: prefs.set(k, null) and data.put(b, k, null) both
+  // delete, so this is the odd one out and secure.delete is the only delete, which says so at the call site.
+  'secure.get': { params: { key: 'string' }, returns: 'string?', call: () => 'return valence.secureGet(p.key);' },
+  'secure.set': {
+    params: { key: 'string', value: 'string' },
+    returns: 'void',
+    call: () => 'await valence.secureSet(p.key, p.value);',
+  },
+  'secure.delete': { params: { key: 'string' }, returns: 'void', call: () => 'await valence.secureDelete(p.key);' },
+  'auth.setToken': {
+    params: { token: 'string?' },
+    // §4.4. The opaque account id is what tells a refresh from a different person, and `discardPending`
+    // is the only way past the refusal to drop one account's queued writes. Optional, because every app
+    // on the older shape must keep compiling (rule 5).
+    optionalParams: { account: 'string?', discardPending: 'bool?' },
+    // Neither param has a `since`, so the only gate is the sibling name that shipped with them. Without
+    // `auth.account` declared, a page following the docs reads a false gate on every host — including
+    // the ones that enforce the switch — and therefore never passes the id at all, which is the silent
+    // half of this feature: no error, no switch, user B looking at user A's rows.
+    paramSiblings: { account: 'auth.account', discardPending: 'auth.account' },
+    returns: 'void',
+    call: (_t, _has, hasParam) =>
+      `await valence.authSetToken(p.token${hasParam('account') ? ', account: p.account' : ''}${hasParam('discardPending') ? ', discardPending: p.discardPending ?? false' : ''});`,
+  },
+  // There is deliberately no auth.getToken: the token lives under the reserved `valence.` prefix, so the
+  // page can set and clear it and ask whether one is there, and can never read it back (§4.4).
+  'auth.hasToken': { params: {}, returns: 'bool', call: () => 'return valence.authHasToken();' },
+  // The account id *is* readable back: the page chose it, so it learns nothing new, and it is what makes
+  // "is the host still holding the user I signed in?" answerable after a cold start.
+  'auth.account': { params: {}, returns: 'string?', call: () => 'return valence.authAccount();' },
+  'link.initial': {
+    // Pre-9 apps shipped custom link signatures; their handlers remain app-owned.
+    minSince: 9,
+    params: {},
+    returns: { fields: { url: 'string', path: 'string' }, nullable: true },
+    call: (t) => `final r = valence.linkInitial();\n        return r == null ? null : ${t}(url: r.url, path: r.path);`,
+  },
+  'share.image': {
+    // Earlier apps used this name for custom sharing; preserve their shipped handlers.
+    minSince: 14,
+    params: { bytes: 'string?', path: 'string?', fileName: 'string?', caption: 'string?' },
+    returns: 'string',
+    call: () => 'return valence.shareImage(bytes: p.bytes, path: p.path, fileName: p.fileName, caption: p.caption);',
+  },
+  'http.request': {
+    params: { url: 'string', method: 'string?', headers: 'json?', body: 'string?' },
+    returns: { fields: { status: 'int', headers: 'json', body: 'string' } },
+    call: (t) =>
+      `final r = await valence.httpRequest(url: p.url, method: p.method, headers: p.headers, body: p.body);\n        return ${t}(status: r.status, headers: r.headers, body: r.body);`,
+  },
+};
+
+// Preserve app-owned notification and push shapes predating the built-ins.
+// The one `since` at or above which the package implements a built-in. Below it the name is the app's own,
+// which is how a pre-11 custom `notify.*` keeps its shipped signature — and the trap `assertReservedSince`
+// closes, because below it codegen emits an abstract handler that `ValenceBuiltins` does not satisfy.
+const reservedSince = (name) => {
+  if (!(name in BUILTINS)) return null;
+  const own = BUILTINS[name].minSince ?? 1;
+  if (/^(notify\.|badge\.)/.test(name)) return Math.max(own, 11);
+  if (name.startsWith('push.')) return Math.max(own, 12);
+  return own;
+};
+
+const builtinFor = (m) => (m.name in BUILTINS && m.since >= reservedSince(m.name) ? BUILTINS[m.name] : undefined);
+
+// The areas the package ships built-ins in, derived from the table rather than listed twice.
+const BUILTIN_AREAS = new Set(Object.keys(BUILTINS).map((n) => n.split('.')[0]));
+
+/// Warns about a method in one of the package's own areas that this CLI has no built-in for.
+///
+/// It is generated as the app's own either way, so a built-in shipped *after* this copy of the CLI and a
+/// method the app genuinely owns produce the same output: an abstract member of `BridgeHandlers` that
+/// `ValenceBuiltins` does not satisfy. That reads as "the package has not shipped this yet", which sends
+/// you off to write a native implementation of something the package already has — the dead end K F-62
+/// hit at the right `since`, with the right docs, against a vendored CLI that predated the method.
+///
+/// A warning rather than a refusal: §6.5 promises an app-owned `notify.daily` keeps working, and refusing
+/// it to catch a stale generator would break the apps the promise was made to.
+// The fields a validated native notification response carries (§6.5). The runtime fills exactly these.
+const NOTIFICATION_RESPONSE_FIELDS = new Set(['id', 'payload', 'action']);
+const NOTIFICATION_EVENTS = new Set(['notify.tapped', 'notify.action']);
+
+/// Whether the runtime may emit this event by itself.
+///
+/// Reserved at 11, and `id` must be the `int` the native scheduler actually produces. An event that fails
+/// either test stays the app's own and is never emitted automatically, which is the whole point: app-c
+/// shipped `notify.tapped {id: string}` at `since: 1` and received the built-in's integer id over it
+/// (F-30). A host converts such a response itself, through `notificationEventAdapter`.
+///
+/// Deliberately not a refusal. Events are not shape-checked by `assertBuiltinShapes`, so a since-11
+/// declaration carrying an extra field or a required `payload` has always generated fine — and
+/// `assertAdditive` refuses changing a shipped event, so refusing one here would wedge that app with no
+/// move left but `--rebaseline`. It is also the same stale-tooling trap as the warning below: a field the
+/// runtime adds later is unknown to an older copy of this CLI.
+function autoNotificationEvent(e) {
+  return NOTIFICATION_EVENTS.has(e.name) && e.since >= 11 &&
+    e.payload.some((f) => f.name === 'id' && typeString(f.type) === 'int');
+}
+
+/// Warns about a notification event the runtime will not emit, and about declared fields it cannot fill.
+///
+/// Without this the failure is silent in the quietest possible way: `has('notify.tapped')` is answered
+/// from the schema and stays true, the page subscribes, and no tap ever arrives.
+export function notificationEventWarnings(s) {
+  return s.events.flatMap((e) => {
+    if (!NOTIFICATION_EVENTS.has(e.name)) return [];
+    if (!autoNotificationEvent(e)) {
+      return [`"${e.name}" stays your own event, so the runtime will not emit it: it is ${e.since < 11 ? `declared at since ${e.since}, below the reserved 11` : 'declared without "id" as an int, which is what the native scheduler produces'}. That is deliberate — a built-in shape must never go out over an event you have already shipped — but nothing else reports it, and has("${e.name}") answers from your schema either way, so a page would subscribe and receive nothing. Pass "notificationEventAdapter" to Valence.open to convert each response into your own generated event, and apply the same conversion to valence.notifications.initial() for a cold tap.`];
+    }
+    const extra = e.payload.filter((f) => !NOTIFICATION_RESPONSE_FIELDS.has(f.name)).map((f) => `"${f.name}"`);
+    return extra.length
+      ? [`"${e.name}" declares ${extra.join(', ')}, which a native notification response does not carry (${[...NOTIFICATION_RESPONSE_FIELDS].join(', ')}). ${extra.length > 1 ? 'Those fields are' : 'That field is'} left out of the emitted event rather than sent as null. If a guide introduced ${extra.length > 1 ? 'them' : 'it'} as part of the built-in event, your tooling is older than the runtime you are reading about: run "npx create-valence update".`]
+      : [];
+  });
+}
+
+export function staleToolingWarnings(s) {
+  return s.methods
+    // A retirement already answers this warning's question — the method is deliberately the app's own and
+    // nothing calls it any more — so repeating it on every run for ever is how an output stops being read.
+    .filter((m) => !m.plugin && !m.retired && !(m.name in BUILTINS) && BUILTIN_AREAS.has(m.name.split('.')[0]))
+    .map(
+      (m) =>
+        `"${m.name}" is generated as your own method, but "${m.name.split('.')[0]}." is an area the valence package ships built-ins in and this CLI has no built-in by that name. If a guide introduced it as a built-in, your tooling is older than the runtime you are reading about: run "npx create-valence update". If the method is genuinely yours, nothing is wrong — but note it will stay yours, so ValenceBuiltins will not implement it and your host must.`,
+    );
+}
+
 const SEED_SQL = `
 CREATE TABLE kv (bucket TEXT NOT NULL, schema INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, usn INTEGER NOT NULL,
                  deleted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (bucket, schema, key)) WITHOUT ROWID;
 CREATE INDEX kv_bucket_usn ON kv (bucket, schema, usn);
 CREATE TABLE bucket (name TEXT NOT NULL, schema INTEGER NOT NULL, max_usn INTEGER NOT NULL, synced_at INTEGER,
                      PRIMARY KEY (name, schema));
-CREATE TABLE outbox (id TEXT PRIMARY KEY, bucket TEXT NOT NULL, key TEXT NOT NULL, value TEXT,
+CREATE TABLE outbox (ordinal INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, bucket TEXT NOT NULL, key TEXT NOT NULL, value TEXT,
                      deleted INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
 CREATE TABLE prefs (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-PRAGMA user_version = 1;`;
+PRAGMA user_version = 2;`;
 
 // ---------- small helpers ----------
 
@@ -95,6 +382,15 @@ export function loadConfig(root) {
   if (typeof cfg.web?.out !== 'string' || typeof cfg.web?.lib !== 'string') throw new Error('valence.config.json: web.out and web.lib are required');
   if (typeof cfg.host?.dir !== 'string') throw new Error('valence.config.json: host.dir is required');
   for (const [b, n] of Object.entries(cfg.data ?? {})) int(n, `valence.config.json: data.${b}`, 1);
+  if (cfg.ota?.channel !== undefined && (typeof cfg.ota.channel !== 'string' || !/^[A-Za-z0-9_-]+$/.test(cfg.ota.channel))) {
+    throw new Error('ota.channel must match [A-Za-z0-9_-]+');
+  }
+  for (const [b, schemas] of Object.entries(cfg.seedSchemas ?? {})) {
+    if (!Array.isArray(schemas) || !schemas.length || cfg.data?.[b] === undefined) {
+      throw new Error(`seedSchemas.${b} must be a nonempty array for a declared read-only bucket`);
+    }
+    for (const n of schemas) int(n, `seedSchemas.${b}`, 1);
+  }
   for (const b of cfg.writable ?? []) {
     if (cfg.data?.[b] !== undefined) throw new Error(`valence.config.json: writable bucket "${b}" must not be in data (writable buckets never change schema, contracts §5.4)`);
   }
@@ -153,10 +449,28 @@ export function loadSigningKey(cfg, keyring, keyPath) {
 
 const PAGE_EXT = new Set(['.astro', '.md', '.mdx', '.html', '.tsx', '.jsx', '.ts', '.js']);
 
+// Returns {routes, source}. source is how we got them: 'declared' (config only), 'both' (config plus a scan),
+// 'scan' (a routes directory) or 'none'. A client-side-routed SPA has no routes directory, so without 'declared' the
+// store route check has nothing to compare and would sit there looking active while warning about nothing (§7).
+// Declared routes are unioned with a scan rather than replacing it, so adding them can never switch a working scan off.
+function declaredRoutes(declared) {
+  const bad = (why) => new Error(`web.declaredRoutes ${why}. It is a non-empty array of single-segment top-level paths, for example ["/", "/shelf"]`);
+  if (!Array.isArray(declared)) throw bad('must be an array');
+  if (declared.length === 0) throw bad('must not be empty; use ["/"] to claim the app has exactly one route');
+  return declared.map((r) => {
+    if (typeof r !== 'string' || !r.startsWith('/')) throw bad(`entries must be strings starting with "/", got ${JSON.stringify(r)}`);
+    const t = r.replace(/\/+$/, '') || '/'; // "/shelf/" and "/shelf" are the same route; don't warn about the edit
+    // Scanning only ever yields one segment, so a deeper path would diff against something that can never appear.
+    if (t !== '/' && t.slice(1).includes('/')) throw bad(`entries are top-level routes with one segment, got "${r}"`);
+    return t;
+  });
+}
+
 function listRoutes(root, cfg) {
+  const declared = cfg.web.declaredRoutes === undefined ? null : declaredRoutes(cfg.web.declaredRoutes);
   const dir = cfg.web.routes && resolve(root, cfg.web.routes);
-  const out = new Set(['/']);
-  if (!dir || !existsSync(dir)) return [...out];
+  const out = new Set(['/', ...(declared ?? [])]);
+  if (!dir || !existsSync(dir)) return { routes: [...out].sort(), source: declared ? 'declared' : 'none' };
   // SvelteKit (+page/+layout) and Next app router (page/layout) route by directory only; files beside them are components.
   const dirsOnly = readdirSync(dir, { recursive: true }).some((f) => /^\+?(page|layout)\./.test(String(f).split(/[\\/]/).pop()));
   const scan = (d) => {
@@ -173,7 +487,7 @@ function listRoutes(root, cfg) {
     }
   };
   scan(dir);
-  return [...out].sort();
+  return { routes: [...out].sort(), source: declared ? 'both' : 'scan' };
 }
 
 // Inline <script> hashes for the entry page, so the host can send a strict CSP header (contracts §7).
@@ -196,22 +510,65 @@ function buildCsp(html, cfg, wasm) {
   ].join('; ');
 }
 
+// §3's SPA fallback answers the entry page at any depth, so a relative URL in it resolves against the request path
+// instead of the origin root. Absolute, scheme-relative, root-relative, fragment and query refs are all fine, and an
+// absolute <base href> re-roots everything so there is nothing to report. Script and style bodies are skipped: a URL
+// inside a template literal is not a reference the browser resolves.
+const relativeAssetRefs = (html) => {
+  if (/<base\b[^>]*\bhref\s*=\s*["']?\/(?!\/)/i.test(html)) return [];
+  // Keep the opening tag (its own src/href is a real reference) and drop only the body.
+  const markup = html.replace(/(<(script|style)\b[^>]*>)[\s\S]*?<\/\2\s*>/gi, '$1');
+  return [
+    ...new Set(
+      [...markup.matchAll(/\b(?:src|srcset|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))/gi)]
+        .flatMap((m) => (m[1] ?? m[2] ?? m[3] ?? '').split(','))
+        .map((u) => u.trim().split(/\s+/)[0])
+        .filter((u) => u !== '' && !/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/|#|\?)/i.test(u)),
+    ),
+  ];
+};
+
 // store: this built-in bundle goes to the stores, so its routes and bridge schema become the baseline (implies builtin).
-export function bundle({ root, cfg, key, builtin = false, store = false, floor, requiresBridge, urgent = false, now = Date.now() }) {
+export function bundle({ root, cfg, key, builtin = false, store = false, rebaseline = false, floor, requiresBridge, urgent = false, now = Date.now() }) {
   builtin ||= store;
   const p = paths(root, cfg);
   const src = resolve(root, cfg.web.out);
   if (!existsSync(src)) throw new Error(`web build output not found: ${src}. Build the web app first.`);
   const entry = cfg.web.entry ?? 'index.html';
   const baseline = readBaseline(p);
-  const schema = readJson(p.schema);
+  const { schema } = loadPluginSchema(root, cfg);
+  if (!store) assertAdditive(baseline.storeSchema, schema);
   const keyring = readJson(p.keyring);
   const warnings = [];
+  // `--store` is the only thing that writes `storeSchema`, and `storeSchema` is the only thing `codegen`'s
+  // additive-only guard checks against. So a second `--store` run silently rewrites the record of what the stores
+  // reviewed, and a change `codegen` had just refused then passes — with nothing left to show it was ever refused.
+  // Check the new schema against the recorded one here too, with the same rules, and make losing the record explicit.
+  if (store && baseline.storeSchema) {
+    // The baseline is about to say this build is what the stores reviewed, which silences the OTA warning below for
+    // every phone still on the build before it. Say that number out loud while it is still recorded.
+    if (schema.version > baseline.storeSchema.version) {
+      warnings.push(
+        `this store build takes the bridge from ${baseline.storeSchema.version} to ${schema.version}. Until it is live for users, every OTA release has to be built with --requires-bridge ${baseline.storeSchema.version}: the phones in the field still run bridge ${baseline.storeSchema.version}, and the baseline is about to record ${schema.version}, so nothing will warn you again.`,
+      );
+    }
+    if (rebaseline) {
+      warnings.push(
+        `--rebaseline overwrote the recorded store schema (version ${baseline.storeSchema.version} -> ${schema.version}). The additive-only guard now compares against this build, not against what the stores reviewed. Only correct if nothing from the old baseline is installed anywhere.`,
+      );
+    } else {
+      assertAdditive(baseline.storeSchema, schema);
+    }
+  }
   const files = {};
   const blobs = new Map();
   for (const rel of walk(src)) {
     if (rel.split('/').some((seg) => NATIVE.has(extname(seg).toLowerCase()))) {
       throw new Error(`native code is not allowed in an OTA bundle: ${rel}`);
+    }
+    // §3: the loopback server answers /_host/ itself, before the manifest lookup, so a bundle file there is unreachable.
+    if (RESERVED_PREFIX(rel)) {
+      throw new Error(`_host/ is reserved for the host's own routes (contracts §3), so the server would never serve this file: ${rel}`);
     }
     if (rel.toLowerCase().endsWith('.wasm')) warnings.push(`${rel}: .wasm is allowed (runs in the webview) but reviewers should know it is there`);
     const buf = readFileSync(join(src, rel));
@@ -220,8 +577,35 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
     blobs.set(h, buf);
   }
   if (!files[entry]) throw new Error(`entry ${entry} is missing from ${src}`);
+  // §3: the SPA fallback serves this page at any depth, so a relative asset URL in it 404s on every nested route.
+  const relRefs = relativeAssetRefs(blobs.get(files[entry].h).toString('utf8'));
+  if (relRefs.length) {
+    const shown = relRefs.slice(0, 3).join(', ') + (relRefs.length > 3 ? ', …' : '');
+    warnings.push(
+      `${entry} references ${relRefs.length} asset${relRefs.length > 1 ? 's' : ''} by a relative URL (${shown}). The SPA fallback serves the entry page at any depth (contracts §3), so the webview resolves those against the request path and 404s them: a reload or a back gesture on a nested route gives a blank screen with nothing in the log. Build so the output references assets from the origin root — base: '/' in Vite; in SvelteKit it is the setting that controls relative asset paths, not the deployment subpath, so check your version's docs. The host owns the whole origin, so a root-relative URL is always right.`,
+    );
+  }
 
-  const routes = listRoutes(root, cfg);
+  // §3: the host makes a bundle file's bytes revalidate by serving them no-cache with the hash as an
+  // ETag. A service worker answering from Cache Storage is never asked, so a precache-first build puts
+  // the stale-bundle hole straight back: the new bundle activates, the old page renders, and it calls
+  // ready() so the trial commits. Only the registration is detectable from the output, so warn on it.
+  const sw = [...blobs.keys()].some((h) => SERVICE_WORKER_RE.test(blobs.get(h).toString('latin1')));
+  if (sw) {
+    warnings.push(
+      `this build registers a service worker. A service worker serves the page from Cache Storage without asking the host's server, which revalidates every bundle file against its hash (contracts §3) — so a precaching worker can answer a new release with the previous one's code, and the trial still commits because the old page calls ready(). Inside the app you do not need one: the bundle is already on the device and served locally. Register it only when inHost() is false, or drop it from the build the bundle is cut from.`,
+    );
+  }
+
+  const { routes, source } = listRoutes(root, cfg);
+  if (source === 'none') {
+    const why = cfg.web.routes ? `web.routes is set to "${cfg.web.routes}", which does not exist` : 'web.routes is unset';
+    warnings.push(`the new-top-level-route check is INACTIVE: ${why} and nothing is declared, so every bundle reports just ["/"] and an OTA could add a whole feature area unnoticed (DPLA 3.3.1(B)(a)). An app that routes in JavaScript has no routes directory to scan: list its top-level routes as "declaredRoutes" under "web" in valence.config.json.`);
+  } else if (source === 'scan' && routes.length <= 1) {
+    // Scanning worked and found one route. That is legitimate for a genuinely single-screen app, so this is a
+    // confirmation prompt, not the INACTIVE warning: the check is running, it just has nothing to diff yet.
+    warnings.push(`scanning "${cfg.web.routes}" found only "/". If the app really has one top-level route, nothing to do; if it routes in JavaScript, the new-route check cannot see those routes and you should list them as "declaredRoutes" under "web" in valence.config.json.`);
+  }
   if (!builtin && baseline.storeRoutes) {
     for (const r of routes) {
       if (!baseline.storeRoutes.includes(r)) warnings.push(`new top-level route since the last store build: ${r}. OTA must not change the app's purpose (DPLA 3.3.1(B)(a)); consider shipping it with a store update.`);
@@ -229,6 +613,70 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
   }
 
   if (floor !== undefined && floor < (baseline.floor ?? 0)) throw new Error(`--floor ${floor} is below the current floor ${baseline.floor}; the floor only goes up`);
+  // The floor applies to the built-in bundle too (§2.2), and the built-in bundle is the one artifact every
+  // device is guaranteed to have — a wiped or offline phone's last resort, and the only code a store review
+  // ever saw. A floor above it therefore retires it *from the client side*, with no store release: §2.4's
+  // ladder is left with `current` and nothing underneath, so if the floor-raising bundle itself later fails
+  // a check, recovery is a full store review — exactly what OTA exists to avoid. One unreviewed OTA should
+  // not be able to do that silently, and `baseline.storeSeq` is in the file the CLI is already writing.
+  // A `--store` build is its own fallback, so its own seq is the ceiling, which §2.3's check below enforces.
+  const storeSeq = baseline.storeSeq ?? 0;
+  const effectiveFloor = floor ?? baseline.floor ?? 0;
+  // `--builtin` is exempt with `--store`: that bundle *is* the fallback being produced, and the
+  // `floor > seq` check below already keeps it runnable. Only an OTA can retire a fallback it is not.
+  if (!store && !builtin && storeSeq > 0 && effectiveFloor > storeSeq) {
+    const how = `Raise it to at most ${storeSeq} to keep the store build runnable, or ship a store build above ${effectiveFloor} first and raise the floor after it is live.`;
+    // Refuse only an actual *raise*. Restating a floor that is already above `storeSeq` — which a pipeline
+    // passing `--floor $FLOOR` every time does — changes nothing, and refusing it deadlocked against the
+    // "the floor only goes up" check above: every value at or below the carried floor was refused there,
+    // and every value above it refused here, with no buildable number in between.
+    if (floor !== undefined && floor > (baseline.floor ?? 0)) {
+      throw new Error(
+        `--floor ${floor} is above the store build's seq ${storeSeq}, so every device would refuse its own built-in bundle at check 4 and have no fallback below this release. ${how}`,
+      );
+    }
+    // Carried forward from a project that raised the floor before this check existed. Not refused, because
+    // that would make every later release unbuildable, but it is the same device state and must be said.
+    warnings.push(
+      `the floor carried forward (${effectiveFloor}) is above the store build's seq ${storeSeq}, so devices refuse their own built-in bundle and have no fallback below "current". ${how}`,
+    );
+  }
+  // requires.bridge is a one-way door like floor: check 5 makes every host below it refuse this bundle *and* every
+  // later release, because they inherit the same default. has() exists so one bundle can serve old and new hosts, so
+  // say so when the default would undo it.
+  const bridge = requiresBridge ?? (builtin ? schema.version : baseline.storeSchema?.version ?? schema.version);
+  // A built-in bundle is the one bundle its own host cannot decline: check 5 refuses it on first launch and a fresh
+  // install has no `current` to fall back to, so the app has nothing to paint (§2.4 step 1). Compare against the
+  // *generated* constant, not the schema file: a schema bumped without a codegen run is the common way to get here.
+  if (builtin) {
+    const generated = existsSync(p.dart) ? /\bconst hostBridgeVersion = (\d+);/.exec(readFileSync(p.dart, 'utf8'))?.[1] : undefined;
+    const hostBridge = generated === undefined ? schema.version : Number(generated);
+    if (bridge > hostBridge) {
+      throw new Error(
+        `requires.bridge would be ${bridge}, above the ${generated === undefined ? `schema version ${hostBridge}` : `hostBridgeVersion ${hostBridge} in ${relative(root, p.dart)}`}, so this host refuses its own built-in bundle at check 5 and a fresh install has nothing to serve. ${generated !== undefined && hostBridge < schema.version ? 'Run codegen: the generated constant is behind the schema.' : 'Bump the schema, or drop --requires-bridge for a built-in build.'}`,
+      );
+    }
+  }
+  const storeBridge = baseline.storeSchema?.version;
+  if (!builtin && storeBridge !== undefined && bridge > storeBridge) {
+    warnings.push(
+      `requires.bridge is ${bridge}, above the bridge version of the last store build (${storeBridge}). Check 5 means every host from that build refuses this bundle — and refuses every later OTA release too, including a copy fix or a security patch, because they inherit the same default until someone passes --requires-bridge on each build. If the newer calls are guarded with has(), build with --requires-bridge ${storeBridge}. The baseline records only the newest store build, so if an older one is still in the field, pin to that one instead.`,
+    );
+  }
+  // Pinning down is the other half, and it is silent without this: check 5 passes on the older host, the bundle loads,
+  // and an unguarded call to a newer method throws E_UNSUPPORTED in the field with no build-time or store signal.
+  if (bridge < schema.version) {
+    const above = Object.entries(schema.methods ?? {})
+      // A retired method is E_UNSUPPORTED on every host, old or new, so "needs a newer host" is not what
+      // is wrong with calling it — and naming it here would tell an app to guard a call it should delete.
+      .filter(([, d]) => (d?.since ?? 1) > bridge && d?.retired !== true)
+      .map(([n]) => n);
+    if (above.length) {
+      warnings.push(
+        `requires.bridge is pinned to ${bridge}, below the schema version ${schema.version}, so ${above.length} method${above.length > 1 ? 's' : ''} need a newer host than this bundle asks for: ${above.join(', ')}. Every call to them must be behind has(), or it throws E_UNSUPPORTED on an older host and the feature is simply dead there.`,
+      );
+    }
+  }
   const manifestsDir = join(p.ota, 'manifests');
   const localSeqs = existsSync(manifestsDir) ? readdirSync(manifestsDir).filter((f) => /^\d+\.json$/.test(f)).map((f) => parseInt(f, 10)) : [];
   // Monotonic even with a slow clock or two builds in one second (commit .valence/baseline.json after each release).
@@ -239,7 +687,7 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
     seq,
     version: `${new Date(now).toISOString().slice(0, 10)}+${seq}`,
     floor: floor ?? baseline.floor ?? 0,
-    requires: { bridge: requiresBridge ?? schema.version, data: cfg.data ?? {} },
+    requires: { bridge, data: cfg.data ?? {} },
     entry,
     csp: buildCsp(blobs.get(files[entry].h).toString('utf8'), cfg, Object.keys(files).some((f) => f.toLowerCase().endsWith('.wasm'))),
     urgent,
@@ -268,10 +716,46 @@ export function bundle({ root, cfg, key, builtin = false, store = false, floor, 
   verifyBundle({ manifestPath, filesDir, keyring, appId: cfg.appId });
 
   const next = { ...baseline, lastSeq: seq, floor: manifest.floor };
-  if (store) Object.assign(next, { storeSeq: seq, storeRoutes: routes, storeSchema: schema });
+  let recorded;
+  if (store) {
+    Object.assign(next, { storeSeq: seq, storeRoutes: routes, storeSchema: schema });
+    // Say what the baseline now claims the stores have reviewed. It is the one file nobody can reconstruct later.
+    const added = [];
+    for (const kind of ['methods', 'events', 'types']) {
+      for (const name of Object.keys(schema[kind] ?? {})) {
+        if (!Object.hasOwn(baseline.storeSchema?.[kind] ?? {}, name)) added.push(`+ ${kind.slice(0, -1)} ${name}`);
+      }
+    }
+    // A retirement is the one change to a shipped method the additive guard forgives (§4.1), so this
+    // printout is the only place it can surface. Without it the record would change in silence.
+    for (const [name, def] of Object.entries(schema.methods ?? {})) {
+      const was = baseline.storeSchema?.methods?.[name];
+      if (!was || !!was.retired === !!def.retired) continue;
+      added.push(`~ method ${name} ${def.retired ? 'retired' : 'un-retired'}`);
+    }
+    recorded = { bridge: schema.version, routes, added };
+    // A store build always outranks the OTA release staged on top of the previous one (§2.4 step 1), so the channel
+    // now points at a seq no device will ever install again, and an update-path test becomes a test that there is no
+    // update. Release again after the store build; never before it.
+    const channelsDir = join(p.ota, 'channels');
+    if (existsSync(channelsDir)) {
+      for (const f of readdirSync(channelsDir).filter((f) => f.endsWith('.json'))) {
+        const stale = readJson(join(channelsDir, f)).seq;
+        if (typeof stale === 'number' && stale < seq) {
+          warnings.push(
+            `channel "${f.slice(0, -5)}" points at ${stale}, below this store build's seq ${seq}. A newer built-in bundle wins, so no device will take that release again: cut the OTA release after the store build, not before it.`,
+          );
+        }
+      }
+    }
+  }
   writeJson(p.baseline, next);
-  return { manifest, manifestPath, filesDir, warnings };
+  return { manifest, manifestPath, filesDir, warnings, recorded };
 }
+
+// §3 reserves /_host/ for the host's own routes, so a bundle file there is unreachable and would be shadowed by them.
+// Enforced in bundle (at build) and in verifyBundle (so an older tool holding the key cannot smuggle one past check 6).
+const RESERVED_PREFIX = (rel) => rel === '_host' || rel.startsWith('_host/');
 
 const SAFE_PATH = (rel) => typeof rel === 'string' && rel !== '' && !rel.startsWith('/') && !/[\\\0]/.test(rel) && !rel.split('/').some((s) => s === '' || s === '.' || s === '..');
 
@@ -286,9 +770,19 @@ export function verifyBundle({ manifestPath, filesDir, keyring, appId }) {
   if (appId && m.appId !== appId) throw new Error(`manifest is for ${m.appId}, not ${appId}`);
   if (!Number.isInteger(m.seq) || !Number.isInteger(m.floor) || m.floor > m.seq) throw new Error('bad seq/floor');
   if (!Object.hasOwn(m.files, m.entry)) throw new Error(`entry ${m.entry} is not in files`);
+  // Validate every entry before looking at the directory, so a malformed manifest is still named as malformed.
   for (const [rel, f] of Object.entries(m.files)) {
-    if (!SAFE_PATH(rel)) throw new Error(`unsafe path in manifest: ${rel}`);
+    if (!SAFE_PATH(rel) || RESERVED_PREFIX(rel)) throw new Error(`unsafe path in manifest: ${rel}`);
     if (!HASH_RE.test(f.h) || !Number.isInteger(f.n) || f.n < 0) throw new Error(`bad file entry for ${rel}`);
+  }
+  // A wrong --files level otherwise reports the first entry as "missing", which looks exactly like the corrupted
+  // bundle verify exists to detect. If nothing resolves at all, the directory is the problem, not the bundle.
+  const hashes = Object.values(m.files);
+  if (hashes.length && !hashes.some((f) => existsSync(join(filesDir, f.h)))) {
+    const nested = join(filesDir, 'files');
+    throw new Error(`no manifest files found under ${filesDir}${existsSync(nested) ? `; --files wants the content-addressed files/ directory, so try ${nested}` : ''}`);
+  }
+  for (const [rel, f] of Object.entries(m.files)) {
     const file = join(filesDir, f.h);
     if (!existsSync(file)) throw new Error(`missing file ${rel} (${f.h})`);
     const buf = readFileSync(file);
@@ -321,6 +815,7 @@ export async function seed({ root, cfg, from }) {
   rmSync(tmp, { force: true });
   const db = new DatabaseSync(tmp);
   const counts = {};
+  const seeded = new Set();
   let ok = false;
   try {
     db.exec(SEED_SQL);
@@ -328,10 +823,17 @@ export async function seed({ root, cfg, from }) {
     const setBucket = db.prepare('INSERT INTO bucket (name, schema, max_usn) VALUES (?, ?, ?)');
     db.exec('BEGIN');
     for (const f of readdirSync(from).filter((f) => f.endsWith('.json')).sort()) {
-      const bucket = f.slice(0, -5);
+      const versioned = /^(.*)\.v([1-9][0-9]*)\.json$/.exec(f);
+      const bucket = versioned ? versioned[1] : f.slice(0, -5);
       const { schema, rows } = readJson(join(from, f));
       int(schema, `${f}: schema`, 1);
-      if (cfg.data?.[bucket] !== schema) throw new Error(`${f}: schema ${schema} does not match valence.config.json data.${bucket} (${cfg.data?.[bucket]})`);
+      if (versioned && Number(versioned[2]) !== schema) throw new Error(`${f}: filename schema does not match payload`);
+      if (cfg.data?.[bucket] !== schema && !(cfg.seedSchemas?.[bucket] ?? []).includes(schema)) {
+        throw new Error(`${f}: schema ${schema} does not match a declared schema for data.${bucket}`);
+      }
+      const pair = `${bucket}:${schema}`;
+      if (seeded.has(pair)) throw new Error(`${f}: duplicate seed pair ${pair}`);
+      seeded.add(pair);
       if (!Array.isArray(rows)) throw new Error(`${f}: rows must be an array`);
       let max = 0;
       for (const r of rows) {
@@ -341,7 +843,7 @@ export async function seed({ root, cfg, from }) {
         max = Math.max(max, u);
       }
       setBucket.run(bucket, schema, max);
-      counts[bucket] = rows.length;
+      counts[bucket] = (counts[bucket] ?? 0) + rows.length;
     }
     db.exec('COMMIT');
     ok = true;
@@ -351,14 +853,135 @@ export async function seed({ root, cfg, from }) {
   }
   rmSync(out, { force: true });
   renameSync(tmp, out);
-  const unseeded = Object.keys(cfg.data ?? {}).filter((b) => !Object.hasOwn(counts, b));
+  const unseeded = Object.keys(cfg.data ?? {}).filter((b) => !seeded.has(`${b}:${cfg.data[b]}`));
   const warnings = unseeded.map((b) => `data bucket "${b}" has no seed file; it is empty until the first online sync (offline first launch, contracts §5.2)`);
   return { out, counts, warnings };
 }
 
 // ---------- codegen ----------
 
-export function parseSchema(schema) {
+// Resolve fragments once, before either codegen or a store baseline is written. No package code runs.
+export function loadPluginSchema(root, cfg) {
+  const schema = readJson(paths(root, cfg).schema);
+  const owners = new Set();
+  const namespaces = new Set();
+  if (cfg.plugins !== undefined && !Array.isArray(cfg.plugins)) throw new Error('plugins must be an array of plugin entries');
+  const object = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  for (const entry of cfg.plugins ?? []) {
+    // An entry is a path, or {path, since} when the app stamps the versions itself. `since` is an app
+    // bridge version (§4.3), so a fragment shipped inside a pub package cannot carry one number that is
+    // right for every app that installs it: without this form a published plugin is installable only by
+    // editing a file in ~/.pub-cache or vendoring the fragment.
+    const stamp = object(entry) && Object.hasOwn(entry, 'since') ? entry.since : null;
+    if (object(entry)) {
+      for (const key of Object.keys(entry)) {
+        if (key !== 'path' && key !== 'since') throw new Error(`plugin entry: unknown field "${key}" (an entry is a path or {path, since})`);
+      }
+      if (!object(stamp)) throw new Error('plugin entry: since must be an object of {"namespace.method": version}');
+    }
+    const path = object(entry) && Object.hasOwn(entry, 'path') ? entry.path : object(entry) ? undefined : entry;
+    if (typeof path !== 'string' || !path || isAbsolute(path) || path.split(/[/\\]/).includes('..')) {
+      throw new Error('plugin path must be a nonempty project-relative string inside the project');
+    }
+    // Contained, not merely relative. A fragment reached through `..` builds on the author's machine and
+    // dies with ENOENT on a fresh clone, and the merged schema that .valence/baseline.json records as
+    // "what the stores reviewed" would then have no source in the repo at all. Same rule as the §8 test
+    // mapping further down this file.
+    const resolved = resolve(root, path);
+    if (relative(root, resolved).startsWith('..')) throw new Error(`plugin ${path}: leaves the project directory`);
+    const fragment = readJson(resolved);
+    const { namespace } = fragment;
+    if (typeof namespace !== 'string' || !/^[a-z][a-zA-Z0-9]*$/.test(namespace) || PLUGIN_RESERVED.has(namespace)) {
+      throw new Error(`plugin ${path}: invalid or reserved namespace "${namespace}"`);
+    }
+    if (namespaces.has(namespace)) throw new Error(`duplicate plugin namespace "${namespace}"`);
+    namespaces.add(namespace);
+    for (const key of Object.keys(fragment)) {
+      if (!['namespace', 'dartPackage', 'npmPackage', 'setup', 'types', 'methods', 'events'].includes(key)) throw new Error(`plugin ${path}: unknown field "${key}"`);
+    }
+    for (const key of ['dartPackage', 'npmPackage', 'setup']) {
+      if (typeof fragment[key] !== 'string' || !fragment[key].trim()) throw new Error(`plugin ${path}: ${key} is required`);
+    }
+    const prefix = namespace[0].toUpperCase() + namespace.slice(1);
+    for (const kind of ['types', 'methods', 'events']) {
+      if (fragment[kind] !== undefined && !object(fragment[kind])) throw new Error(`plugin ${path}: ${kind} must be an object`);
+      schema[kind] ??= {};
+      for (const [name, definition] of Object.entries(fragment[kind] ?? {})) {
+        const scoped = kind === 'types' ? name.startsWith(prefix) && /^[A-Z]/.test(name.slice(prefix.length)) : name.startsWith(namespace + '.');
+        if (!scoped) throw new Error(`plugin ${path}: ${kind} "${name}" must use namespace ${namespace} (types: ${prefix}...)`);
+        if (Object.hasOwn(schema[kind], name)) throw new Error(`plugin ${path}: ${kind} "${name}" conflicts with the app`);
+        if (!object(definition)) throw new Error(`plugin ${path}: invalid ${kind} "${name}"`);
+        // A fragment may reference its own named types only, never depend silently on an app type.
+        const fields = kind === 'types' ? definition : kind === 'methods' ? definition.params ?? {} : definition.payload ?? {};
+        const references = [...Object.values(fields), ...(kind === 'methods' ? [definition.returns] : [])];
+        for (const type of references) {
+          const base = typeof type === 'string' ? type.replace(/\?$/, '').replace(/\[\]$/, '') : '';
+          if (!PRIMS.has(base) && !Object.hasOwn(fragment.types ?? {}, base)) throw new Error(`plugin ${path}: unknown local type "${type}"`);
+        }
+        // The stamp and the fragment are exclusive, so exactly one place answers "which version is this",
+        // and neither a missing nor a doubly-declared since can resolve silently.
+        let merged = definition;
+        if (kind !== 'types') {
+          const own = Object.hasOwn(definition, 'since');
+          if (stamp && own) throw new Error(`plugin ${path}: ${kind} "${name}" declares since and the plugins entry stamps it; remove one`);
+          if (stamp && !Object.hasOwn(stamp, name)) throw new Error(`plugin ${path}: add "${name}" to this entry's since in valence.config.json`);
+          if (!stamp && !own) throw new Error(`plugin ${path}: ${kind} "${name}" needs a since, in the fragment or in this entry's since`);
+          // Coerced here, not just in parseSchema: a digit string would otherwise freeze into the store
+          // baseline as a string, and correcting it to a number later reads as changing a shipped method.
+          if (stamp) merged = { ...definition, since: int(stamp[name], `${path}: since."${name}"`, 1) };
+        }
+        // defineProperty handles JSON keys such as __proto__ without mutating object prototypes.
+        Object.defineProperty(schema[kind], name, { value: merged, enumerable: true, configurable: true, writable: true });
+        if (kind === 'methods') owners.add(name);
+      }
+    }
+    // A stamp for a name the fragment does not declare is the leftover of a renamed or dropped method,
+    // which would otherwise sit in the config forever and gate nothing.
+    for (const name of Object.keys(stamp ?? {})) {
+      if (!Object.hasOwn(fragment.methods ?? {}, name) && !Object.hasOwn(fragment.events ?? {}, name)) {
+        throw new Error(`plugin ${path}: since names "${name}", which the fragment does not declare`);
+      }
+    }
+  }
+  // Validate the combined IDL too: camel-case collisions and since bounds span fragments and app. The
+  // owners and namespaces just computed are passed in, not dropped: every path that loads a schema without
+  // running codegen — `bundle --store`, which writes the baseline the additive guard is then made against —
+  // must refuse the same things codegen does, such as a fragment marking its own method retired.
+  assertBuiltinShapes(parseSchema(schema, owners, namespaces));
+  return { schema, owners, namespaces };
+}
+
+/// Refuses a built-in declared below the `since` the runtime reserved for it, **at the built-in's own
+/// signature** — which is what copying the template and renumbering it produces.
+///
+/// Below the reserved number codegen emits an abstract handler and `ValenceBuiltins` does not implement
+/// it, so the host stops compiling with a message that points at the package rather than at the schema,
+/// and an app that reacts by writing the handler itself has silently reimplemented a built-in.
+///
+/// A declaration with a *different* signature is a genuinely app-owned method that predates the built-in
+/// (a custom `notify.daily`-style reminder, a `push.token` that took a provider), and §6.5 promises to
+/// preserve it, so the signature is the discriminator and no store baseline is needed to read it. A name
+/// the recorded store schema already carries is let through whatever its shape, because that one really
+/// did ship.
+export function assertReservedSince(s, storeSchema) {
+  const shipped = new Set(storeSchema ? parseSchema(storeSchema).methods.map((m) => m.name) : []);
+  for (const m of s.methods) {
+    const want = BUILTINS[m.name];
+    if (builtinFor(m) || !want || shipped.has(m.name)) continue;
+    const got = Object.fromEntries(m.params.map((f) => [f.name, typeString(f.type)]));
+    const optional = want.optionalParams ?? {};
+    const required = Object.fromEntries(Object.entries(got).filter(([f]) => !(f in optional)));
+    const sameParams = canonical(required) === canonical(want.params);
+    const sameReturns = builtinReturnMatches(m, want.returns, s);
+    if (!sameParams || !sameReturns) continue; // the app's own method, with its own shape
+    const reserved = reservedSince(m.name);
+    throw new Error(
+      `"${m.name}" has the built-in's own signature but "since": ${m.since}, below the ${reserved} the runtime reserves for that name — so the delegation is not generated, ValenceBuiltins will not satisfy the abstract handler, and writing it by hand reimplements a built-in. Use "since": ${reserved}: a built-in's since is reserved, even though your schema's own version is yours. (A method of your own under this name, with a different signature, is preserved as it always was.)`,
+    );
+  }
+}
+
+export function parseSchema(schema, pluginMethods = new Set(), pluginNamespaces = new Set()) {
   const version = int(schema.version, 'schema.version', 1);
   const types = schema.types ?? {};
   const parseType = (t, where, allowVoid = false) => {
@@ -386,37 +1009,130 @@ export function parseSchema(schema) {
   }
   const methods = Object.entries(schema.methods ?? {}).map(([name, m]) => {
     named(name, 'method');
-    return { name, since: int(m.since, `${name}.since`, 1, version), params: fields(m.params, name), returns: parseType(m.returns, `${name}.returns`, true) };
+    const since = int(m.since, `${name}.since`, 1, version);
+    if (m.retired !== undefined && m.retired !== true) throw new Error(`${name}.retired must be true or absent`);
+    // Retirement replaces the handler with `E_UNSUPPORTED` (§4.1), so it is only ever the app's own
+    // method to retire. The three refusals below are the three ways it would otherwise delete behaviour
+    // the app does not own: a core method every page may call, a built-in the package implements, and a
+    // plugin method the native registry answers.
+    if (m.retired) {
+      const why = CORE_METHODS.includes(name)
+        ? 'every page may call it, so it must exist'
+        : pluginMethods.has(name)
+          ? 'a plugin method is answered by its native registration, not by a handler you wrote'
+          : (name in BUILTINS && since >= reservedSince(name))
+            ? 'the valence package implements it, so retiring it would answer E_UNSUPPORTED for a working built-in'
+            : null;
+      if (why) throw new Error(`"${name}" cannot be retired: ${why}. Retirement is for a method of your own that nothing calls any more.`);
+    }
+    return { name, plugin: pluginMethods.has(name), retired: m.retired === true, since, params: fields(m.params, name), returns: parseType(m.returns, `${name}.returns`, true) };
   });
   const events = Object.entries(schema.events ?? {}).map(([name, e]) => {
     named(name, 'event');
+    // Retirement is defined for methods only (§4.1): there is nothing to retire on an event, which has no
+    // handler and is only ever emitted by the host. Accepted silently it would read as "this stops firing",
+    // and it would not — and on a shipped event the additive guard refuses it as an unexplained change.
+    if (e.retired !== undefined) throw new Error(`"${name}.retired" is only for methods: an event has no handler to retire, and stays emitted either way`);
     return { name, since: int(e.since, `${name}.since`, 1, version), payload: fields(e.payload, name) };
   });
   const typeList = Object.entries(types).map(([name, f]) => ({ name, fields: fields(f, name) }));
   for (const core of CORE_METHODS) if (!methods.some((m) => m.name === core)) throw new Error(`schema must define ${core}`);
-  const unique = (list, kind) => {
-    const seen = new Map();
-    for (const x of list) {
-      const c = camel(x.name);
-      if (seen.has(c)) throw new Error(`${kind} "${x.name}" and "${seen.get(c)}" both become "${c}"`);
-      seen.set(c, x.name);
+  // Methods and events share one namespace, because `has()` takes either kind of name and resolves it
+  // against one table (§4.3): a name declared as both would answer for whichever won, so `has()` could
+  // say false for an event the host does emit. One pass therefore catches the cross-kind collision as
+  // well as the two-names-one-identifier collision inside each kind.
+  const seen = new Map();
+  for (const x of [...methods.map((m) => ({ ...m, kind: 'method' })), ...events.map((e) => ({ ...e, kind: 'event' }))]) {
+    const c = camel(x.name);
+    const prev = seen.get(c);
+    if (prev) {
+      throw new Error(
+        prev.name === x.name
+          ? `"${x.name}" is declared as both a method and an event; has() resolves one name to one answer, so pick one`
+          : `${x.kind} "${x.name}" and ${prev.kind} "${prev.name}" both become "${c}"`,
+      );
     }
-  };
-  unique(methods, 'method');
-  unique(events, 'event');
+    seen.set(c, x);
+  }
   const classNames = new Set(typeList.map((t) => t.name));
   for (const m of methods) if (classNames.has(pascal(m.name) + 'Params')) throw new Error(`${m.name}: params class name collides with a type`);
-  return { version, types: typeList, methods, events };
+  return { version, types: typeList, methods, events, pluginNamespaces: [...pluginNamespaces] };
 }
+
+// Which optional fields each built-in's returned type may gain, keyed by the type name this app gave it.
+// The names and types come from BUILTINS, so this is not a general escape hatch: it is exactly the set of
+// fields the runtime itself added, on exactly the type the built-in returns.
+function builtinOptionalFields(schema) {
+  const byType = {};
+  for (const [name, want] of Object.entries(BUILTINS)) {
+    const optional = typeof want.returns === 'string' ? null : want.returns.optional;
+    const declared = schema.methods?.[name]?.returns;
+    if (!optional || typeof declared !== 'string') continue;
+    byType[declared.replace(/[[\]?]/g, '')] = { ...byType[declared.replace(/[[\]?]/g, '')], ...optional };
+  }
+  return byType;
+}
+
+// True when `now` is `was` plus nothing but fields from `allowed`, each at the type `allowed` names.
+// Every shipped field must still be there, unchanged, at its old type.
+function isBuiltinGrowth(was, now, allowed) {
+  if (!allowed || !now || typeof now !== 'object') return false;
+  for (const [f, t] of Object.entries(was)) if (now[f] !== t) return false;
+  for (const [f, t] of Object.entries(now)) {
+    if (Object.hasOwn(was, f)) continue;
+    if (allowed[f] !== t) return false;
+  }
+  return true;
+}
+
+// True when a built-in method's definition is its shipped one plus nothing but optional params from
+// `allowed`. Everything other than `params` must be identical — compared wholesale rather than by naming
+// `since` and `returns`, so a method-level key the IDL gains later is not silently exempt from the guard.
+function isBuiltinParamGrowth(was, now, allowed) {
+  if (!allowed || !now || typeof now !== 'object') return false;
+  const withoutParams = (d) => Object.fromEntries(Object.entries(d).filter(([k]) => k !== 'params'));
+  if (canonical(withoutParams(was)) !== canonical(withoutParams(now))) return false;
+  return isBuiltinGrowth(was.params ?? {}, now.params ?? {}, allowed);
+}
+
+// `retired` says what the host does with a method, not what goes over the wire (§4.1): the name, its
+// `since`, its params and its return type are all unchanged, so marking a shipped method retired — and
+// unmarking it — is invisible to every bundle and must not read as a breaking change.
+const wireShape = (kind, def) =>
+  kind === 'methods' && def && typeof def === 'object' && Object.hasOwn(def, 'retired')
+    ? Object.fromEntries(Object.entries(def).filter(([k]) => k !== 'retired'))
+    : def;
 
 // The schema is additive only once a store build has shipped it (contracts §4.1).
 export function assertAdditive(shipped, current) {
   if (!shipped) return;
   if (current.version < shipped.version) throw new Error(`schema version went down: ${current.version} < shipped ${shipped.version}`);
+  const grows = builtinOptionalFields(current);
   for (const kind of ['methods', 'events', 'types']) {
-    for (const [name, def] of Object.entries(shipped[kind] ?? {})) {
+    for (const [name, shippedDef] of Object.entries(shipped[kind] ?? {})) {
       if (!Object.hasOwn(current[kind] ?? {}, name)) throw new Error(`${kind} "${name}" shipped in a store build and cannot be removed`);
-      if (canonical(def) !== canonical(current[kind][name])) throw new Error(`${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
+      const def = wireShape(kind, shippedDef);
+      if (canonical(def) === canonical(wireShape(kind, current[kind][name]))) continue;
+      // A built-in's returned type may gain the fields the runtime added to it, and nothing else. Without
+      // this the additive-only guard refuses the very upgrade §4.3 tells an adopter to make, and the only
+      // way through would be --rebaseline, which overwrites the schema the stores reviewed.
+      if (kind === 'types' && isBuiltinGrowth(def, current.types[name], grows[name])) continue;
+      // The same allowance for a built-in's *params*. `since` and `returns` must be untouched; only the
+      // optional params the runtime declared may appear. Without it the additive guard refuses the upgrade
+      // §4.3 tells an adopter to make, and --rebaseline — which overwrites the schema the stores reviewed —
+      // would be the only way through.
+      // A grown param must come with a version bump, because a param has no `since` of its own: the only
+      // signal a page can read is a *sibling* method or event that arrived in the same version, and a
+      // sibling needs a version to arrive at. Without this, an app could add `data.list.after` at the
+      // shipped version, leaving has() unable to distinguish this host from the store build that answers
+      // `E_PARAMS`. Note app.info().bridge is no help: it is this app's own schema version (§4.2).
+      if (kind === 'methods' && isBuiltinParamGrowth(def, wireShape(kind, current.methods[name]), BUILTINS[name]?.optionalParams)) {
+        if (current.version > shipped.version) continue;
+        throw new Error(
+          `"${name}" gained the param ${Object.keys(current.methods[name].params ?? {}).filter((p) => !Object.hasOwn(def.params ?? {}, p)).map((p) => `"${p}"`).join(', ')}, which needs "version" above the shipped ${shipped.version}. A param has no "since", so a page can only gate it on a sibling method or event at the new version — has("data.count") for data.list's "after".`,
+        );
+      }
+      throw new Error(`${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
     }
   }
   // New methods/events must be newer than every shipped host, or has() lies on old hosts and they get E_UNKNOWN.
@@ -447,11 +1163,21 @@ function tsFields(fs, indent) {
 
 export function genTs(s) {
   const o = ['// GENERATED by valence codegen from valence/bridge.schema.json. Do not edit.', ''];
+  // The runtime lives in @getvalence/bridge, so a fix to the message cap, the nonce or the shim routing
+  // arrives with an npm update instead of being hand-applied to every app's copy.
+  o.push("import { createBridge } from '@getvalence/bridge';", '');
+  o.push("import type { Json, Shim } from '@getvalence/bridge';", '');
+  o.push("export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';", '');
+  o.push('export type { Json };', '');
   o.push(`export const BRIDGE_VERSION = ${s.version};`, '');
-  o.push('export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };', '');
   for (const t of s.types) o.push(t.fields.length ? `export interface ${t.name} ${tsFields(t.fields, 0)}` : `export type ${t.name} = Record<string, never>;`, '');
   o.push('export interface Methods {');
-  for (const m of s.methods) o.push(`  '${m.name}': { params: ${tsFields(m.params, 2)}; returns: ${tsType(m.returns)} };`);
+  for (const m of s.methods) {
+    // Kept in the table so `has()` and every shipped bundle are unchanged (§4.1); marked so a call left
+    // in page code is struck through in the editor instead of found in the field.
+    if (m.retired) o.push(`  /** @deprecated retired by the host: the call answers E_UNSUPPORTED. */`);
+    o.push(`  '${m.name}': { params: ${tsFields(m.params, 2)}; returns: ${tsType(m.returns)} };`);
+  }
   o.push('}', '', 'export interface Events {');
   for (const e of s.events) o.push(`  '${e.name}': ${tsFields(e.payload, 2)};`);
   o.push('}', '');
@@ -460,6 +1186,18 @@ export function genTs(s) {
   o.push('};', '', 'export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {');
   for (const e of s.events) o.push(`  '${e.name}': ${e.since},`);
   o.push('};', '');
+  o.push('/** Browser fallbacks for this app, so the same build also runs as the website. */');
+  o.push('export type AppShim = Shim<Methods>;', '');
+  o.push('/**');
+  o.push(' * This app\'s typed bridge.');
+  o.push(' *');
+  o.push(' * `connect()` once at startup, then `has()` tells you whether a method or event added in a later');
+  o.push(' * release exists on *this* host. `ready()` after the first meaningful paint commits an OTA bundle.');
+  o.push(' */');
+  o.push('export const { call, has, on, onLink, ready, connect, installShim } = createBridge<Methods, Events>(');
+  o.push('  METHOD_SINCE,');
+  o.push('  EVENT_SINCE,');
+  o.push(');', '');
   return o.join('\n');
 }
 
@@ -469,14 +1207,16 @@ function dartType({ base, list, nullable }) {
   return nullable && !t.endsWith('?') ? `${t}?` : t;
 }
 
+const DART_DECODE = { string: 'decodeString', int: 'decodeInt', num: 'decodeNum', bool: 'decodeBool' };
+
 function dartDecodeBase(base, v, f) {
   if (base === 'json') return v;
-  if (PRIMS.has(base)) return `_${base}(${v}, ${f})`;
+  if (PRIMS.has(base)) return `${DART_DECODE[base]}(${v}, ${f})`;
   return `${base}.fromJson(${v}, ${f})`;
 }
 
 function dartDecode(t, v, f) {
-  const inner = t.list ? `_list(${v}, ${f}, (e, p) => ${dartDecodeBase(t.base, 'e', 'p')})` : dartDecodeBase(t.base, v, f);
+  const inner = t.list ? `decodeListOf(${v}, ${f}, (e, p) => ${dartDecodeBase(t.base, 'e', 'p')})` : dartDecodeBase(t.base, v, f);
   return t.nullable && (t.list || t.base !== 'json') ? `${v} == null ? null : ${inner}` : inner;
 }
 
@@ -488,10 +1228,10 @@ function dartEncode(t, x) {
 
 function dartClass(name, fs) {
   const o = [`final class ${name} {`];
-  o.push(fs.length ? `  const ${name}({${fs.map((f) => `required this.${f.name}`).join(', ')}});` : `  const ${name}();`, '');
+  o.push(fs.length ? `  const ${name}({${fs.map((f) => `${f.type.nullable ? '' : 'required '}this.${f.name}`).join(', ')}});` : `  const ${name}();`, '');
   o.push(`  factory ${name}.fromJson(Object? j, [String f = '${name}']) {`);
-  o.push(`    final m = _obj(j, f);`);
-  o.push(`    _keys(m, const {${fs.map((x) => `'${x.name}'`).join(', ')}}, f);`);
+  o.push(`    final m = decodeObject(j, f);`);
+  o.push(`    decodeKeys(m, const {${fs.map((x) => `'${x.name}'`).join(', ')}}, f);`);
   o.push(`    return ${name}(${fs.map((x) => `${x.name}: ${dartDecode(x.type, `m['${x.name}']`, `'$f.${x.name}'`)}`).join(', ')});`);
   o.push('  }', '');
   for (const f of fs) o.push(`  final ${dartType(f.type)} ${f.name};`);
@@ -501,42 +1241,12 @@ function dartClass(name, fs) {
   return o;
 }
 
-const DART_PRELUDE = `final class BridgeError implements Exception {
-  const BridgeError(this.code, this.message);
+// The decoders, the reply cap and the script builders used to be emitted into every app. They live in
+// the `valence` package now, so a fix to any of them ships with `flutter pub upgrade`.
+const DART_IMPORTS = `import 'dart:convert';
 
-  final String code;
-  final String message;
-
-  @override
-  String toString() => '$code: $message';
-}
-
-Map<String, Object?> _obj(Object? v, String f) =>
-    v is Map<String, Object?> ? v : throw BridgeError('E_PARAMS', '$f: expected an object');
-
-void _keys(Map<String, Object?> m, Set<String> allowed, String f) {
-  for (final k in m.keys) {
-    if (!allowed.contains(k)) throw BridgeError('E_PARAMS', '$f.$k: unknown field');
-  }
-}
-
-String _string(Object? v, String f) => v is String ? v : throw BridgeError('E_PARAMS', '$f: expected a string');
-int _int(Object? v, String f) => v is int ? v : throw BridgeError('E_PARAMS', '$f: expected an int');
-num _num(Object? v, String f) => v is num ? v : throw BridgeError('E_PARAMS', '$f: expected a number');
-bool _bool(Object? v, String f) => v is bool ? v : throw BridgeError('E_PARAMS', '$f: expected a bool');
-
-List<T> _list<T>(Object? v, String f, T Function(Object? e, String p) each) {
-  if (v is! List) throw BridgeError('E_PARAMS', '$f: expected a list');
-  return [for (var i = 0; i < v.length; i++) each(v[i], '$f[$i]')];
-}
-
-String _ok(Object? id, Object? v) => jsonEncode({'id': id, 'ok': true, 'v': v});
-String _err(Object? id, String code, String message) =>
-    jsonEncode({'id': id, 'ok': false, 'e': {'code': code, 'message': message}});
-String _event(String name, Object? payload) => 'window.__valence&&window.__valence.e(\${jsonEncode(name)},\${jsonEncode(payload)})';
-
-/// Wraps a reply from [bridgeDispatch] in the script the host passes to runJavaScript.
-String bridgeReplyScript(String reply) => 'window.__valence&&window.__valence.r($reply)';
+import 'package:valence/codegen.dart';
+import 'package:valence/valence.dart';
 `;
 
 export function genDart(s) {
@@ -544,11 +1254,14 @@ export function genDart(s) {
     '// GENERATED by valence codegen from valence/bridge.schema.json. Do not edit.',
     '// ignore_for_file: type=lint, unused_element',
     '',
-    "import 'dart:convert';",
-    '',
+    DART_IMPORTS,
+    '/// The bridge version this host implements.',
+    '///',
+    '/// Canonical check 5 compares a manifest\'s `requires.bridge` against **this**, through',
+    '/// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its',
+    '/// version refuses its own built-in bundle on first launch, with nothing left to serve.',
     `const hostBridgeVersion = ${s.version};`,
     '',
-    DART_PRELUDE,
   ];
   for (const t of s.types) o.push(...dartClass(t.name, t.fields));
   for (const m of s.methods) if (m.params.length) o.push(...dartClass(pascal(m.name) + 'Params', m.params));
@@ -557,6 +1270,15 @@ export function genDart(s) {
   for (const m of s.methods) {
     const arg = m.params.length ? `${pascal(m.name)}Params p` : '';
     o.push(`  Future<${dartType(m.returns)}> ${camel(m.name)}(${arg});`);
+  }
+  o.push('}', '');
+
+  o.push('/// Opt-in defaults for test doubles or partial hosts. Production hosts extend ValenceBuiltins.');
+  o.push('mixin BridgeHandlersDefaults implements BridgeHandlers {');
+  for (const m of s.methods) {
+    const arg = m.params.length ? `${pascal(m.name)}Params p` : '';
+    o.push('  @override');
+    o.push(`  Future<${dartType(m.returns)}> ${camel(m.name)}(${arg}) async => throw const BridgeError('E_UNSUPPORTED', '${m.name} is not implemented');`);
   }
   o.push('}', '');
 
@@ -571,7 +1293,7 @@ export function genDart(s) {
   o.push('    } on FormatException {');
   o.push("      throw const BridgeError('E_PARAMS', 'message is not JSON');");
   o.push('    }');
-  o.push("    final msg = _obj(decoded, 'message');");
+  o.push("    final msg = decodeObject(decoded, 'message');");
   o.push("    id = msg['id'];");
   o.push("    if (nonce.isEmpty || msg['n'] != nonce) throw const BridgeError('E_DENIED', 'bad nonce');");
   o.push("    final p = msg['p'] ?? const <String, Object?>{};");
@@ -579,17 +1301,17 @@ export function genDart(s) {
   for (const m of s.methods) {
     o.push(`      case '${m.name}':`);
     const call = m.params.length ? `h.${camel(m.name)}(${pascal(m.name)}Params.fromJson(p, 'p'))` : `h.${camel(m.name)}()`;
-    if (!m.params.length) o.push(`        _keys(_obj(p, 'p'), const {}, 'p');`);
-    if (m.returns.base === 'void') o.push(`        await ${call};`, '        return _ok(id, null);');
-    else o.push(`        final r = await ${call};`, `        return _ok(id, ${dartEncode(m.returns, 'r')});`);
+    if (!m.params.length) o.push(`        decodeKeys(decodeObject(p, 'p'), const {}, 'p');`);
+    if (m.returns.base === 'void') o.push(`        await ${call};`, '        return replyOk(id, null);');
+    else o.push(`        final r = await ${call};`, `        return replyOk(id, ${dartEncode(m.returns, 'r')});`);
   }
   o.push('      default:');
   o.push("        throw BridgeError('E_UNKNOWN', 'unknown method ${msg['m']}');");
   o.push('    }');
   o.push('  } on BridgeError catch (e) {');
-  o.push('    return _err(id, e.code, e.message);');
+  o.push('    return replyError(id, e.code, e.message);');
   o.push('  } catch (e) {');
-  o.push("    return _err(id, 'E_INTERNAL', e.toString());");
+  o.push("    return replyError(id, BridgeErrorCode.internal, e.toString());");
   o.push('  }');
   o.push('}', '');
 
@@ -598,11 +1320,192 @@ export function genDart(s) {
   for (const e of s.events) {
     const args = e.payload.length ? `{${e.payload.map((f) => `required ${dartType(f.type)} ${f.name}`).join(', ')}}` : '';
     const body = `{${e.payload.map((f) => `'${f.name}': ${dartEncode(f.type, f.name)}`).join(', ')}}`;
-    o.push(`  static String ${camel(e.name)}(${args}) => _event('${e.name}', ${e.payload.length ? body : 'const <String, Object?>{}'});`);
+    o.push(`  static String ${camel(e.name)}(${args}) => eventScript('${e.name}', ${e.payload.length ? body : 'const <String, Object?>{}'});`);
   }
   o.push('}', '');
+  o.push(...dartBuiltins(s));
   return o.join('\n');
 }
+
+// The built-in half of BridgeHandlers, implemented by delegating to the package's runtime. An app extends
+// this and overrides only its own methods, which is what keeps main.dart to about twenty lines.
+function dartBuiltins(s) {
+  const notificationEvents = s.events.filter(autoNotificationEvent);
+  const o = [
+    '/// Automatic notification events; pre-11 declarations remain app-owned.',
+    'const hostNotificationEventFields = <String, Set<String>>{',
+    // Only the fields the native response actually carries. A field the app declared on top of them is
+    // left out rather than emitted as null, and is warned about instead.
+    ...notificationEvents.map((e) => `  '${e.name}': {${e.payload.filter((f) => NOTIFICATION_RESPONSE_FIELDS.has(f.name)).map((f) => `'${f.name}'`).join(', ')}},`),
+    '};',
+    '',
+    '/// Native plugin namespaces required by this app, including event-only fragments.',
+    `const hostPluginNamespaces = <String>{${s.pluginNamespaces.map((n) => `'${n}'`).join(', ')}};`,
+    '/// Exact native method registrations required by the merged schema.',
+    `const hostPluginMethods = <String>{${s.methods.filter((m) => m.plugin).map((m) => `'${m.name}'`).join(', ')}};`,
+    '',
+    '/// The built-in bridge methods, implemented against the `valence` runtime.',
+    '///',
+    '/// Extend it and implement your own methods; the built-ins are inherited. The bodies here are only',
+    '/// marshalling — every decision they make lives in the package, so a fix ships with an upgrade:',
+    '///',
+    '/// ```dart',
+    '/// class AppHandlers extends ValenceBuiltins implements BridgeHandlers {',
+    '///   AppHandlers(super.valence);',
+    '///',
+    '///   @override',
+    '///   Future<void> hapticsTap() async => HapticFeedback.lightImpact();',
+    '/// }',
+    '/// ```',
+    'abstract class ValenceBuiltins {',
+    '  /// Wraps an open runtime.',
+    '  ValenceBuiltins(this.valence, {List<ValencePlugin> plugins = const []})',
+    '      : plugins = ValencePluginRegistry.checked(plugins,',
+    '          requiredNamespaces: hostPluginNamespaces, requiredMethods: hostPluginMethods);',
+    '',
+    '  /// Store-compiled native handlers. Dispatch still uses the generated strict decoders.',
+    '  final ValencePluginRegistry plugins;',
+    '',
+    '  /// The runtime every built-in delegates to.',
+    '  final Valence valence;',
+    '',
+  ];
+  for (const m of s.methods) {
+    const builtin = builtinFor(m);
+    // A retired method is answered here rather than left abstract, which is what lets the app delete the
+    // handler and the native code behind it (§4.1). The name stays in `BridgeHandlers` and in `has()`.
+    if (m.retired) {
+      o.push(`  /// \`${m.name}\`, retired: the name is kept for bundles that shipped with it.`);
+      o.push(`  Future<${dartType(m.returns)}> ${camel(m.name)}(${m.params.length ? `${pascal(m.name)}Params p` : ''}) async =>`);
+      o.push(`      throw const BridgeError('E_UNSUPPORTED', '${m.name} is retired');`);
+      o.push('');
+      continue;
+    }
+    if (!builtin && !m.plugin) continue;
+    const typeName = m.returns.base === 'void' || PRIMS.has(m.returns.base) ? '' : m.returns.base;
+    const arg = m.params.length ? `${pascal(m.name)}Params p` : '';
+    // Which of the built-in's optional fields this app actually declared, so the delegation passes those
+    // and no others. An app that never regenerated against the newer runtime keeps compiling.
+    const declared = new Set((s.types.find((t) => t.name === m.returns.base)?.fields ?? []).map((f) => f.name));
+    // Same question for the optional *params*: an app that never regenerated against the newer runtime has
+    // not declared them, so the delegation must not pass them.
+    const declaredParams = new Set(m.params.map((f) => f.name));
+    o.push(`  /// \`${m.name}\`, from the package.`);
+    o.push(`  Future<${dartType(m.returns)}> ${camel(m.name)}(${arg}) async {`);
+    const params = m.params.length ? 'p.toJson()' : 'const <String, Object?>{}';
+    const invoke = `plugins.invoke(valence, '${m.name}', ${params})`;
+    const pluginCall = m.returns.base === 'void' ? [
+      `final r = await ${invoke};`,
+      "if (r != null) throw const BridgeError('E_INTERNAL', 'native plugin returned an invalid result');",
+    ].join('\n') : [
+      `final r = await ${invoke};`,
+      'try {',
+      `  return ${dartDecode(m.returns, 'r', "'plugin result'")};`,
+      '} on BridgeError {',
+      "  throw const BridgeError('E_INTERNAL', 'native plugin returned an invalid result');",
+      '}',
+    ].join('\n');
+    for (const line of (builtin ? builtin.call(typeName, (f) => declared.has(f), (p) => declaredParams.has(p)) : pluginCall).split('\n')) {
+      o.push(line.startsWith('        ') ? `    ${line.trimStart()}` : `    ${line}`);
+    }
+    o.push('  }', '');
+  }
+  if (o[o.length - 1] === '') o.pop();
+  o.push('}', '');
+  return o;
+}
+
+// A schema may omit a built-in; it may not redefine one with a different shape, because the generated
+// delegation would then pass the wrong arguments to the runtime and nothing else would catch it.
+export function assertBuiltinShapes(s) {
+  const infoMethod = s.methods.find((m) => m.name === 'app.info');
+  const reportsBuiltins = s.types.find((t) => t.name === infoMethod?.returns.base)?.fields.some((f) => f.name === 'builtins');
+  const show = (t) => (typeof t === 'string' ? t : `a type with {${Object.keys(t.fields).join(', ')}}${t.list ? '[]' : ''}`);
+  for (const m of s.methods) {
+    const want = builtinFor(m);
+    if (!want) continue;
+    const got = Object.fromEntries(m.params.map((f) => [f.name, typeString(f.type)]));
+    // Required params, exactly. Beyond them only this built-in's own optional params, each at its declared
+    // type — the same rule as the return type's optional fields, and what lets the runtime add a param
+    // (rule 5) without every app on the older shape failing codegen.
+    const optionalParams = want.optionalParams ?? {};
+    if (reportsBuiltins) {
+      for (const name of Object.keys(optionalParams)) {
+        if (!(name in got)) {
+          throw new Error(`app.info declares builtins, so "${m.name}" must declare the current optional param "${name}"; update the schema or omit AppInfo.builtins to avoid reporting unsupported capabilities`);
+        }
+      }
+    }
+    const requiredParams = Object.fromEntries(Object.entries(got).filter(([f]) => !(f in optionalParams)));
+    const extraParams = Object.entries(got).filter(([f]) => f in optionalParams);
+    if (canonical(requiredParams) !== canonical(want.params) || extraParams.some(([f, t]) => t !== optionalParams[f])) {
+      const allowed = Object.keys(optionalParams).length
+        ? ` It may also take ${Object.entries(optionalParams).map(([f, t]) => `"${f}": ${t}`).join(', ')}.`
+        : '';
+      throw new Error(
+        `"${m.name}" is implemented by the valence package, so its params must stay ${JSON.stringify(want.params)}, not ${JSON.stringify(got)}. Add a new method under a different name instead.${allowed}`,
+      );
+    }
+    // A grown param must arrive with the sibling name that gates it (§4.2). Checked here rather than in
+    // assertAdditive, because the trap does not need a store baseline: an app that declares `after` and
+    // never declares `data.count` has the documented gate answering false on every host it ships,
+    // including the ones that accept the cursor — so a page that follows the docs never pages, and the
+    // bucket it was added for still has no complete read.
+    for (const [param, sibling] of Object.entries(want.paramSiblings ?? {})) {
+      if (param in got && !s.methods.some((x) => x.name === sibling) && !s.events.some((x) => x.name === sibling)) {
+        throw new Error(
+          `"${m.name}" declares the param "${param}", which has no "since" of its own — so the only thing a page can gate it on is "${sibling}", shipped in the same version. Declare "${sibling}" too, or drop "${param}": has("${m.name}") is true on hosts that reject it with E_PARAMS.`,
+        );
+      }
+    }
+    if (typeof want.returns === 'string') {
+      if (typeString(m.returns) !== want.returns) {
+        throw new Error(`"${m.name}" is implemented by the valence package, so it must return ${want.returns}, not ${typeString(m.returns)}`);
+      }
+      continue;
+    }
+    if (!builtinReturnMatches(m, want.returns, s)) {
+      const optional = want.returns.optional ?? {};
+      const allowed = Object.keys(optional).length ? ` It may also carry ${Object.entries(optional).map(([f, t]) => `"${f}": ${t}`).join(', ')}.` : '';
+      // A field this CLI has never heard of is the shape a stale vendored copy produces: the runtime grew
+      // an optional field (rule 5), the guide that documents it is newer than this generator, and the
+      // message above would otherwise blame the schema for declaring exactly what the docs said to.
+      const type = s.types.find((t) => t.name === m.returns.base);
+      const unknown = (type?.fields ?? [])
+        .map((f) => f.name)
+        .filter((f) => !(f in want.returns.fields) && !(f in optional));
+      const stale = unknown.length
+        ? ` This CLI does not know the field${unknown.length > 1 ? 's' : ''} ${unknown.map((f) => `"${f}"`).join(', ')} at all. If a guide introduced ${unknown.length > 1 ? 'them' : 'it'} as a new optional field, your tooling is older than the runtime you are reading about: run "npx create-valence update" and try again.`
+        : '';
+      throw new Error(
+        `"${m.name}" is implemented by the valence package, so it must return ${show(want.returns)}, not "${typeString(m.returns)}". The type's name is yours; its fields are not.${allowed}${stale}`,
+      );
+    }
+  }
+}
+
+/// Whether a method's return matches a built-in's structured return: the required fields exactly, and
+/// beyond them only this built-in's own optional fields at their declared types — which is what lets the
+/// runtime add one (rule 5) without failing codegen for every app still on the older shape.
+///
+/// Shared with `assertReservedSince`, which needs the same answer to tell a renumbered copy of the
+/// template from a method of the app's own. Comparing only the params there made every structured-return
+/// built-in look like a match, so an app-owned `notify.pending` returning `string[]` was refused as a
+/// renumbered built-in — the opposite of what §6.5 promises (CR-20261029-1).
+const builtinReturnMatches = (m, wantReturns, s) => {
+  if (typeof wantReturns === 'string') return typeString(m.returns) === wantReturns;
+  const type = s.types.find((t) => t.name === m.returns.base);
+  if (!type || !!m.returns.nullable !== !!wantReturns.nullable || !!m.returns.list !== !!wantReturns.list) return false;
+  const optional = wantReturns.optional ?? {};
+  const fields = Object.fromEntries(type.fields.map((f) => [f.name, typeString(f.type)]));
+  const required = Object.fromEntries(Object.entries(fields).filter(([f]) => !(f in optional)));
+  return (
+    canonical(required) === canonical(wantReturns.fields) &&
+    Object.entries(fields).every(([f, t]) => !(f in optional) || t === optional[f])
+  );
+};
+
+const typeString = (t) => `${t.base}${t.list ? '[]' : ''}${t.nullable ? '?' : ''}`;
 
 const dartStr = (s) =>
   `'${String(s)
@@ -612,16 +1515,70 @@ const dartStr = (s) =>
     .replace(/[\x00-\x1f\x7f]/g, (c) => `\\u{${c.charCodeAt(0).toString(16)}}`)}'`;
 
 export function genDartConfig(cfg, keyring) {
+  const linkOrigins = validateLinkOrigins(cfg.links?.origins ?? []);
+
+  const kinds = cfg.permissions?.kinds ?? [];
+  const knownKinds = new Set(['camera', 'location', 'notifications', 'contacts', 'bluetooth', 'microphone', 'photos']);
+  if (!Array.isArray(kinds) || kinds.some((kind) => !knownKinds.has(kind)) || new Set(kinds).size !== kinds.length) {
+    throw new Error('permissions.kinds must be an array of unique supported permission kinds');
+  }
+  if (cfg.notifications !== undefined && (!cfg.notifications || typeof cfg.notifications !== 'object' || Array.isArray(cfg.notifications) ||
+      Object.keys(cfg.notifications).some((k) => !['enabled', 'icon'].includes(k)) ||
+      (cfg.notifications.enabled !== undefined && typeof cfg.notifications.enabled !== 'boolean') ||
+      (cfg.notifications.icon !== undefined && !/^[a-z][a-z0-9_]{0,63}$/.test(cfg.notifications.icon)))) {
+    throw new Error('notifications accepts enabled (boolean) and icon (bundled lowercase drawable name)');
+  }
+  const connect = cfg.http?.origins ?? [];
+  if (!Array.isArray(connect)) throw new Error('http.origins must be an array of exact HTTP(S) origins');
+  for (const origin of connect) {
+    let u;
+    try { u = new URL(origin); } catch { /* rejected below */ }
+    if (typeof origin !== 'string' || !u || !['http:', 'https:'].includes(u.protocol) ||
+        u.username || u.password || u.search || u.hash || (u.pathname !== '/' && u.pathname !== '') ||
+        origin.includes('*') || !/^https?:\/\/[^/?#]+\/?$/.test(origin)) {
+      throw new Error('http.origins entries must be exact HTTP(S) origins without credentials, paths, query or fragment');
+    }
+  }
   const ring = Object.entries(keyring).map(([k, v]) => `${dartStr(k)}: ${dartStr(v)}`).join(', ');
+  const data = Object.entries(cfg.data ?? {}).map(([k, v]) => `${dartStr(k)}: ${v}`).join(', ');
+  const writable = (cfg.writable ?? []).map(dartStr).join(', ');
+  const lines = [
+    `  appId: ${dartStr(cfg.appId)},`,
+    `  keyring: {${ring}},`,
+    // bridgeVersion is the generated constant, never a second literal: check 5 compares against it, and a
+    // host that under-reports its version refuses its own built-in bundle on first launch.
+    '  bridgeVersion: hostBridgeVersion,',
+    '  notificationEventFields: hostNotificationEventFields,',
+    `  notificationsEnabled: ${cfg.notifications?.enabled ?? false},`,
+    `  notificationIcon: ${dartStr(cfg.notifications?.icon ?? 'ic_stat_valence')},`,
+    '  channel: valenceOtaChannel,',
+    `  otaBase: ${dartStr(cfg.ota?.base ?? '')},`,
+    `  syncBase: ${dartStr(cfg.sync?.base ?? '')},`,
+    `  writableBuckets: {${writable}},`,
+    `  dataSchemas: {${data}},`,
+    `  permissionKinds: {${kinds.map(dartStr).join(', ')}},`,
+    `  httpOrigins: {${connect.map((o) => dartStr(new URL(o).origin)).join(', ')}},`,
+    `  linkOrigins: {${linkOrigins.map(dartStr).join(', ')}},`,
+    `  seedSchemas: {${Object.entries(cfg.seedSchemas ?? {}).map(([b, ns]) => `${dartStr(b)}: [${ns.join(', ')}]`).join(', ')}},`,
+  ];
+  if (cfg.sync?.mode === 'static') lines.push('  syncMode: ValenceSyncMode.staticChunks,');
+  // Only emitted when the project asks for it: a 0.3 app whose generated host chose its own SQLite file
+  // name sets host.database so the package keeps reading the user's existing rows.
+  if (cfg.host?.database) lines.push(`  databaseName: ${dartStr(cfg.host.database)},`);
   return [
     '// GENERATED by valence codegen from valence/valence.config.json and keyring.json. Do not edit.',
     '// ignore_for_file: type=lint',
     '',
-    `const valenceAppId = ${dartStr(cfg.appId)};`,
-    `const valenceOtaBase = ${dartStr(cfg.ota?.base ?? '')};`,
-    `const valenceSyncBase = ${dartStr(cfg.sync?.base ?? '')};`,
-    `const valenceKeyring = <String, String>{${ring}};`,
-    `const valenceWritableBuckets = <String>{${(cfg.writable ?? []).map(dartStr).join(', ')}};`,
+    "import 'package:valence/valence.dart';",
+    '',
+    "import 'bridge.g.dart';",
+    '',
+    `const valenceOtaChannel = ${dartStr(cfg.ota?.channel ?? 'production')};`,
+    '',
+    '/// Everything the runtime needs about this app. Pass it to `Valence.open`.',
+    'const valenceConfig = ValenceConfig(',
+    ...lines,
+    ');',
     '',
   ].join('\n');
 }
@@ -631,9 +1588,12 @@ const normalize = (t) => t.replace(/\s+/g, '').replace(/,([)\]}])/g, '$1');
 
 export function codegen({ root, cfg, check = false }) {
   const p = paths(root, cfg);
-  const raw = readJson(p.schema);
-  const s = parseSchema(raw);
-  assertAdditive(readBaseline(p).storeSchema, raw);
+  const { schema: raw, owners, namespaces } = loadPluginSchema(root, cfg);
+  const s = parseSchema(raw, owners, namespaces);
+  const storeSchema = readBaseline(p).storeSchema;
+  assertBuiltinShapes(s);
+  assertReservedSince(s, storeSchema);
+  assertAdditive(storeSchema, raw);
   const keyring = existsSync(p.keyring) ? readJson(p.keyring) : {};
   if (!Object.keys(keyring).length) throw new Error('keyring.json is empty. Run "valence keygen" first.');
   const outputs = [
@@ -641,28 +1601,418 @@ export function codegen({ root, cfg, check = false }) {
     [p.dart, genDart(s)],
     [p.dartConfig, genDartConfig(cfg, keyring)],
   ];
+  const warnings = [...staleToolingWarnings(s), ...notificationEventWarnings(s)];
   const stale = outputs.filter(([f, text]) => !existsSync(f) || normalize(readFileSync(f, 'utf8')) !== normalize(text)).map(([f]) => f);
   if (check) {
     if (stale.length) throw new Error(`generated files are stale, run "valence codegen":\n  ${stale.join('\n  ')}`);
-    return { written: [] };
+    return { written: [], warnings };
   }
   for (const [f, text] of outputs) if (stale.includes(f)) writeFile(f, text);
-  return { written: stale };
+  return { written: stale, warnings };
 }
 
 // ---------- CLI ----------
+
+// Mechanical evidence only. A declaration or a passing unit test cannot establish device behavior.
+function runFlutter(args, cwd) {
+  // Windows Flutter is a .bat entry point. Only fixed flags and the validated relative test paths reach
+  // this command string; reject shell syntax here too, so adding another caller cannot widen it.
+  if (args.some((arg) => !/^[A-Za-z0-9_./-]+$/.test(arg))) throw new Error('unsafe Flutter argument');
+  const options = { cwd, encoding: 'utf8', timeout: 180_000 };
+  if (process.platform !== 'win32') return spawnSync('flutter', args, options);
+  if (spawnSync('where.exe', ['flutter.bat'], { encoding: 'utf8' }).status !== 0) {
+    return { error: { code: 'ENOENT' } };
+  }
+  return spawnSync('cmd.exe', ['/d', '/c', `flutter ${args.join(' ')}`], options);
+}
+
+export async function diagnose({ root, cfg, tests = false, run = runFlutter, keyDir = join(homedir(), '.valence', 'keys'), git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' }) }) {
+  const rows = [];
+  const fixes = {
+    'generated code': 'run valence codegen; restore incompatible shipped schema changes before regenerating',
+    'stack report': 'restore .valence/stack-check.md or rerun the docs-scout phase',
+    'native value': 'declare two distinct supported nativeValue capabilities in valence.config.json',
+    'built-in compatibility': 'run valence codegen and valence bundle --builtin, then rebuild the host',
+    'seed coverage': 'regenerate seed.db with valence seed --from <seed-directory> for every current data pair',
+    'Flutter dependencies': 'run flutter pub get in host.dir and correct dependency constraints',
+    'test matrix': 'correct .valence/test-matrix.json using the documented IDs and host-relative test files',
+  };
+  // A string is a warning; `{ msg }` is a passing row that still has something to report, the same shape
+  // the wizard's own checks use. Without it a row whose whole job is to publish a number would have to
+  // warn for ever to be seen, which is the failure mode F-64 names: a permanent warning stops being read.
+  const check = async (name, fn, fix = fixes[name] ?? 'correct the mapped test path or failing test, then rerun valence doctor --tests') => {
+    try {
+      const r = await fn();
+      const warning = typeof r === 'object' && r !== null ? r.warn : r;
+      rows.push([warning ? 'WARN' : 'PASS', name, warning ?? (typeof r === 'object' && r !== null ? r.msg : undefined) ?? 'verified']);
+    } catch (e) {
+      rows.push(['FAIL', name, `${e.message.split('\n')[0]} | Fix: ${fix}`]);
+    }
+  };
+  const p = paths(root, cfg);
+  const host = resolve(root, cfg.host.dir);
+  // WARN, not FAIL: the generated code really is current for this CLI, and the method may genuinely be the
+  // app's. But `doctor` is the first thing run when a built-in "has not shipped yet", so it is where the
+  // stale-generator reading belongs (K F-62).
+  await check('generated code', () => codegen({ root, cfg, check: true }).warnings.join(' ') || undefined);
+  await check('native plugin registration', () => {
+    const { namespaces, owners } = loadPluginSchema(root, cfg);
+    if (!namespaces.size) return;
+    return `required namespaces: ${[...namespaces].join(', ')}; methods: ${[...owners].join(', ') || '(none)'}; registration is checked when ValenceBuiltins is constructed, not by source inspection; construct the real app handlers in a host test before shipping`;
+  }, 'correct plugin fragments, run valence codegen, register their native instances and test construction of the real app handlers');
+  await check('bridge version', () => {
+    const schema = parseSchema(loadPluginSchema(root, cfg).schema);
+    const generated = /\bconst hostBridgeVersion = (\d+);/.exec(readFileSync(p.dart, 'utf8'));
+    if (!generated || Number(generated[1]) !== schema.version) throw new Error('schema version differs from generated hostBridgeVersion');
+  }, 'run valence codegen, rebuild the host and ship a store update for new native capabilities');
+  await check('store baseline', () => {
+    if (!existsSync(p.baseline)) return 'no recorded store build; additive guard has no shipped baseline';
+    const baseline = readJson(p.baseline);
+    if (!baseline.storeSchema) {
+      if (baseline.storeSeq) throw new Error('storeSeq exists without storeSchema');
+      return 'no recorded store schema';
+    }
+    int(baseline.storeSeq, 'baseline.storeSeq', 1);
+    parseSchema(baseline.storeSchema);
+    assertAdditive(baseline.storeSchema, loadPluginSchema(root, cfg).schema);
+  }, 'restore the committed baseline from the store release; do not rebaseline to silence a failure');
+  await check('OTA bridge compatibility', () => {
+    const dir = join(p.ota, 'manifests');
+    if (!existsSync(dir)) return 'no local OTA manifests; release compatibility not checked';
+    const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+    if (!files.length) return 'no local OTA manifests; release compatibility not checked';
+    const baseline = readBaseline(p);
+    const storeBridge = baseline.storeSchema ? parseSchema(baseline.storeSchema).version : null;
+    for (const file of files) {
+      const m = verifyBundle({ manifestPath: join(dir, file), filesDir: join(p.ota, 'files'), keyring: readJson(p.keyring), appId: cfg.appId });
+      if (!Number.isSafeInteger(m.requires?.bridge) || m.requires.bridge < 1) throw new Error('OTA requires.bridge must be a positive integer');
+      if (storeBridge !== null && m.requires.bridge > storeBridge) throw new Error(`OTA ${m.seq} requires bridge ${m.requires.bridge}, store baseline is ${storeBridge}`);
+    }
+    if (storeBridge === null) return 'OTA signatures verified, but no recorded store bridge; compatibility unverified';
+  }, 'rebuild OTA with --requires-bridge <store-version> and has() guards, or ship the new host first; archive obsolete local releases outside dist-ota');
+  // The one number a retirement (§4.1) turns on, and the arithmetic nobody does twice by hand: the lowest
+  // `requires.bridge` across every bundle a device can still be serving, which is every local release plus
+  // the built-in bundle every install carries as its fallback. A method no bundle on that line calls is a
+  // method that can stop being implemented.
+  //
+  // The floor is deliberately *not* subtracted. It is a per-install high-water mark raised only when a
+  // device commits a bundle carrying it (§2.2), and `_serve` loads `current` without enforcing check 4 — so
+  // a device whose last commit predates the raise keeps serving that older bundle indefinitely. Filtering
+  // by the published floor would therefore report a higher number than the field, which is the one
+  // direction this row must never be wrong in.
+  await check('oldest servable bundle', () => {
+    const baseline = readBaseline(p);
+    const bridges = [];
+    let unreadable = 0;
+    // Signatures are not checked here: the OTA row above verifies every one of these manifests and fails
+    // on a bad one, so re-verifying would only duplicate its failure. This row is arithmetic over seq and
+    // requires.bridge, and a value it cannot trust is counted rather than used.
+    const add = (what, m) => {
+      if (Number.isSafeInteger(m.requires?.bridge) && m.requires.bridge >= 1) bridges.push({ what, bridge: m.requires.bridge });
+      else unreadable++;
+    };
+    const builtinPath = join(host, 'assets', 'valence', 'builtin', 'manifest.json');
+    if (existsSync(builtinPath)) {
+      const m = readJson(builtinPath);
+      add(`built-in seq ${m.seq}`, m);
+    }
+    const dir = join(p.ota, 'manifests');
+    const local = (existsSync(dir) ? readdirSync(dir).filter((f) => /^\d+\.json$/.test(f)) : []).map((f) => readJson(join(dir, f)));
+    for (const m of local) add(`OTA seq ${m.seq}`, m);
+    const { schema, owners, namespaces } = loadPluginSchema(root, cfg);
+    const retired = parseSchema(schema, owners, namespaces).methods.filter((m) => m.retired).map((m) => m.name);
+    const note = retired.length ? ` Retired: ${retired.join(', ')} — a retirement is safe only once no bundle at or above that line calls the method.` : '';
+    const oldest = bridges.length ? bridges.reduce((a, b) => (b.bridge < a.bridge ? b : a)) : null;
+    const seen = `${local.length} local OTA manifest${local.length === 1 ? '' : 's'}${existsSync(builtinPath) ? ' and the built-in bundle' : ''}${unreadable ? `, ${unreadable} without a usable requires.bridge` : ''}`;
+    // `.valence/dist-ota/` is gitignored and `baseline.json` is committed, so a fresh clone — or a project
+    // that releases from CI — sees the baseline's record of a release whose manifest is not on disk. Without
+    // this the row would answer with the built-in bundle alone, which carries the *newest* schema version:
+    // the most permissive number it can produce, on a PASS, for the project whose field bundle is oldest.
+    // `lastSeq` counts every build, so the built-in bundle in the host assets accounts for a `--builtin`
+    // or `--store` one; what cannot be accounted for is an OTA release cut on another machine.
+    const lastSeq = baseline.lastSeq ?? 0;
+    const accounted = new Set([...local.map((m) => m.seq), ...(existsSync(builtinPath) ? [readJson(builtinPath).seq] : [])]);
+    if (lastSeq > 0 && !accounted.has(lastSeq)) {
+      return `baseline.json records OTA seq ${lastSeq}, whose manifest is not under ${relative(root, dir)} — dist-ota is gitignored, so this checkout cannot see what was published and the lowest requires.bridge in the field is not computable here (${seen}).${note}`;
+    }
+    if (!oldest) return `no readable local bundle (${seen}), so there is no line to compare against.${note}`;
+    return { msg: `requires bridge ${oldest.bridge} (${oldest.what}); ${seen}; only releases on this machine are visible, and the published floor is not subtracted because a device that never committed it keeps serving an older bundle.${note}` };
+  }, 'rebuild the built-in bundle and keep every released manifest under dist-ota/manifests, then rerun valence doctor');
+  await check('database directory', () => {
+    const name = cfg.host.database ?? 'valence.db';
+    if (typeof name !== 'string' || !name || name === '.' || name === '..' || /[<>:"/\\|?*\x00-\x1f]/.test(name) || /[. ]$/.test(name) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) throw new Error('host.database must be a plain file name, never a directory or path');
+    if (cfg.host.databaseDirectory !== undefined || cfg.host.databasePath !== undefined) throw new Error('host database directory/path overrides are unsupported');
+    return `<appSupport>/${name}; installed location and legacy adoption need a device check`;
+  }, 'set host.database to the existing database file name, run codegen; verify legacy adoption on a device before shipping');
+  await check('notification icon', () => {
+    if (!cfg.notifications?.enabled) return;
+    const icon = cfg.notifications.icon ?? 'ic_stat_valence';
+    const res = join(host, 'android', 'app', 'src', 'main', 'res');
+    if (!existsSync(res)) return `Android res directory absent; @drawable/${icon} not checked`;
+    const dirs = readdirSync(res).filter((d) => d === 'drawable' || d.startsWith('drawable-'));
+    const found = dirs.filter((d) => readdirSync(join(res, d)).some((f) => f.replace(/\.[^.]+$/, '') === icon));
+    if (!found.length) throw new Error(`notifications.icon names @drawable/${icon}, which is not under android/app/src/main/res`);
+    // The icon is named only as a string in valence.config.json, so no layout, style or manifest attribute
+    // refers to it and Flutter's release resource shrinker deletes it. The runtime then starts with
+    // notifications unavailable rather than failing, but the reminder the app shipped is silently dead.
+    const keep = join(res, 'raw', 'keep.xml');
+    if (!existsSync(keep) || !new RegExp(`@drawable/${icon}(?![a-z0-9_])`).test(readFileSync(keep, 'utf8'))) {
+      throw new Error(`release resource shrinking deletes @drawable/${icon}: nothing but valence.config.json names it, and res/raw/keep.xml does not`);
+    }
+  }, 'add the drawable under android/app/src/main/res/drawable and name it in res/raw/keep.xml as tools:keep="@drawable/<icon>", then run a release build as well as debug');
+  await check('deep links', () => {
+    const origins = cfg.links?.origins ?? [];
+    const manifestPath = join(host, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+    // Both halves of a deep link are mandatory and they live in different files: links.origins is
+    // store-compiled into config.g.dart, the intent filter is hand-edited here and codegen never reads it.
+    // Each half failing alone is silent in its own direction — the OS never routes the intent, or it
+    // launches the app and the host rejects the URL as untrusted, so the page gets nothing either way.
+    if (!origins.length && !existsSync(manifestPath)) return;
+    if (!existsSync(manifestPath)) return `Android manifest absent; intent filters for ${origins.join(', ')} not checked`;
+    const xml = readFileSync(manifestPath, 'utf8');
+    const registered = new Set(); // exact scheme://host pairs an intent filter serves
+    const anyHost = new Set(); // schemes a filter registers with no host, which match every host
+    for (const [, filter] of xml.matchAll(/<intent-filter\b[^>]*>([\s\S]*?)<\/intent-filter>/g)) {
+      if (!/android\.intent\.action\.VIEW(?![.\w])/.test(filter)) continue; // MAIN/LAUNCHER and the rest are not links
+      const values = (attr) => [...filter.matchAll(new RegExp(`<data\\b[^>]*?android:${attr}\\s*=\\s*"([^"]*)"`, 'g'))]
+        .map((m) => m[1]).filter((v) => v && !v.includes('${')); // a manifest placeholder cannot be resolved here
+      // Android combines every scheme with every host declared anywhere in the same filter.
+      const schemes = values('scheme').map((s) => s.toLowerCase());
+      const hosts = values('host').map((h) => h.toLowerCase());
+      for (const scheme of schemes) {
+        if (!hosts.length) anyHost.add(scheme);
+        for (const host of hosts) registered.add(`${scheme}://${host}`);
+      }
+    }
+    // ponytail: compares scheme and host only. A declared https port with no matching android:port is not
+    // caught; add it if a port-only mismatch is ever reported.
+    const bare = (origin) => origin.replace(/:\d+$/, '').toLowerCase();
+    const unfiltered = origins.filter((o) => !registered.has(bare(o)) && !anyHost.has(bare(o).split('://')[0]));
+    const declared = new Set(origins.map(bare));
+    const undeclared = [...registered].filter((o) => !declared.has(o))
+      .concat([...anyHost].filter((s) => ![...declared].some((o) => o.startsWith(`${s}://`))).map((s) => `${s}://*`));
+    if (unfiltered.length) {
+      throw new Error(`links.origins declares ${unfiltered.join(', ')} with no matching <intent-filter> in android/app/src/main/AndroidManifest.xml; the OS will not route those links at all`);
+    }
+    if (undeclared.length) {
+      return `AndroidManifest.xml registers ${undeclared.join(', ')}, which links.origins does not declare; those links launch the app and the host then rejects the URL as untrusted. Declare them, or remove the filter if Valence does not serve them`;
+    }
+  }, 'declare every deep-link origin in valence.config.json links.origins and register the matching scheme/host <intent-filter> on the Flutter activity in android/app/src/main/AndroidManifest.xml, then run codegen and prove it with adb shell am start against a real build');
+  await check('signing keys in Git', () => {
+    if (insideGit(keyDir)) throw new Error('configured signing-key directory resolves inside a Git work tree');
+    const repo = git(['rev-parse', '--show-toplevel']);
+    if (repo.error?.code === 'ENOENT') return 'Git unavailable; private-key scan not run';
+    if (repo.error || repo.status !== 0) return 'not a Git work tree; private-key scan not run';
+    // -l returns names only: never include matching lines or subprocess stderr in diagnostic output.
+    const result = git(['-C', repo.stdout.trim(), 'grep', '--untracked', '-a', '-l', '-E', '-e', '-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY-----', '--', '.']);
+    if (result.error || ![0, 1].includes(result.status)) throw new Error('Git private-key scan failed');
+    if (result.status === 0) throw new Error('PEM private key found in tracked or non-ignored files (contents withheld)');
+  }, 'move signing keys outside Git, remove exposed files from the index and rotate exposed keys; audit history separately');
+  await check('connection origins', () => {
+    if (!Array.isArray(cfg.web.connect ?? [])) throw new Error('web.connect must be an array of HTTP(S) URLs');
+    for (const value of cfg.web.connect ?? []) {
+      let url;
+      try { url = new URL(value); } catch { /* rejected below */ }
+      if (typeof value !== 'string' || !/^https?:\/\//.test(value) || /[\s*'";\\]/.test(value) || !url || !['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('web.connect contains an invalid HTTP(S) connection URL');
+    }
+    if (Array.isArray(cfg.http?.origins) && cfg.http.origins.some((value) => typeof value !== 'string' || /[\s\\]/.test(value))) throw new Error('http.origins contains whitespace or backslashes');
+    genDartConfig(cfg, readJson(p.keyring)); // Native token origins have the stricter exact-origin rule.
+    // §4.5: the grant is live in release builds, and Android's network security XML does not bound native
+    // Dart HTTP, so an emulator-host or LAN origin left in a config ships the host token over cleartext.
+    const cleartext = (cfg.http?.origins ?? []).filter((value) => {
+      try {
+        const u = new URL(value);
+        return u.protocol === 'http:' && !['127.0.0.1', 'localhost', '[::1]', '::1'].includes(u.hostname);
+      } catch { return false; }
+    });
+    if (cleartext.length) {
+      return `http.origins grants cleartext to ${cleartext.join(', ')}; that grant is live in release builds and carries the host token (§4.5). Use HTTPS for anything off-device`;
+    }
+  }, 'use HTTP(S) URLs in web.connect and exact trusted origins in http.origins; run codegen and ship a store build for native origin changes');
+  await check('stack report', () => {
+    if (!existsSync(join(root, '.valence', 'stack-check.md'))) return 'missing .valence/stack-check.md; run the docs-scout phase';
+    return 'report present; freshness and policy wording require review';
+  });
+  await check('native value', () => {
+    const allowed = new Set(['offline', 'notifications', 'widget', 'share', 'haptics', 'biometric']);
+    if (cfg.nativeValue === undefined) return 'declare nativeValue using at least two §6 capabilities';
+    if (!Array.isArray(cfg.nativeValue) || cfg.nativeValue.some((x) => !allowed.has(x))) throw new Error('invalid nativeValue capability');
+    if (new Set(cfg.nativeValue).size < 2) throw new Error('nativeValue needs at least two distinct §6 capabilities');
+    return `declared ${cfg.nativeValue.join(', ')}; native setup and device evidence still need review`;
+  });
+  await check('built-in compatibility', () => {
+    const manifestPath = join(host, 'assets', 'valence', 'builtin', 'manifest.json');
+    if (!existsSync(manifestPath)) return 'built-in not built';
+    const m = verifyBundle({ manifestPath, filesDir: join(dirname(manifestPath), 'files'), keyring: readJson(p.keyring), appId: cfg.appId });
+    const generated = /\bconst hostBridgeVersion = (\d+);/.exec(readFileSync(p.dart, 'utf8'));
+    if (!generated || m.requires.bridge > Number(generated[1])) throw new Error('built-in requires a bridge newer than generated hostBridgeVersion');
+    for (const [b, n] of Object.entries(m.requires.data)) {
+      if (cfg.data?.[b] !== n) throw new Error(`built-in requires ${b} v${n}, config requires ${cfg.data?.[b]}`);
+    }
+  });
+  await check('seed coverage', async () => {
+    if (!Object.keys(cfg.data ?? {}).length) return;
+    if (!existsSync(p.seed)) return 'seed missing; offline cold start is unverified';
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(p.seed, { readOnly: true });
+    try {
+      for (const [b, n] of Object.entries(cfg.data)) {
+        if (!db.prepare('SELECT 1 FROM bucket WHERE name = ? AND schema = ?').get(b, n)) {
+          throw new Error(`seed missing current pair ${b} v${n}`);
+        }
+      }
+    } finally { db.close(); }
+  });
+  await check('Flutter dependencies', () => {
+    if (!existsSync(join(host, 'pubspec.yaml'))) return 'host pubspec missing; dependency resolution not run';
+    if (!existsSync(join(host, 'pubspec.lock'))) return 'pubspec.lock missing; run flutter pub get before checking resolved dependencies';
+    const r = run(['pub', 'deps', '--json'], host);
+    if (r.error?.code === 'ENOENT') return 'Flutter unavailable; dependency resolution not checked';
+    if (r.error || r.status !== 0) throw new Error('flutter pub deps --json failed; run flutter pub get in the host');
+    const deps = JSON.parse(r.stdout).packages;
+    if (!Array.isArray(deps) || !deps.some((d) => d.name === 'valence')) throw new Error('resolved host does not depend on valence');
+    const android = deps.find((d) => d.name === 'path_provider_android');
+    if (android?.version !== '2.2.23') return `path_provider_android ${android?.version ?? 'absent'} differs from tested compatibility range >=2.2.17 <2.3.0 (expected 2.2.23) (U-7)`;
+  });
+  const matrixPath = join(root, '.valence', 'test-matrix.json');
+  let matrix = {};
+  await check('test matrix', () => {
+    if (!existsSync(matrixPath)) return 'missing .valence/test-matrix.json; §8 coverage unverified';
+    const candidate = readJson(matrixPath);
+    if (!candidate || Array.isArray(candidate) || typeof candidate !== 'object') throw new Error('test matrix must be an object');
+    if (Object.keys(candidate).some((id) => !['bridge', 'loopback', 'updater', 'store-sync', 'integration'].includes(id))) throw new Error('unknown test matrix ID');
+    matrix = candidate;
+  });
+  for (const id of ['bridge', 'loopback', 'updater', 'store-sync', 'integration']) {
+    await check(`§8 ${id}`, () => {
+      const files = matrix[id];
+      if (files === undefined) return 'no mapped app wiring/device evidence; package invariants belong to package tests';
+      if (!Array.isArray(files) || !files.length) throw new Error('mapping must be a nonempty test-file array');
+      for (const file of files) {
+        if (typeof file !== 'string' || !/^(test|integration_test)\/[A-Za-z0-9_./-]+_test\.dart$/.test(file) || file.split('/').includes('..')) throw new Error('mapping must name host-relative test files');
+        const target = realpathSync(join(host, file));
+        const rel = relative(realpathSync(host), target);
+        if (rel.startsWith('..') || resolve(host, rel) !== target) throw new Error('test mapping leaves host directory');
+      }
+      if (id === 'integration' || files.some((f) => f.startsWith('integration_test/'))) return 'mapped; requires a separate emulator/device run';
+      if (!tests) return 'mapped but not executed; pass --tests';
+      const r = run(['test', ...files], host);
+      if (r.error?.code === 'ENOENT') return 'Flutter unavailable; tests not run';
+      if (r.error || r.status !== 0) throw new Error(`flutter test failed for ${id}`);
+    });
+  }
+  return rows;
+}
+
+export function validateLinkOrigins(origins) {
+  if (!Array.isArray(origins)) throw new Error('links.origins must be an array');
+  for (const origin of origins) {
+    // Canonical ASCII origins only: no URL-parser repair, wildcard, credentials or path.
+    const match = typeof origin === 'string' && /^([a-z][a-z0-9+.-]*):\/\/([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)(?::([0-9]+))?$/.exec(origin);
+    if (!match || ['http', 'javascript', 'data', 'file', 'content', 'intent', 'about', 'blob'].includes(match[1]) ||
+        (match[3] && (match[1] !== 'https' || Number(match[3]) < 1 || Number(match[3]) > 65535 || String(Number(match[3])) !== match[3])) ||
+        match[2].split('.').some((s) => !s || s.startsWith('-') || s.endsWith('-'))) {
+      throw new Error('links.origins must contain exact lowercase HTTPS/custom origins without paths, credentials or wildcards');
+    }
+    if (match[1] === 'https' && new URL(origin).origin !== origin) throw new Error('links.origins must use canonical HTTPS origins (omit default ports)');
+  }
+  return origins;
+}
+
+/** Writes website association documents only; native intent filters/entitlements remain store setup. */
+export function association({ kind, packageId, fingerprints, appId, out }) {
+  let name, document;
+  if (kind === 'assetlinks') {
+    if (!/^[A-Za-z]\w*(?:\.[A-Za-z]\w*)+$/.test(packageId ?? '')) throw new Error('--package must be an Android applicationId');
+    const certs = (fingerprints ?? '').split(',');
+    if (!certs.length || certs.some((s) => !/^(?:[0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$/.test(s))) throw new Error('--fingerprints requires comma-separated SHA-256 certificate fingerprints');
+    name = 'assetlinks.json';
+    document = [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: packageId, sha256_cert_fingerprints: [...new Set(certs.map((s) => s.toUpperCase()))] } }];
+  } else {
+    if (!/^[A-Z0-9]{10}\.[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/.test(appId ?? '')) throw new Error('--app-id must be TEAMID.bundle.id (10-character team ID; letters, digits and hyphens in bundle ID)');
+    name = 'apple-app-site-association';
+    document = { applinks: { apps: [], details: [{ appID: appId, paths: ['*'] }] } };
+  }
+  if (!out) throw new Error('--out is required (website public directory)');
+  const dir = join(resolve(out), '.well-known');
+  mkdirSync(dir, { recursive: true });
+  const target = join(dir, name);
+  // Refusing is deliberate policy, not a permissions problem: this document grants an app every URL path
+  // on the domain, it is reviewed before upload, and silently rewriting it is how a stale fingerprint
+  // survives a key rotation. Say that, rather than letting Node's errno stand as the whole explanation.
+  if (existsSync(target)) {
+    throw new Error(`${name} already exists at ${target}; it grants an app every URL path on the domain and is reviewed before upload, so it is never overwritten. Read it, then delete it to regenerate`);
+  }
+  writeFileSync(target, `${JSON.stringify(document, null, 2)}\n`, { flag: 'wx' });
+  return { file: target };
+}
+
+// A dev package script is trusted local code, like `npm run build`.
+export function devPlan({ root, cfg, webDir = 'web', port = '5173', deviceHost = '10.0.2.2', allowLan = false }) {
+  if (!/^\d+$/.test(port) || Number(port) < 1024 || Number(port) > 65535) throw new Error('--port must be 1024..65535');
+  if (!/^(?:localhost|(?:[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?))$/.test(deviceHost)) throw new Error('--device-host must be a hostname or IPv4 address');
+  // Only these exact local targets avoid the LAN grant. Do not trust a hostname's current DNS answer.
+  const local = ['10.0.2.2', '127.0.0.1', 'localhost'].includes(deviceHost.toLowerCase());
+  if (!local && !allowLan) throw new Error('--device-host requires --allow-lan for LAN addresses and hostnames; LAN mode grants cleartext server code the full native bridge');
+  const cwd = resolve(root, webDir);
+  if (!readJson(join(cwd, 'package.json')).scripts?.dev) throw new Error('--web-dir must contain a package.json with a dev script');
+  return {
+    cwd,
+    args: ['run', 'dev', '--', '--host', allowLan ? '0.0.0.0' : '127.0.0.1', '--port', port, '--strictPort'],
+    command: `cd "${resolve(root, cfg.host.dir)}"\nflutter run --debug --dart-define=VALENCE_DEV_URL=http://${deviceHost}:${port}`,
+    warning: allowLan
+      ? `LAN mode: http://${deviceHost}:${port} grants its code the full native bridge over cleartext HTTP. Anyone who replaces that traffic can access secure storage and SQLite or change authentication. Use an isolated network, test accounts and test data.`
+      : 'Local development grants server code the full native bridge. Use a separate development app id, test accounts and test data.',
+  };
+}
+
+async function dev(options) {
+  const plan = devPlan(options);
+  console.warn(plan.warning);
+  console.log(plan.command);
+  // Windows requires cmd for npm.cmd; every argument here is fixed or validated numeric.
+  const child = process.platform === 'win32'
+    ? spawn('cmd.exe', ['/d', '/s', '/c', `npm ${plan.args.join(' ')}`], { cwd: plan.cwd, stdio: 'inherit' })
+    : spawn('npm', plan.args, { cwd: plan.cwd, stdio: 'inherit', detached: true });
+  const stop = () => {
+    if (process.platform === 'win32' && child.pid) spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' });
+    else if (child.pid) {
+      try { process.kill(-child.pid, 'SIGTERM'); }
+      catch (error) { if (error.code !== 'ESRCH') throw error; }
+    }
+  };
+  process.once('SIGINT', stop);
+  process.once('SIGTERM', stop);
+  try {
+    await new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('exit', (code, signal) => code === 0 || signal ? resolve() : reject(new Error(`dev server exited ${code}`)));
+    });
+  } finally {
+    process.removeListener('SIGINT', stop);
+    process.removeListener('SIGTERM', stop);
+  }
+}
 
 const HELP = `Valence CLI ${VALENCE_VERSION} (spec: references/contracts.md)
 
   valence version                        print the CLI version (doctor compares it with the skill copy)
   valence keygen                         new Ed25519 key in ~/.valence/keys, public key into valence/keyring.json
   valence codegen [--check]              bridge.schema.json -> bridge.g.ts, bridge.g.dart, config.g.dart
-  valence bundle [--builtin | --store] [--floor N] [--requires-bridge N] [--urgent] [--key file]
+  valence bundle [--builtin | --store [--rebaseline]] [--floor N] [--requires-bridge N] [--urgent] [--key file]
                                     sign the web build: --builtin into the host assets, else into .valence/dist-ota;
-                                    --store = --builtin for a build you submit to the stores (records the baseline)
+                                    --store = --builtin for a build you submit to the stores (records the baseline);
+                                    --rebaseline lets --store overwrite a recorded store schema it would otherwise refuse
   valence pointer [--channel production] [--seq N] --rollout 0..100
   valence verify --manifest file --files dir
+                                    --files is the content-addressed files/ directory inside the bundle, not the bundle directory
   valence seed --from dir                <bucket>.json files {schema, rows:[{k,v,u,d}]} -> host assets/valence/seed.db
+  valence doctor [--tests]               mechanical diagnostics; execute mapped unit tests with --tests
+  valence assetlinks --package id --fingerprints SHA256,... --out public-dir
+  valence aasa --app-id TEAMID.bundle.id --out public-dir
+
+  valence dev [--web-dir web] [--port 5173] [--device-host 10.0.2.2] [--allow-lan]
+                                    loopback-bound by default; --allow-lan grants cleartext LAN code the full bridge
 
 Options: --root <project root> (default .)`;
 
@@ -672,9 +2022,15 @@ export async function main(argv) {
     allowPositionals: true,
     options: {
       root: { type: 'string', default: '.' },
+      'web-dir': { type: 'string', default: 'web' },
+      port: { type: 'string', default: '5173' },
+      'device-host': { type: 'string', default: '10.0.2.2' },
+      'allow-lan': { type: 'boolean', default: false },
       check: { type: 'boolean', default: false },
+      tests: { type: 'boolean', default: false },
       builtin: { type: 'boolean', default: false },
       store: { type: 'boolean', default: false },
+      rebaseline: { type: 'boolean', default: false },
       urgent: { type: 'boolean', default: false },
       floor: { type: 'string' },
       'requires-bridge': { type: 'string' },
@@ -685,19 +2041,35 @@ export async function main(argv) {
       manifest: { type: 'string' },
       files: { type: 'string' },
       key: { type: 'string' },
+      package: { type: 'string' },
+      fingerprints: { type: 'string' },
+      'app-id': { type: 'string' },
+      out: { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
   const cmd = positionals[0];
+  if (v['allow-lan'] && cmd !== 'dev') throw new Error('--allow-lan only applies to valence dev');
+  // Otherwise a release script that loses --store still takes --rebaseline and reports nothing.
+  if (v.rebaseline && !(cmd === 'bundle' && v.store)) throw new Error('--rebaseline only means something with "bundle --store"');
   if (cmd === 'version') return console.log(VALENCE_VERSION);
   if (!cmd || v.help) return console.log(HELP);
+  if (cmd === 'assetlinks' || cmd === 'aasa') {
+    return console.log(JSON.stringify(association({ kind: cmd, packageId: v.package, fingerprints: v.fingerprints, appId: v['app-id'], out: v.out }), null, 2));
+  }
   const root = resolve(v.root);
   const cfg = loadConfig(root);
   const p = paths(root, cfg);
   const log = (o) => console.log(JSON.stringify(o, null, 2));
 
+  if (cmd === 'dev') return dev({ root, cfg, webDir: v['web-dir'], port: v.port, deviceHost: v['device-host'], allowLan: v['allow-lan'] });
+
   if (cmd === 'keygen') return log(keygen({ root, cfg }));
-  if (cmd === 'codegen') return log(codegen({ root, cfg, check: v.check }));
+  if (cmd === 'codegen') {
+    const r = codegen({ root, cfg, check: v.check });
+    for (const w of r.warnings) console.warn(`warning: ${w}`);
+    return log({ written: r.written });
+  }
   if (cmd === 'bundle') {
     const r = bundle({
       root,
@@ -705,12 +2077,13 @@ export async function main(argv) {
       key: loadSigningKey(cfg, readJson(p.keyring), v.key),
       builtin: v.builtin,
       store: v.store,
+      rebaseline: v.rebaseline,
       urgent: v.urgent,
       floor: v.floor === undefined ? undefined : int(v.floor, '--floor'),
       requiresBridge: v['requires-bridge'] === undefined ? undefined : int(v['requires-bridge'], '--requires-bridge', 1),
     });
     for (const w of r.warnings) console.warn(`warning: ${w}`);
-    return log({ seq: r.manifest.seq, files: Object.keys(r.manifest.files).length, manifest: r.manifestPath });
+    return log({ seq: r.manifest.seq, files: Object.keys(r.manifest.files).length, manifest: r.manifestPath, ...(r.recorded ? { recorded: r.recorded } : {}) });
   }
   if (cmd === 'pointer') {
     if (v.rollout === undefined) throw new Error('--rollout is required (0..100)');
@@ -726,6 +2099,12 @@ export async function main(argv) {
     const r = await seed({ root, cfg, from: resolve(v.from) });
     for (const w of r.warnings) console.warn(`warning: ${w}`);
     return log({ out: r.out, counts: r.counts });
+  }
+  if (cmd === 'doctor') {
+    const rows = await diagnose({ root, cfg, tests: v.tests });
+    log(rows);
+    if (rows.some(([s]) => s === 'FAIL')) process.exitCode = 1;
+    return rows;
   }
   throw new Error(`unknown command "${cmd}"\n\n${HELP}`);
 }
