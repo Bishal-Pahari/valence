@@ -8,6 +8,69 @@ ID. Regenerated config names the compatible events and fields; a native adapter 
 event using the original ID carried inside the app's own payload. Warm and cold taps use the same
 conversion without changing the shipped schema or erasing its baseline.
 
+## Final retirement-review R4 refresh - 2026-10-31
+
+### In plain terms
+
+The notification compatibility branch now includes the last upstream retirement-review
+fixes. App-c's latest warm-tap audit still fails on its unadapted host; this refresh does
+not close F-30 or change its shipped event. No runtime implementation changes were needed.
+
+Merged newest refs/heads/packages without conflicts in both worktrees:
+code d771105ad666e84b29c1545ed7b6db403f79d46a (merge dd25718), site
+53d3a919b999fe62fee3d3928bbaf3a235068c58 (merge d5d4cf3).
+These supersede the bases in the preceding refresh below. All 27 earlier numbered-feature,
+link-compat and sync-fixes tips remain ancestors of packages in both repositories.
+Only this report branch remains unmerged; a second ready feature does not require integration.
+
+Read both VALENCE_FINDINGS.md files and newest reports, Kundalini 16 and app-c 9.
+Independently read app-c's event-contract-check.json (passed=false, integer 1997876972
+against string), background-state-comparison.json (identical activation hashes), and
+final-state.json (1793383609 committed, pending/trial null, bad 1793383520 retained).
+Its current mobile/lib still contains neither notificationEventAdapter nor
+notificationEventFields. Routing success and a natural background worker run do not
+establish event-shape compatibility or acceptance of the adapter.
+Kundalini reports warm/cold/repeated links, unsafe-path rejection, pinned OTA commitment
+and seven alarms restored after reboot; the newest base also addresses F-64 retirement.
+
+Decision, security and data first: retain the reviewed notification adapter and original
+application IDs; do not coerce an integer hash or rewrite a shipped event. Retain the
+upstream conservative servable-bundle calculation: no floor subtraction, warn when a
+recorded release manifest is missing, and refuse retirement on events. A minimum bridge
+number alone does not prove an old method has no callers. This refresh retires no app
+method and touches no test app. Combined schema stays 16 in both template and example;
+notification/badge since 11 and pendingIds since 16 are unchanged. No package version changes.
+The prior security checklist remains applicable; no signature order, nonce, strict decoding,
+navigation/CSP, atomic activation, data or sync paths changed. No new independent review
+or device run is claimed. S1 stays deferred during the freeze; S2 needs a Play account.
+
+Fresh logs: %TEMP%/valence-oct31-r4-final-*.log.
+
+| Gate | Result |
+| --- | --- |
+| npm test | 106 passed, zero failures/skips; real generated Dart and strict/verbatim generated TS executed |
+| Core Flutter tests | 548 passed |
+| Core / push fatal-info Dart analysis | No issues in either package |
+| Push adapter / example Flutter tests | 2 / 27 passed |
+| Core / push pub publish --dry-run | Zero warnings; push retains its local-override hint |
+| Bridge tests / strict/verbatim TypeScript | 29 passed / passed |
+| Root / bridge npm pack --dry-run | Passed / passed |
+| Site build / SEO | 43 pages passed |
+| Example codegen --check / built-in signature verification | written: []; seq 1793209750, two files verified |
+| Debug APK / Windows py Firebase audit | Passed, assembleDebug 104.3 seconds / PASS: graph, manifest and all 19 DEX files contain no Firebase SDK references |
+
+The APK used process-scoped 2 GiB Gradle heap, 1 GiB metaspace, two workers and
+ActiveProcessorCount=2. The existing app_badge_plus Kotlin migration warning remains.
+The Windows py audit ran standalone after the build and printed PASS; no installation
+or device acceptance is inferred.
+
+Only the validation report differs from packages in either repo. No shared-branch
+commits/merges, pushes or publication. App-c F-30 needs tooling/runtime adoption,
+regeneration, native adapter wiring and warm/cold acceptance. F-27's remaining host-file
+lifecycle documentation gap is still open; F-31 is corrected upstream but its captured
+preview remains older. Real remote push and iOS remain unverified; iOS is experimental
+and untested. Only R4's Status cell is edited in the shared roadmap.
+
 ## Retirement-base R4 queue refresh - 2026-10-31
 
 ### In plain terms
