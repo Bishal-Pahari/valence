@@ -494,9 +494,9 @@ there is nothing for it to handle. Three rules make that safe:
   running it times out and spends a strike on a bundle whose renderer the OS killed, and two of those
   roll back a good release. `onPageStarted` arms a fresh timer for the reloaded page, so the trial still
   gets its whole window.
-- **It reloads `current`'s *successor*, not `current`.** Unlike a ready timeout (which reverts to
-  `current` deliberately), this keeps serving whatever was on screen. Reverting here would spend the
-  retry §2.4 grants on a failure that was never the bundle's.
+- **It keeps serving whatever was on screen, trial included.** A ready timeout reverts to `current`
+  deliberately; this does not, because there is nothing to revert *from* — no release failed. Reverting
+  here would also show the trial again on the next UI start and spend the one retry §2.4 grants.
 - **It is capped** — three recoveries per launch. The pressure that killed the renderer is usually still
   there, so an uncapped reload is a loop that drains the battery and still shows nothing. After the cap
   the host releases the WebView and shows its error view, which is also the fastest way to give the
