@@ -348,14 +348,14 @@ Run `node valence/valence.mjs doctor --tests` before the manual audit. Report ev
 
 For batch reads, use `data.getMany` (since 3, max 500 keys). Read outbox depth from `sync.status`, including deletes; its offline flag is the last attempt, not connectivity. `SyncResult.pending` can be absent on older hosts. Set `ota.channel` before codegen; bundles are channel-neutral. OTA bridge defaults to the recorded store baseline; guard newer calls. Declare older seed schemas under `seedSchemas` and use versioned filenames. Test doubles can opt into `BridgeHandlersDefaults`; production hosts extend `ValenceBuiltins`.
 
-## Stack baseline (U-7 checked 2026-10-21; otherwise verified 2026-10-15 from pub.dev, npm and Flutter release JSON; `flutter_secure_storage` added 2026-10-21)
+## Stack baseline (U-7 checked 2026-10-21; `webview_flutter_android` checked 2026-11-01; otherwise verified 2026-10-15 from pub.dev, npm and Flutter release JSON; `flutter_secure_storage` added 2026-10-21)
 
 | Item | Version | Note |
 |---|---|---|
 | `valence` (pub.dev) | 0.4.0-beta.0 | **The host runtime.** `flutter pub add valence`. It brings `webview_flutter`, `sqflite`, `path_provider`, `cryptography`, `crypto`, `http`, `url_launcher`, `connectivity_plus`, `flutter_secure_storage`, `permission_handler` and `device_info_plus` with it, so a host declares none of those itself. Needs Flutter 3.44 or later, and `minSdk 23` on Android (secure storage). Versioned independently of this CLI |
 | `@getvalence/bridge` (npm) | 0.4.0-beta.0 | **The web client.** ESM, zero runtime dependencies, Node 22.18+ to run its own tests. App code imports it through the generated `bridge.g.ts`, never directly |
 | Flutter / Dart | 3.47.7 / 3.13.5 (stable, 2026-10-08) | `sqflite` 2.4.4+2 needs Flutter 3.44 or later |
-| webview_flutter | 4.14.1 (2026-07-07) | **default WebView**. `flutter_inappwebview` has had no stable release since 6.1.5 (2024-10-08) |
+| webview_flutter | 4.14.1 (2026-07-07) | **default WebView**. `flutter_inappwebview` has had no stable release since 6.1.5 (2024-10-08). `webview_flutter_android` 4.14.1 is still the newest ([pub.dev versions](https://pub.dev/packages/webview_flutter_android/versions), checked 2026-11-01) and exposes **no `onRenderProcessGone`**, so a renderer eviction kills the host process on Android (contracts §3, "Renderer loss"); a tripwire test fails when that changes |
 | sqflite | 2.4.4+2 (2026-10-13) | Local store, inside the `valence` package. Drift 2.35.2 is fine if the app already uses it for its own tables |
 | cryptography | 2.9.0 (2025-11-21) | Ed25519 verify on the device, inside the `valence` package |
 | permission_handler | 12.0.3 (compatibility line checked 2026-10-22) | OS permission groups; [primary package docs](https://pub.dev/packages/permission_handler). SDK-37 resolution failed with the 13.x Android plugin; stay below 13 until verified. Android checks normalize inferred permanent denial. iOS remains experimental and untested. |

@@ -1,6 +1,103 @@
 # Changelog
 
+## Unreleased: what happens when the OS kills the WebView
+
+**Read this before you ship to a cheap phone.** Your page does not run in your app's process. The
+WebView gives it one of its own, at a lower priority, and when memory runs short Android kills that one
+first. The hook that would let a host survive it is `WebViewClient.onRenderProcessGone` — and
+`webview_flutter_android` 4.14.1, still the newest release, does not expose it. So the unhandled path
+runs: the WebView kills your app process about 70 ms later, with no Dart frame in between, and the user
+is back on the launcher. **Valence 0.4 cannot prevent that on Android.** Closing it needs native code —
+`valence` becoming a Flutter plugin with its own `WebViewClient` — which is priced for 0.5 rather than
+rushed into a beta. Two apps hit it on an emulator under deliberate pressure.
+
+What did change:
+
+- **Where a platform reports the loss, the host recovers from it.** That is iOS today, which blanks the
+  WebView rather than killing the app: the host reloads the same bundle at the route you were on, emits
+  nothing the page has to handle, and stops after three recoveries so a device that is genuinely out of
+  memory is not kept in a reload loop. iOS stays experimental and untested on hardware.
+- **Where the loss is reported, it can no longer roll back a good release.** The ready timer belongs to
+  the page that died; left running it timed out and spent a trial strike (§2.4), and two of those revert
+  a release that was never at fault. It now stops on the loss and starts fresh with the reloaded page,
+  and if the content process dies past the cap the host clears the trial marker so the *next* launch
+  does not spend the strike either. **On Android it still costs one**, and nothing in this release can
+  change that: the host process dies with the page, so the next launch genuinely cannot tell an eviction
+  from a bundle that crashed the app — which is the check that makes rollback work at all. Two evictions
+  during the same trial can therefore retire a healthy release on that install. It is one more reason
+  the native shim matters, and one more reason to roll out to 10% first.
+- **The log and `exit-info` tell you it was this**, not an ANR and not your own crash: a renderer
+  exiting `LOW_MEMORY` followed within the same second by the host at `SIGNALED/9`. The
+  [startup diagnostics guide](https://getvalence.pages.dev/docs/guides/startup-diagnostics/) shows both
+  captures and the two neighbours it is confused with.
+- **The limitation cannot rot quietly.** A test fails the day `webview_flutter_android` exposes a
+  renderer-gone callback, so the Android handler gets written instead of this paragraph surviving.
+
+Nothing to change in your app or your bundle. Keep anything the user would miss in SQLite, which
+survives either outcome.
+
+## Unreleased: `http.request` says which failure it was, and `doctor` answers two open questions
+
+**Three failure codes instead of one.** `http.request` had a single `E_INTERNAL` for "the device has no
+network", "your server broke" and "that was not UTF-8". It now answers **`E_TIMEOUT`** for the 20-second
+deadline and **`E_OFFLINE`** when the OS reports no network interface at all, keeping `E_INTERNAL` for
+what it cannot honestly distinguish — captive-portal Wi-Fi, a firewall, a server that is down. `E_OFFLINE`
+is read at the instant the request failed, from the same value `app.online` carries, so a page no longer
+samples a second source at another instant and hopes they agree. **If you matched `E_INTERNAL` to mean
+"offline", change it:** this is the last release in which adding a code is free.
+
+**Sizes in every size refusal.** `E_TOO_LARGE` now names the observed size and the limit, because
+"paginate or give up?" is the question a cap raises and a bare refusal cannot answer it. A streamed
+response reports the bytes read before reading stopped, and says that is a floor. `Range` is not on the
+header deny-list, which is how a page reads a representation larger than 64 KiB; there is no streaming
+form, so an API offering only one large representation and no `Range` cannot be read by this method.
+
+**A session-cookie API is out of scope, and the docs now say so.** There is no cookie jar, so a
+cookie-paired CSRF token cannot be completed — which makes the default Django `POST` shape (`csrftoken`
+cookie plus `X-CSRFToken`) and the Rails equivalent structurally unreachable from a Valence page. Nothing
+could predict it before you shipped against such an API. Use bearer tokens, header keys, a `csrf_exempt`
+endpoint, or your own adapter in front.
+
+**`doctor`'s `oldest servable bundle` row answers its own sentence.** It used to report the lowest
+`requires.bridge` across servable bundles and then say a retirement is safe "only once no bundle at or
+above that line calls the method", leaving that unanswered. It now searches every servable bundle's files
+and either reports that nothing references a retired method or **warns** naming the newest bundle that
+does. It discounts the `METHOD_SINCE` table codegen writes into every bundle — the trap that makes a
+hand-written scan wrong in the unsafe direction — and never claims absence: a name your page assembles at
+runtime, or a file that will not decode, is reported as unknown.
+
+**A deleted mapped test is named rather than reported as an errno.** `doctor --tests` used to fail with
+`ENOENT … lstat '<path>'`, which reads like a broken checkout. The usual cause is the supported one: a
+retirement makes a method's native code and its tests deletable, and nothing prunes
+`.valence/test-matrix.json` for you.
+
+
 ## Unreleased - store-host update policy
+
+Corrections to the policy above, before any of it is released:
+
+- The iOS store destination could never resolve. The runtime passes `defaultTargetPlatform.name`, which
+  Flutter spells `iOS`, and the comparison was against `'ios'` — so a blocked iOS user saw a screen with
+  no button at all. Fixed, and the test now uses the value the runtime actually passes.
+- A policy discovered mid-session took the page out of the widget tree but left the WebView controller
+  and the loopback server alive, so the old page's timers kept firing and its own CSP-allowed origins
+  stayed reachable behind the blocking screen. It is now torn down, as the cold-start path always did.
+- The signed policy envelope was cached for **every** manifest that passed step 4, so any install that
+  had ever discovered one release re-verified an Ed25519 signature before every first frame, for ever, to
+  learn that no policy applied. A withdrawal is now recorded as the seq alone: the downgrade defence
+  stays, and an unblocked install verifies nothing at launch.
+- **`--min-host` does not carry forward, unlike `--floor`.** That is deliberate — omitting it is how a
+  mistaken requirement is withdrawn — but it meant your next ordinary `bundle` silently unblocked every
+  device the previous release was holding. `baseline.json` now records the last signed value and the
+  release that drops it warns, naming the number to pass again.
+- New **`store listing`** `doctor` row. The Android destination is built from the Valence `appId` while
+  the Play listing is keyed on the Android `applicationId`; they are independently editable and nothing
+  compared them, so a mismatch sent the blocking screen's only button to a listing that does not exist.
+- **A known limit, documented rather than fixed:** a policy has no freshness bound. The bytes are signed,
+  but the unsigned pointer still selects which signed release a device evaluates, so a held or cached
+  pointer keeps a device on a block you have already withdrawn, offline and across restarts. Freezing a
+  pointer is therefore a denial of service and not only staleness. Do not sign a `--min-host` you have
+  not verified. A real fix needs a signed freshness field and is not in 0.4.
 
 - Supporting hosts distinguish an update needing a newer store build from rejected bytes.
 - Optional signed `minHost` requires a store upgrade with a native offline-persistent

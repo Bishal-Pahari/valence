@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased: renderer loss is recovered from where the platform reports it
+
+- `ValenceApp` handles an `onWebResourceError` of type `webContentProcessTerminated`: it stops the ready
+  timer, reloads the **same** manifest at the current restoration route, and emits nothing to the page.
+  It counts no §2.4 trial failure — the timer for the dead page used to time out and spend a strike on a
+  release the device's memory pressure had killed. Capped at three recoveries per launch, after which
+  the host **drops the controller** (leaving the widget tree is not teardown; the controller owns the
+  native WebView) and **clears `serving`** so §2.4 step 2 does not spend the strike on the next UI start
+  either, while `trial` stays set for that launch to retry.
+- A resume that reclaims the **same** loopback port now reloads the page when none is loaded. One iOS
+  suspend can take the socket and the content process together, and the old "keep the page" branch left
+  the user on "cannot open page" for the rest of the session.
+- **Android is unchanged and cannot be fixed here.** `webview_flutter_android` 4.14.1 (newest, checked
+  2026-11-01) exposes no `onRenderProcessGone`, so Chromium kills the host process before any Dart code
+  runs — and because no Dart code runs, `serving` survives and the eviction does spend a trial strike.
+  Contracts §3, "Renderer loss", states both with the logcat evidence; a test fails as soon as the
+  plugin exposes the callback.
+
+## Unreleased: `E_OFFLINE`, `E_TIMEOUT`, and corrections to the store-update policy
+
+- `http.request` answers **`E_TIMEOUT`** for its 20-second deadline and **`E_OFFLINE`** when the OS
+  reports no network interface, keeping `E_INTERNAL` for a captive portal, a firewall or a server that is
+  down — the cases it cannot honestly tell apart. `ValenceHttp` takes an optional `online` callback; with
+  none, the behaviour is unchanged. Every `E_TOO_LARGE` names the observed size and the limit, the
+  streamed one as a floor.
+- `valenceStoreUrl` matches the platform case-insensitively. The runtime passes
+  `defaultTargetPlatform.name`, which Flutter spells `iOS`, so the iOS branch was unreachable on every
+  iOS device and `app.openStore` answered `E_UNSUPPORTED` with a valid `store.iosAppId` configured.
+- A store policy discovered mid-session now disposes the WebView controller and closes the loopback
+  server, instead of only removing the view from the widget tree while the page kept running behind the
+  blocking screen.
+- The signed policy envelope is persisted only while a policy applies. A withdrawal is recorded as the
+  verified seq alone, so an install with no policy performs no signature verification during startup
+  while a replayed older policy is still refused.
+
 ## Unreleased: custom notification event adapters
 
 Regenerated config declares compatible notification events/fields, so the native service cannot
