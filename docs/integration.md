@@ -1,5 +1,54 @@
 # Integration acceptance refresh - 2026-10-31
 
+## App-c iteration 11 follow-up
+
+Read both apps' findings and newest reports read-only: Kundalini 16 and app-c 11.
+No eligible must-have remains. The original queue, R14 and every later numbered
+feature tip are ancestors of packages in both repositories. The only unmerged
+compatibility tip, notify-event-compat, contains reports and is already included
+in integration. Packages has not moved: code d771105 / site 53d3a91. Integration
+differs from those bases only in this report and notification-event-compat.md.
+No branch reconstruction or new feature merge is necessary.
+
+Independently checked app-c's iteration-11 captures:
+
+- startup-settled.txt records worker begin at 09:09:40.874, Valence.open completion
+  at 09:09:40.948 and worker completion at 09:09:59.354, without the earlier COMMIT
+  failure in this sample. Four successful foreground replies in f33-results.json
+  do not prove four overlaps: the force attempts lack matching worker callbacks.
+  F-33 remains major/open; non-reproduction is not resolution.
+- warm-tap-events.json carries string ID iteration-11-warm; the event audit has
+  one observed tap and zero violations. The supported adapter continues to
+  preserve the shipped event. The report separately records cold routing.
+- Independently hashed both raw background-state files: each is SHA256
+  0311e11e21dabc351162085d5b23f8ca3bf9a0321abdff4ffa43a8f9091a5ccf.
+  Current 1793417877, pending 1793417997 and trial=null stay unchanged across the
+  isolated worker. The callback runs 09:36:43.933 through 09:36:46.038; its mock
+  receives both zero-row pulls and acknowledges two outgoing inspection objects.
+  This is an eligible forced run, not natural cadence, inbound row application
+  or production durability. Host and guest timestamps use different clocks.
+- final-state.json records current 1793417997, previous 1793417877, no pending
+  or trial, and broken 1793417821 still bad. cleanup.json records airplane off,
+  stopped app, refused owned mock ports and no forwards. Retention evidence
+  includes explicit backup restoration; it does not prove an uninterrupted
+  release-to-debug upgrade. F-27's host-file lifecycle documentation gap remains.
+
+Decision: prioritize users' data and transaction ownership evidence over a
+speculative fix. Preserve the database/account, shipped signatures, schema 16,
+lease rules and retry budgets. Do not hide the COMMIT failure behind a busy
+result. S1 remains parked and S2 needs a Play account. Package integration
+readiness does not establish beta acceptance or close F-33.
+
+Validation for this follow-up: checked branch ancestry, matching reports,
+unchanged implementation trees and git diff --check in both worktrees. The full
+package/site gates below remain earlier evidence on the unchanged implementation;
+they were not rerun and no fresh gate pass is claimed. No new emulator run,
+independent runtime review, app writes, protected-branch changes, version/schema
+changes, push or publication. iOS remains experimental and untested; real remote
+push delivery remains unverified.
+
+## Earlier iteration-10 acceptance refresh
+
 ## In plain terms
 
 App-c iteration 10 now passes the legacy notification event audit using the
