@@ -1,5 +1,65 @@
 # Integration acceptance refresh - 2026-10-31
 
+## App-c iteration 21 completed follow-up
+
+Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 21.
+Packages remains code d771105 / site 53d3a91. All 29 feature and compatibility
+tips, including sync-fixes, plus packages are ancestors of integration in both
+repos. No missing merge or eligible must-have remains. S1 stays parked; S2 needs
+a Play account.
+
+F-36 recurs with a different immediate termination mechanism:
+
+- Saved lowmemorykiller lines show renderer 24724 killed at 20:17:09.533, then
+  host 24584 directly killed at 20:17:09.574 because the minimum memory watermark
+  remains breached. Exit-info independently records both as LOW_MEMORY. This
+  differs from iteration 20's Chromium-initiated host termination after eviction.
+- Start proc 25623 at 20:17:13.337 follows the runner's explicit start. Retained
+  paint establishes recovery, not uninterrupted Settings return. This identifies
+  the immediate system kills, not the source of memory pressure or a Valence leak.
+  No new F-35 ANR is established; its historical evidence remains open.
+- Ordinary launch again opens an orphaned picker without an App C PID (F-29).
+  Initial offline busy/pending1 after a network-constraint stop fails acceptance;
+  the later offline/pending1 and reconnect/ok/pending0 belong to a recovered retry.
+  Rootless debuggerd refusal and a SIGQUIT tombstoned receipt do not supply an
+  actual blocking stack or identify a transaction owner. F-33 remains major/open;
+  successful foreground probes do not prove worker overlap or repair.
+
+Separately checked current background acceptance without operating either app:
+
+- Exact callback begin 20:31:23.950, complete 20:31:26.135 and WorkManager SUCCESS
+  20:31:26.150 share PID 27693 and are absent from the before log. First worker
+  receipts pull two units above cursor 290001 and acknowledge two outgoing
+  inspection objects. Later foreground traffic is excluded.
+- Supplied pre-resume SQLite results record the incoming fixture at USN 300002,
+  inspection objects at 300001/300002 and outboxCount=0. This run checked supplied
+  results, not an independent database extraction. One forced execution does not
+  establish cadence. Recomputed the corrected observation window as 396.3 seconds;
+  the earlier 370 value counts polling iterations, not elapsed seconds.
+- Independently compared and hashed both raw activation files: byte-identical,
+  SHA256 87215eb1f2920d96bd0d19f83147b5a0153f1ca7c9890bf8bc40396b79d6d873,
+  current 1793457564 / pending 1793457574 / trial=null. Final saved state commits
+  1793457574 with pending/trial=null after resume. Cleanup records airplane off,
+  stopped app/mocks, unreachable owned services and no forwards.
+
+Decision: preserve users' data, shipped contracts, additive R31 revision 17 and
+transaction/lease/retry rules. Distinguish direct OS process loss from unhandled
+renderer loss; require process/renderer recovery coverage and an accessible
+blocking-thread trace before a causal runtime change. F-27 host-file guidance,
+F-29 ordinary launch, F-34 stale banner and major F-33/F-35/F-36 remain open or
+limited. Pagination remains deferred app scope. Kundalini F-63/F-65 and F-64
+adoption status are unchanged.
+
+Validation: BOM-aware saved-evidence assertions, raw hashes, corrected timing,
+all 29 branch-tip ancestry checks in both repos, unchanged implementation trees
+against fully gated R31 integration code 38a7714 / site fb7bc44, matching new
+report sections and git diff --check. Earlier October 31 full gates retain their
+original scope; no fresh package/site gate pass, emulator run or independent
+runtime review is claimed for this report-only refresh. Integration readiness
+is not beta acceptance. No app writes, protected-branch changes, package/schema
+changes, pushes or publications. iOS and real remote push remain unverified.
+
+
 ## App-c iteration 20 completed follow-up
 
 Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 20.
