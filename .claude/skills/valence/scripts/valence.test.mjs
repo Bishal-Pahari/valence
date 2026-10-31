@@ -966,6 +966,34 @@ test('doctor reports absent evidence as warnings, compatibility errors as failur
   assert.ok(failed.some(([s, n]) => s === 'FAIL' && n === '§8 bridge'));
   writeFileSync(join(root, '.valence', 'test-matrix.json'), JSON.stringify({ bridge: ['test/../../outside_test.dart'] }));
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === '§8 bridge'));
+  // K F-70: the usual way a mapped test disappears is the supported one — a retirement makes it
+  // deletable — and the failure said `ENOENT ... lstat`, which reads like a broken checkout.
+  writeFileSync(join(root, '.valence', 'test-matrix.json'), JSON.stringify({ bridge: ['test/gone_test.dart'] }));
+  const orphan = (await diagnose({ root, cfg })).find(([, n]) => n === '§8 bridge');
+  assert.equal(orphan[0], 'FAIL');
+  assert.match(orphan[2], /mapped test test\/gone_test\.dart no longer exists; remove it from \.valence\/test-matrix\.json/);
+  assert.doesNotMatch(orphan[2], /ENOENT|lstat/);
+  writeFileSync(join(root, '.valence', 'test-matrix.json'), JSON.stringify({ bridge: ['test/wiring_test.dart'] }));
+  // R31's blocking screen is keyed on appId, while the Play listing is keyed on the Android
+  // applicationId. Nothing compared them, so a mismatch left the forced-update screen's only button
+  // opening a listing that does not exist.
+  const gradle = join(root, cfg.host.dir, 'android', 'app');
+  mkdirSync(gradle, { recursive: true });
+  const gradlePath = join(gradle, 'build.gradle.kts');
+  const listing = async () => (await diagnose({ root, cfg })).find(([, n]) => n === 'store listing');
+  assert.match((await listing())[2], /Android Gradle build absent/);
+  writeFileSync(gradlePath, `android {\n  namespace = "x"\n  applicationId = "${cfg.appId}.android"\n}\n`);
+  const wrong = await listing();
+  assert.equal(wrong[0], 'WARN');
+  assert.match(wrong[2], new RegExp(`applicationId is ${cfg.appId}\\.android`));
+  assert.match(wrong[2], /a listing that does not exist/);
+  writeFileSync(gradlePath, `android {\n  applicationId = "${cfg.appId}"\n}\n`);
+  const right = await listing();
+  assert.equal(right[0], 'PASS');
+  assert.match(right[2], /no store\.iosAppId, so app\.openStore is E_UNSUPPORTED on iOS/);
+  cfg.store = { iosAppId: '123456789' };
+  assert.match((await listing())[2], /iOS id 123456789 is untested here/);
+  delete cfg.store;
   cfg.nativeValue = ['offline', 'offline'];
   assert.ok((await diagnose({ root, cfg })).some(([s, n]) => s === 'FAIL' && n === 'native value'));
   bundle({ root, cfg, key, builtin: true, now: NOW });
@@ -2552,6 +2580,18 @@ test('R31 signed minimum-host policy, numeric validation, builtin self-refusal a
     assert.throws(() => bundle({ ...f, minHost, now: NOW }), /min-host/);
   }
   assert.throws(() => bundle({ ...f, minHost: 18, builtin: true, now: NOW }), /exceeds this built-in/);
+  // Unlike --floor, --min-host does not carry forward, because a manifest that omits it withdraws the
+  // requirement (§2.5) — which means the next ordinary release unblocks every device the previous one was
+  // holding at the store. For a security-motivated block that is the release silently lapsing, so it
+  // warns once, on the release that does it, and the baseline records the number so it can name it.
+  assert.equal(JSON.parse(readFileSync(join(f.root, '.valence', 'baseline.json'), 'utf8')).minHost, 18);
+  const lapse = bundle({ ...f, now: NOW + 1000 });
+  assert.equal(lapse.manifest.minHost, undefined);
+  assert.match(lapse.warnings.join('\n'), /previous release required host bridge 18[\s\S]*Pass --min-host 18 to keep it/);
+  assert.equal(JSON.parse(readFileSync(join(f.root, '.valence', 'baseline.json'), 'utf8')).minHost, undefined);
+  // Having withdrawn it, the next release has nothing to warn about.
+  assert.deepEqual(bundle({ ...f, now: NOW + 2000 }).warnings, []);
+  assert.deepEqual(bundle({ ...f, minHost: 18, now: NOW + 3000 }).warnings, []);
   const generated = codegen({ root: f.root, cfg: f.cfg });
   const dart = readFileSync(join(f.root, 'mobile/lib/valence/bridge.g.dart'), 'utf8');
   assert.match(dart, /await valence.openStore/);

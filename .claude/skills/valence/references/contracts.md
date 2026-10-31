@@ -109,7 +109,11 @@ Hosts decode it strictly: `seq` must be an integer ≥ 1 and `rollout` an intege
 **What the unsigned pointer can and can't do.** If the CDN is compromised, an attacker can:
 
 - freeze devices on their current bundle, by never advancing the pointer;
-- change who is in the rollout cohort.
+- change who is in the rollout cohort;
+- **hold a device at a withdrawn `minHost` block** (§2.5), by keeping the pointer on the release that
+  carries it. The policy is signed, so the attacker cannot author one — but a device whose highest
+  verified seq is below the withdrawal never sees the withdrawal, and the block is durable and offline.
+  A stale CDN edge does this by accident. So freezing is a denial of service here, not only staleness.
 
 They **cannot**:
 
@@ -301,6 +305,13 @@ It does not belong in the unsigned pointer. Omission means no mandatory host pol
 `bundle --min-host N` signs it; a built-in cannot demand a host above its own
 bridge version. `requires.bridge` keeps its existing compatibility meaning.
 
+**`minHost` does not carry forward, and `--floor` does.** That asymmetry is deliberate — a manifest
+omitting `minHost` is how a mistaken requirement is withdrawn, so it cannot also be the thing that
+preserves one — but it means the next ordinary `bundle` with no flags unblocks every device the previous
+release was holding at the store, which for a security-motivated requirement is the release silently
+lapsing. So `baseline.json` records the last signed `minHost`, and the release that drops it **warns**,
+naming the number and the flag that keeps it.
+
 Canonical checks retain their order. An authenticated check-5 host incompatibility
 is reported as `needsStoreUpdate`, with nullable `BundleStatus.requiredBridge` equal
 to max(requires.bridge, minHost). Other check failures remain `rejected`. Older
@@ -313,13 +324,28 @@ Only a manifest passing signature, appId, pointer seq, floor, requires shapes an
 path/hash/size checks can establish policy; no offered file is executed or made
 pending on an incompatible host. The signed policy envelope (exact bytes and
 signature) is atomically persisted separately from activation state, and verified
-again before UI startup, including offline. No floor, bad list, trial count, data
+again before UI startup, including offline. **The envelope is kept only while there is a policy to
+enforce:** a verified higher manifest that omits `minHost` replaces it with the seq alone, which keeps
+the downgrade defence (a replayed older policy is still below that seq) while keeping a pure-Dart
+Ed25519 verify out of the §2.4 launch budget for an install that is not blocked — which is almost every
+install. That bare seq is unsigned local bookkeeping, exactly like `floor` in `state.json`; it can only
+suppress an older policy, never impose one, because imposing still needs signed bytes. No floor, bad list, trial count, data
 or outbox is changed by a refusal. A newer authenticated manifest supersedes the
 policy, including one omitting minHost; an older/replayed manifest cannot clear it.
 Rollout still gates discovery. An unsigned pointer, fetch error or malformed
 manifest cannot set, raise or clear policy. Older runtimes ignore the additive
 field: first ship a store host supporting revision 17, then publish the policy.
 This cannot force an offline device that never received it or an older runtime.
+
+**The policy has no freshness bound, so a held pointer can impose a withdrawn one.** That sentence is
+true of the *bytes*: an unsigned pointer cannot author or edit a policy. It still *selects* which signed
+manifest a device evaluates, so a cached CDN edge — or a compromised OTA host that simply keeps pointing
+at the withdrawn release — can hold a device whose highest verified seq is lower at a block the publisher
+has already withdrawn, durably and offline. This extends §2.1's list of what a compromised CDN can do:
+freezing devices on their current bundle has become a denial of service, not only staleness. Mitigating
+it properly needs a signed freshness field (a policy `notAfter`, or a signed pointer) and is **not** in
+0.4. Until then: do not sign a `minHost` you have not verified, and withdraw at a higher seq promptly,
+knowing a device that never receives that seq stays blocked.
 
 When verified minHost exceeds the compiled bridge version, ValenceApp shows a
 native blocking Update required screen instead of the web UI. Startup transitions
@@ -335,11 +361,24 @@ optional store-compiled `store.iosAppId` numeric Apple ID; absent configuration
 returns E_UNSUPPORTED. Launch failure returns E_INTERNAL. No market: scheme is
 added to open.external. iOS remains experimental and untested.
 
+Two things about that destination. The platform is matched **case-insensitively**, because the value the
+runtime has is `defaultTargetPlatform.name` and Flutter spells that member `iOS` — comparing it to a
+lowercase literal made the whole iOS branch unreachable on every iOS device, leaving a blocked user a
+wall with no button. And the Android id is the Valence **`appId`**, while the Play listing is keyed on
+the Android **`applicationId`**: they are independently editable, so `doctor`'s **`store listing`** row
+compares them and warns, because a mismatch sends a forced-update screen's only control to a listing
+that does not exist.
+
 R31 regression matrix: unauthenticated/wrong-app/wrong-seq/below-floor and
 malformed policies never block; incompatibility reports the needed version;
 mandatory blocking survives offline restart, preserves activation/data and is
 withdrawn only by a higher signed seq; legacy schemas retain rejected; store URLs
-are native constants; generated revision-17 Dart/TS and older shapes compile.
+are native constants, **built from the platform value the runtime actually passes rather than a
+lowercase literal, and `doctor` warns when `appId` and the Android `applicationId` disagree**; a
+withdrawal persists as a bare seq, so an install with no policy verifies no signature at launch and a
+replayed older policy is still refused; **a policy discovered mid-session takes the page down — no
+controller and no bound loopback server — rather than hiding it behind the blocking screen**; the
+release that drops a signed `minHost` warns; generated revision-17 Dart/TS and older shapes compile.
 
 ---
 
@@ -2104,4 +2143,10 @@ R27 regression rows: a generated core-only host resolves no firebase_* or valenc
 R31: authenticated newer-host reporting, fixed store destination and unsupported iOS
 configuration; signed mandatory block, cold open revalidation and newer withdrawal;
 wrong signature/app/seq/floor and malformed requires/minHost cannot establish policy;
-blocked trials retain their attempts and queued page calls cannot dispatch.
+blocked trials retain their attempts and queued page calls cannot dispatch;
+the store destination is built from `TargetPlatform.<x>.name` as the runtime passes it, so the iOS
+branch is reachable, and `doctor`'s `store listing` row compares `appId` with the Android
+`applicationId`; a withdrawal persists as a bare seq, so an unblocked install verifies no signature at
+launch while a replayed older policy is still refused; a mid-session block leaves no WebView controller
+and no bound loopback server, and the host pushes no further events into the old page; a release that
+omits a previously signed `minHost` warns, naming the number.

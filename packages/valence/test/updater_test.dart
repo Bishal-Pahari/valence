@@ -209,6 +209,37 @@ void main() {
     final restarted = makeUpdater(state: state);
     await restarted.restoreStorePolicy();
     expect(restarted.minHost, isNull);
+    // The withdrawal is recorded as a bare seq, with no signed bytes to verify: the §2.4 launch budget
+    // must not carry a pure-Dart Ed25519 check for an install that is not blocked. The downgrade
+    // defence stays, because the seq still refuses the replayed older policy.
+    final policyFile = File('${stateFile.parent.path}/store-policy.json');
+    expect(jsonDecode(policyFile.readAsStringSync()), {'seq': 60});
+    final afterWithdrawal = makeUpdater(state: state, client: otaHost(bundles: {50: b}, pointerSeq: 50));
+    await afterWithdrawal.restoreStorePolicy();
+    await afterWithdrawal.checkForUpdate();
+    expect(afterWithdrawal.storeUpdateRequired, isFalse);
+    expect(afterWithdrawal.minHost, isNull);
+  });
+
+  test('R31 an install that never saw a policy keeps signature checks off its launch path', () async {
+    // Every manifest used to be cached whole, so any install that had ever discovered one release paid
+    // a file read, a base64 decode, three jsonDecodes and an Ed25519 verify before runApp, for ever, to
+    // learn minHost was null. The record for "no policy" is now the seq alone.
+    final b = await signBundle(key, seq: 50);
+    final state = ValenceState(installId: 'r31', current: 10);
+    final u = makeUpdater(state: state, client: otaHost(bundles: {50: b}, pointerSeq: 50));
+    await u.checkForUpdate();
+    final policyFile = File('${stateFile.parent.path}/store-policy.json');
+    expect(jsonDecode(policyFile.readAsStringSync()), {'seq': 50});
+    final restarted = makeUpdater(state: state);
+    await restarted.restoreStorePolicy();
+    expect(restarted.minHost, isNull);
+    // And a forged older policy cannot slip in behind it.
+    final older = await signBundle(key, seq: 40, overrides: {'minHost': 99});
+    final replay = makeUpdater(state: state, client: otaHost(bundles: {40: older}, pointerSeq: 40));
+    await replay.restoreStorePolicy();
+    await replay.checkForUpdate();
+    expect(replay.storeUpdateRequired, isFalse);
   });
 
   test('R31 unsigned, malformed, wrong identity and below-floor policies cannot block', () async {

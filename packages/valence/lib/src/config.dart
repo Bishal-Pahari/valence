@@ -186,15 +186,19 @@ final class ValenceConfig {
 }
 
 /// A store destination derived only from the native build's configuration.
+///
+/// [platform] is matched case-insensitively because the value the runtime has is
+/// `defaultTargetPlatform.name`, and Flutter spells that enum member `iOS` — so comparing it to a
+/// lowercase literal made the whole iOS branch dead code on every iOS device, leaving a blocked user
+/// with a native wall and no button.
 Uri? valenceStoreUrl(ValenceConfig config, String platform) {
-  if (platform == 'android') {
+  final target = platform.toLowerCase();
+  if (target == 'android') {
     return Uri.https(
         'play.google.com', '/store/apps/details', {'id': config.appId});
   }
   final id = config.iosAppId;
-  if (platform == 'ios' &&
-      id != null &&
-      RegExp(r'^[0-9]{1,20}$').hasMatch(id)) {
+  if (target == 'ios' && id != null && RegExp(r'^[0-9]{1,20}$').hasMatch(id)) {
     return Uri.https('apps.apple.com', '/app/id$id');
   }
   return null;

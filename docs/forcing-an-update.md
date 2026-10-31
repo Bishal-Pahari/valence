@@ -66,8 +66,24 @@ signature, malformed metadata or an offline request cannot clear it. The host's
 Check again button discovers a signed withdrawal and recreates the web page.
 Upgrading the host to a sufficient bridge version also unblocks use.
 
+**`--min-host` does not carry forward, and `--floor` does.** Omitting it is how a mistake is withdrawn,
+so it cannot also be what preserves one — but that means the next ordinary `bundle` with no flags
+unblocks every device the previous release was holding. The build warns and names the number the last
+release signed, so pass `--min-host N` again to keep it.
+
+**A held pointer can keep a device on a withdrawn block.** The policy is signed, but the unsigned
+pointer still decides which signed release a device evaluates, so a device that never receives the
+withdrawal — a cached CDN edge, a pointer that stops advancing — stays blocked offline and across
+restarts. There is no freshness bound on a policy in 0.4.
+
 This is an availability policy with consequences: do not require a store build
 that users cannot install yet. Staged rollout still controls discovery; an offline
 phone that has never received the policy cannot be forced, nor can an older runtime
 that ignores minHost. This is not a replacement for server-side authorization or
 store review. Data and the outbox are retained throughout.
+
+**Check the store listing id before you need it.** The Android destination comes from the Valence
+`appId`, while the Play listing is keyed on the Android `applicationId`; `valence doctor`'s `store
+listing` row compares them, because a mismatch sends the blocking screen's only button to a listing that
+does not exist. Without `store.iosAppId`, `app.openStore` is `E_UNSUPPORTED` on iOS and the screen has
+no button. Android is tested; iOS is experimental and untested.

@@ -654,6 +654,15 @@ class _ValenceAppState extends State<ValenceApp>
         // A native policy interruption is not a failed trial on the next UI start.
         _valence.state.serving = null;
         _valence.updater.save();
+        // Take the page down, do not just hide it. Leaving the tree is not teardown: the WebView
+        // controller and the loopback server would both stay alive behind the blocking screen, so the
+        // old page's timers keep running and its own CSP-allowed origins stay reachable while the user
+        // is being told to update. The blocked *startup* path never binds a server at all; this is the
+        // mid-session branch catching up with it. The ticker and connectivity stay, because a signed
+        // withdrawal has to be discoverable without the user pressing "Check again".
+        _controller = null;
+        await _valence.server?.close();
+        if (!mounted) return;
         setState(() {});
       } else if (wasBlocked) {
         // Recreate the page after a signed withdrawal; do not reuse a hidden page.

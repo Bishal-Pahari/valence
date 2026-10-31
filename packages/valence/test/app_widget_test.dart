@@ -323,6 +323,24 @@ void main() {
     expect(messages.length, before);
     await tester.pump(const Duration(seconds: 1));
     expect(runtime.state.trialFails, 0);
+    // Taking the page out of the widget tree is not taking it down. The controller and the loopback
+    // server have to go too, or the old page keeps running behind the blocking screen: its timers fire,
+    // its own CSP-allowed origins stay reachable, and the host keeps pushing events into it.
+    final scripts = webview.controller.scripts.length;
+    final origin = runtime.server!.origin;
+    runtime.emit('window.__valence&&window.__valence.e("x",{})');
+    await io(tester);
+    expect(webview.controller.scripts.length, scripts);
+    expect(
+        await tester.runAsync(() async {
+          try {
+            await http.get(Uri.parse('$origin/'));
+            return 'answered';
+          } on Object {
+            return 'closed';
+          }
+        }),
+        'closed');
     // Same manifest cannot be rewritten by an unsigned pointer; a later signed withdrawal can unblock.
     final withdrawal = await tester.runAsync(() => signBundle(key, seq: 60));
     respond = (request) async {

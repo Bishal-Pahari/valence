@@ -646,6 +646,17 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
   // later release, because they inherit the same default. has() exists so one bundle can serve old and new hosts, so
   // say so when the default would undo it.
   if (minHost !== undefined && (!Number.isSafeInteger(minHost) || minHost < 1)) throw new Error('--min-host must be a positive safe integer');
+  // The one asymmetry with `floor` worth stating out loud. A floor carries forward because it is a
+  // rollback ratchet nobody should lower by accident; `minHost` deliberately does *not*, because a
+  // manifest that omits it withdraws the requirement (§2.5) and that is how a mistaken block is undone.
+  // The cost is that the next ordinary release — `bundle` with no flags — silently unblocks every device
+  // the previous one was holding at the store, which for a security-motivated requirement is the whole
+  // point of the release lapsing. So say so, once, on the release that does it.
+  if (minHost === undefined && baseline.minHost !== undefined) {
+    warnings.push(
+      `the previous release required host bridge ${baseline.minHost} (--min-host), and this one omits it, so every device that build was holding at the store is unblocked the moment it sees this manifest. Unlike --floor, --min-host does not carry forward: a manifest without it withdraws the requirement, which is how a mistaken one is undone. Pass --min-host ${baseline.minHost} to keep it.`,
+    );
+  }
   const bridge = requiresBridge ?? (builtin ? schema.version : baseline.storeSchema?.version ?? schema.version);
   // A built-in bundle is the one bundle its own host cannot decline: check 5 refuses it on first launch and a fresh
   // install has no `current` to fall back to, so the app has nothing to paint (§2.4 step 1). Compare against the
@@ -719,7 +730,11 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
   writeFile(manifestPath + '.sig', sig); // no trailing newline: hosts base64-decode the file as is
   verifyBundle({ manifestPath, filesDir, keyring, appId: cfg.appId });
 
+  // `minHost` records what the newest release actually signed, so the warning above can name a number
+  // instead of asking the developer to remember one. Omitted means omitted: that is a withdrawal.
   const next = { ...baseline, lastSeq: seq, floor: manifest.floor };
+  if (minHost === undefined) delete next.minHost;
+  else next.minHost = minHost;
   let recorded;
   if (store) {
     Object.assign(next, { storeSeq: seq, storeRoutes: routes, storeSchema: schema });
@@ -1856,6 +1871,22 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
       return `AndroidManifest.xml registers ${undeclared.join(', ')}, which links.origins does not declare; those links launch the app and the host then rejects the URL as untrusted. Declare them, or remove the filter if Valence does not serve them`;
     }
   }, 'declare every deep-link origin in valence.config.json links.origins and register the matching scheme/host <intent-filter> on the Flutter activity in android/app/src/main/AndroidManifest.xml, then run codegen and prove it with adb shell am start against a real build');
+  // §2.5's blocking screen sends a user to `play.google.com/store/apps/details?id=<appId>`, and `appId`
+  // is the Valence identity in valence.config.json — not the Android `applicationId`, which is the one
+  // the Play listing is actually keyed on. They are independently editable and nothing compared them, so
+  // a mismatch means the only actionable control on a forced-update screen opens a listing that does not
+  // exist. The example repo has already been bitten by this once.
+  await check('store listing', () => {
+    const gradle = ['android/app/build.gradle.kts', 'android/app/build.gradle']
+      .map((f) => join(host, f)).find((p) => existsSync(p));
+    if (!gradle) return 'Android Gradle build absent; the Play listing id was not checked';
+    const m = readFileSync(gradle, 'utf8').match(/applicationId\s*=?\s*["']([\w.]+)["']/);
+    if (!m) return `no applicationId in ${relative(root, gradle)}; the Play listing id could not be compared with appId ${cfg.appId}`;
+    if (m[1] !== cfg.appId) {
+      return `appId is ${cfg.appId} but the Android applicationId is ${m[1]}, so app.openStore and the §2.5 update screen send users to play.google.com/store/apps/details?id=${cfg.appId}, a listing that does not exist. Make them equal, or publish under the appId`;
+    }
+    return cfg.store?.iosAppId ? { msg: `${m[1]} on Play; iOS id ${cfg.store.iosAppId} is untested here` } : { msg: `${m[1]} on Play; no store.iosAppId, so app.openStore is E_UNSUPPORTED on iOS` };
+  }, 'make valence.config.json appId equal to the Android applicationId in <host>/android/app/build.gradle.kts, or publish the app under the appId, then run codegen and rebuild the host');
   await check('signing keys in Git', () => {
     if (insideGit(keyDir)) throw new Error('configured signing-key directory resolves inside a Git work tree');
     const repo = git(['rev-parse', '--show-toplevel']);

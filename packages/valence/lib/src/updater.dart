@@ -226,11 +226,24 @@ final class ValenceUpdater {
     if (!_policyFile.existsSync()) return;
     try {
       final envelope = jsonDecode(_policyFile.readAsStringSync()) as Map<String, dynamic>;
-      final bytes = base64Decode(envelope['bytes'] as String);
-      final signature = envelope['signature'] as String;
       final seq = envelope['seq'] as int;
+      final raw = envelope['bytes'];
+      // No bytes means "nothing is required, and this is the highest seq we have verified" — the
+      // withdrawal record. Taking the seq without a verify is what keeps a pure-Dart Ed25519 check off
+      // the startup path of every install that has no policy at all, which is almost all of them. The
+      // seq alone is unsigned local bookkeeping, exactly like `floor` in state.json, and it can only
+      // ever *suppress* an older replayed policy, never impose one: imposing still needs signed bytes.
+      if (raw == null) {
+        if (seq > _policySeq) _policySeq = seq;
+        return;
+      }
       final m = await checkManifest(
-          bytes: bytes, signature: signature, config: config, state: state, pointerSeq: seq, checkHostVersion: false);
+          bytes: base64Decode(raw as String),
+          signature: envelope['signature'] as String,
+          config: config,
+          state: state,
+          pointerSeq: seq,
+          checkHostVersion: false);
       if (m.seq > _policySeq) {
         _policySeq = m.seq;
         _minHost = m.minHost;
@@ -244,7 +257,14 @@ final class ValenceUpdater {
     if (m.seq <= _policySeq) return;
     _policyFile.parent.createSync(recursive: true);
     final tmp = File('${_policyFile.path}.tmp');
-    tmp.writeAsStringSync(jsonEncode({'bytes': base64Encode(m.bytes), 'signature': signature, 'seq': m.seq}),
+    // The signed bytes are kept only while there is a policy to enforce offline. A manifest that omits
+    // `minHost` withdraws it (§2.5), and recording the withdrawal as a bare seq both keeps the
+    // downgrade defence — a replayed older policy is still refused by `m.seq <= _policySeq` — and keeps
+    // a signature verification out of the §2.4 launch budget for an install that is not blocked.
+    tmp.writeAsStringSync(
+        jsonEncode(m.minHost == null
+            ? {'seq': m.seq}
+            : {'bytes': base64Encode(m.bytes), 'signature': signature, 'seq': m.seq}),
         flush: true);
     tmp.renameSync(_policyFile.path);
     _policySeq = m.seq;
