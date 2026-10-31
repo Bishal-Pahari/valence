@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased: what happens when the OS kills the WebView
+
+**Read this before you ship to a cheap phone.** Your page does not run in your app's process. The
+WebView gives it one of its own, at a lower priority, and when memory runs short Android kills that one
+first. The hook that would let a host survive it is `WebViewClient.onRenderProcessGone` — and
+`webview_flutter_android` 4.14.1, still the newest release, does not expose it. So the unhandled path
+runs: the WebView kills your app process about 70 ms later, with no Dart frame in between, and the user
+is back on the launcher. **Valence 0.4 cannot prevent that on Android.** Closing it needs native code —
+`valence` becoming a Flutter plugin with its own `WebViewClient` — which is priced for 0.5 rather than
+rushed into a beta. Two apps hit it on an emulator under deliberate pressure.
+
+What did change:
+
+- **Where a platform reports the loss, the host recovers from it.** That is iOS today, which blanks the
+  WebView rather than killing the app: the host reloads the same bundle at the route you were on, emits
+  nothing the page has to handle, and stops after three recoveries so a device that is genuinely out of
+  memory is not kept in a reload loop. iOS stays experimental and untested on hardware.
+- **A dead renderer can no longer roll back a good release.** The ready timer belongs to the page that
+  died; left running it timed out and spent a trial strike (§2.4), and two of those revert a release
+  that was never at fault. It now stops on the loss and starts fresh with the reloaded page.
+- **The log and `exit-info` tell you it was this**, not an ANR and not your own crash: a renderer
+  exiting `LOW_MEMORY` followed within the same second by the host at `SIGNALED/9`. The
+  [startup diagnostics guide](https://getvalence.pages.dev/docs/guides/startup-diagnostics/) shows both
+  captures and the two neighbours it is confused with.
+- **The limitation cannot rot quietly.** A test fails the day `webview_flutter_android` exposes a
+  renderer-gone callback, so the Android handler gets written instead of this paragraph surviving.
+
+Nothing to change in your app or your bundle. Keep anything the user would miss in SQLite, which
+survives either outcome.
+
 ## Unreleased: `http.request` says which failure it was, and `doctor` answers two open questions
 
 **Three failure codes instead of one.** `http.request` had a single `E_INTERNAL` for "the device has no

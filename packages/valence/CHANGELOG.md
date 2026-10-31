@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased: renderer loss is recovered from where the platform reports it
+
+- `ValenceApp` handles an `onWebResourceError` of type `webContentProcessTerminated`: it stops the ready
+  timer, reloads the **same** manifest at the current restoration route, and emits nothing to the page.
+  It counts no §2.4 trial failure — the timer for the dead page used to time out and spend a strike on a
+  release the device's memory pressure had killed. Capped at three recoveries per launch, after which
+  the WebView is released and the error view explains why.
+- **Android is unchanged and cannot be fixed here.** `webview_flutter_android` 4.14.1 (newest, checked
+  2026-11-01) exposes no `onRenderProcessGone`, so Chromium kills the host process before any Dart code
+  runs. Contracts §3, "Renderer loss", states it with the logcat evidence; a test fails as soon as the
+  plugin exposes the callback.
+
 ## Unreleased: `E_OFFLINE`, `E_TIMEOUT`, and corrections to the store-update policy
 
 - `http.request` answers **`E_TIMEOUT`** for its 20-second deadline and **`E_OFFLINE`** when the OS

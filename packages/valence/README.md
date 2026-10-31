@@ -136,6 +136,14 @@ The package cannot write native project files, so these are yours:
   prefix with `nosniff` and a locked-down CSP.
 - **`app.ready()` is what commits an OTA release.** A bundle that never calls it fails its trial twice and
   is rolled back. Call it after the first meaningful paint.
+- **A WebView eviction kills the app on Android, and 0.4 cannot stop it.** The page runs in a separate,
+  lower-priority process; under memory pressure the OS kills that one, and because no released
+  `webview_flutter_android` exposes `onRenderProcessGone`, the WebView then kills your process too. No
+  Dart code runs, so nothing logs it — identify it from `dumpsys activity exit-info` (renderer
+  `LOW_MEMORY`, then your app `SIGNALED/9`). Where the platform does report the loss, the host reloads
+  the same bundle at the same route and spends no trial strike. Keep anything the user would miss in
+  SQLite. See contracts §3, "Renderer loss", and the
+  [startup diagnostics guide](https://getvalence.pages.dev/docs/guides/startup-diagnostics/).
 
 ## Rollback
 
