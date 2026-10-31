@@ -8,6 +8,64 @@ ID. Regenerated config names the compatible events and fields; a native adapter 
 event using the original ID carried inside the app's own payload. Warm and cold taps use the same
 conversion without changing the shipped schema or erasing its baseline.
 
+## November 1 second R4 queue refresh - 2026-11-01
+
+### In plain terms
+
+The notification compatibility branch now includes the latest renderer-loss work
+and its test cleanup. Existing string-ID notification events keep their shipped
+shape. App-c's iteration 26 passes warm/cold reminder acceptance, but its
+intermittent startup, sync, ANR and memory-pressure findings remain open.
+
+Bases: code `778b20cdc33f2014ec0ebf72323acd2bdf5e52be`; site
+`9ed2ee99a4f4c4742da4e1c015e3d654ba6b666c`. Merged newest
+refs/heads/packages into codex/notify-event-compat in both worktrees.
+During validation packages advanced from 6182e66 to 778b20c. Both sides had
+fixed the same nine missing-block analyzer infos in app_widget_test.dart.
+Resolved that test-only conflict with the upstream file: no implementation,
+test, schema, codegen or template delta remains against the final packages base.
+
+Read both VALENCE_FINDINGS.md files and newest reports read-only:
+Kundalini 17 / app-c 26. Kundalini's app-specific schema 18, live allow-listed
+API and complete offline SQLite paint remain app evidence; F-66/F-71 cookie
+and caching gaps require their own designs, not incidental notification changes.
+S5 is answered upstream for 0.4; Android renderer-loss handling remains deferred,
+and iOS remains experimental and untested.
+
+Independently checked app-c's saved iteration-26 artifacts:
+event-contract-check.json has passed=true, observedTaps=1 and no violations.
+All 43 evidence-audit checks pass. The supplied pre-resume SQLite capture has
+outboxCount=0, inbound origin 450000 / USN 450002 and two outgoing object rows.
+New exact callback begin/complete lines and WorkManager SUCCESS share PID 21244;
+worker-execution.json records forced=true and 327.571 seconds of observation.
+This proves the reported execution, not natural scheduling cadence.
+
+Compared both raw background activation files independently: byte-identical,
+SHA256 3150bb3bc0b508a8b85d84a1b0b65de5bfb393e8d80db4768455f719f24fb1e9,
+current 1793479872, pending 1793479885, trial=null. Final-state.json then
+commits 1793479885 with pending/trial=null. These are saved artifacts; no fresh
+device run or independent database extraction is claimed. Ordinary initial
+launch and retained/no-reset offline/reconnect pass in this observation;
+F-29/F-37 do not recur, which neither closes nor repairs their historical cases.
+F-27/F-33/F-34/F-35/F-36 remain open.
+
+Decision: preserve security boundaries, then users' data. Keep shipped event
+meanings, native adapter validation, signed-update checks, transactions and lease
+rules. Keep framework schema 17, R4 since 11 and pendingIds since 16. The stale
+17+ free allocation row must not cause a downgrade or new allocation; only R4's
+Status cell is edited. No new feature starts during this single queue refresh.
+
+Security checklist: no new trust-boundary implementation. Nonce/navigation,
+strict event decoding, generated-script validation, bounded buffering, signature
+order, atomic state and release-only dev restrictions remain upstream code.
+The initial analyzer failure and a duplicate same-package test invocation
+(Windows sqlite3.dll deletion denied while another test held it) are excluded
+from passing evidence; final serial package validation supersedes them.
+No new independent security review or emulator acceptance is claimed.
+
+Validation is in progress. The branch is not ready until every required gate
+passes on this base; final results will be recorded here.
+
 ## November 1 R4 queue refresh - 2026-11-01
 
 ### In plain terms
