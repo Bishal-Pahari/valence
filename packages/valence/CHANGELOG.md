@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased: `E_OFFLINE`, `E_TIMEOUT`, and corrections to the store-update policy
+
+- `http.request` answers **`E_TIMEOUT`** for its 20-second deadline and **`E_OFFLINE`** when the OS
+  reports no network interface, keeping `E_INTERNAL` for a captive portal, a firewall or a server that is
+  down — the cases it cannot honestly tell apart. `ValenceHttp` takes an optional `online` callback; with
+  none, the behaviour is unchanged. Every `E_TOO_LARGE` names the observed size and the limit, the
+  streamed one as a floor.
+- `valenceStoreUrl` matches the platform case-insensitively. The runtime passes
+  `defaultTargetPlatform.name`, which Flutter spells `iOS`, so the iOS branch was unreachable on every
+  iOS device and `app.openStore` answered `E_UNSUPPORTED` with a valid `store.iosAppId` configured.
+- A store policy discovered mid-session now disposes the WebView controller and closes the loopback
+  server, instead of only removing the view from the widget tree while the page kept running behind the
+  blocking screen.
+- The signed policy envelope is persisted only while a policy applies. A withdrawal is recorded as the
+  verified seq alone, so an install with no policy performs no signature verification during startup
+  while a replayed older policy is still refused.
+
 ## Unreleased: custom notification event adapters
 
 Regenerated config declares compatible notification events/fields, so the native service cannot

@@ -1,6 +1,67 @@
 # Changelog
 
+## Unreleased: `http.request` says which failure it was, and `doctor` answers two open questions
+
+**Three failure codes instead of one.** `http.request` had a single `E_INTERNAL` for "the device has no
+network", "your server broke" and "that was not UTF-8". It now answers **`E_TIMEOUT`** for the 20-second
+deadline and **`E_OFFLINE`** when the OS reports no network interface at all, keeping `E_INTERNAL` for
+what it cannot honestly distinguish — captive-portal Wi-Fi, a firewall, a server that is down. `E_OFFLINE`
+is read at the instant the request failed, from the same value `app.online` carries, so a page no longer
+samples a second source at another instant and hopes they agree. **If you matched `E_INTERNAL` to mean
+"offline", change it:** this is the last release in which adding a code is free.
+
+**Sizes in every size refusal.** `E_TOO_LARGE` now names the observed size and the limit, because
+"paginate or give up?" is the question a cap raises and a bare refusal cannot answer it. A streamed
+response reports the bytes read before reading stopped, and says that is a floor. `Range` is not on the
+header deny-list, which is how a page reads a representation larger than 64 KiB; there is no streaming
+form, so an API offering only one large representation and no `Range` cannot be read by this method.
+
+**A session-cookie API is out of scope, and the docs now say so.** There is no cookie jar, so a
+cookie-paired CSRF token cannot be completed — which makes the default Django `POST` shape (`csrftoken`
+cookie plus `X-CSRFToken`) and the Rails equivalent structurally unreachable from a Valence page. Nothing
+could predict it before you shipped against such an API. Use bearer tokens, header keys, a `csrf_exempt`
+endpoint, or your own adapter in front.
+
+**`doctor`'s `oldest servable bundle` row answers its own sentence.** It used to report the lowest
+`requires.bridge` across servable bundles and then say a retirement is safe "only once no bundle at or
+above that line calls the method", leaving that unanswered. It now searches every servable bundle's files
+and either reports that nothing references a retired method or **warns** naming the newest bundle that
+does. It discounts the `METHOD_SINCE` table codegen writes into every bundle — the trap that makes a
+hand-written scan wrong in the unsafe direction — and never claims absence: a name your page assembles at
+runtime, or a file that will not decode, is reported as unknown.
+
+**A deleted mapped test is named rather than reported as an errno.** `doctor --tests` used to fail with
+`ENOENT … lstat '<path>'`, which reads like a broken checkout. The usual cause is the supported one: a
+retirement makes a method's native code and its tests deletable, and nothing prunes
+`.valence/test-matrix.json` for you.
+
+
 ## Unreleased - store-host update policy
+
+Corrections to the policy above, before any of it is released:
+
+- The iOS store destination could never resolve. The runtime passes `defaultTargetPlatform.name`, which
+  Flutter spells `iOS`, and the comparison was against `'ios'` — so a blocked iOS user saw a screen with
+  no button at all. Fixed, and the test now uses the value the runtime actually passes.
+- A policy discovered mid-session took the page out of the widget tree but left the WebView controller
+  and the loopback server alive, so the old page's timers kept firing and its own CSP-allowed origins
+  stayed reachable behind the blocking screen. It is now torn down, as the cold-start path always did.
+- The signed policy envelope was cached for **every** manifest that passed step 4, so any install that
+  had ever discovered one release re-verified an Ed25519 signature before every first frame, for ever, to
+  learn that no policy applied. A withdrawal is now recorded as the seq alone: the downgrade defence
+  stays, and an unblocked install verifies nothing at launch.
+- **`--min-host` does not carry forward, unlike `--floor`.** That is deliberate — omitting it is how a
+  mistaken requirement is withdrawn — but it meant your next ordinary `bundle` silently unblocked every
+  device the previous release was holding. `baseline.json` now records the last signed value and the
+  release that drops it warns, naming the number to pass again.
+- New **`store listing`** `doctor` row. The Android destination is built from the Valence `appId` while
+  the Play listing is keyed on the Android `applicationId`; they are independently editable and nothing
+  compared them, so a mismatch sent the blocking screen's only button to a listing that does not exist.
+- **A known limit, documented rather than fixed:** a policy has no freshness bound. The bytes are signed,
+  but the unsigned pointer still selects which signed release a device evaluates, so a held or cached
+  pointer keeps a device on a block you have already withdrawn, offline and across restarts. Freezing a
+  pointer is therefore a denial of service and not only staleness. Do not sign a `--min-host` you have
+  not verified. A real fix needs a signed freshness field and is not in 0.4.
 
 - Supporting hosts distinguish an update needing a newer store build from rejected bytes.
 - Optional signed `minHost` requires a store upgrade with a native offline-persistent
