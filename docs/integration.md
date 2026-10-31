@@ -1,4 +1,67 @@
-# Integration acceptance refresh - 2026-10-31
+# Integration acceptance refresh - 2026-11-01
+
+## November 1 packages and R4 refresh
+
+### In plain terms
+
+Integration now includes the newest packages and the refreshed notification
+compatibility acceptance. Notification event meanings and schema allocations are
+preserved. Current tests pass; app-c's open transaction, ANR and memory-pressure
+findings are not repaired by this report refresh.
+
+Bases: code 3610aa38c52f496bed93e24897f713f229030441; site
+747013a6469ae1bbc5c1a97993634e7e8cebb129. Advanced codex/integration from its
+previous accepted head to each packages base using --ff-only. Then processed the
+fixed queue in the order below, placing the notification compatibility refresh
+immediately after R4. Every merge except that refresh was already included in
+packages; it fast-forwarded to code a76e7dd / site d5bc970, without conflicts.
+All 29 numbered-feature and compatibility tips are included in both results,
+including R31. There is no other unmerged feature to fold in and no todo
+must-have to select. S1 stays parked; S2 needs a Play account.
+
+| Merge order | Code branch tip | Site branch tip |
+| --- | --- | --- |
+| codex/r8 | 91589a47cb80a4b2f2ba8cf1a6d1ce3dc5a4eb4e | 072552f08d626d2915e63e7fda2c4c183c4380e3 |
+| codex/r7 | 969b1a4fb03d76d2af85c69987c4ed5eeb0eb840 | 965b8eb83a7412a9ec601919f227c2c0005a9252 |
+| codex/r6 | 5b64e06051fab10e0a01d8b3215c17f45d81c980 | 388cd9d3c0fd6043cfa21b0a6440916232847742 |
+| codex/r3 | db669ddd75ffeb97588fd62304122a58c242f3b0 | f45ccf28d741a2c6e05c766eeb6bff059900bcc5 |
+| codex/r4 | 588f8761807b1893933303533a04fa14c9975a6f | d8e5dd775dfaf902e206bc2f195c30537f797ba4 |
+| codex/notify-event-compat | a76e7dd531ddba8729a2c41b2504f58068ea21a4 | d5bc97012351c72168b6b5a4062361c4394231e6 |
+| codex/r5 | 3cc1c0f4d062d13919adcfe5343434e00098fdea | 57a44b50dfd82800f151823ff1563d8a73340678 |
+| codex/r9 | 0c1b0fb01a48494991cdae4ab32369fb6a2af7b2 | 2913b4d0a743188808a66bd5b7db416ca870c52f |
+| codex/r10 | f3fcd0dac875fc30af226c7f1bf70750942c0550 | b905b742ab9d90984d513cdf7b99977eabd929f2 |
+| codex/r14 | fa6e16c55d84bb9a3162514a9c09b65cb634fd54 | fa5e8164a968bd74d943b8a50590dfbd010e08ca |
+
+Read both apps' findings and newest reports, Kundalini 17 / app-c 25, read-only.
+See [R4 queue refresh](notification-event-compat.md#november-1-r4-queue-refresh---2026-11-01)
+for the decision, evidence, open findings and security checklist. The saved warm
+tap audit passes; raw pending activation files are independently byte-identical;
+final OTA 1793475710 commits. Paired-clock lease evidence is consistent with the
+documented window and establishes no owner cause. No fresh emulator acceptance
+or independent runtime review is claimed.
+
+Decision: preserve users' data and signed-update/bridge checks. Keep framework
+schema 17, R4 since 11 and pendingIds since 16. The roadmap's stale 17+ free row
+must not cause a schema downgrade or new allocation. This run changes only R4's
+Status cell, the integration top line and its required plain-language note.
+
+All gates passed November 1 on the exact implementation now in integration:
+107 root tests with zero skips (including generated Dart and strict/verbatim TS),
+559 core / 2 push / 28 example / 29 bridge tests; clean fatal-info Dart in core
+and push; strict/verbatim bridge TS; zero-warning pub dry-runs (one push override
+hint); root and bridge packaging; 44-page site build/SEO. Example codegen --check
+writes nothing; builtin signature/hash verify passes (1793431100, two files).
+Debug APK passes in 136.7s, then Windows py independently reports PASS for the
+core package graph, manifest and all 19 DEX files. Existing app_badge_plus Kotlin
+migration warning remains. Process-scoped Gradle limits: 2 GiB heap, 1 GiB
+metaspace, two workers/processors. Logs: %TEMP%/valence-nov01-r4-*.log.
+
+Gates were run after the packages fast-forward, before the report commits.
+Implementation, templates, tests, generated example, site source and build config
+are unchanged by those commits and the integration fast-forwards; equality to
+those gated trees is checked rather than claiming an additional test run.
+No test-app writes, protected-branch mutations, package/version changes, pushes
+or publications. iOS and actual remote push delivery remain unverified.
 
 ## App-c iteration 24 completed follow-up
 
