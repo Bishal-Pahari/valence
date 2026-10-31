@@ -475,9 +475,85 @@ If the web app has modal state of its own it wants the gesture for, the host can
 - **The resume callback can arrive before start-up has finished. Ignore it until the first activation has completed.** On Android the lifecycle observer fires during the first launch, *while* §1's start-up sequence is still running — so a resume handler that touches the server, the store or the active bundle can run before any of them exists (`LateInitializationError`, or whatever your language calls it). §2.3's "the update check runs on UI start, on resume" and the rebind below both describe steady state; neither says when steady state begins. Guard the resume path on "has the host finished starting", or register the observer only after the first `activateForUiStart`. This is the same class of rule as "no transition runs from a background isolate" (§8).
 - **The same observer feeds `app.lifecycle` and `app.online` (§4.6).** The host maps Flutter's five lifecycle states onto four of its own, emits only changes, and keeps the current pair for `app.state()`. The start-up guard above applies to the resume *work*, not to the recording: a transition during start-up still updates what `app.state()` returns, even though no page exists to receive the event and the event is therefore dropped rather than queued. The page that loads next reads the current pair and has missed nothing.
 - iOS can reclaim listening sockets while the app is suspended. On `AppLifecycleState.resumed`, probe the server and rebind the same port.
-- If rebinding succeeds, keep the nonce, so the page keeps working.
+- If rebinding succeeds, keep the nonce, so the page keeps working — **unless no page is loaded**, in
+  which case reload it on the kept nonce. A suspend can reclaim the socket and kill the WebView's
+  content process together, and the page that is not there cannot be kept (§3, "Renderer loss").
 - If rebinding fails, rotate the port and the nonce and reload the page. The old page must not keep running against a port we no longer own.
 - *Residual risk:* between a reclaim and the rebind, a lazy chunk request could be answered by another process. The upgrade path is request interception (`WKURLSchemeHandler` on iOS, `WebViewAssetLoader` on Android) once webview_flutter exposes it, or a small platform plugin. Until then, keep the startup route's chunks preloaded.
+
+### Renderer loss (S5)
+
+The WebView does not run in our process. Its content process is a separate, lower-priority process, and
+under memory pressure the OS kills that one first — while the host is still alive with its server, its
+store and its state machine intact. **The page is gone and the bundle did nothing wrong.**
+
+**What the host does, wherever the platform reports it.** Treat it as the device's doing, not the
+release's: stop the ready timer, reload the *same* manifest at the route the page was on (`origin` plus
+the current restoration route, §4.8), and emit nothing — the page is being re-run from the start, so
+there is nothing for it to handle. Three rules make that safe:
+
+- **It counts no §2.4 trial strike, and the cap clears `serving` so the next launch does not either.**
+  The ready timer belongs to a page that no longer exists; left running it times out and spends a strike
+  on a bundle whose renderer the OS killed, and two of those roll back a good release. `onPageStarted`
+  arms a fresh timer for the reloaded page, so the trial still gets its whole window. When the cap is
+  reached the host also sets `serving = null` and saves, for the same reason the mid-session store block
+  does: otherwise step 2 of §2.4 reads `serving == trial` on the next UI start as "the process died while
+  serving a trial" and spends the strike there instead. `trial` stays set, so that launch retries it.
+- **It keeps serving whatever was on screen, trial included.** A ready timeout reverts to `current`
+  deliberately; this does not, because there is nothing to revert *from* — no release failed. Reverting
+  here would also show the trial again on the next UI start and spend the one retry §2.4 grants.
+- **It is capped** — three recoveries per launch. The pressure that killed the renderer is usually still
+  there, so an uncapped reload is a loop that drains the battery and still shows nothing. After the cap
+  the host drops the controller and shows its error view. Dropping the controller is the point:
+  **leaving the widget tree is not teardown**, because the controller owns the native WebView, so a
+  hidden-but-held WebView gives none of the memory back — the same rule §2.5's mid-session block follows.
+
+**Android cannot reach any of that, and this is the honest statement of why.** The hook is
+`WebViewClient.onRenderProcessGone`: return `true` and the app survives, and Android's own documentation
+says that if nothing handles it *the framework kills the application process*. `webview_flutter_android`
+4.14.1 (the newest release, checked 2026-11-01) exposes no such callback — not in its Dart API, not in
+the `WebViewClient` subclass its plugin installs — so the default "unhandled" path always runs:
+
+```text
+lowmemorykiller: Kill '…SandboxedProcessService0:0' (19933) … min watermark is breached
+chromium: [ERROR:…/aw_browser_terminator.cc:176] Renderer process (19933) crash detected (code -1).
+chromium: [ERROR:…/aw_browser_terminator.cc:124] Render process (19933) kill (OOM or update) wasn't
+          handed by all associated webviews, killing application.
+ActivityManager: Process <app> (pid 19805) has died
+```
+
+The host process is killed **by the WebView**, 70 ms after the renderer went, with no Dart frame in
+between. For an ordinary Flutter app that would cost one screen; here the WebView is the whole UI, so
+the app dies and the user is back on the launcher. Closing it needs native code — an Android
+`WebViewClient` that overrides the callback, installed over the plugin's own — which means `valence`
+becoming a Flutter *plugin* rather than a pure-Dart package. That is priced, not shipped, in 0.4; the
+test matrix carries a tripwire that fails as soon as the dependency exposes the callback.
+
+**And on Android it costs a trial strike, which nothing here can prevent.** No Dart code runs, so
+`serving` stays equal to `trial` in `state.json`, and the next UI start cannot tell this apart from the
+app crashing on the trial's own page — §2.4 step 2 is that check, and it is right to be blunt. So an
+eviction during a trial spends a strike, and two of them put a healthy release in `bad` for that
+install. Surviving the kill is the only fix, which is the shim. Weakening step 2 is not: it is what
+catches a bundle that crashes the host, and a release that cannot be rolled back is the worse failure.
+
+**iOS does report it**, as an `onWebResourceError` whose type is `webContentProcessTerminated`
+(`WKErrorDomain` code 2), and WKWebView does not kill the app — it blanks. So the behaviour above is
+live on iOS, which also closes a false-rollback path there: before it, a content-process death during a
+trial left the ready timer running against a dead page. iOS remains experimental and untested on
+hardware.
+
+**One iOS suspend can do both at once**, which is why the reload is not the whole recovery: the OS can
+reclaim the listening socket (above) and kill the content process in the same suspend, so a reload fired
+from the resume runs against a port the host does not own yet and lands on the WebView's own "cannot
+open page". The liveness probe then succeeds from there on, so nothing would ever reload again. Hence
+the rule in "Resume": **a reclaimed port keeps the page only if there still is one** — when the rebind
+takes the same port and no page is loaded, reload it on the kept nonce.
+
+*Distinguishing it afterwards* (§5.1.1 and the startup-diagnostics guide): `dumpsys activity exit-info`
+shows the renderer exiting `reason=3 (LOW_MEMORY)` and the host exiting `reason=2 (SIGNALED) status=9`
+within the same second, at `importance=400`. An ANR, a Dart crash and an lmkd kill of the host itself
+all look different; a host `SIGNALED/9` that *follows* a renderer `LOW_MEMORY` is this, and nothing the
+app's own code did caused it.
 
 ### Platform setup
 
@@ -1558,6 +1634,13 @@ app-scoped logs and Android exit-info before restarting; preserve the database a
 account. Event-loop stalls can delay or prevent timer output. Android device
 acceptance remains separate; iOS is experimental and untested.
 
+**One death leaves no line at all, and that is itself the signature.** When the OS kills the WebView's
+content process on Android, the WebView kills the host process with no Dart frame in between, so the
+last host line is whatever was happening before — no `startup: phase=… status=failed`, no exception, no
+ANR. Read it out of `dumpsys activity exit-info` instead: a renderer `reason=3 (LOW_MEMORY)` followed
+within the same second by the host at `reason=2 (SIGNALED) status=9`, `importance=400`. See §3,
+"Renderer loss", for what the host can and cannot do about it.
+
 ### 5.2 Seed
 
 `assets/valence/seed.db` has the same schema and is built by `valence seed`:
@@ -2029,6 +2112,20 @@ USE_EXACT_ALARM by default. iOS installs the UNUserNotificationCenter delegate. 
 notification callback runs UI activation. iOS code paths are experimental and untested.
 
 ## 8. Test matrix (minimum; all must pass before "done")
+
+S5 renderer loss (§3): a `webContentProcessTerminated` resource error reloads the **same** manifest at
+the route the page was on, counts no trial failure, and leaves the §2.4 trial serving — including the
+case where the ready timer for the dead page would otherwise have timed out and spent a strike. A
+content process that keeps dying stops being reloaded after three recoveries, says so in the log,
+replaces the WebView with the error view and **clears `serving` on disk** while keeping `trial`, so the
+next UI start retries the release instead of spending step 2's strike on a device that ran out of
+memory. A resume whose rebind reclaims the same port reloads the page when none is loaded, because a
+suspend can take the socket and the content process together. Android's inability to reach any of this
+is a **tripwire, not a behaviour test**:
+the suite fails if `webview_flutter_android` ever exposes a renderer-gone callback, because that is the
+day the Android handler must be written and §3's limitation dropped. No device row: the kill happens in
+the WebView's own process with no Dart frame in between, so nothing in `flutter test` or on the emulator
+can observe the host's side of it.
 
 S4 method retirement (§4.1): a `"retired": true` method keeps its name, `since`, params and return type in
 the schema, in `METHOD_SINCE` and in the `BridgeHandlers` interface, is answered concretely by the

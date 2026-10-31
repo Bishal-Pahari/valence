@@ -136,6 +136,16 @@ The package cannot write native project files, so these are yours:
   prefix with `nosniff` and a locked-down CSP.
 - **`app.ready()` is what commits an OTA release.** A bundle that never calls it fails its trial twice and
   is rolled back. Call it after the first meaningful paint.
+- **A WebView eviction kills the app on Android, and 0.4 cannot stop it.** The page runs in a separate,
+  lower-priority process; under memory pressure the OS kills that one, and because no released
+  `webview_flutter_android` exposes `onRenderProcessGone`, the WebView then kills your process too. No
+  Dart code runs, so nothing logs it — identify it from `dumpsys activity exit-info` (renderer
+  `LOW_MEMORY`, then your app `SIGNALED/9`). Because no Dart code runs, an eviction **during a trial
+  costs that release a strike** — two of them retire a healthy release on that install, so roll out to
+  10% first. Where the platform does report the loss, the host reloads the same bundle at the same route
+  and spends no strike. Keep anything the user would miss in SQLite. See contracts §3, "Renderer loss",
+  and the
+  [startup diagnostics guide](https://getvalence.pages.dev/docs/guides/startup-diagnostics/).
 
 ## Rollback
 
@@ -187,7 +197,7 @@ MIT. The spec is `contracts.md`, which ships inside the `/valence` Claude Code s
 
 ## Native HTTP (contracts section 4.5)
 
-Generated `http.request` delegates to `Valence.httpRequest`. Configure exact trusted `http.origins` origins, regenerate, and ship a host; they become `ValenceConfig.httpOrigins` (default deny all). The host reads the R1 token per request, with `authToken` callback precedence, and emits `auth.expired` for an authenticated 401. Redirects are returned without following them. Text bodies: 64 KiB; headers: 16 KiB; total deadline: 20 seconds. Use HTTPS in production and no shared server secrets in an APK. [API and adapter guide](https://getvalence.pages.dev/docs/guides/your-backend/). iOS remains experimental and untested.
+Generated `http.request` delegates to `Valence.httpRequest`. Configure exact trusted `http.origins` origins, regenerate, and ship a host; they become `ValenceConfig.httpOrigins` (default deny all). The host reads the R1 token per request, with `authToken` callback precedence, and emits `auth.expired` for an authenticated 401. Redirects are returned without following them. Text bodies: 64 KiB; headers: 16 KiB; total deadline: 20 seconds (`E_TIMEOUT`). A transport failure while the OS reports no network interface is `E_OFFLINE`; a captive portal or a server that is down stays `E_INTERNAL`. Every size refusal names the observed size and the limit. There is no cookie jar, so a session-cookie API needing a cookie-paired CSRF token is out of scope; send `Range` to read more than 64 KiB. Use HTTPS in production and no shared server secrets in an APK. [API and adapter guide](https://getvalence.pages.dev/docs/guides/your-backend/). iOS remains experimental and untested.
 ## Account switching (contracts section 4.4)
 
 `Valence.authSetToken(token, {account, discardPending})` records your own opaque account id beside the
