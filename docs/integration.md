@@ -1,5 +1,85 @@
 # Integration acceptance refresh - 2026-10-31
 
+## App-c iteration 24 completed follow-up
+
+Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 24.
+Packages remains code d771105 / site 53d3a91. All 29 feature and compatibility
+tips, plus packages, are ancestors of integration in both repos. No missing
+merge or eligible must-have remains. S1 stays parked; S2 needs a Play account.
+
+F-37 has stronger diagnostics, not an established lease-expiry defect:
+
+- Retained/no-reset offline sync returned offline/pending1, then reconnect
+  ok/changed1/pending0 before any clear/private restoration. The first bounded
+  post-restoration reconnect returned busy even though the outbox drained.
+- Stable lease 1793468452235:8566 matches observed PID 8566. Extended retries
+  complete ok/changed1/pending0 without restart, another explicit clear/private
+  restoration or account switch. A subsequent snapshot has lease=null/outbox0
+  and the same PID. Sync itself changes data; this is not an inert observation.
+- Last busy call starts at host-minus-original-lease delta 140210ms; the
+  successful call starts at 150602ms. Later paired samples put the host clock
+  28757-28850ms ahead of the device. Historical alignment, renewals and actual
+  owner-isolate lifetime were not captured. Those deltas are not owner ages;
+  the post-success snapshot cannot establish the row at the busy calls.
+- Exclude stale copied restore outputs from the failed-attempt acceptance.
+  Actual later original-object restoration and settled retries pass. The new
+  app-scoped capture helper improves future diagnosis; debuggerd/SIGQUIT still
+  yield no accessible blocking-thread trace. Keep F-37 minor/diagnostic.
+
+Ordinary launch again delivers to the orphaned picker without an App C PID
+(F-29). Supplied Settings evidence records same PID 8566, painted return before
+explicit relaunch and no current ANR. Four foreground ok/pending0 replies and
+one startup callback do not repair major/open F-33/F-35/F-36 or prove four
+worker overlaps. F-27 host-file lifecycle, F-34 stale banner and pagination
+remain open or limited. Kundalini F-63/F-65 and F-64 adoption are unchanged.
+
+Separately verified saved isolated-worker acceptance without operating apps:
+
+- Exact new callback begin 23:41:05.130, complete 23:41:06.767 and WorkManager
+  SUCCESS 23:41:06.807 share PID 11072. Each is present in the after log and
+  absent from the full Flutter/WorkManager baseline. First worker receipts pull
+  units above cursor 380002 and acknowledge two outgoing inspection objects.
+  USN 390002 updates the inbound fixture to origin 390000, rather than proving
+  insertion of a new key.
+- Supplied pre-resume SQLite results contain that incoming update, both outgoing
+  objects at USNs 390001/390002 and outboxCount=0. This is validation of supplied
+  results, not an independent database extraction. One forced execution observed
+  after 201.631 seconds does not prove natural scheduling cadence.
+- Independently compared both raw activation files: byte-identical, SHA256
+  7624aaa83313f0c168c0dbdf071729cfe84e7f81fb9b8ae1a22a6065c1ab70e4,
+  current 1793469142 / pending 1793469154 / trial=null. Final saved state commits
+  1793469154 with pending/trial=null. All 44 supplied final audit checks pass;
+  cleanup records airplane off, stopped app/owned mocks, unreachable owned
+  services and no forwards. Earlier failed/rejected runner attempts remain
+  excluded from acceptance.
+
+Decision: preserve users' data, shipped contracts, additive R31 revision 17 and
+transaction/lease/retry rules. Require contemporaneous paired clocks, native
+lease snapshots at request boundaries and owner/acquisition/renewal/release
+traces before assigning a cause or changing contention handling. Security and
+data safety take precedence over a speculative timing fix.
+
+Validation: saved-result assertions, exact callback lines and full baseline,
+independent raw hashes, all 29 branch-tip ancestry checks in both repos and
+unchanged implementation trees against gated R31 code 38a7714 / site fb7bc44.
+
+Fresh required gates on the unchanged combined implementation (October 31):
+107 root tests passed with zero failures/skips (generated Dart and strict/verbatim
+TS ran); 556 core, 2 push, 28 example and 29 bridge tests passed. Core/push
+fatal-info Dart analysis and bridge strict/verbatim TypeScript passed. Core/push
+pub dry-runs have zero warnings (push retains one local-override hint); root and
+bridge packaging dry-runs passed. Site build/SEO passed all 44 pages.
+Debug APK passed (assembleDebug 218.4s), followed by the standalone Windows py
+Firebase audit: PASS for the resolved core graph, manifest and all 19 DEX files.
+The existing app_badge_plus Kotlin migration warning remains. The build used
+process-scoped 2 GiB Gradle heap, 1 GiB metaspace and two workers/processors.
+Logs: `%TEMP%/valence-oct31-app24-*.log`.
+
+Integration readiness is not beta acceptance. No emulator run, independent
+runtime review, app writes, protected-branch changes, package/schema changes,
+pushes or publications occurred. iOS and real remote push remain unverified.
+
+
 ## App-c iteration 23 completed follow-up
 
 Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 23.
