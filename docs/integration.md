@@ -1,5 +1,62 @@
 # Integration acceptance refresh - 2026-10-31
 
+## App-c iteration 13 completed follow-up
+
+Both findings and newest reports were read read-only: Kundalini 16 and the now
+completed app-c 13. Code packages remains d771105 / site packages 53d3a91. The
+original rebase queue, R14 and every later numbered feature tip are included in
+integration. Only R31 and the notification-compatibility report tip are not yet
+ancestors of packages; both are already integrated in the recorded order above.
+No changed base, missing merge or eligible must-have requires new feature work.
+S1 stays parked and S2 needs a Play account.
+
+Independently inspected app-c's retained iteration-13 captures, without running
+the app or writing to either test repository:
+
+- PID 14117 starts its worker at 12:40:31.602, before Valence.open completes at
+  12:40:31.786 (4804 ms). The callback completes at 12:40:48.584 and WorkManager
+  reports SUCCESS at 12:40:48.786. first-sync.json and first-status.json report
+  ok/pending=0. This is one successful startup overlap; it neither reproduces
+  nor repairs the earlier COMMIT error. Major F-33 remains open.
+- warm-tap-events.json carries the original string ID iteration-13-rebuilt-warm.
+  event-contract-check.json records one tap and no violations. The completed
+  report separately records cold routing and scoped native regression. F-30
+  stays resolved for the supported adapter; no shipped signature is changed.
+- The isolated worker begins at 14:02:39.178, completes at 14:02:40.608 and has
+  WorkManager SUCCESS at 14:02:40.625. worker-mock.log's first owned request block
+  records two incoming unit rows above cursor 50001 and two outgoing inspection
+  acknowledgements. Later requests follow foreground resume and are excluded.
+  Host/mock and guest clocks differ. This is eligible forced execution, not
+  natural periodic cadence or production server durability.
+- background-sqlite-before-resume.json records inbound iteration-13-inbound at
+  USN 60002, outgoing inspection objects at USNs 60001/60002 and outboxCount=0.
+  Its companion snapshot report records stable database/WAL hashes. These are
+  supplied snapshot evidence, not a fresh database extraction in this run.
+- Independently hashed both raw activation files: each is SHA256
+  62afdc05f02e7ee69e2b48245995c9839f4fa5fb9948985df187f2df707bf41a.
+  Current 1793434187, pending 1793434205 and trial=null remain byte-identical.
+  final-state.json records current 1793434205, previous 1793434187 and no
+  pending/trial. cleanup.json records airplane off, stopped app, refused owned
+  mock ports and no forwards. The report explicitly distinguishes retained
+  release validation plus private backup restoration from uninterrupted
+  release-to-debug adoption.
+
+Decision: prioritize users' data and transaction-ownership evidence. Preserve
+shipped contracts, R31's additive revision 17, lease semantics and retry budgets;
+a successful overlap does not justify a speculative concurrency patch or closing
+F-33. App-c F-27's host-file lifecycle/limits documentation gap also remains open.
+Kundalini's F-63/F-65 reports and F-64 adoption status are unchanged; packages
+already contains S4's retirement tooling. Integration readiness is not beta
+acceptance.
+
+Validation for this report-only follow-up: branch ancestry, unchanged code/site
+implementation trees against the fully gated R31 integration, matching new report
+sections and git diff --check. The earlier October 31 full gates retain their
+original scope; no fresh gate pass, emulator run or independent runtime review is
+claimed. No test-app writes, protected-branch changes, package/schema changes,
+pushes or publications. iOS and real remote push delivery remain unverified.
+
+
 ## 2026-10-31: R31 store-host update integration
 
 Fresh codex/integration starts from newest code packages d771105ad666e84b29c1545ed7b6db403f79d46a
