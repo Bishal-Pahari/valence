@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show debugDefaultTargetPlatformOverride;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform.dart';
 import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
@@ -64,6 +65,50 @@ void main() {
             .having((e) => e.code, 'code', BridgeErrorCode.denied)
             .having((e) => e.message, 'message', contains(fragment)),
       );
+
+  test('R31 store launcher uses compiled identity and reports unsupported and launch failures', () async {
+    final v = await open();
+    final channel = const MethodChannel('plugins.flutter.io/url_launcher');
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    String? launched;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      launched = (call.arguments as Map)['url'] as String;
+      return true;
+    });
+    try {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      await v.openStore();
+      expect(launched, 'https://play.google.com/store/apps/details?id=com.example.app');
+      messenger.setMockMethodCallHandler(channel, (_) async => false);
+      await expectLater(v.openStore(), throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.internal)));
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      await expectLater(v.openStore(), throwsA(isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.unsupported)));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+      messenger.setMockMethodCallHandler(channel, null);
+    }
+  });
+
+  test('R31 fresh Valence.open revalidates cached policy without activation', () async {
+    final b = await signBundle(key, seq: 50, overrides: {'minHost': 2});
+    final v = await open(client: MockClient((request) async {
+      if (request.url.path.endsWith('/channels/production.json')) return http.Response('{"seq":50,"rollout":100}', 200);
+      if (request.url.path.endsWith('/50.json')) return http.Response.bytes(b.bytes, 200);
+      if (request.url.path.endsWith('/50.json.sig')) return http.Response(b.signature, 200);
+      return http.Response('', 404);
+    }));
+    await v.updater.checkForUpdate();
+    v.state.pending = 20;
+    v.updater.save();
+    final restarted = await open();
+    expect(identical(restarted.updater, v.updater), isFalse);
+    expect(restarted.updater.storeUpdateRequired, isTrue);
+    expect(restarted.bundleStatus().minHost, 2);
+    expect(restarted.state.pending, 20);
+    expect(restarted.state.trial, isNull);
+    expect(restarted.state.trialFails, 0);
+    expect(restarted.server, isNull);
+  });
 
   test('legacy notification adapter retains startup buffering and consume-once cold access', () async {
     final native = FakeNotifications()..launch = response();
@@ -413,7 +458,7 @@ void main() {
     final v = await open(
         config: testConfig(key, bridgeVersion: 41, writableBuckets: {'shelf'}));
     expect(v.appInfo().bridge, 41);
-    expect(v.appInfo().builtins, 16);
+    expect(v.appInfo().builtins, 17);
     expect((await v.syncStatus()).reason, isNull);
     await v.authSetToken('a', account: 'a');
     await v.store.hostPrefSet('valence.sync.reason', 'unauthorized');

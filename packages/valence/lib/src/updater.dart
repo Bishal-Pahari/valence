@@ -19,8 +19,7 @@ import 'sync.dart';
 typedef ValenceAssetReader = Future<Uint8List> Function(String key);
 
 /// Runs [work] on the first post-frame callback. Injected so the updater is testable without a frame.
-void _postFrame(Future<void> Function() work) =>
-    SchedulerBinding.instance.addPostFrameCallback((_) => work());
+void _postFrame(Future<void> Function() work) => SchedulerBinding.instance.addPostFrameCallback((_) => work());
 
 /// The manifest fetch is capped, because it is read before anything about it is trusted.
 const _manifestSizeCap = 1024 * 1024;
@@ -57,6 +56,9 @@ enum ValenceBundleReason {
   /// or the bytes were tampered with, and **no** device will take it.
   rejected,
 
+  /// Authenticated release needs a newer store host (revision 17).
+  needsStoreUpdate,
+
   /// Over `bundleSizeCap`, or the step 7 pull hit `dataSizeCap`.
   toobig,
 
@@ -81,6 +83,8 @@ final class ValenceBundleStatus {
     required this.offered,
     required this.checkedAt,
     this.urgent,
+    this.requiredBridge,
+    this.minHost,
   });
 
   /// The seq of the bundle on screen; 0 before one is served.
@@ -103,6 +107,12 @@ final class ValenceBundleStatus {
 
   /// Signed pending-bundle urgency; null when absent or not known.
   final bool? urgent;
+
+  /// Required bridge version from the last authenticated incompatible offer.
+  final int? requiredBridge;
+
+  /// Active signed mandatory host floor, independent of the last check outcome.
+  final int? minHost;
 }
 
 /// The canonical check order (§2.3) and the activation state machine (§2.4).
@@ -191,11 +201,55 @@ final class ValenceUpdater {
   /// together: a reader that caught `reason` from the finished check and `offered` from the one now
   /// running would render "release null is held back by the rollout". The fields below are the
   /// *in-progress* check and are never read by [bundleStatus].
-  ({ValenceBundleReason reason, int? offered, int? checkedAt}) _lastCheck =
-      (reason: ValenceBundleReason.idle, offered: null, checkedAt: null);
+  ({ValenceBundleReason reason, int? offered, int? checkedAt, int? requiredBridge}) _lastCheck =
+      (reason: ValenceBundleReason.idle, offered: null, checkedAt: null, requiredBridge: null);
 
   ValenceBundleReason _reason = ValenceBundleReason.idle;
   int? _offered;
+  int? _requiredBridge;
+  int _policySeq = 0;
+  int? _minHost;
+
+  /// The currently verified mandatory policy, not an unsigned pointer field.
+  int? get minHost => _minHost;
+
+  /// Whether the native UI must block use until a store upgrade or signed withdrawal.
+  bool get storeUpdateRequired => (_minHost ?? 0) > config.bridgeVersion;
+
+  /// Needed bridge version from the last completed incompatible check.
+  int? get lastRequiredBridge => _lastCheck.requiredBridge;
+
+  File get _policyFile => File('${stateFile.parent.path}/store-policy.json');
+
+  /// Revalidates the exact signed policy bytes before offline UI startup.
+  Future<void> restoreStorePolicy() async {
+    if (!_policyFile.existsSync()) return;
+    try {
+      final envelope = jsonDecode(_policyFile.readAsStringSync()) as Map<String, dynamic>;
+      final bytes = base64Decode(envelope['bytes'] as String);
+      final signature = envelope['signature'] as String;
+      final seq = envelope['seq'] as int;
+      final m = await checkManifest(
+          bytes: bytes, signature: signature, config: config, state: state, pointerSeq: seq, checkHostVersion: false);
+      if (m.seq > _policySeq) {
+        _policySeq = m.seq;
+        _minHost = m.minHost;
+      }
+    } on Object catch (e) {
+      _log('update: cached store policy refused: $e');
+    }
+  }
+
+  void _rememberStorePolicy(ValenceManifest m, String signature) {
+    if (m.seq <= _policySeq) return;
+    _policyFile.parent.createSync(recursive: true);
+    final tmp = File('${_policyFile.path}.tmp');
+    tmp.writeAsStringSync(jsonEncode({'bytes': base64Encode(m.bytes), 'signature': signature, 'seq': m.seq}),
+        flush: true);
+    tmp.renameSync(_policyFile.path);
+    _policySeq = m.seq;
+    _minHost = m.minHost;
+  }
 
   /// Why the last completed check ended as it did, for `bundle.status` (§4.6).
   ValenceBundleReason get lastReason => _lastCheck.reason;
@@ -236,7 +290,12 @@ final class ValenceUpdater {
   /// stays the answer.
   int? _recordCheck(int? seq) {
     if (seq != null) _reason = ValenceBundleReason.ready;
-    _lastCheck = (reason: _reason, offered: _offered, checkedAt: DateTime.now().millisecondsSinceEpoch);
+    _lastCheck = (
+      reason: _reason,
+      offered: _offered,
+      checkedAt: DateTime.now().millisecondsSinceEpoch,
+      requiredBridge: _requiredBridge
+    );
     // Event-driven bundle.status reads must observe this check, after its lease is released.
     if (seq != null) onUpdateReady?.call(seq);
     return seq;
@@ -245,6 +304,7 @@ final class ValenceUpdater {
   Future<int?> _checkOnce() async {
     // Describes *this* check, so a seq offered by the last one does not survive into it.
     _offered = null;
+    _requiredBridge = null;
     if (config.otaBase.isEmpty) {
       _log('update: no otaBase configured, nothing to check');
       return _stop(ValenceBundleReason.unconfigured);
@@ -350,8 +410,27 @@ final class ValenceUpdater {
       );
     } on ValenceCheckFailure catch (f) {
       _log('update: step 4 stopped, $f');
+      if (f.requiredBridge != null) {
+        // Check 5 stopped in canonical order. Validate all remaining metadata before
+        // allowing an incompatible manifest to establish a mandatory native policy.
+        try {
+          final policy = await checkManifest(
+              bytes: bytes,
+              signature: signature,
+              config: config,
+              state: state,
+              pointerSeq: pointer.seq,
+              checkHostVersion: false);
+          _rememberStorePolicy(policy, signature);
+          _requiredBridge = f.requiredBridge;
+          return _stop(ValenceBundleReason.needsStoreUpdate);
+        } on ValenceCheckFailure catch (e) {
+          _log('update: incompatible policy refused: $e');
+        }
+      }
       return _stop(ValenceBundleReason.rejected);
     }
+    _rememberStorePolicy(m, signature);
 
     // --- Step 5: the total size of what is not already in CAS. --------------
     var needed = 0;
@@ -549,8 +628,7 @@ final class ValenceUpdater {
     return true;
   }
 
-  static String _pairs(Map<String, int> pairs) =>
-      pairs.entries.map((e) => '${e.key} v${e.value}').join(', ');
+  static String _pairs(Map<String, int> pairs) => pairs.entries.map((e) => '${e.key} v${e.value}').join(', ');
 
   // ===========================================================================
   // §2.4 Activation state machine
