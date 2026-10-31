@@ -26,6 +26,12 @@ The cases cover:
   replayed from a stale queue.
 - A ready trial commits; a foreground timeout counts one strike and loads current without consuming
   the next launch's retry. Background time counts nothing. Current and late-ready pages do not commit.
+- A dead WebView content process reloads the same manifest at the same route and spends no trial
+  strike; one that keeps dying stops after three recoveries, drops the controller and clears `serving`
+  on disk so the next UI start spends none either. A resume that reclaims the same port reloads the
+  page when none is loaded. The Android half of §3's "Renderer loss" has no behaviour test, because the
+  process is killed with no Dart frame in between; `renderer_loss_test.dart` is a tripwire that fails
+  when `webview_flutter_android` exposes a renderer-gone callback.
 - Disposal cancels lifecycle/connectivity/update/ready triggers, closes the socket and leaves the
   user database open.
 
