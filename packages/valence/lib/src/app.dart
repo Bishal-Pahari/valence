@@ -410,15 +410,30 @@ class _ValenceAppState extends State<ValenceApp>
     // page, so the trial still gets its whole window.
     _stopReadyTimer();
     final controller = _controller;
-    if (controller == null || _origin.isEmpty) return;
+    if (controller == null || _origin.isEmpty) {
+      _log('webview: the content process died before there was a page to '
+          'reload; the launch in flight will report its own failure');
+      return;
+    }
     _pageLoaded = false;
     if (_rendererReloads >= _maxRendererReloads) {
       _log('webview: the content process died again after $_rendererReloads '
-          'reloads; giving up so the device can reclaim the WebView');
+          'reloads; releasing the WebView so the device can reclaim it');
+      // The same reason the mid-session store block clears this: a device that ran out of memory is
+      // not a failed trial on the next UI start. Left set, step 2 of §2.4 reads `serving == trial` as
+      // "the process died while serving a trial" and spends a strike — twice, and a healthy release is
+      // in `bad` for ever. `trial` stays, so the next UI start retries it with its strikes intact.
+      _valence.state.serving = null;
+      _valence.updater.save();
       if (mounted) {
-        setState(() => _error = StateError(
-            'The WebView content process was killed $_maxRendererReloads times. '
-            'The device is out of memory; reopen the app.'));
+        setState(() {
+          // Leaving the tree is not teardown: the controller owns the native WebView, so dropping it
+          // is what actually gives the memory back.
+          _controller = null;
+          _error = StateError(
+              'The WebView content process was killed $_maxRendererReloads times. '
+              'The device is out of memory; reopen the app.');
+        });
       }
       return;
     }
@@ -661,6 +676,17 @@ class _ValenceAppState extends State<ValenceApp>
     final samePort = rebound.port == server.port;
     _origin = rebound.origin;
     if (samePort) {
+      // Keeping the page is only right if there still is one. On iOS a suspend can reclaim the socket
+      // and kill the content process together, and the renderer-loss reload then ran against a port we
+      // did not own yet — leaving the user on "cannot open page" for the rest of the session, because
+      // the liveness probe succeeds from here on and nothing reloads again (§3, "Renderer loss").
+      if (!_pageLoaded) {
+        _log('resume: reclaimed port ${rebound.port} with no page loaded; '
+            'reloading it on the kept nonce');
+        await _controller?.loadRequest(
+            Uri.parse('${rebound.origin}${_valence.restoration.route}'));
+        return;
+      }
       _log(
           'resume: reclaimed port ${rebound.port}, keeping the nonce and the page');
       return;

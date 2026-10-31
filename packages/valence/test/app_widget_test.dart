@@ -152,8 +152,8 @@ void main() {
     }
   }
 
-  Future<void> waitFor(
-      WidgetTester tester, bool Function() completed, String description) async {
+  Future<void> waitFor(WidgetTester tester, bool Function() completed,
+      String description) async {
     // Verification and SQLite use real I/O; a fixed sleep races other test files.
     final elapsed = Stopwatch()..start();
     while (!completed() && elapsed.elapsed < const Duration(seconds: 5)) {
@@ -165,7 +165,8 @@ void main() {
 
   Future<void> waitForPending(WidgetTester tester) => waitFor(
       tester,
-      () => runtime.state.pending == trial.seq &&
+      () =>
+          runtime.state.pending == trial.seq &&
           runtime.bundleStatus().reason == ValenceBundleReason.ready,
       'verified pending update');
 
@@ -298,35 +299,46 @@ void main() {
       return http.Response.bytes(trial.bytes, 200);
     }
     if (path.endsWith('/manifests/20.json.sig')) {
-      return http.Response(validSignature ? trial.signature : builtin.signature, 200);
+      return http.Response(
+          validSignature ? trial.signature : builtin.signature, 200);
     }
     final blob = trial.blobs[path.split('/').last];
-    return blob == null ? http.Response('', 404) : http.Response.bytes(blob, 200);
+    return blob == null
+        ? http.Response('', 404)
+        : http.Response.bytes(blob, 200);
   }
 
   int pointerRequests() =>
       requests.where((url) => url.endsWith('/channels/production.json')).length;
 
-  testWidgets('R31 native block pauses trial, denies queued bridge and accepts signed withdrawal', (tester) async {
+  testWidgets(
+      'R31 native block pauses trial, denies queued bridge and accepts signed withdrawal',
+      (tester) async {
     await mount(tester, pending: true);
-    final policy = await tester.runAsync(() => signBundle(key, seq: 50, overrides: {'minHost': 2}));
+    final policy = await tester
+        .runAsync(() => signBundle(key, seq: 50, overrides: {'minHost': 2}));
     respond = (request) async {
-      if (request.url.path.endsWith('/channels/production.json')) return http.Response('{"seq":50,"rollout":100}', 200);
-      if (request.url.path.endsWith('/50.json')) return http.Response.bytes(policy!.bytes, 200);
-      if (request.url.path.endsWith('/50.json.sig')) return http.Response(policy!.signature, 200);
+      if (request.url.path.endsWith('/channels/production.json'))
+        return http.Response('{"seq":50,"rollout":100}', 200);
+      if (request.url.path.endsWith('/50.json'))
+        return http.Response.bytes(policy!.bytes, 200);
+      if (request.url.path.endsWith('/50.json.sig'))
+        return http.Response(policy!.signature, 200);
       return http.Response('', 404);
     };
     connectivity.add(['none']);
     await io(tester);
     connectivity.add(['wifi']);
-    await waitFor(tester, () => runtime.updater.storeUpdateRequired, 'mandatory policy');
+    await waitFor(
+        tester, () => runtime.updater.storeUpdateRequired, 'mandatory policy');
     expect(find.text('Update required'), findsOneWidget);
     expect(find.byKey(const ValueKey('stub-webview')), findsNothing);
     expect(runtime.state.trial, 20);
     expect(runtime.state.trialFails, 0);
     expect(runtime.state.serving, isNull);
     final before = messages.length;
-    webview.controller.channel.onMessageReceived(const JavaScriptMessage(message: '{}'));
+    webview.controller.channel
+        .onMessageReceived(const JavaScriptMessage(message: '{}'));
     await io(tester);
     expect(messages.length, before);
     await tester.pump(const Duration(seconds: 1));
@@ -352,40 +364,63 @@ void main() {
     // Same manifest cannot be rewritten by an unsigned pointer; a later signed withdrawal can unblock.
     final withdrawal = await tester.runAsync(() => signBundle(key, seq: 60));
     respond = (request) async {
-      if (request.url.path.endsWith('/channels/production.json')) return http.Response('{"seq":60,"rollout":100}', 200);
-      if (request.url.path.endsWith('/60.json')) return http.Response.bytes(withdrawal!.bytes, 200);
-      if (request.url.path.endsWith('/60.json.sig')) return http.Response(withdrawal!.signature, 200);
+      if (request.url.path.endsWith('/channels/production.json'))
+        return http.Response('{"seq":60,"rollout":100}', 200);
+      if (request.url.path.endsWith('/60.json'))
+        return http.Response.bytes(withdrawal!.bytes, 200);
+      if (request.url.path.endsWith('/60.json.sig'))
+        return http.Response(withdrawal!.signature, 200);
       final blob = withdrawal!.blobs[request.url.path.split('/').last];
-      return blob == null ? http.Response('', 404) : http.Response.bytes(blob, 200);
+      return blob == null
+          ? http.Response('', 404)
+          : http.Response.bytes(blob, 200);
     };
     await tester.runAsync(() => tester.tap(find.text('Check again')));
-    await waitFor(tester, () => !runtime.updater.storeUpdateRequired && webview.controllers.length == 2 && webview.controllers.last.loads.isNotEmpty, 'signed withdrawal');
+    await waitFor(
+        tester,
+        () =>
+            !runtime.updater.storeUpdateRequired &&
+            webview.controllers.length == 2 &&
+            webview.controllers.last.loads.isNotEmpty,
+        'signed withdrawal');
     expect(find.text('Update required'), findsNothing);
     await io(tester);
   });
 
-  testWidgets('R31 cached policy blocks cold UI without consuming pending or trial', (tester) async {
-    final policy = await tester.runAsync(() => signBundle(key, seq: 50, overrides: {'minHost': 2}));
+  testWidgets(
+      'R31 cached policy blocks cold UI without consuming pending or trial',
+      (tester) async {
+    final policy = await tester
+        .runAsync(() => signBundle(key, seq: 50, overrides: {'minHost': 2}));
     respond = (request) async {
-      if (request.url.path.endsWith('/channels/production.json')) return http.Response('{"seq":50,"rollout":100}', 200);
-      if (request.url.path.endsWith('/50.json')) return http.Response.bytes(policy!.bytes, 200);
-      if (request.url.path.endsWith('/50.json.sig')) return http.Response(policy!.signature, 200);
+      if (request.url.path.endsWith('/channels/production.json'))
+        return http.Response('{"seq":50,"rollout":100}', 200);
+      if (request.url.path.endsWith('/50.json'))
+        return http.Response.bytes(policy!.bytes, 200);
+      if (request.url.path.endsWith('/50.json.sig'))
+        return http.Response(policy!.signature, 200);
       return http.Response('', 404);
     };
     await tester.runAsync(() => runtime.updater.checkForUpdate());
     runtime.state.pending = 20;
     final before = runtime.state.toJson();
     respond = (_) async => http.Response('', 404);
-    await tester.pumpWidget(MaterialApp(home: ValenceApp(valence: runtime,
-        log: log.call, dispatch: (raw, nonce) async => throw StateError('must not dispatch'))));
-    addTearDown(() async => tester.runAsync(() => tester.pumpWidget(const SizedBox())));
+    await tester.pumpWidget(MaterialApp(
+        home: ValenceApp(
+            valence: runtime,
+            log: log.call,
+            dispatch: (raw, nonce) async =>
+                throw StateError('must not dispatch'))));
+    addTearDown(
+        () async => tester.runAsync(() => tester.pumpWidget(const SizedBox())));
     await io(tester);
     expect(find.text('Update required'), findsOneWidget);
     expect(webview.controllers, isEmpty);
     expect(runtime.state.toJson(), before);
   });
 
-  testWidgets('foreground reconnect replaces offline with verified pending without reloading',
+  testWidgets(
+      'foreground reconnect replaces offline with verified pending without reloading',
       (tester) async {
     await mount(tester);
     await io(tester);
@@ -419,10 +454,12 @@ void main() {
     expect(runtime.manifest!.seq, builtin.seq);
     expect(runtime.state.trial, isNull);
     expect(controller.loads, hasLength(1));
-    expect(controller.scripts.where((s) => s.contains('bundle.updateReady')), hasLength(1));
+    expect(controller.scripts.where((s) => s.contains('bundle.updateReady')),
+        hasLength(1));
   });
 
-  testWidgets('live handovers coalesce concurrent update checks', (tester) async {
+  testWidgets('live handovers coalesce concurrent update checks',
+      (tester) async {
     await mount(tester);
     await io(tester);
     final before = pointerRequests();
@@ -448,26 +485,33 @@ void main() {
     expect(pointerRequests(), before + 2);
   });
 
-  testWidgets('background reconnect syncs but leaves the update check to resume',
+  testWidgets(
+      'background reconnect syncs but leaves the update check to resume',
       (tester) async {
     await mount(tester);
     final controller = webview.controller;
     controller.navigation.finished(controller.loads.last.toString());
     // Reconnect must start after startup releases its lease, not race a busy sync.
-    await waitFor(tester,
+    await waitFor(
+        tester,
         () => controller.scripts.any((s) => s.contains('sync.done')),
         'startup sync completion');
     await lifecycle(tester, AppLifecycleState.paused);
     final before = pointerRequests();
-    final syncBefore = requests.where((url) => url.contains('sync.test')).length;
+    final syncBefore =
+        requests.where((url) => url.contains('sync.test')).length;
     connectivity.add(['none']);
     connectivity.add(['wifi']);
-    await waitFor(tester,
-        () => requests.where((url) => url.contains('sync.test')).length > syncBefore,
+    await waitFor(
+        tester,
+        () =>
+            requests.where((url) => url.contains('sync.test')).length >
+            syncBefore,
         'background reconnect sync request');
     expect(runtime.appState().online, isTrue);
     expect(pointerRequests(), before);
-    expect(requests.where((url) => url.contains('sync.test')).length, greaterThan(syncBefore));
+    expect(requests.where((url) => url.contains('sync.test')).length,
+        greaterThan(syncBefore));
     respond = serveTrial;
     await lifecycle(tester, AppLifecycleState.resumed);
     await waitForPending(tester);
@@ -475,19 +519,24 @@ void main() {
     expect(runtime.state.pending, trial.seq);
   });
 
-  testWidgets('reconnect still rejects an invalid signature without publishing pending',
+  testWidgets(
+      'reconnect still rejects an invalid signature without publishing pending',
       (tester) async {
     await mount(tester);
     await io(tester);
     respond = (request) => serveTrial(request, validSignature: false);
-    webview.controller.navigation.finished(webview.controller.loads.last.toString());
+    webview.controller.navigation
+        .finished(webview.controller.loads.last.toString());
     connectivity.add(['wifi']);
     await io(tester);
     expect(runtime.bundleStatus().reason, ValenceBundleReason.rejected);
     expect(runtime.state.pending, isNull);
     expect(runtime.manifest!.seq, builtin.seq);
     expect(webview.controller.loads, hasLength(1));
-    expect(webview.controller.scripts.where((s) => s.contains('bundle.updateReady')), isEmpty);
+    expect(
+        webview.controller.scripts
+            .where((s) => s.contains('bundle.updateReady')),
+        isEmpty);
   });
 
   testWidgets('URL changes record only safe local restoration routes',
@@ -762,10 +811,40 @@ void main() {
         isEmpty);
   });
 
-  testWidgets('a content process that keeps dying stops being reloaded',
+  testWidgets(
+      'a resume that reclaims the port reloads a page that is not there',
       (tester) async {
     await mount(tester);
     final controller = webview.controller;
+    await tester.runAsync(
+        () async => controller.navigation.started(runtime.server!.origin));
+    controller.navigation.finished(runtime.server!.origin);
+    // iOS can reclaim the listening socket and kill the content process in the same suspend, so the
+    // renderer-loss reload runs against a port the host does not own yet.
+    await lifecycle(tester, AppLifecycleState.paused);
+    await tester.runAsync(() => runtime.server!.close());
+    await tester.runAsync(
+        () async => controller.navigation.resourceError(contentProcessGone));
+    await io(tester);
+    expect(controller.loads, hasLength(2));
+    await lifecycle(tester, AppLifecycleState.resumed);
+    await waitFor(
+        tester,
+        () => log.lines.any((line) => line.contains('with no page loaded')),
+        'the rebind reported a reload');
+    expect(controller.loads, hasLength(3),
+        reason:
+            'the rebound socket gets the page back instead of leaving it dead');
+    expect(
+        controller.loads.last.toString(), startsWith(runtime.server!.origin));
+  });
+
+  testWidgets(
+      'a content process that keeps dying stops being reloaded and frees the trial',
+      (tester) async {
+    await mount(tester, pending: true);
+    final controller = webview.controller;
+    expect(runtime.state.serving, trial.seq);
     for (var i = 0; i < 4; i++) {
       await tester.runAsync(
           () async => controller.navigation.resourceError(contentProcessGone));
@@ -777,7 +856,18 @@ void main() {
         log.lines.where((line) => line.contains('died again after 3 reloads')),
         hasLength(1));
     expect(find.byKey(const ValueKey('stub-webview')), findsNothing,
-        reason: 'the dead WebView is released so the device can reclaim it');
+        reason:
+            'the error view replaces the WebView, and the controller with it');
+    // §2.4 step 2 reads `serving == trial` as "the process died while serving a trial". A device that
+    // ran out of memory must not be that, or two evictions put a healthy release in `bad` for ever.
+    expect(runtime.state.serving, isNull);
+    expect(runtime.state.trial, trial.seq,
+        reason: 'the next UI start retries it');
+    expect(runtime.state.trialFails, 0);
+    final reread = ValenceState.load(File('${runtime.dir.path}/state.json'));
+    expect(reread.serving, isNull,
+        reason: 'and it is persisted, not just in memory');
+    expect(reread.trial, trial.seq);
   });
 
   testWidgets(
