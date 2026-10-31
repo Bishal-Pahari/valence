@@ -1,4 +1,115 @@
-# Integration acceptance refresh - 2026-10-31
+# Integration acceptance refresh ? 2026-11-01
+
+## S7 and ready R4 integration ? 2026-11-01
+
+### In plain terms
+
+Existing REST APIs can now supply disposable offline data without pretending to
+speak the sync protocol. Revision 18 adds `data.cache` behind a compiled bucket
+grant; pulls remain authoritative, recorded account changes clear cache and
+revoked grants remove retained overlays before native reads. User edits and
+server history remain separate. See [S7 acceptance](s7-validation.md).
+
+Fresh `codex/integration` starts from newest packages code
+`778b20cdc33f2014ec0ebf72323acd2bdf5e52be` / site
+`9ed2ee99a4f4c4742da4e1c015e3d654ba6b666c`. Previous integration is preserved on
+`codex/integration-before-s7-20261101` in both repos. Replayed the fixed legacy
+queue, then later tips, with the ready R4 refresh before S7. All 30 tips below
+are ancestors in both histories. No conflicts occurred. Combined merge heads:
+code `09c351321601c351143461c1cfa865daa5318f19`; site
+`f352d0c28b8caefdfc9075e69c10479799e3b834`.
+
+The only difference from the accepted S7 trees is R4's notification acceptance
+ledger; implementation, tests, generator and templates are identical. Revision
+18 preserves every earlier since value, including notifications 11, pendingIds
+16 and store-update policy 17. The roadmap's stale 17+ free row was not edited;
+S7 reserves 18 in its own status cell.
+
+Decision: security first, then data preservation. Default-deny compiled grants
+and startup revocation protect read-only buckets; a separate cache table avoids
+forging server USNs, outbox operations, sync freshness or OTA readiness. Old
+schema overlays remain available for rollback until ordinary pair GC. Review
+findings and fixes are recorded in S7 acceptance.
+
+Both test-app findings and newest reports were read-only: Kundalini 17 / app-c
+27. No app writes, emulator acceptance or intermittent-runtime repair is claimed.
+App-c F-27/F-29/F-33/F-34/F-35/F-36/F-37/F-38 and its limited pagination remain
+open or qualified. S6 is separate. Package/release versions are unchanged. No
+protected branch commit/merge, push or publication occurred. iOS remains
+experimental and untested.
+
+### Merge order and exact tips
+
+| Branch | Code tip | Site tip |
+| --- | --- | --- |
+| codex/r8 | 91589a47cb80a4b2f2ba8cf1a6d1ce3dc5a4eb4e | 072552f08d626d2915e63e7fda2c4c183c4380e3 |
+| codex/r7 | 969b1a4fb03d76d2af85c69987c4ed5eeb0eb840 | 965b8eb83a7412a9ec601919f227c2c0005a9252 |
+| codex/r6 | 5b64e06051fab10e0a01d8b3215c17f45d81c980 | 388cd9d3c0fd6043cfa21b0a6440916232847742 |
+| codex/r3 | db669ddd75ffeb97588fd62304122a58c242f3b0 | f45ccf28d741a2c6e05c766eeb6bff059900bcc5 |
+| codex/r4 | 588f8761807b1893933303533a04fa14c9975a6f | d8e5dd775dfaf902e206bc2f195c30537f797ba4 |
+| codex/notify-event-compat | 8f8a582b43ad13e60f7c6fbcf6a2b2d16e1d214c | b273ee7c7a46574592ec3f5b91fe25d465d6d665 |
+| codex/r5 | 3cc1c0f4d062d13919adcfe5343434e00098fdea | 57a44b50dfd82800f151823ff1563d8a73340678 |
+| codex/r9 | 0c1b0fb01a48494991cdae4ab32369fb6a2af7b2 | 2913b4d0a743188808a66bd5b7db416ca870c52f |
+| codex/r10 | f3fcd0dac875fc30af226c7f1bf70750942c0550 | b905b742ab9d90984d513cdf7b99977eabd929f2 |
+| codex/r14 | fa6e16c55d84bb9a3162514a9c09b65cb634fd54 | fa5e8164a968bd74d943b8a50590dfbd010e08ca |
+| codex/r11 | 4347872fd95b0a213b99774c3e758c7d60f047d5 | 797224cf3cab016866ecbb56213210ca4fe6556f |
+| codex/r12 | de783ae9a9f04052cfc2eb7c07ae992c980ccc42 | a57ca8f05358b0bd6cd050c3a475e2aa51b1ecce |
+| codex/r15 | 2951ac8b84ff2e0935dbb719b749ebbd8839f51f | 87695bbf61a1a647bec692416cacdb3a611a07ac |
+| codex/r16 | dba50d483f95b724bc10869b460e7774e63cc8de | bb1775d3801e9bc6032523327ce502eb7c7383eb |
+| codex/r17 | a9922853bb751ac75590cb262d2d732cbed967d1 | 971e5a93d6ff7e910c1c5640fc856940ea0861a4 |
+| codex/r19 | ebbd5e051f08661adbdc0e485cc5cf1bba32b352 | 7c31ed431453f1df73a494bb2b24d0a7a5603fb4 |
+| codex/r20 | f8f3f1f9b79117e73d30917f65ed2a281b57a070 | 98cbad0d516db52225dd593fe72dea76b4800df0 |
+| codex/r21 | 92221ea7682259d7fea49b4f8afbb98d5d735610 | d3d0e2b226196d871d53c47224bcf491bc44a444 |
+| codex/r22 | b2e5a4009b44ea8729eafb208ee0be4a5aad876a | e84efa7a38d0858491632e429bc659b8252ffb55 |
+| codex/r23 | 373d29fca370bb03e2f49f148606bda8283950fa | 0bcc4407a44cc260677dce499efad0cbfe4a6690 |
+| codex/r24 | 23a2783f5c1bb8e68db2f6712a66b6caee542617 | fcb04f2a5690a22dbf75cbdf1de2f06982aa1440 |
+| codex/r25 | 52fd6e5c382df6582d5955b02586f77c80383c4c | 9f614ee0a44a9a4c98e5d07d16cba243151df60c |
+| codex/r26 | 7c43658637da1f97a6fe3e80c2669ab83ec347ad | 14376728046b8ba6f6c062154d41fa1b41399176 |
+| codex/r27 | 8296d4e68753185c132c39da3c94369989818f27 | c4a8fad9bc2dc04f9b8033080608e1250785e08e |
+| codex/r28 | 8d42a82d96ad124c3cbe122280b64a00f43371bb | 0cbadc71c2f2d40aa11b5aa6b21cf114ab8ece65 |
+| codex/r29 | 6e250677b3bc6510f7ef2ea3e7c2ddb4ab1a509f | d5a98a85ea9e9c41aa3c2cde461e0e92de1aa555 |
+| codex/r31 | 44de344c92e0122f3361dacef1acc0788ff312c2 | 1dfdc0a50ed78b2103dfe3ce15b8461c588332cb |
+| codex/link-compat | 48d1a8a0a71a5e0d06f3d1ecac2057514598e45c | f494813c716882cfab8161c1edfdbddaaaef85d9 |
+| codex/sync-fixes | aa025cfdf795e6c3caa941d4dda2701e12d2c381 | dc223e8ec5d3e85e8d02cf9a99bfe547fc3e3e64 |
+| codex/s7 | f28a562c9f61b205b650de7dc11919ed13110667 | 5f774d8805a10251947435d3f1a58e5368d1876a |
+
+### Combined gates
+
+Passed 2026-11-01 on the combined merge heads above. Final ledger commits
+change only this evidence, not the implementation or build inputs.
+
+| Gate | Combined result |
+| --- | --- |
+| Root npm test | 109 passed, zero failures/skips; generated Dart and strict/verbatim TS ran |
+| Core Flutter tests | 573 passed with `--concurrency=1`, isolated from other Flutter commands |
+| Core fatal-info Dart / pub dry-run | No issues; 0 warnings |
+| Push tests / fatal-info Dart / pub dry-run | 2 passed; no issues; 0 warnings, one local-override hint |
+| Bridge tests / strict-verbatim TS / pack dry-run | 29 passed; clean; passed |
+| Example Flutter tests / codegen check | 29 passed; written: [] |
+| Builtin signature and hashes | seq 1793431100, two files verified |
+| Root pack dry-run | Passed |
+| Site build and SEO | 45 pages OK |
+| Debug APK | Passed, 34.0 seconds |
+| Standalone Windows py Firebase audit | PASS: core graph and 19 DEX files / manifest contain no Firebase SDK references |
+
+The first combined core attempt overlapped other Flutter commands and later
+suites failed to load the native SQLite test asset (`sqlite3_initialize`, no
+native assets available). It is excluded. With no source changes and no other
+Flutter command running, the full isolated suite passed all 573 tests, then
+analysis and a warning-free dry-run passed. This does not establish the artifact
+failure's cause. An initial optional verify invocation with an unsupported flag
+is also excluded; the corrected CLI verify command passed. Existing plugin
+Kotlin migration warnings remain in the APK build. No fresh emulator acceptance
+or runtime repair of an app finding is claimed.
+
+Logs: `%TEMP%/valence-s7-integration-*.log`; accepted core/analysis/pub are the
+`integration-isolated-*` logs, and signature evidence is
+`valence-s7-integration-verify-final.log`. The two worktrees' implementation and
+site build sources match accepted S7 byte-for-byte. All 30 branch tips and both
+packages bases were independently checked as ancestors. Packages remained
+778b20c / 9ed2ee9 throughout this run.
+
+
 
 ## App-c iteration 24 completed follow-up
 
