@@ -41,6 +41,7 @@ void main() {
 
   Future<Valence> open({
     Set<String> writableBuckets = const {},
+    Set<String> cacheBuckets = const {},
     Map<String, int> dataSchemas = const {},
     http.Client? client,
     LogSpy? log,
@@ -50,7 +51,7 @@ void main() {
       Valence.open(
         config ??
             testConfig(key,
-                writableBuckets: writableBuckets, dataSchemas: dataSchemas),
+                writableBuckets: writableBuckets, cacheBuckets: cacheBuckets, dataSchemas: dataSchemas),
         hostBuild: 42,
         log: (log ?? LogSpy()).call,
         client: client ??
@@ -458,7 +459,7 @@ void main() {
     final v = await open(
         config: testConfig(key, bridgeVersion: 41, writableBuckets: {'shelf'}));
     expect(v.appInfo().bridge, 41);
-    expect(v.appInfo().builtins, 17);
+    expect(v.appInfo().builtins, 18);
     expect((await v.syncStatus()).reason, isNull);
     await v.authSetToken('a', account: 'a');
     await v.store.hostPrefSet('valence.sync.reason', 'unauthorized');
@@ -1154,6 +1155,7 @@ void main() {
       final data = <String, String>{};
       var armed = false;
       Object? refused;
+      Object? cacheRefused;
       FlutterSecureStoragePlatform.instance =
           _WatchedSecureStorage(data, (key) async {
         if (!armed || key != secureAuthAccountKey) return;
@@ -1162,9 +1164,14 @@ void main() {
         } on Object catch (e) {
           refused = e;
         }
+        try {
+          await v.dataCache('days', 'sneak', 'private');
+        } on Object catch (e) {
+          cacheRefused = e;
+        }
       });
       v = await open(
-          writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
+          dataSchemas: {'days': 1}, cacheBuckets: {'days'}, writableBuckets: {'shelf'}, secure: ValenceSecure(log: (_) {}));
       await v.authSetToken('jwt-a', account: 'user-a');
       armed = true;
       await v.authSetToken('jwt-b', account: 'user-b');
@@ -1175,6 +1182,8 @@ void main() {
               .having((e) => e.code, 'code', BridgeErrorCode.internal)
               .having((e) => e.message, 'message',
                   contains('account change is in progress')));
+      expect(cacheRefused, isA<BridgeError>().having((e) => e.code, 'code', BridgeErrorCode.internal));
+      expect(await v.dataGet('days', 'sneak'), isNull);
       expect(await v.store.pendingWrites(), 0,
           reason: 'the write never reached the outbox');
       expect(await v.dataGet('shelf', 'sneak'), isNull);

@@ -32,7 +32,7 @@ void main() {
   });
 
   group('schema (§5.1)', () {
-    test('the tables and the index from the spec exist, at user_version 2', () async {
+    test('the tables and the index from the spec exist, at user_version 3', () async {
       final tables = {
         for (final r in await store.db.rawQuery("SELECT name FROM sqlite_master WHERE type = 'table'"))
           r['name']! as String,
@@ -44,7 +44,7 @@ void main() {
       };
       expect(indexes, contains('kv_bucket_usn'));
       final version = await store.db.rawQuery('PRAGMA user_version');
-      expect(version.first.values.first, 2);
+      expect(version.first.values.first, 3);
     });
 
     test('kv is keyed by (bucket, schema, key), so two schemas of one bucket coexist', () async {

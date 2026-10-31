@@ -166,6 +166,12 @@ const BUILTINS = {
     returns: 'void',
     call: () => 'await valence.dataPut(p.bucket, p.key, p.value);',
   },
+  'data.cache': {
+    minSince: 18,
+    params: { bucket: 'string', key: 'string', value: 'json?' },
+    returns: 'void',
+    call: () => 'await valence.dataCache(p.bucket, p.key, p.value);',
+  },
   'sync.now': {
     params: { buckets: 'string[]?' },
     returns: {
@@ -395,7 +401,16 @@ export function loadConfig(root) {
   for (const b of cfg.writable ?? []) {
     if (cfg.data?.[b] !== undefined) throw new Error(`valence.config.json: writable bucket "${b}" must not be in data (writable buckets never change schema, contracts §5.4)`);
   }
+  validateCacheBuckets(cfg);
   return cfg;
+}
+
+function validateCacheBuckets(cfg) {
+  if (cfg.cache !== undefined && (!Array.isArray(cfg.cache) ||
+      cfg.cache.some(b => typeof b !== 'string' || !Object.hasOwn(cfg.data ?? {}, b) ||
+        (cfg.writable ?? []).includes(b)) || new Set(cfg.cache).size !== cfg.cache.length)) {
+    throw new Error('cache must be an array of unique declared read-only bucket names');
+  }
 }
 
 const paths = (root, cfg) => ({
@@ -1563,6 +1578,7 @@ export function genDartConfig(cfg, keyring) {
   }
   const ring = Object.entries(keyring).map(([k, v]) => `${dartStr(k)}: ${dartStr(v)}`).join(', ');
   const data = Object.entries(cfg.data ?? {}).map(([k, v]) => `${dartStr(k)}: ${v}`).join(', ');
+  validateCacheBuckets(cfg);
   const writable = (cfg.writable ?? []).map(dartStr).join(', ');
   const lines = [
     `  appId: ${dartStr(cfg.appId)},`,
@@ -1579,6 +1595,7 @@ export function genDartConfig(cfg, keyring) {
     `  syncBase: ${dartStr(cfg.sync?.base ?? '')},`,
     `  writableBuckets: {${writable}},`,
     `  dataSchemas: {${data}},`,
+    `  cacheBuckets: {${(cfg.cache ?? []).map(dartStr).join(', ')}},`,
     `  permissionKinds: {${kinds.map(dartStr).join(', ')}},`,
     `  httpOrigins: {${connect.map((o) => dartStr(new URL(o).origin)).join(', ')}},`,
     `  linkOrigins: {${linkOrigins.map(dartStr).join(', ')}},`,

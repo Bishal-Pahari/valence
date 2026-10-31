@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 17;
+const hostBridgeVersion = 18;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale, this.fontScale, this.builtins});
@@ -585,6 +585,22 @@ final class ShareImageParams {
   Map<String, Object?> toJson() => {'bytes': bytes, 'path': path, 'fileName': fileName, 'caption': caption};
 }
 
+final class DataCacheParams {
+  const DataCacheParams({required this.bucket, required this.key, this.value});
+
+  factory DataCacheParams.fromJson(Object? j, [String f = 'DataCacheParams']) {
+    final m = decodeObject(j, f);
+    decodeKeys(m, const {'bucket', 'key', 'value'}, f);
+    return DataCacheParams(bucket: decodeString(m['bucket'], '$f.bucket'), key: decodeString(m['key'], '$f.key'), value: m['value']);
+  }
+
+  final String bucket;
+  final String key;
+  final Object? value;
+
+  Map<String, Object?> toJson() => {'bucket': bucket, 'key': key, 'value': value};
+}
+
 abstract interface class BridgeHandlers {
   Future<void> appReady();
   Future<AppInfo> appInfo();
@@ -628,6 +644,7 @@ abstract interface class BridgeHandlers {
   Future<PushMessage?> pushInitial();
   Future<String> shareImage(ShareImageParams p);
   Future<void> appOpenStore();
+  Future<void> dataCache(DataCacheParams p);
   Future<void> hapticsTap();
 }
 
@@ -717,6 +734,8 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<String> shareImage(ShareImageParams p) async => throw const BridgeError('E_UNSUPPORTED', 'share.image is not implemented');
   @override
   Future<void> appOpenStore() async => throw const BridgeError('E_UNSUPPORTED', 'app.openStore is not implemented');
+  @override
+  Future<void> dataCache(DataCacheParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.cache is not implemented');
   @override
   Future<void> hapticsTap() async => throw const BridgeError('E_UNSUPPORTED', 'haptics.tap is not implemented');
 }
@@ -880,6 +899,9 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
       case 'app.openStore':
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         await h.appOpenStore();
+        return replyOk(id, null);
+      case 'data.cache':
+        await h.dataCache(DataCacheParams.fromJson(p, 'p'));
         return replyOk(id, null);
       case 'haptics.tap':
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
@@ -1168,6 +1190,11 @@ abstract class ValenceBuiltins {
   /// `app.openStore`, from the package.
   Future<void> appOpenStore() async {
     await valence.openStore();
+  }
+
+  /// `data.cache`, from the package.
+  Future<void> dataCache(DataCacheParams p) async {
+    await valence.dataCache(p.bucket, p.key, p.value);
   }
 
   /// `haptics.tap`, from the package.

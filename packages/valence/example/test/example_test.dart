@@ -159,6 +159,19 @@ void main() {
     },
   );
 
+  test('compiled REST cache delegates, reads offline and refuses writable buckets', () async {
+    final h = await handlers();
+    expect(valenceConfig.cacheBuckets, {'plants'});
+    expect((await dispatch(h, 'data.cache', params: {
+      'bucket': 'plants', 'key': 'rest-day', 'value': {'sunrise': '06:14'},
+    }))['ok'], isTrue);
+    expect((await dispatch(h, 'data.get', params: {'bucket': 'plants', 'key': 'rest-day'}))['v'], {'sunrise': '06:14'});
+    final rows = (await dispatch(h, 'data.list', params: {'bucket': 'plants'}))['v'] as List;
+    expect((rows.singleWhere((r) => (r as Map)['key'] == 'rest-day') as Map)['usn'], -2);
+    final denied = await dispatch(h, 'data.cache', params: {'bucket': 'shelf', 'key': 'bad', 'value': 1});
+    expect((denied['e'] as Map)['code'], 'E_DENIED');
+  });
+
   test('the generated config carries what the spec compiles into a host', () {
     expect(valenceConfig.appId, 'com.getvalence.example');
     expect(valenceConfig.keyring.keys, ['k1']);
@@ -419,8 +432,8 @@ void main() {
     () async {
       final h = await handlers();
       final info = (await dispatch(h, 'app.info'))['v']! as Map;
-      expect(info['builtins'], 17);
-      expect(info['bridge'], 17);
+      expect(info['builtins'], 18);
+      expect(info['bridge'], hostBridgeVersion);
       expect(
         ((await dispatch(h, 'sync.status'))['v']! as Map)['reason'],
         isNull,

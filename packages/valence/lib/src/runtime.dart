@@ -84,7 +84,7 @@ final class ValenceAppInfo {
     required this.bundle,
     required this.locale,
     this.fontScale = 1,
-    this.builtins = 17,
+    this.builtins = 18,
   });
 
   /// `android`, `ios`, or whatever `Platform.operatingSystem` says.
@@ -271,6 +271,7 @@ final class Valence {
       trace.start('store');
       final store =
           await _openStore(config, support, documentsDir, log, databaseFactory);
+      await store.revokeCachesExcept(config.cacheBuckets.difference(config.writableBuckets));
       if (!store.isWal) {
         log('store: journal_mode is "${store.journalMode}", not wal; the concurrency the data layer '
             'assumes is not available on this filesystem');
@@ -702,6 +703,8 @@ final class Valence {
       store.count(bucket, schemaFor(bucket), prefix: prefix);
 
   /// `data.put`. A null [value] is the delete. Refuses a bucket that is not writable.
+  ///
+  /// For disposable REST responses in read-only buckets use [dataCache] instead.
   Future<void> dataPut(String bucket, String key, Object? value) async {
     if (!config.writableBuckets.contains(bucket)) {
       throw BridgeError(
@@ -744,6 +747,33 @@ final class Valence {
         return const ValenceSyncResult([], 0, true, ValenceSyncReason.offline);
       }),
     );
+  }
+
+  /// `data.cache`: disposable, schema-scoped REST data; never queued for sync (§5.5.1).
+  /// A null [value] evicts only the overlay, revealing any server row underneath.
+  Future<void> dataCache(String bucket, String key, Object? value) async {
+    final schema = schemaFor(bucket);
+    if (config.writableBuckets.contains(bucket)) {
+      throw const BridgeError(BridgeErrorCode.denied, 'data.cache requires a read-only bucket');
+    }
+    if (!config.cacheBuckets.contains(bucket)) {
+      throw const BridgeError(BridgeErrorCode.denied, 'data.cache requires a compiled cache bucket grant');
+    }
+    if (key == '.' || key == '..') {
+      throw const BridgeError(BridgeErrorCode.params, 'data.cache refuses dot-segment keys');
+    }
+    if (_switchingAccount) {
+      throw const BridgeError(BridgeErrorCode.internal,
+          'an account change is in progress; cache again once auth.setToken settles');
+    }
+    // Join synchronously, before an account transition can start. Its clear waits for this write.
+    final write = store.cache(bucket, schema, key, value);
+    _writesInFlight.add(write);
+    try {
+      await write;
+    } finally {
+      _writesInFlight.remove(write);
+    }
   }
 
   /// The last `max_usn` each pair was reported to the page with, so a run can re-derive `sync.changed`.
@@ -996,9 +1026,9 @@ final class Valence {
     for (final bucket in config.writableBuckets) {
       _lastSeenUsn[bucket] = 0;
     }
-    if (config.writableBuckets.isNotEmpty) {
+    if (config.writableBuckets.isNotEmpty || config.cacheBuckets.isNotEmpty) {
       emit(eventScript(
-          'sync.changed', {'buckets': config.writableBuckets.toList()}));
+          'sync.changed', {'buckets': {...config.writableBuckets, ...config.cacheBuckets}.toList()}));
     }
   }
 
