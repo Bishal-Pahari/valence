@@ -6,10 +6,16 @@
   timer, reloads the **same** manifest at the current restoration route, and emits nothing to the page.
   It counts no §2.4 trial failure — the timer for the dead page used to time out and spend a strike on a
   release the device's memory pressure had killed. Capped at three recoveries per launch, after which
-  the WebView is released and the error view explains why.
+  the host **drops the controller** (leaving the widget tree is not teardown; the controller owns the
+  native WebView) and **clears `serving`** so §2.4 step 2 does not spend the strike on the next UI start
+  either, while `trial` stays set for that launch to retry.
+- A resume that reclaims the **same** loopback port now reloads the page when none is loaded. One iOS
+  suspend can take the socket and the content process together, and the old "keep the page" branch left
+  the user on "cannot open page" for the rest of the session.
 - **Android is unchanged and cannot be fixed here.** `webview_flutter_android` 4.14.1 (newest, checked
   2026-11-01) exposes no `onRenderProcessGone`, so Chromium kills the host process before any Dart code
-  runs. Contracts §3, "Renderer loss", states it with the logcat evidence; a test fails as soon as the
+  runs — and because no Dart code runs, `serving` survives and the eviction does spend a trial strike.
+  Contracts §3, "Renderer loss", states both with the logcat evidence; a test fails as soon as the
   plugin exposes the callback.
 
 ## Unreleased: `E_OFFLINE`, `E_TIMEOUT`, and corrections to the store-update policy

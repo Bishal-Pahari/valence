@@ -140,9 +140,11 @@ The package cannot write native project files, so these are yours:
   lower-priority process; under memory pressure the OS kills that one, and because no released
   `webview_flutter_android` exposes `onRenderProcessGone`, the WebView then kills your process too. No
   Dart code runs, so nothing logs it — identify it from `dumpsys activity exit-info` (renderer
-  `LOW_MEMORY`, then your app `SIGNALED/9`). Where the platform does report the loss, the host reloads
-  the same bundle at the same route and spends no trial strike. Keep anything the user would miss in
-  SQLite. See contracts §3, "Renderer loss", and the
+  `LOW_MEMORY`, then your app `SIGNALED/9`). Because no Dart code runs, an eviction **during a trial
+  costs that release a strike** — two of them retire a healthy release on that install, so roll out to
+  10% first. Where the platform does report the loss, the host reloads the same bundle at the same route
+  and spends no strike. Keep anything the user would miss in SQLite. See contracts §3, "Renderer loss",
+  and the
   [startup diagnostics guide](https://getvalence.pages.dev/docs/guides/startup-diagnostics/).
 
 ## Rollback

@@ -17,9 +17,15 @@ What did change:
   WebView rather than killing the app: the host reloads the same bundle at the route you were on, emits
   nothing the page has to handle, and stops after three recoveries so a device that is genuinely out of
   memory is not kept in a reload loop. iOS stays experimental and untested on hardware.
-- **A dead renderer can no longer roll back a good release.** The ready timer belongs to the page that
-  died; left running it timed out and spent a trial strike (§2.4), and two of those revert a release
-  that was never at fault. It now stops on the loss and starts fresh with the reloaded page.
+- **Where the loss is reported, it can no longer roll back a good release.** The ready timer belongs to
+  the page that died; left running it timed out and spent a trial strike (§2.4), and two of those revert
+  a release that was never at fault. It now stops on the loss and starts fresh with the reloaded page,
+  and if the content process dies past the cap the host clears the trial marker so the *next* launch
+  does not spend the strike either. **On Android it still costs one**, and nothing in this release can
+  change that: the host process dies with the page, so the next launch genuinely cannot tell an eviction
+  from a bundle that crashed the app — which is the check that makes rollback work at all. Two evictions
+  during the same trial can therefore retire a healthy release on that install. It is one more reason
+  the native shim matters, and one more reason to roll out to 10% first.
 - **The log and `exit-info` tell you it was this**, not an ANR and not your own crash: a renderer
   exiting `LOW_MEMORY` followed within the same second by the host at `SIGNALED/9`. The
   [startup diagnostics guide](https://getvalence.pages.dev/docs/guides/startup-diagnostics/) shows both
