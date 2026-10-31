@@ -1,5 +1,69 @@
 # Integration acceptance refresh - 2026-10-31
 
+## App-c iteration 19 completed follow-up
+
+Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 19.
+Packages remains code d771105 / site 53d3a91. All 29 feature and compatibility
+tips, including sync-fixes, plus packages are ancestors of integration in both
+repos. No missing merge or eligible must-have remains. S1 stays parked; S2 needs
+a Play account.
+
+The new major F-35 is a confirmed Fieldnote ANR with an unisolated cause:
+
+- Visually inspected current-native.png: Android's "Fieldnote isn't responding"
+  overlay covers the notification permission dialog. Saved lastanr and events
+  identify PID 14128, a 5007ms lost-focus timeout and detection at 18:14:22.332.
+  Detection precedes the denial audit at 18:14:22.851, the logged background
+  callback at 18:14:25.217 and the second permission activity at 18:14:26.211.
+  This chronology does not establish which operation blocked the thread.
+- The saved lastanr contains task state and the reason, not the actual blocking
+  thread trace. Missing ten-second R29 wait logs cannot exclude a five-second
+  stall or platform/plugin work. The later worker callback is not established
+  as the ANR's cause.
+- Wait did not restore bridge replies. Explicit fresh-task recovery and the
+  labeled settled denied/granted/background-refusal retry do not close F-35.
+  Clear-data followed by private-backup restoration invalidates Keystore
+  material; resulting unwrap errors do not establish a production storage
+  defect or successful credential retention.
+
+Separately checked retained worker/update artifacts without operating either app:
+
+- One forced isolated execution is observed after 213 seconds. Exact new
+  PID 17385 lines, absent from the before log, establish callback begin
+  18:29:38.831, completion 18:29:40.437 and WorkManager SUCCESS 18:29:40.450.
+  The first owned mock request block pulls two unit rows above cursor 230001
+  and acknowledges two inspection objects. Later foreground receipts are
+  excluded. Rejected total-count arithmetic is not execution evidence.
+- Supplied pre-resume SQLite results record iteration-19-isolated-inbound at
+  USN 240002, outgoing objects at 240001/240002 and outboxCount=0. This run
+  checked supplied results and receipts; it did not independently query the
+  native database. One execution does not establish long-term cadence.
+- Independently compared and hashed both raw activation files: each is SHA256
+  67415a3e9f561f2186ff74565bfdde9ee1e009f6be48b17e481c0a184c5342f3.
+  Current 1793450413, pending 1793450449 and trial=null remain byte-identical.
+  Final state commits 1793450449 with pending/trial=null after resume.
+- Settled offline/reconnect results report pending 1 then 0. The supplied
+  46-check audit explicitly preserves F-35 as major/open. Corrected cleanup
+  records airplane off, stopped app/mocks and no forwards; the rejected first
+  cleanup with an ANR-time stale forward is retained as a failed attempt.
+
+Decision: preserve users' data, shipped contracts, additive R31 revision 17 and
+transaction/lease/retry rules. F-33 and F-35 remain major/open; successful retries
+and isolated workers do not establish a repair. Actual blocking-thread evidence
+is needed before attributing F-35 to runtime code. F-27 host-file guidance, F-29
+historical launcher recovery and F-34's stale banner remain open; pagination is
+deferred app scope. Kundalini F-63/F-65 and F-64 adoption status are unchanged.
+
+Validation: BOM-aware saved-evidence assertions, raw hashes, all 29 branch-tip
+ancestry checks in both repos, unchanged implementation trees against fully gated
+R31 integration code 38a7714 / site fb7bc44, matching new report sections and
+git diff --check. Earlier October 31 full gates retain their original scope;
+no fresh package/site gate pass, emulator run or independent runtime review is
+claimed for this report-only update. Integration readiness is not beta acceptance.
+No app writes, protected-branch changes, package/schema changes, pushes or
+publications. iOS and real remote push delivery remain unverified.
+
+
 ## App-c iteration 18 completed follow-up
 
 Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 18.
