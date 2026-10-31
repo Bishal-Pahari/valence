@@ -1,4 +1,359 @@
-# Integration validation - 2026-10-30
+# Integration acceptance refresh - 2026-10-31
+
+## 2026-10-31: R31 store-host update integration
+
+Fresh codex/integration starts from newest code packages d771105ad666e84b29c1545ed7b6db403f79d46a
+and site packages 53d3a919b999fe62fee3d3928bbaf3a235068c58. The original queue and
+R14 are already included there; their schema numbers are retained. Merge order:
+
+| Order | Branch | Code tip | Site tip |
+|---|---|---|---|
+| 1 | codex/notify-event-compat (R4 acceptance report) | 73cd0390d21f281fa3a2fbdc38e460e65ff09b97 | 057ce527402ee6d78efb966fe5f341880822cacb |
+| 2 | codex/r31 (revision 17) | 44de344c92e0122f3361dacef1acc0788ff312c2 | 1dfdc0a50ed78b2103dfe3ce15b8461c588332cb |
+
+Merge results: code f8d76ef041fdd213c5dc8cd9cc68406e0a402012, site
+ddb7268177287167e6c238ff1c1c9f10b8506876. No merge conflicts. Packages and .claude
+implementation trees equal the tested R31 tip; site src equals its tested R31 tip.
+Previous integration report history is retained below and its former branch tip
+is preserved as codex/integration-before-r31-20261031 in each repository.
+
+Decision: signed native policy before features; keep the unsigned pointer unable
+to impose or withdraw a block, preserve users' data and trial attempts, retain
+legacy status meanings, and use only compiled store destinations. No package
+version changed. The new built-ins revision/schema is 17; older reservations stay.
+
+Read both app findings and latest reports read-only: Kundalini 16 and app-c 13
+(still in progress). One successful overlap is not resolution of major F-33.
+F-27 remains open. R31 does not modify transactions, retry budgets or sync leases.
+
+R31 branch gates and Android evidence are in [r31-validation.md](r31-validation.md).
+The device probe injected a cached **signed** envelope, not a network OTA delivery:
+offline cold native block, real Open store launch to Google Play, bad-signature
+refusal then signed builtin recovery. Example stopped, fixtures removed, airplane
+off and emulator lock released. Published store upgrade and iOS remain unverified.
+Independent review found no confirmed remaining issue and ran eight focused R31
+Flutter tests successfully. No protected branch merge/commit, test-app writes,
+version bump, pushes or publications.
+
+Integration gate rerun: PENDING. Earlier full gates below retain their original scope.
+
+
+## App-c iteration 12 follow-up
+
+Read both apps' findings and newest reports read-only: Kundalini 16 and app-c 12.
+Packages remains code d771105 / site 53d3a91. Rechecked every numbered feature
+branch, the original rebase queue, R14, link-compat and sync-fixes: all tips are
+ancestors of packages in both repos. The report-only notify-event-compat tip is
+already in integration. No eligible must-have, pending feature merge or changed
+base requires a branch rebuild. S1 remains parked and S2 needs a Play account.
+
+Checked app-c's iteration-12 captures independently, without running the app:
+
+- F-33: PID 8306 begins a worker at 10:09:41.038 during Valence.open, which
+  completes at 10:09:42.680. f33-before-restart-logcat.txt records the named
+  store.prefSet lock at 10:10:06.073. before-restart-sync.json answers busy
+  with pending=1; recovery-sync.json later answers ok with pending=0.
+  The full worker-full-logcat.txt additionally records WorkManager FAILURE at
+  10:10:06.200 for work 25728e3a-feed-4620-82e8-d338f90ed437 in the same PID.
+  No successful callback completion is established for that run. This failure
+  and the reported prolonged busy replies must not be described as a successful
+  overlap. They do not identify the lock holder, reproduce the original COMMIT
+  error, establish data loss or prove a concurrency repair. The report attributes
+  the eventual restart to permission revocation, with DB/account preserved.
+- Rebuilt startup completes after a named store.open wait of 10346 ms. Its worker
+  begins at 10:25:05.938, after open completes at 10:24:44.368, and completes at
+  10:25:07.686. This is settled-path recovery, not a concurrent-open test.
+- The rebuilt warm event capture carries string ID iteration-12-rebuilt-warm;
+  event-contract-check.json records one tap and zero violations. The report
+  separately records cold routing and rebuilt native/OTA regression. F-30 stays
+  resolved for the supported adapter; no shipped signature is changed.
+- The final isolated worker begins at 10:40:34.538, completes at 10:40:36.298
+  and reports WorkManager SUCCESS at 10:40:36.310. The first owned mock block
+  records two incoming unit rows above cursor 107, an inspection pull and two
+  outgoing object acknowledgements. Later receipts follow foreground resume and
+  are excluded. Host and guest clocks differ. This is eligible forced execution,
+  not natural periodic cadence or production server durability.
+- background-sqlite-before-resume.json records the new inbound unit at USN
+  20002, both outgoing inspection objects at USNs 20001/20002 and outboxCount=0.
+  Its companion capture records stable DB/WAL hashes. These are supplied snapshot
+  evidence, not a new database extraction here. worker-inbound.json also returns
+  the new unit. This adds inbound application to the earlier outgoing-only proof.
+- Independently hashed both raw activation files: SHA256
+  1722bda336ba5405ea21230fae9806e6085215e9e4a3227797c674f1b0818799.
+  Current 1793421974, pending 1793421996 and trial=null remain byte-identical.
+  final-state.json records current 1793421996, previous 1793421974 and no
+  pending/trial. Final reads return null for all three fixtures and pending=0.
+  cleanup.json records airplane off, stopped app, refused owned mock ports and
+  no forwards. Explicit backup restoration separates retained release validation
+  from debug validation; uninterrupted release-to-debug adoption is not claimed.
+
+Decision: prioritize users' data and evidence of transaction ownership. Preserve
+the frozen schema 16, shipped contracts, lease rules and retry budgets. Neither a
+worker failure nor recovery justifies guessing at a transaction patch. F-33 remains
+major/open and F-27's host-file lifecycle/limits documentation gap remains open.
+Package integration readiness does not establish beta acceptance.
+
+Validation for this report-only follow-up: branch ancestry, unchanged implementation
+trees, matching new report sections and git diff --check in both worktrees. Full
+gates below retain their earlier October 31 scope; no fresh gate pass, emulator
+run or independent runtime review is claimed. No test-app writes, protected-branch
+changes, version/schema changes, pushes or publications. iOS remains experimental
+and untested; real remote push delivery remains unverified.
+
+## App-c iteration 11 follow-up
+
+Read both apps' findings and newest reports read-only: Kundalini 16 and app-c 11.
+No eligible must-have remains. The original queue, R14 and every later numbered
+feature tip are ancestors of packages in both repositories. The only unmerged
+compatibility tip, notify-event-compat, contains reports and is already included
+in integration. Packages has not moved: code d771105 / site 53d3a91. Integration
+differs from those bases only in this report and notification-event-compat.md.
+No branch reconstruction or new feature merge is necessary.
+
+Independently checked app-c's iteration-11 captures:
+
+- startup-settled.txt records worker begin at 09:09:40.874, Valence.open completion
+  at 09:09:40.948 and worker completion at 09:09:59.354, without the earlier COMMIT
+  failure in this sample. Four successful foreground replies in f33-results.json
+  do not prove four overlaps: the force attempts lack matching worker callbacks.
+  F-33 remains major/open; non-reproduction is not resolution.
+- warm-tap-events.json carries string ID iteration-11-warm; the event audit has
+  one observed tap and zero violations. The supported adapter continues to
+  preserve the shipped event. The report separately records cold routing.
+- Independently hashed both raw background-state files: each is SHA256
+  0311e11e21dabc351162085d5b23f8ca3bf9a0321abdff4ffa43a8f9091a5ccf.
+  Current 1793417877, pending 1793417997 and trial=null stay unchanged across the
+  isolated worker. The callback runs 09:36:43.933 through 09:36:46.038; its mock
+  receives both zero-row pulls and acknowledges two outgoing inspection objects.
+  This is an eligible forced run, not natural cadence, inbound row application
+  or production durability. Host and guest timestamps use different clocks.
+- final-state.json records current 1793417997, previous 1793417877, no pending
+  or trial, and broken 1793417821 still bad. cleanup.json records airplane off,
+  stopped app, refused owned mock ports and no forwards. Retention evidence
+  includes explicit backup restoration; it does not prove an uninterrupted
+  release-to-debug upgrade. F-27's host-file lifecycle documentation gap remains.
+
+Decision: prioritize users' data and transaction ownership evidence over a
+speculative fix. Preserve the database/account, shipped signatures, schema 16,
+lease rules and retry budgets. Do not hide the COMMIT failure behind a busy
+result. S1 remains parked and S2 needs a Play account. Package integration
+readiness does not establish beta acceptance or close F-33.
+
+Validation for this follow-up: checked branch ancestry, matching reports,
+unchanged implementation trees and git diff --check in both worktrees. The full
+package/site gates below remain earlier evidence on the unchanged implementation;
+they were not rerun and no fresh gate pass is claimed. No new emulator run,
+independent runtime review, app writes, protected-branch changes, version/schema
+changes, push or publication. iOS remains experimental and untested; real remote
+push delivery remains unverified.
+
+## Earlier iteration-10 acceptance refresh
+
+## In plain terms
+
+App-c iteration 10 now passes the legacy notification event audit using the
+supported adapter and unchanged shipped schema. A separate sync COMMIT failure,
+F-33, remains open. Package gates do not turn its successful retry into a fix.
+No new must-have is eligible and no runtime change is made in this refresh.
+
+## Bases, inclusion and decision
+
+Packages remains code `d771105ad666e84b29c1545ed7b6db403f79d46a` and site
+`53d3a919b999fe62fee3d3928bbaf3a235068c58`. Checked the original queue in order:
+R8, R7, R6, R3, R4, R5, R9, R10, R14. Each tip and every later numbered feature,
+link-compat and sync-fixes is already an ancestor of packages in both repos.
+The full tip table in the earlier validation below remains applicable.
+
+The R4 acceptance-report tip is merged into the existing integration after those
+already-included tips; code `73cd0390d21f281fa3a2fbdc38e460e65ff09b97`, site
+`057ce527402ee6d78efb966fe5f341880822cacb`. Only reports differ
+from packages. No conflicts or new implementation changes need integration.
+Integration merge commits: code `1537f75da0d9844ada650ced18e4b9045c9c1c46`,
+site `0b863965b4bb3d272941d3b995a790abd0cfc4e4`.
+The previous integration already used these same packages bases; no base moved
+and no pending feature tips require a fresh reconstruction.
+
+Decision, security and users' data first: retain the frozen runtime, original
+application IDs, shipped event meanings and combined schema 16 (R4 since 11,
+pendingIds since 16). Do not suppress COMMIT errors, label them busy, change
+transaction/lease budgets or clear data on temporal overlap alone. F-33 needs
+a retained-database Android UI/worker reproduction with transaction ownership
+evidence before a corrective change can be justified. S1 remains parked, S2
+needs a Play account and the post-beta Playground is not started.
+
+## App evidence and limits
+
+Read both VALENCE_FINDINGS.md files and newest reports read-only: Kundalini 16,
+app-c 10. Kundalini's link/reboot/pinned-OTA evidence and upstream F-63/F-64/F-65
+fixes remain as recorded below; no newer app adoption of those fixes is inferred.
+
+Independently checked app-c's current host wiring and iteration-10 captures:
+
+- F-30: warm-tap-events.json contains string ID `iteration-10-warm` and Flat 1;
+  event-contract-check.json reports one tap, zero violations and passed=true.
+  The host passes notificationEventAdapter and generated config supplies the
+  event-fields gate; cold startup consumes notifications.initial() through the
+  same converter. The report captures cold routing and retained JPEG serving.
+  This closes F-30 for that snapshot/app adaptation, preserving its frozen schema.
+- F-33: reconnect.json returns E_INTERNAL, "no current transaction", SQL COMMIT.
+  database-error-logcat.txt records worker begin 08:26:46.380, failed foreground
+  call 08:26:46.529 and worker completion 08:26:48.415 in PID 4518. Overlap is
+  observed; root cause, data loss and permanent damage are not established.
+  reconnect-retry.json reports ok/pending=0: recovery, not resolution.
+- Independently hashed both raw background activation files: SHA256
+  `b8c751e9fc92c5cde6947e0f38244666801bca381fa40ea8e572c40c8c1f56af`.
+  Current 1793414964, pending 1793415091 and trial=null remain identical through
+  an eligible **forced** periodic run. Both pulls return zero rows and two fresh
+  outgoing objects are acknowledged. No natural cadence, new inbound rows or
+  production durability/monotonicity across the in-memory mock restart is proved.
+- final-state.json records current 1793415091, previous 1793414964,
+  pending/trial=null and bad 1793414884. An early build-2-to-3 upgrade was cleared
+  before startup settled and is excluded; later retained build-3 reinstalls do
+  not establish that upgrade. F-31 is corrected in the refreshed local guide.
+  F-27's host-file lifecycle documentation gap remains open.
+
+No new emulator run or independent runtime review is claimed. Real remote push,
+iOS, positive biometrics, physical vibration and outbound share delivery remain
+unverified; iOS is experimental and untested. Test-app repositories were not
+written. No protected-branch merge/commit, version change, push or publication.
+
+## Fresh gates
+
+Logs: `%TEMP%/valence-oct31-app10-*.log`.
+
+| Gate | Result |
+| --- | --- |
+| npm test | 106 passed, zero failures/skips; generated Dart and strict/verbatim generated TS ran |
+| Core flutter test --no-pub --concurrency=2 | 548 passed |
+| Core / push dart analyze --fatal-infos . | No issues in either package |
+| Core / push flutter pub publish --dry-run | Zero warnings; push retains one local-override hint |
+| Push / example flutter test --no-pub | 2 / 27 passed |
+| Bridge node --test test/*.test.ts | 29 passed, zero failures/skips |
+| Bridge strict/verbatim TypeScript | Passed with -p tsconfig.json --strict --verbatimModuleSyntax |
+| Root / bridge npm pack --dry-run | Passed / passed |
+| Example codegen --check / built-in signature verification | written: []; seq 1793209750, two files verified |
+| Site npm run build / SEO | 43 pages passed |
+| Debug APK / standalone Windows py Firebase audit | Passed, assembleDebug 41.5s / PASS: graph, manifest and all 19 DEX files |
+
+The APK used process-scoped 2 GiB Gradle heap, 1 GiB metaspace, two workers
+and ActiveProcessorCount=2. The existing app_badge_plus Kotlin migration warning
+remains. The Firebase audit ran standalone through Windows py after the build.
+
+Integration readiness covers source assembly and these package gates. F-33 keeps
+app acceptance open. The historical iteration-9 F-30 failure below is superseded
+by the iteration-10 evidence above.
+
+## Earlier integration validation - 2026-10-31
+
+## In plain terms
+
+The latest shared candidate and the notification compatibility validation are now
+together on `codex/integration` in both repositories. Every required gate passed.
+No new feature or runtime change was needed. App-c's notification event audit still
+fails on its unadapted host; these package gates do not close that device finding.
+
+## Current bases, inclusion order and decision
+
+Code packages base: `d771105ad666e84b29c1545ed7b6db403f79d46a`.
+Site packages base: `53d3a919b999fe62fee3d3928bbaf3a235068c58`.
+
+Both integration branches fast-forwarded from the previous acceptance report to
+their newest packages base. Checked the required order below; every original tip
+is already an ancestor of packages, so merging those tips introduces nothing.
+All later numbered branches, link-compat and sync-fixes are also included in
+packages in both repositories. There were no conflicts to resolve.
+
+| Order | Branch | Code tip | Site tip |
+| --- | --- | --- | --- |
+| 1 | codex/r8 | 91589a47cb80a4b2f2ba8cf1a6d1ce3dc5a4eb4e | 072552f08d626d2915e63e7fda2c4c183c4380e3 |
+| 2 | codex/r7 | 969b1a4fb03d76d2af85c69987c4ed5eeb0eb840 | 965b8eb83a7412a9ec601919f227c2c0005a9252 |
+| 3 | codex/r6 | 5b64e06051fab10e0a01d8b3215c17f45d81c980 | 388cd9d3c0fd6043cfa21b0a6440916232847742 |
+| 4 | codex/r3 | db669ddd75ffeb97588fd62304122a58c242f3b0 | f45ccf28d741a2c6e05c766eeb6bff059900bcc5 |
+| 5 | codex/r4 | 588f8761807b1893933303533a04fa14c9975a6f | d8e5dd775dfaf902e206bc2f195c30537f797ba4 |
+| 6 | codex/r5 | 3cc1c0f4d062d13919adcfe5343434e00098fdea | 57a44b50dfd82800f151823ff1563d8a73340678 |
+| 7 | codex/r9 | 0c1b0fb01a48494991cdae4ab32369fb6a2af7b2 | 2913b4d0a743188808a66bd5b7db416ca870c52f |
+| 8 | codex/r10 | f3fcd0dac875fc30af226c7f1bf70750942c0550 | b905b742ab9d90984d513cdf7b99977eabd929f2 |
+| 9 | codex/r14 | fa6e16c55d84bb9a3162514a9c09b65cb634fd54 | fa5e8164a968bd74d943b8a50590dfbd010e08ca |
+
+Finally fast-forwarded the ready R4 follow-up, `codex/notify-event-compat`, into
+integration: code `02b2071beb7a4d1c34f839fbf56035bf0040ee75`, site
+`7ba42aa7332a1ec5e57b03c08344d582ab0a7447`. Its only difference from packages
+is `docs/notification-event-compat.md`; the compatibility implementation and its
+review fixes are already merged upstream. The gates below cover the same source
+bytes; the follow-up and this integration commit add validation reports only.
+
+Decision, security and data first: preserve the frozen runtime, shipped event
+meanings, application IDs and stored data. Keep combined schema 16, R4 since 11
+and pendingIds since 16. No package versions or schema numbers change. A numeric
+hash cannot recover an application's original string ID; retain the documented
+native adapter instead of coercion or rewriting an existing event declaration.
+Retain the upstream conservative retirement checks, including missing-release
+warnings and no subtraction of the per-device floor. No new security code or
+independent runtime review is part of this report-only refresh. S1 stays parked
+during the candidate freeze; S2 needs a Play account. No new must-have is eligible.
+
+## Latest app evidence and limits
+
+Read both apps' `VALENCE_FINDINGS.md` and newest completed reports: Kundalini
+iteration 16 and app-c iteration 9. Test-app repositories were read-only.
+
+Kundalini reports schema-17 store adoption, warm/cold/repeated custom links,
+unsafe-path rejection, pinned requires.bridge 16 OTA commitment and seven alarms
+restored after reboot without a manual launch. Its observed boot delay is not a
+delivery-time guarantee. Upstream packages now includes the F-63 link-manifest
+diagnostic, F-65 association-file refusal and F-64 method-retirement work; this
+does not establish adoption of those changes by the app. A bridge floor alone
+does not prove that an old method has no callers.
+
+App-c iteration 9 still reports F-30 FAIL. Independently read its
+`event-contract-check.json`: one tap, numeric ID 1997876972, expected string,
+passed=false. Its current mobile/lib contains neither notificationEventAdapter
+nor notificationEventFields, so this is not acceptance of the merged correction.
+It needs refreshed tooling/runtime, regeneration, native adapter wiring, a new
+host build and real warm/cold acceptance while preserving its shipped schema.
+
+Its `background-state-comparison.json` independently confirms identical before
+and after activation hashes with 1793383609 pending. The report records one
+natural due-time worker acknowledging two scalar writes; this is not a cadence
+guarantee. `final-state.json` confirms 1793383609 committed, pending/trial null
+and bad 1793383520 retained. Routing, background work and OTA success do not repair
+the separately failing event contract. F-27's remaining host-file lifecycle
+documentation gap stays open. F-31's permissions floor is corrected to schema 10
+upstream; its captured local guide is older. F-32 did not recur and does not
+establish a package cause. Real remote push and iOS remain unverified; iOS is
+experimental and untested.
+
+## Fresh gates on the current candidate
+
+Logs: `%TEMP%/valence-oct31-integration-*.log`.
+
+| Gate | Result |
+| --- | --- |
+| npm test | 106 passed, zero failures/skips; generated Dart and strict/verbatim generated TS ran |
+| Core flutter test --no-pub --concurrency=2 | 548 passed |
+| Core / push dart analyze --fatal-infos . | No issues in either package |
+| Core flutter pub publish --dry-run | Zero warnings |
+| Push flutter test --no-pub / pub publish --dry-run | 2 passed / zero warnings, one existing local-override hint |
+| Bridge node --test test/*.test.ts | 29 passed, zero failures/skips |
+| Bridge npx -y -p typescript tsc -p tsconfig.json --strict --verbatimModuleSyntax | Passed |
+| Root / bridge npm pack --dry-run | Passed / passed |
+| Example flutter test --no-pub | 27 passed |
+| Example codegen --check / built-in signature verification | written: []; seq 1793209750, two files verified |
+| Site npm run build / SEO | 43 pages passed |
+| Example flutter build apk --debug | Passed; assembleDebug 137.0 seconds |
+| Windows py example/tool/check_no_firebase.py | PASS: core graph, manifest and all 19 DEX files contain no Firebase SDK references |
+
+APK settings were process-scoped: 2 GiB Gradle heap, 1 GiB metaspace, two workers
+and ActiveProcessorCount=2. The existing app_badge_plus Kotlin migration warning
+remains. The Firebase audit ran standalone through py after the successful build.
+An initial manual verification used the wrong assets/builtin directory and failed
+ENOENT; only the corrected assets/valence/builtin invocation establishes the
+signature check above. No device installation, emulator session or new device
+acceptance is claimed. No protected branch commit/merge, test-app write, push or
+publication occurred. Integration readiness is conditional on the packages heads
+above; refresh if either moves before merging.
+
+## Historical validation - 2026-10-30
 
 ## Current decision and scope
 
