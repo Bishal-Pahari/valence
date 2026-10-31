@@ -45,6 +45,10 @@ schema 17, R4 since 11 and pendingIds since 16. The roadmap's stale 17+ free row
 must not cause a schema downgrade or new allocation. This run changes only R4's
 Status cell, the integration top line and its required plain-language note.
 
+The shared roadmap now adds S5 renderer-loss investigation, S6 cookie isolation
+and S7 offline caching. S5 is the next investigation priority; this run completes
+the required single R4 queue refresh without starting another item.
+
 All gates passed November 1 on the exact implementation now in integration:
 107 root tests with zero skips (including generated Dart and strict/verbatim TS),
 559 core / 2 push / 28 example / 29 bridge tests; clean fatal-info Dart in core
