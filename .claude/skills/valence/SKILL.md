@@ -460,3 +460,10 @@ Sync outcomes are an open string set: `ok`, `busy`, `offline`, `unauthorized`, `
 Store-host update prompts and signed mandatory policies are documented in
 [Forcing an update](https://getvalence.pages.dev/docs/guides/forcing-an-update/). Revision 17 adds fixed-destination `app.openStore`,
 nullable status fields and a native blocker; older runtimes cannot be forced.
+
+For an existing REST API that must work offline, read contracts ?5.5.1 and
+[the REST cache guide](https://getvalence.pages.dev/docs/guides/rest-cache/).
+Revision 18 `data.cache` requires a compiled `cache` bucket grant; regenerate
+and ship a store host. Keep user edits in writable buckets, prune stale cache
+keys and discard in-flight API results when accounts change. Cache-only data
+does not satisfy OTA synced-pair readiness.

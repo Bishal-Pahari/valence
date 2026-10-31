@@ -147,3 +147,7 @@ Schema 16 adds `notify.pendingIds()` for cancellation by difference even when fu
 Store-host update prompts and signed mandatory policies are documented in
 [Forcing an update](../../docs/forcing-an-update.md). Revision 17 adds fixed-destination `app.openStore`,
 nullable status fields and a native blocker; older runtimes cannot be forced.
+
+Revision 18 adds the generated `data.cache` method. Guard it with `has()` and
+import `call` from your app's generated bridge. The native host must grant each
+read-only cache bucket in its store config. [REST cache guide](https://getvalence.pages.dev/docs/guides/rest-cache/).

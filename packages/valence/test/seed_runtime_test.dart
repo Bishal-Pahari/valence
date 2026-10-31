@@ -183,6 +183,10 @@ class _SeedDatabase implements Database {
   final _SeedFactory faults;
 
   @override
+  Future<int> delete(String table, {String? where, List<Object?>? whereArgs}) =>
+      inner.delete(table, where: where, whereArgs: whereArgs);
+
+  @override
   Future<void> execute(String sql, [List<Object?>? arguments]) async {
     if (sql.startsWith('ATTACH')) {
       faults.imports++;

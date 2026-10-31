@@ -20,6 +20,7 @@ const valenceConfig = ValenceConfig(
   syncBase: 'https://sync.example.invalid',
   writableBuckets: {'shelf'},
   dataSchemas: {'plants': 1},
+  cacheBuckets: {'plants'},
   permissionKinds: {'camera', 'location', 'notifications', 'contacts', 'bluetooth', 'microphone', 'photos'},
   httpOrigins: {'http://127.0.0.1:8787'},
   linkOrigins: {'https://links.example.invalid', 'valence-example://app'},

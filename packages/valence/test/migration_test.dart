@@ -262,11 +262,11 @@ void main() {
       expect(await reopened.store.maxUsn('plants', 2), 1500);
     });
 
-    test('user_version upgrades to 2 without losing old outbox data', () async {
+    test('user_version upgrades to 3 without losing old outbox data', () async {
       await writeLegacyDatabase('valence.db');
       final v = await openPackage();
       final version = await v.store.db.rawQuery('PRAGMA user_version');
-      expect(version.first.values.first, 2);
+      expect(version.first.values.first, 3);
     });
   });
 

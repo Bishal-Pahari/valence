@@ -16,7 +16,7 @@ final class ValenceRow {
   /// The decoded JSON value.
   final Object? value;
 
-  /// The server's update sequence number, or `-1` for a local write that has not been acknowledged.
+  /// The server's update sequence number, `-1` for a pending write, or `-2` for a local-only cache row.
   ///
   /// `-1` is part of the contract, not an implementation detail: the page reads "written locally, not yet
   /// synced" off this. A pending *delete* leaves no row, so it cannot be counted this way (§5.5).
@@ -53,6 +53,15 @@ const defaultListLimit = 100;
 /// The hard cap `data.list` clamps `limit` to, host-side, rather than trusting the page.
 const maxListLimit = 500;
 
+/// Maximum encoded JSON size of one disposable REST cache value (§5.5.1).
+const maxCacheValueBytes = 65536;
+
+// Cache is an overlay, not server history. Filtering and key pagination apply to the union once.
+const _visibleRows = '(SELECT bucket, schema, key, value, -2 AS usn, 0 AS deleted FROM cache '
+    'UNION ALL SELECT bucket, schema, key, value, usn, deleted FROM kv '
+    'WHERE NOT EXISTS (SELECT 1 FROM cache c WHERE c.bucket = kv.bucket '
+    'AND c.schema = kv.schema AND c.key = kv.key))';
+
 /// Whether [e] is SQLite refusing because something else holds the file: `SQLITE_BUSY` or `SQLITE_LOCKED`.
 ///
 /// The open that takes `BEGIN EXCLUSIVE` for a schema upgrade is the one that collides, and an app update
@@ -83,6 +92,8 @@ const _schemaSql = [
   'CREATE TABLE outbox (ordinal INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, bucket TEXT NOT NULL, key TEXT NOT NULL, value TEXT, '
       'deleted INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)',
   'CREATE TABLE prefs (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+  'CREATE TABLE cache (bucket TEXT NOT NULL, schema INTEGER NOT NULL, key TEXT NOT NULL, '
+      'value TEXT NOT NULL, PRIMARY KEY (bucket, schema, key)) WITHOUT ROWID',
 ];
 
 /// The `kv`, `bucket`, `outbox` and `prefs` tables, with the pragmas and lifetime rules of §5.1.
@@ -128,7 +139,7 @@ final class ValenceStore {
     final db = await factory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 2,
+        version: 3,
         onConfigure: (db) async {
           // Both pragmas return a row, and Android's SQLiteDatabase refuses a row-returning statement
           // through execSQL — so `execute` throws "Queries can be performed using SQLiteDatabase query or
@@ -161,6 +172,9 @@ final class ValenceStore {
             await databaseOperation(
                 'store.configure', () => db.execute('DROP TABLE outbox_v1'), log);
           }
+          if (from < 3) {
+            await databaseOperation('store.configure', () => db.execute(_schemaSql[5]), log);
+          }
         },
       ),
     );
@@ -191,7 +205,7 @@ final class ValenceStore {
     final rows = await databaseOperation(
         'store.get',
         () => db.query(
-              'kv',
+              _visibleRows,
               columns: ['value'],
               where: 'bucket = ? AND schema = ? AND key = ? AND deleted = 0',
               whereArgs: [bucket, schema, key],
@@ -214,7 +228,7 @@ final class ValenceStore {
     final rows = await databaseOperation(
         'store.getMany',
         () => db.query(
-              'kv',
+              _visibleRows,
               columns: ['key', 'value', 'usn'],
               where: 'bucket = ? AND schema = ? AND deleted = 0 AND key IN ($marks)',
               whereArgs: [bucket, schema, ...unique],
@@ -261,7 +275,7 @@ final class ValenceStore {
     final rows = await databaseOperation(
         'store.list',
         () => db.query(
-              'kv',
+              _visibleRows,
               columns: ['key', 'value', 'usn'],
               where: where.toString(),
               whereArgs: args,
@@ -280,7 +294,7 @@ final class ValenceStore {
   Future<int> count(String bucket, int schema, {String? prefix}) async {
     final (where, args) = _liveRowsWhere(bucket, schema, prefix);
     final rows = await databaseOperation(
-        'store.count', () => db.rawQuery('SELECT COUNT(*) AS n FROM kv WHERE $where', args), _log);
+        'store.count', () => db.rawQuery('SELECT COUNT(*) AS n FROM $_visibleRows WHERE $where', args), _log);
     return rows.first['n']! as int;
   }
 
@@ -332,7 +346,8 @@ final class ValenceStore {
   /// Every `(bucket, schema)` pair the database holds, synced or not.
   Future<Map<String, Set<int>>> allPairs() async {
     final rows = await databaseOperation(
-        'store.allPairs', () => db.query('bucket', columns: ['name', 'schema']), _log);
+        'store.allPairs', () => db.rawQuery('SELECT name, schema FROM bucket '
+            'UNION SELECT bucket AS name, schema FROM cache'), _log);
     final out = <String, Set<int>>{};
     for (final r in rows) {
       out.putIfAbsent(r['name']! as String, () => <int>{}).add(r['schema']! as int);
@@ -343,6 +358,34 @@ final class ValenceStore {
   // ---------------------------------------------------------------------------
   // Local writes (§5.5)
   // ---------------------------------------------------------------------------
+
+  /// Stores a disposable overlay; null evicts it. The caller enforces the read-only bucket boundary.
+  /// Never changes server rows, cursors, freshness or the outbox (§5.5.1).
+  // ponytail: retention is page-managed; only each value is capped, not total cache size or age.
+  Future<void> cache(String bucket, int schema, String key, Object? value) async {
+    if (value == null) {
+      await databaseOperation('store.cache', () => db.delete('cache',
+          where: 'bucket = ? AND schema = ? AND key = ?', whereArgs: [bucket, schema, key]), _log);
+      return;
+    }
+    final json = jsonEncode(value);
+    if (utf8.encode(json).length > maxCacheValueBytes) {
+      throw const BridgeError(BridgeErrorCode.tooLarge, 'cached JSON exceeds 65536 UTF-8 bytes');
+    }
+    await databaseOperation('store.cache', () => db.insert('cache', {
+      'bucket': bucket, 'schema': schema, 'key': key, 'value': json,
+    }, conflictAlgorithm: ConflictAlgorithm.replace), _log);
+  }
+
+  /// Removes retained overlays when a store build revokes their compiled grant.
+  /// Runs before the runtime exposes any reads; server rows/cursors are untouched.
+  Future<void> revokeCachesExcept(Set<String> buckets) async {
+    final names = buckets.toList();
+    final marks = List.filled(names.length, '?').join(',');
+    await databaseOperation('store.revokeCaches', () => db.delete('cache',
+        where: names.isEmpty ? null : 'bucket NOT IN ($marks)',
+        whereArgs: names.isEmpty ? null : names), _log);
+  }
 
   /// Writes a row locally and queues it for push, in one transaction.
   ///
@@ -452,6 +495,8 @@ final class ValenceStore {
                 if (key is! String || usn is! int) continue;
                 if (blocked.contains(key)) continue;
                 final deleted = r['d'] == 1 || r['d'] == true;
+                await txn.delete('cache', where: 'bucket = ? AND schema = ? AND key = ?',
+                    whereArgs: [bucket, schema, key]);
                 await txn.insert(
                   'kv',
                   {
@@ -583,6 +628,10 @@ final class ValenceStore {
         await databaseOperation(
             'store.importSeed',
             () => db.transaction((txn) async {
+                  await txn.rawDelete('DELETE FROM cache WHERE bucket = ? AND schema = ? '
+                      'AND key IN (SELECT key FROM valence_seed.kv '
+                      'WHERE bucket = ? AND schema = ? AND usn > ?)',
+                      [e.key, e.value, e.key, e.value, from]);
                   await txn.rawInsert(
                     'INSERT OR REPLACE INTO kv (bucket, schema, key, value, usn, deleted) '
                     'SELECT bucket, schema, key, value, usn, deleted FROM valence_seed.kv '
@@ -632,6 +681,7 @@ final class ValenceStore {
     await databaseOperation(
         'store.dropPair',
         () => db.transaction((txn) async {
+              await txn.delete('cache', where: 'bucket = ? AND schema = ?', whereArgs: [bucket, schema]);
               await txn
                   .delete('kv', where: 'bucket = ? AND schema = ?', whereArgs: [bucket, schema]);
               await txn
@@ -685,6 +735,8 @@ final class ValenceStore {
                 await txn.delete('bucket', where: 'name IN ($marks)', whereArgs: names);
               }
               ops = await txn.delete('outbox');
+              // A REST response can contain account data even in a public read-only bucket.
+              await txn.delete('cache');
               // The freshness observations describe the account that just left. Left behind, sync.status()
               // answers 'synced a minute ago' over the new account's empty buckets, before it has ever synced.
               await txn.delete('prefs', where: 'key IN (?, ?, ?)', whereArgs: [

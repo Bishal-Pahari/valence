@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 17;
+export const BRIDGE_VERSION = 18;
 
 export interface AppInfo {
   platform: string;
@@ -217,6 +217,11 @@ export interface Methods {
     caption?: string | null;
   }; returns: string };
   'app.openStore': { params: Record<string, never>; returns: void };
+  'data.cache': { params: {
+    bucket: string;
+    key: string;
+    value?: Json | null;
+  }; returns: void };
   'haptics.tap': { params: Record<string, never>; returns: void };
 }
 
@@ -314,6 +319,7 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'push.initial': 12,
   'share.image': 14,
   'app.openStore': 17,
+  'data.cache': 18,
   'haptics.tap': 1,
 };
 

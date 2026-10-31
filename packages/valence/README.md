@@ -280,3 +280,9 @@ Schema 16 adds `notify.pendingIds()` for cancellation by difference even when fu
 Store-host update prompts and signed mandatory policies are documented in
 [Forcing an update](../../docs/forcing-an-update.md). Revision 17 adds fixed-destination `app.openStore`,
 nullable status fields and a native blocker; older runtimes cannot be forced.
+
+Revision 18 adds `dataCache(bucket, key, value)` for disposable REST responses in
+read-only buckets granted by `ValenceConfig.cacheBuckets`. Read APIs merge these
+with synced rows (`usn: -2` for cache); pulls remove matching overlays. Cache
+never queues a write or advances sync freshness. Recorded account changes clear
+it. See the [REST cache guide](https://getvalence.pages.dev/docs/guides/rest-cache/).

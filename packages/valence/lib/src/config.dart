@@ -26,6 +26,7 @@ final class ValenceConfig {
     this.syncMode = ValenceSyncMode.api,
     this.writableBuckets = const {},
     this.dataSchemas = const {},
+    this.cacheBuckets = const {},
     this.seedSchemas = const {},
     this.channel = 'production',
     this.bundleSizeCap = 50 * 1024 * 1024,
@@ -77,6 +78,10 @@ final class ValenceConfig {
 
   /// Read-only buckets and the schema this build reads, from `data` in `valence.config.json`.
   final Map<String, int> dataSchemas;
+
+  /// Read-only buckets allowed disposable page-written REST overlays (§5.5.1).
+  /// Empty denies `data.cache`; this grant is compiled into the store build.
+  final Set<String> cacheBuckets;
 
   /// Additional declared read-only schemas to import from the bundled seed (§5.2).
   final Map<String, List<int>> seedSchemas;
@@ -141,6 +146,7 @@ final class ValenceConfig {
 
   /// Copy with overrides. Handy in tests and for pointing a debug build at a local OTA host.
   ValenceConfig copyWith({
+    Set<String>? cacheBuckets,
     String? otaBase,
     String? syncBase,
     ValenceSyncMode? syncMode,
@@ -165,6 +171,7 @@ final class ValenceConfig {
         syncMode: syncMode ?? this.syncMode,
         writableBuckets: writableBuckets,
         dataSchemas: dataSchemas,
+        cacheBuckets: cacheBuckets ?? this.cacheBuckets,
         seedSchemas: seedSchemas,
         channel: channel ?? this.channel,
         bundleSizeCap: bundleSizeCap ?? this.bundleSizeCap,

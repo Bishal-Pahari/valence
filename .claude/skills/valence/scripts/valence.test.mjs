@@ -43,7 +43,7 @@ const TEMPLATES = join(import.meta.dirname, '..', 'templates');
 // Listed here rather than per test, because every new runtime capability has to land in exactly one place
 // for the "an older app still codegens" cases to keep meaning what they say.
 const SINCE_ABOVE_4 = {
-  methods: ['app.openStore', 'data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings', 'notify.permission', 'notify.schedule', 'notify.cancel', 'notify.pending', 'notify.pendingIds', 'notify.initial', 'notify.channels.set', 'badge.set', 'badge.clear', 'push.token', 'push.permission', 'push.initial', 'share.image'],
+  methods: ['data.cache', 'app.openStore', 'data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings', 'notify.permission', 'notify.schedule', 'notify.cancel', 'notify.pending', 'notify.pendingIds', 'notify.initial', 'notify.channels.set', 'badge.set', 'badge.clear', 'push.token', 'push.permission', 'push.initial', 'share.image'],
   events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online', 'link.opened', 'permissions.changed', 'notify.tapped', 'notify.action', 'push.received', 'push.tapped', 'push.tokenChanged'],
   types: ['SyncStatus', 'AppState', 'BundleStatus', 'Link', 'PermissionState', 'NotifyScheduled', 'NotifyPending', 'PushMessage'],
 };
@@ -343,10 +343,34 @@ const editSchema = (root, fn) => {
   writeFileSync(schemaFile(root), JSON.stringify(s));
 };
 
+test('REST cache is an additive revision-18 builtin with a frozen shape and runtime delegation', () => {
+  const { root, cfg } = fixture({ latest: true });
+  const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
+  assert.equal(schema.methods['data.cache'].since, 18);
+  codegen({ root, cfg });
+  const dart = readFileSync(join(root, 'mobile', 'lib', 'valence', 'bridge.g.dart'), 'utf8');
+  assert.match(dart, /await valence.dataCache\(p.bucket, p.key, p.value\)/);
+  editSchema(root, s => { s.methods['data.cache'].since = 17; });
+  assert.throws(() => codegen({ root, cfg }), /since.*18|18.*since/);
+  editSchema(root, s => { s.methods['data.cache'].since = 18; s.methods['data.cache'].returns = 'bool'; });
+  assert.throws(() => codegen({ root, cfg }), /data.cache/);
+});
+
+test('cache grants are compiled and limited to unique declared read-only buckets', () => {
+  const { root, cfg } = fixture({ latest: true });
+  cfg.cache = ['calendar'];
+  codegen({ root, cfg });
+  assert.match(readFileSync(join(root, 'mobile/lib/valence/config.g.dart'), 'utf8'), /cacheBuckets: \{'calendar'\}/);
+  for (const cache of ['calendar', ['missing'], ['user'], ['calendar', 'calendar'], [null], ['__proto__']]) {
+    cfg.cache = cache;
+    assert.throws(() => codegen({ root, cfg }), /cache.*unique declared read-only/);
+  }
+});
+
 test('task restoration is optional, shape-frozen and delegated to the package', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 17);
+  assert.equal(schema.version, 18);
   assert.equal(schema.methods['state.save'].since, 8);
   assert.equal(schema.methods['state.restore'].since, 8);
   codegen({ root, cfg });
@@ -1389,7 +1413,7 @@ test('a retired method keeps its wire contract, loses its handler and stops warn
   // and the manifests directory.
   const row = async () => (await diagnose({ root, cfg })).find(([, name]) => name === 'oldest servable bundle');
   // With no release cut, the built-in bundle is the whole answer and it is at the current schema.
-  assert.match((await row())[2], /requires bridge 17 \(built-in seq \d+\)/);
+  assert.match((await row())[2], /requires bridge 18 \(built-in seq \d+\)/);
   // The OTA release pinned to an older host is what sets the line.
   bundle({ root, cfg, key, requiresBridge: 15, now: NOW + 1000 });
   const servable = await row();
@@ -1783,6 +1807,7 @@ test('schema 15 fields are nullable and additive against a recorded schema 14', 
   const { root, cfg, key } = fixture({ latest: true });
   editSchema(root, s => {
     s.version = 14;
+    delete s.methods['data.cache'];
     delete s.methods['app.openStore'];
     delete s.types.BundleStatus.requiredBridge;
     delete s.types.BundleStatus.minHost;
@@ -2120,6 +2145,7 @@ test(
   { skip: !hasFlutter && 'flutter is not on PATH', timeout: 600_000 },
   () => {
     const { root, cfg } = fixture({ latest: true });
+    cfg.cache = ['calendar'];
     cfg.plugins = ['probe.json'];
     const plugin = probePlugin();
     plugin.methods['probe.ping'] = { since: 1, params: {}, returns: 'void' };
@@ -2317,6 +2343,29 @@ void main() {
     expect(code(jsonDecode(await bridgeDispatch(
         h, '{"id":1,"n":"n1","m":"notify.daily","p":{}}', nonce: 'n1')) as Map<String, Object?>), 'E_PARAMS');
   });
+  test('cache dispatch enforces nonce, strict parameters and read-only bucket policy before persistence', () async {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    final support = await Directory.systemTemp.createTemp('valence-cache-dispatch');
+    final runtime = await Valence.open(valenceConfig, supportDir: support, log: (_) {});
+    final h = _PluginHandlers(runtime, _Probe());
+    Future<Map<String, Object?>> send(Object? params, [String nonce = 'n1']) async =>
+        jsonDecode(await bridgeDispatch(h, jsonEncode({'id': 1, 'n': nonce, 'm': 'data.cache', 'p': params}), nonce: 'n1')) as Map<String, Object?>;
+    final p = {'bucket': 'calendar', 'key': 'day', 'value': {'sunrise': '06:14'}};
+    expect(code(await send(p, 'wrong')), 'E_DENIED');
+    expect(code(await send({...p, 'extra': true})), 'E_PARAMS');
+    expect(code(await send({...p, 'key': 4})), 'E_PARAMS');
+    expect(code(await send({...p, 'key': '..'})), 'E_PARAMS');
+    expect(code(await send({...p, 'bucket': 'missing'})), 'E_PARAMS');
+    expect(code(await send({...p, 'bucket': 'user'})), 'E_DENIED');
+    expect(await runtime.dataGet('calendar', 'day'), isNull);
+    expect((await send(p))['ok'], isTrue);
+    expect(await runtime.dataGet('calendar', 'day'), {'sunrise': '06:14'});
+    expect((await runtime.dataGetMany('calendar', ['day'])).single.usn, -2);
+    expect(await runtime.store.pendingWrites(), 0);
+    expect((await send({...p, 'value': null}))['ok'], isTrue);
+    expect(await runtime.dataGet('calendar', 'day'), isNull);
+  });
   test('new methods default to E_UNSUPPORTED through strict dispatch', () async {
     expect(code(await call('{"id":1,"n":"n1","m":"sync.status","p":{}}')), 'E_UNSUPPORTED');
     expect(code(await call('{"id":1,"n":"n1","m":"data.getMany","p":{"bucket":"calendar","keys":[3]}}')), 'E_PARAMS');
@@ -2470,7 +2519,7 @@ test('notify.pendingIds is a schema-16 built-in that returns bare IDs and cannot
   const { root, cfg, key } = fixture({ latest: true });
   cfg.notifications = { enabled: true, icon: 'ic_stat_demo' };
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 17);
+  assert.equal(schema.version, 18);
   assert.equal(schema.methods['notify.pendingIds'].since, 16);
   // notify.pending keeps every field it has: an app that reads it still gets titles and payloads.
   assert.equal(schema.methods['notify.pending'].returns, 'NotifyPending[]');
@@ -2519,7 +2568,7 @@ test('push builtins freeze permission and nullable initial-message shapes', () =
 test('push uses reserved schema 12 while older app-owned push shapes remain custom', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 17);
+  assert.equal(schema.version, 18);
   assert.equal(schema.methods['auth.account'].since, 13);
   for (const group of ['methods', 'events']) {
     for (const [name, def] of Object.entries(schema[group])) {
@@ -2533,6 +2582,7 @@ test('push uses reserved schema 12 while older app-owned push shapes remain cust
   assert.match(ts, /'push.initial': 12/);
   editSchema(root, (s) => {
     s.version = 11;
+    delete s.methods['data.cache'];
     delete s.methods['app.openStore'];
     delete s.types.AppInfo.builtins;
     delete s.methods['notify.pendingIds'];
@@ -2555,7 +2605,7 @@ test('push uses reserved schema 12 while older app-owned push shapes remain cust
  test('schema 16 pending IDs are additive, shape-frozen and delegated', () => {
   const { root, cfg, key } = fixture({ latest: true });
   const latest = readFileSync(schemaFile(root), 'utf8');
-  editSchema(root, s => { s.version = 15; delete s.methods['app.openStore']; delete s.types.BundleStatus.requiredBridge; delete s.types.BundleStatus.minHost; delete s.methods['notify.pendingIds']; });
+  editSchema(root, s => { s.version = 15; delete s.methods['data.cache']; delete s.methods['app.openStore']; delete s.types.BundleStatus.requiredBridge; delete s.types.BundleStatus.minHost; delete s.methods['notify.pendingIds']; });
   bundle({ root, cfg, key, store: true, now: NOW });
   writeFileSync(schemaFile(root), latest);
   codegen({ root, cfg });
@@ -2579,7 +2629,7 @@ test('R31 signed minimum-host policy, numeric validation, builtin self-refusal a
   for (const minHost of [0, -1, 1.5, '18', null, Number.MAX_SAFE_INTEGER + 1]) {
     assert.throws(() => bundle({ ...f, minHost, now: NOW }), /min-host/);
   }
-  assert.throws(() => bundle({ ...f, minHost: 18, builtin: true, now: NOW }), /exceeds this built-in/);
+  assert.throws(() => bundle({ ...f, minHost: 19, builtin: true, now: NOW }), /exceeds this built-in/);
   // Unlike --floor, --min-host does not carry forward, because a manifest that omits it withdraws the
   // requirement (§2.5) — which means the next ordinary release unblocks every device the previous one was
   // holding at the store. For a security-motivated block that is the release silently lapsing, so it
