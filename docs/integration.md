@@ -1,5 +1,63 @@
 # Integration acceptance refresh - 2026-10-31
 
+## App-c iteration 18 completed follow-up
+
+Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 18.
+Packages remains code d771105 / site 53d3a91. All 29 numbered feature and
+compatibility tips, plus packages, are ancestors of integration in both repos.
+No missing merge or eligible must-have remains. S1 stays parked; S2 needs a
+Play account.
+
+Checked retained iteration-18 artifacts without operating or modifying either app:
+
+- One natural isolated callback is observed after 388 seconds, forced=false.
+  Native begin/complete counts increase from three to four; WorkManager reports
+  SUCCESS at 17:58:41.552, captured before foreground resume. The first owned
+  mock request block pulls two units above cursor 200002 and acknowledges two
+  outgoing inspection objects. Later foreground requests are excluded.
+  One natural execution does not establish long-term cadence.
+- Supplied pre-resume SQLite results record iteration-18-isolated-inbound at
+  USN 210002, outgoing objects at USNs 210001/210002 and outboxCount=0. The report
+  records stable DB/WAL snapshots. This run checked supplied results and receipts;
+  it did not extract or independently query the device database. The mistakenly
+  early inbound fixture is excluded; both inbound fixtures are cleaned up later.
+- Independently hashed both raw activation files: each is SHA256
+  a739c26f80056a32ae5b8b84791ec9c6b2ee9aa34339cde878c2567fdcdadd84.
+  Current 1793448385, pending 1793448396 and trial=null stay byte-identical.
+  Final state commits 1793448396 after foreground resume, pending/trial=null.
+- Initial PID 9407 takes 8076ms to open, including 7364ms in store. Four later
+  foreground sync replies are ok; accepted force requests do not establish four
+  overlaps. Timings do not identify a lock owner or repair the COMMIT error.
+  Major F-33 remains open.
+- Recreated picker/warm-0102/process-death/cold-0402 routing passes on host4.
+  Ordinary launcher later returns the unfinished picker with app.state background;
+  BACK dismissal restores foreground before matched-sequence OTA acceptance.
+  F-29 remains limited; original ghost-task recovery is not proven.
+- Warm audit: one tap/zero violations. Final evidence audit: all 44 checks pass.
+  Settled offline/reconnect results report pending 1 then 0. Cleanup records
+  airplane off, stopped app/mocks and no forwards. Release installation followed
+  by explicit backup restoration differs from uninterrupted release-to-debug adoption.
+- The corrected canonical migration-guide comparison matches iteration 17.
+  The initial alternate-filename 404 establishes no prior evidence gap.
+  The stale v0.3 landing banner remains tracked under minor F-34.
+
+Decision: preserve users' data, shipped contracts, additive R31 revision 17 and
+transaction/lease/retry rules. One natural callback strengthens background
+acceptance without closing F-33. F-27 host-file lifecycle guidance, F-29 launcher
+recovery and F-34 documentation remain open; pagination stays deferred app scope.
+Kundalini F-63/F-65 and F-64 adoption status are unchanged; its app schema 17 is
+separate from runtime R31 revision 17.
+
+Validation: read-only evidence assertions including raw hashes, branch ancestry,
+unchanged implementation trees against fully gated R31 integration code 38a7714 /
+site fb7bc44, matching new report sections and git diff --check. Earlier October 31
+full gates retain their original scope; no fresh package/site gate pass, emulator
+run or independent runtime review is claimed for this report-only update.
+Integration readiness is not beta acceptance. No app writes, protected-branch
+changes, package/schema changes, pushes or publications. iOS and real remote push
+delivery remain unverified.
+
+
 ## App-c iteration 17 completed follow-up
 
 Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 17.
