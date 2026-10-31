@@ -1,5 +1,67 @@
 # Integration acceptance refresh - 2026-10-31
 
+## App-c iteration 12 follow-up
+
+Read both apps' findings and newest reports read-only: Kundalini 16 and app-c 12.
+Packages remains code d771105 / site 53d3a91. Rechecked every numbered feature
+branch, the original rebase queue, R14, link-compat and sync-fixes: all tips are
+ancestors of packages in both repos. The report-only notify-event-compat tip is
+already in integration. No eligible must-have, pending feature merge or changed
+base requires a branch rebuild. S1 remains parked and S2 needs a Play account.
+
+Checked app-c's iteration-12 captures independently, without running the app:
+
+- F-33: PID 8306 begins a worker at 10:09:41.038 during Valence.open, which
+  completes at 10:09:42.680. f33-before-restart-logcat.txt records the named
+  store.prefSet lock at 10:10:06.073. before-restart-sync.json answers busy
+  with pending=1; recovery-sync.json later answers ok with pending=0.
+  The full worker-full-logcat.txt additionally records WorkManager FAILURE at
+  10:10:06.200 for work 25728e3a-feed-4620-82e8-d338f90ed437 in the same PID.
+  No successful callback completion is established for that run. This failure
+  and the reported prolonged busy replies must not be described as a successful
+  overlap. They do not identify the lock holder, reproduce the original COMMIT
+  error, establish data loss or prove a concurrency repair. The report attributes
+  the eventual restart to permission revocation, with DB/account preserved.
+- Rebuilt startup completes after a named store.open wait of 10346 ms. Its worker
+  begins at 10:25:05.938, after open completes at 10:24:44.368, and completes at
+  10:25:07.686. This is settled-path recovery, not a concurrent-open test.
+- The rebuilt warm event capture carries string ID iteration-12-rebuilt-warm;
+  event-contract-check.json records one tap and zero violations. The report
+  separately records cold routing and rebuilt native/OTA regression. F-30 stays
+  resolved for the supported adapter; no shipped signature is changed.
+- The final isolated worker begins at 10:40:34.538, completes at 10:40:36.298
+  and reports WorkManager SUCCESS at 10:40:36.310. The first owned mock block
+  records two incoming unit rows above cursor 107, an inspection pull and two
+  outgoing object acknowledgements. Later receipts follow foreground resume and
+  are excluded. Host and guest clocks differ. This is eligible forced execution,
+  not natural periodic cadence or production server durability.
+- background-sqlite-before-resume.json records the new inbound unit at USN
+  20002, both outgoing inspection objects at USNs 20001/20002 and outboxCount=0.
+  Its companion capture records stable DB/WAL hashes. These are supplied snapshot
+  evidence, not a new database extraction here. worker-inbound.json also returns
+  the new unit. This adds inbound application to the earlier outgoing-only proof.
+- Independently hashed both raw activation files: SHA256
+  1722bda336ba5405ea21230fae9806e6085215e9e4a3227797c674f1b0818799.
+  Current 1793421974, pending 1793421996 and trial=null remain byte-identical.
+  final-state.json records current 1793421996, previous 1793421974 and no
+  pending/trial. Final reads return null for all three fixtures and pending=0.
+  cleanup.json records airplane off, stopped app, refused owned mock ports and
+  no forwards. Explicit backup restoration separates retained release validation
+  from debug validation; uninterrupted release-to-debug adoption is not claimed.
+
+Decision: prioritize users' data and evidence of transaction ownership. Preserve
+the frozen schema 16, shipped contracts, lease rules and retry budgets. Neither a
+worker failure nor recovery justifies guessing at a transaction patch. F-33 remains
+major/open and F-27's host-file lifecycle/limits documentation gap remains open.
+Package integration readiness does not establish beta acceptance.
+
+Validation for this report-only follow-up: branch ancestry, unchanged implementation
+trees, matching new report sections and git diff --check in both worktrees. Full
+gates below retain their earlier October 31 scope; no fresh gate pass, emulator
+run or independent runtime review is claimed. No test-app writes, protected-branch
+changes, version/schema changes, pushes or publications. iOS remains experimental
+and untested; real remote push delivery remains unverified.
+
 ## App-c iteration 11 follow-up
 
 Read both apps' findings and newest reports read-only: Kundalini 16 and app-c 11.
