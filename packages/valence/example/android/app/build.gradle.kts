@@ -16,8 +16,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.getvalence.valence_example"
+        // Match the store identity compiled from valence/valence.config.json.
+        applicationId = "com.getvalence.example"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
