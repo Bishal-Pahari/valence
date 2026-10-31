@@ -8,6 +8,75 @@ ID. Regenerated config names the compatible events and fields; a native adapter 
 event using the original ID carried inside the app's own payload. Warm and cold taps use the same
 conversion without changing the shipped schema or erasing its baseline.
 
+## November 1 R4 queue refresh - 2026-11-01
+
+### In plain terms
+
+The notification compatibility branch now includes the newest reviewed packages.
+Existing string-ID notification events keep their shipped shape; app-c's newest
+warm/cold reminder checks pass through its supported adapter. Open sync, permission
+ANR and memory-pressure findings remain open. This refresh changes no runtime behavior.
+
+Merged refs/heads/packages into codex/notify-event-compat by fast-forward in both
+worktrees: code 3610aa38c52f496bed93e24897f713f229030441 and site
+747013a6469ae1bbc5c1a97993634e7e8cebb129. R4 is the first unfinished queue
+entry; the other queue items and R14 are marked done. No must-have is todo.
+
+Read both VALENCE_FINDINGS.md files and newest reports read-only: Kundalini 17
+and app-c 25. Kundalini reports adoption of retired notify.daily, live allow-listed
+HTTP and complete offline SQLite paint. Its app-specific schema 18 does not
+allocate a framework revision. New F-66/F-71 describe cookie-CSRF and offline
+cache gaps; do not grant cookies or page writes into read-only sync buckets as
+an incidental notification fix. Upstream 97f395f supplies bounded-size messages
+and sanitized HTTP failure codes (parts of F-67/F-68); f3bce56 improves retired
+method reference scanning and missing test-map diagnostics (F-69/F-70).
+Those changes are included here, not claimed as adopted by the test apps.
+
+App-c's iteration-25 event-contract-check.json has passed=true, observedTaps=1
+and no violations. Its report records warm string-ID and cold routing acceptance.
+Independently compared both raw background activation files: byte-identical,
+SHA256 342442743914247fe05a6d471a3c5390c25bc5a7aa0d308129e379447a1256c8,
+current 1793475696, pending 1793475710, trial=null. All 45 supplied audit
+checks pass, and final-state.json commits 1793475710 with pending/trial=null.
+These are saved artifacts; no new device execution or independent SQLite
+extraction is claimed.
+
+F-37 remains a minor diagnostic qualification. Paired device clocks and native
+snapshots show busy at 76059/91699/107104 ms above the original lease timestamp,
+then ok/pending0 at 122488 ms in PID 14346 with lease=null/outbox0. This is
+consistent with the two-minute lease window and identifies no owner lifetime or
+cause. A failed bounded restored-host probe remains excluded; retained/no-reset
+offline/reconnect passed before restoration. F-27/F-29/F-33/F-34/F-35/F-36 stay open.
+
+Decision: security, then users' data. Preserve shipped event meanings, notification
+adapter boundaries, transactions, lease/retry rules and signed-update checks.
+Keep R4 methods/events at since 11 and pendingIds at 16. Keep the inherited
+combined schema 17: lowering it to R4's original revision 11 would remove newer
+capabilities. The roadmap version table still labels 17+ free, while R31's status
+and upstream schema reserve 17; this run edits only R4's Status cell and records
+that discrepancy rather than reallocating the revision or editing another item.
+
+Security checklist: reviewed the existing legacy warm/cold regression and native
+event adapter boundaries. Code, templates, codegen and tests are byte-identical
+to the upstream packages base; no new security-path change or new independent
+runtime review is claimed. Existing release-only restrictions remain intact.
+
+Fresh gates: 107 root tests, zero failures/skips (generated Dart and strict/verbatim
+TS ran); 559 core, 2 push, 28 example and 29 bridge tests; core/push fatal-info
+Dart analysis; strict/verbatim bridge TypeScript; zero-warning core/push pub
+dry-runs (push has one local-override hint); root/bridge packaging dry-runs;
+44-page site build and SEO. Example codegen --check writes nothing.
+Example signature/hash verification passes: seq 1793431100, two files. Debug APK
+passes (assembleDebug 136.7s), followed by the standalone Windows py audit:
+PASS: core graph, manifest and all 19 DEX files contain no Firebase SDK references.
+The build used process-scoped 2 GiB heap, 1 GiB metaspace, two workers/processors.
+The existing app_badge_plus Kotlin migration warning remains.
+Logs: %TEMP%/valence-nov01-r4-*.log.
+
+No test-app writes, protected-branch commits/merges, version changes, pushes or
+publications. Optional emulator execution is skipped for this report-only queue
+refresh; iOS and real remote push remain unverified.
+
 ## App-c iteration-10 acceptance refresh - 2026-10-31
 
 ### In plain terms
