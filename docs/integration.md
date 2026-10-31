@@ -1,5 +1,79 @@
 # Integration acceptance refresh - 2026-10-31
 
+## App-c iteration 23 completed follow-up
+
+Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 23.
+Packages remains code d771105 / site 53d3a91. All 29 feature and compatibility
+tips, plus packages, are ancestors of integration in both repos. No missing merge
+or eligible must-have remains. S1 stays parked; S2 needs a Play account.
+
+New minor F-37 qualifies the sync evidence:
+
+- Initial reconnect and repeated offline probes remain busy in bounded windows.
+  A later historical sync.status of ok/pending0 is not a fresh sync.now result.
+  The saved tests do not establish that the documented two-minute lease expired.
+- Explicit private-backup restoration precedes the failures. The initial script
+  omitted a post-install stop/check, leaving concurrent startup as an unmeasured
+  setup confound. The accepted replacement backup records no PID before/after.
+  Process recovery and a later retained/no-reset offline/reconnect pass establish
+  recovery, without identifying a lease owner or repairing F-33.
+- Rootless debuggerd refusal and a tombstoned SIGQUIT receipt do not provide an
+  accessible blocking-thread trace. Require retained/no-reset reproduction,
+  native lease row/owner/start age and request/worker timelines before changing
+  transaction ownership, cancellation or deadlines.
+
+Ordinary launch again delivers to the orphaned picker with no App C PID (F-29).
+Saved App info XML, matching PID 4243 and the viewed pre-relaunch screenshot
+establish one painted Settings return; current lastanr says no ANR since boot.
+Neither that observation nor four foreground ok/pending0 responses close major
+F-33/F-35/F-36 or establish four worker overlaps.
+
+Separately checked saved isolated background acceptance without operating apps:
+
+- New exact callback begin 22:41:14.083, complete 22:41:15.498 and WorkManager
+  SUCCESS 22:41:15.513 share PID 6297. First worker receipts pull units above
+  cursor 350002 and acknowledge two outgoing inspection objects. The inbound
+  key already existed; USN 360002 updates it to origin 360000.
+- Supplied pre-resume SQLite results contain that incoming update, outgoing
+  objects at USNs 360001/360002 and outboxCount=0. These are supplied results,
+  not an independent database extraction. The forced observation after 262.709
+  seconds proves one execution, not long-term scheduling cadence.
+- Independently compared both raw activation files: byte-identical, SHA256
+  82eb72a00f3ff342493327b6eac8a4b1b02164cf5201286380f0f7a8eaa23f36,
+  current 1793465494 / pending 1793465506 / trial=null. Final saved state commits
+  1793465506 with pending/trial=null. Cleanup records airplane off, stopped app
+  and owned mocks, unreachable owned services and no forwards. All 39 supplied
+  final audit checks pass; earlier failed probes and missing-artifact audit are
+  excluded from acceptance.
+
+Decision: preserve users' data, shipped contracts, additive R31 revision 17 and
+transaction/lease/retry rules. F-37 supports better diagnosis and test setup,
+not a causal runtime fix on this evidence. F-27 host-file lifecycle, F-29 ordinary
+launch and F-34 stale banner remain open or limited; pagination remains deferred.
+Kundalini F-63/F-65 and F-64 adoption status are unchanged.
+
+Evidence validation: saved-result assertions, exact callback lines and baseline
+comparison, independent raw hashes, all 29 branch-tip ancestry checks in both
+repos, matching acceptance sections and unchanged implementation trees against
+gated R31 code 38a7714 / site fb7bc44.
+
+Fresh required gates on the unchanged combined implementation (October 31):
+107 root tests passed with zero failures/skips (generated Dart and strict/verbatim
+TS ran); 556 core, 2 push, 28 example and 29 bridge tests passed. Core/push
+fatal-info Dart analysis and bridge strict/verbatim TypeScript passed. Core/push
+pub dry-runs have zero warnings (push retains one local-override hint); root and
+bridge packaging dry-runs passed. Site build/SEO passed all 44 pages.
+Logs: `%TEMP%/valence-oct31-app23-*.log`.
+Debug APK passed (assembleDebug 214.9s), followed by the standalone Windows py
+Firebase audit: PASS for the resolved core graph, manifest and all 19 DEX files.
+The existing app_badge_plus Kotlin migration warning remains. The build used
+process-scoped 2 GiB Gradle heap, 1 GiB metaspace and two workers/processors.
+
+Integration readiness is not beta acceptance. No emulator run, independent
+runtime review, app writes, protected-branch changes, package/schema changes,
+pushes or publications occurred. iOS and real remote push remain unverified.
+
+
 ## App-c iteration 22 completed follow-up
 
 Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 22.
