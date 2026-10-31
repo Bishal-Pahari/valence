@@ -1,5 +1,58 @@
 # Integration acceptance refresh - 2026-10-31
 
+## App-c iteration 14 completed follow-up
+
+Both findings and newest reports were read read-only: Kundalini 16 and app-c 14.
+Packages remains code d771105 / site 53d3a91. The original rebase queue, R14,
+R31 and the R4 notification-compatibility acceptance tip are already ancestors of
+integration in both repositories. No missing merge or eligible must-have remains;
+S1 stays parked and S2 needs a Play account.
+
+Checked the retained iteration-14 captures without running or modifying either app:
+
+- PID 20066 begins background sync at 14:39:14.440, before startup completes at
+  14:39:14.582 (2432 ms); callback completion is 14:39:21.704 and WorkManager
+  SUCCESS is 14:39:21.747. The mocks were stopped, so initial offline replies
+  are expected. Later settled status is ok/pending=0. Four later foreground
+  replies do not establish four worker overlaps. F-33 remains major/open.
+- The actual warm tap carries string ID iteration-14-rebuilt-warm; the contract
+  audit records one tap and zero violations. This preserves the supported legacy
+  adapter and shipped event shape; the report separately records cold routing.
+- The isolated worker begins at 15:07:00.151, completes at 15:07:01.527 and has
+  WorkManager SUCCESS at 15:07:01.550. Its first owned mock request block pulls
+  two units above cursor 80001 and acknowledges two outgoing inspection objects.
+  Later requests follow foreground resume and are excluded. This is eligible
+  forced execution, not natural periodic cadence or production durability.
+- The supplied pre-resume SQLite result records inbound iteration-14-inbound at
+  USN 90002, outgoing objects at USNs 90001/90002 and outboxCount=0. The report
+  records matching DB/WAL snapshots. This run checked the supplied result and
+  receipts; it did not extract or independently query the device database.
+- Both raw activation files independently hash to SHA256
+  313aac16dd04fe2de00dde2a4e1e4535e233a432c52ca46781d51f3eb6282817.
+  Current 1793437904, pending 1793437991 and trial=null stay byte-identical.
+  Final state records current 1793437991, previous 1793437904, pending/trial=null.
+  The supplied 39-check audit passes; cleanup records airplane off, stopped app,
+  stopped/unreachable mocks and no forwards. Release retention followed by private
+  backup restoration is distinct from uninterrupted release-to-debug adoption.
+
+Decision: preserve users' data, transaction scopes, lease/retry rules and additive
+R31 revision 17. Non-reproduction does not repair the earlier COMMIT failure.
+F-33 and app-c F-27's host-file lifecycle/limits documentation gap remain open.
+The newly documented 50-unit/200-inspection pagination limit is an existing app
+limit, explicitly deferred by its reviewer; it is not a new Valence regression.
+Kundalini's findings and retirement-tooling adoption status are unchanged.
+
+Validation: read-only evidence assertions, branch ancestry, unchanged implementation
+trees against the fully gated R31 integration (code 38a7714 / site fb7bc44),
+matching new report sections and git diff --check. The first evidence check could
+not decode a UTF-16LE capture; BOM-aware reading passed without changing any
+capture. Earlier October 31 full gates retain their original scope; no fresh
+package/site gate pass, emulator run or independent runtime review is claimed.
+No app writes, protected-branch changes, package/schema changes, push or
+publication. Integration readiness is not beta acceptance; iOS and real remote
+push delivery remain unverified.
+
+
 ## App-c iteration 13 completed follow-up
 
 Both findings and newest reports were read read-only: Kundalini 16 and the now
