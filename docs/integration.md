@@ -1,5 +1,69 @@
 # Integration acceptance refresh - 2026-10-31
 
+## App-c iteration 17 completed follow-up
+
+Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 17.
+Packages remains code d771105 / site 53d3a91. All 29 checked numbered feature
+and compatibility tips, plus packages, are ancestors of integration in both
+repositories. No missing merge or eligible must-have remains. S1 stays parked;
+S2 needs a Play account.
+
+Checked retained iteration-17 artifacts without operating or modifying either app:
+
+- Fresh-task PID 5121 completes open in 1146ms and paints retained OTA 1793444775.
+  Its log contains older callbacks from earlier PIDs; those are not evidence of
+  a current startup/worker overlap. Four foreground sync replies are ok/pending=0;
+  accepted force commands alone do not prove simultaneous callbacks. Major F-33
+  remains open without an established recurrence or repair of the COMMIT error.
+- Recreated unfinished-picker/warm-0102/cold-0402 explicit links pass on host4;
+  the native initial accessor returns unit-0402. A later normal launcher brings
+  the old picker forward while app.state remains background. Dismissing it
+  restores foreground. The first OTA observer had a false foreground premise;
+  this is not evidence of an updater failure or original ghost-task recovery.
+- The initial OTA helper also accepted a stale pending sequence. Its corrected
+  replacement requires the staged sequence and a settled commit. Accepted raw
+  states record good 1793446774, broken trial 1793446785 with trialFails=1, then
+  that sequence in bad with current still 1793446774; rollforward 1793446838
+  commits. Excluded first attempts do not support rollback acceptance.
+- Rebuilt host4's isolated worker is eligible forced execution, observed after
+  93 seconds. Callback begin/complete counts increase from four to five. PID
+  8836 begins at 17:29:49.195, completes at 17:29:50.105 and reports WorkManager
+  SUCCESS at 17:29:50.124. The first owned mock request block pulls two unit rows
+  above cursor 170001 and acknowledges two outgoing inspection objects. Later
+  foreground requests are excluded; natural scheduling cadence is not proven.
+- Supplied pre-resume SQLite results record iteration-17-inbound at USN 180002,
+  outgoing objects at USNs 180001/180002 and outboxCount=0. The report records
+  stable DB/WAL snapshots. This run checked supplied results and receipts; it
+  did not extract or independently query the device database.
+- Independently hashed both raw activation files: each is SHA256
+  3c686aae61fcba84b408c44a25ac90a143cc0e6e36d3dbb02b5b343a0784b502.
+  Current 1793446838, pending 1793446866 and trial=null stay byte-identical.
+  Final state commits 1793446866 with pending/trial=null after foreground resume.
+- The warm audit records one tap/zero violations; the supplied evidence audit
+  passes all 45 checks. Cleanup records airplane off, stopped app/mocks,
+  unreachable endpoints and no forwards. Retained release installation followed
+  by explicit private-backup restoration is distinct from uninterrupted
+  release-to-debug adoption. Cross-clock latency is not inferred.
+
+Decision: preserve users' data, shipped contracts, additive R31 revision 17 and
+transaction/lease/retry rules. F-33 remains major/open; F-27's host-file lifecycle
+guidance and F-29's normal-launch picker limitation remain open. New minor F-34
+is confirmed in captured docs and site src/content/docs/docs/index.mdx: its
+banner still says v0.3. Record that documentation correction as outstanding;
+do not infer a runtime version from the banner or change package versions.
+Pagination stays deferred app scope. Kundalini F-63/F-65 and F-64 adoption
+status are unchanged; its app schema 17 is separate from runtime R31 revision 17.
+
+Validation: read-only evidence assertions including raw hashes, branch ancestry,
+unchanged implementation trees against fully gated R31 integration code 38a7714 /
+site fb7bc44, matching new report sections and git diff --check. Earlier October 31
+full gates retain their original scope; no fresh package/site gate pass, emulator
+run or independent runtime review is claimed for this report-only update.
+Integration readiness is not beta acceptance. No app writes, protected-branch
+changes, package/schema changes, pushes or publications. iOS and real remote push
+delivery remain unverified.
+
+
 ## App-c iteration 16 completed follow-up
 
 Read both findings and newest reports read-only: Kundalini 16 and app-c 16.
