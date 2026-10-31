@@ -718,6 +718,13 @@ Error codes. **The set is closed:** add to it here rather than inventing one per
 - `E_PENDING`: the call would have discarded local writes that have not reached the server. The only
   thrower is `auth.setToken` on an account switch (§4.4); it names the number of queued writes, and the
   caller either syncs them or passes `{discardPending: true}`. A refusal, not a fault: nothing changed.
+- `E_OFFLINE`: the OS reports no network interface, so the call was never going to reach anything. Today
+  only `http.request` throws it (§4.5). It is the one failure where the honest UI is silence rather than
+  an apology, and it discloses nothing — "this device has no network" is not the remote's secret. **It is
+  not reachability:** a captive portal, a firewall or a server that is down is `E_INTERNAL`, because the
+  host's connectivity source reports interfaces (§4.6) and cannot tell those apart.
+- `E_TIMEOUT`: a host-side deadline passed — today only `http.request`'s 20 seconds (§4.5). Also
+  host-side, so it names no remote.
 - `E_INTERNAL`.
 
 **Messages are JSON strings, capped at 256 KB of UTF-8 in each direction (`MAX_MESSAGE_BYTES`).**
@@ -971,8 +978,15 @@ not do: a wipe is local, and user A's rows stay on A's server.
 `HttpResponse {status: int, headers: json, body: string}`. The default method is GET;
 GET, HEAD, POST, PUT, PATCH, DELETE and OPTIONS are supported. GET/HEAD cannot carry a body.
 Bodies are UTF-8 text, including JSON explicitly encoded by the caller. Binary downloads and
-multipart uploads are outside this method's scope. HTTP errors return their status and body;
-network, timeout and invalid UTF-8 failures return `E_INTERNAL`, without remote or credential text.
+multipart uploads are outside this method's scope. HTTP errors return their status and body.
+
+**Three failures, three codes, no remote text in any of them.** The deadline is `E_TIMEOUT`. A transport
+or UTF-8 failure on a device the OS reports as having **no network interface** is `E_OFFLINE`, read from
+the same value `app.online` carries (§4.6) at the moment the request failed — so a page does not have to
+sample a second source at a different instant to guess. Everything else, including a captive portal, a
+firewall and a server that is down, stays `E_INTERNAL`: those are indistinguishable from here, and
+claiming "offline" for them would be a lie an offline-first UI acts on. None of the three reflects remote
+or credential text.
 
 The host enforces the **compiled** `http.origins` origin list, emitted as
 `ValenceConfig.httpOrigins`. An OTA CSP or page cannot broaden it. Entries are exact HTTP(S)
@@ -997,7 +1011,16 @@ Keep-Alive (case insensitive). The host obtains the R1 token per request, with
 `ValenceConfig.authToken` taking precedence over secure storage, and sets Authorization itself.
 A 401 on a request carrying that token emits `auth.expired` once for that request, retains the
 token, and still returns the HTTP response. No cookie jar is used; Set-Cookie and Set-Cookie2
-are omitted from returned headers. Origins in this list are trusted with the user's token:
+are omitted from returned headers.
+
+**So a cookie-paired CSRF token cannot be completed, and an endpoint that requires one is out of scope
+for this method.** The host can send neither half of a double-submit pair: not the cookie, because a page
+that can set one can forge it for the origin the host trusts with the bearer token, and not a matching
+header, because obtaining the token means a prior GET whose `Set-Cookie` the host also discards. This is
+the default shape of a Django `POST` (`csrftoken` + `X-CSRFToken`) and of the Rails equivalent, so **check
+for it while choosing the API, not after shipping against it:** `doctor` and `codegen` cannot predict it,
+and no amount of app code works around it. A bearer-token or header-key API, or a `csrf_exempt` endpoint,
+is reachable; a session-cookie API is not. Origins in this list are trusted with the user's token:
 an API that echoes credentials can disclose them in its response, so never allow third-party
 origins. This is a CORS bypass for the app's API, not a credential firewall against that API.
 
@@ -1008,9 +1031,18 @@ not buffered without limit. Over-limit input or response returns `E_TOO_LARGE`; 
 origins and headers return `E_DENIED`; malformed arguments return `E_PARAMS`. The ordinary
 262144-byte bridge envelope cap still applies after JSON encoding (§4.2).
 
+**Every size refusal names the observed size and the limit,** because "paginate or give up?" is the
+question a cap raises and a bare refusal cannot answer it. A declared over-size response reports its
+`Content-Length`; a streamed one reports the bytes read before reading stopped and says that is a floor,
+since the real size is unknown by then. Sizes of the app's own payload and of its own API's response
+disclose nothing the page did not already have access to. **To ask for less, send `Range`:** it is not on
+the deny-list above, a `206` comes back as an ordinary response, and that — not a host-side parameter —
+is how a page reads a representation it cannot take whole. There is no streaming form, so an API that
+offers only one large representation and no `Range` cannot be read by this method at all.
+
 The CSP-only `web.connect` list never grants native access or token trust; it may contain third-party URLs and paths. Native access requires the separate `http.origins` list compiled into the store host.
 
-A POST can succeed on the server while the page receives `E_TOO_LARGE` (response or JSON envelope size) or `E_INTERNAL` (timeout, transport or UTF-8 failure). Use server-enforced idempotency keys when retrying writes. JSON escaping can expand a 64 KiB text body beyond the 256 KiB bridge cap, so the body limit alone does not guarantee a deliverable reply. HEAD, 204 and 304 skip the Content-Length pre-check because that header can describe a representation rather than an actual response body; streamed bytes remain capped.
+A POST can succeed on the server while the page receives `E_TOO_LARGE` (response or JSON envelope size), `E_TIMEOUT` or `E_INTERNAL`/`E_OFFLINE` (transport or UTF-8 failure). Use server-enforced idempotency keys when retrying writes. JSON escaping can expand a 64 KiB text body beyond the 256 KiB bridge cap, so the body limit alone does not guarantee a deliverable reply. HEAD, 204 and 304 skip the Content-Length pre-check because that header can describe a representation rather than an actual response body; streamed bytes remain capped.
 
 **Existing REST APIs need an adapter for offline sync.** `http.request` is an online RPC:
 it does not populate SQLite, retry, queue a write, or work offline. The reference Node adapter
@@ -2024,7 +2056,7 @@ R12 regression rows: batch reads preserve requested order, deduplicate, isolate 
 | Legacy link migration (`valence.test.mjs`, app-c F-26) | A recorded schema-3 app's since-2 `link.initial(): string?` and custom `link.opened` survive codegen/check and a repeated store bundle without rewriting the baseline; removal, return/since changes and event payload changes remain refused. Schema-9 `Link?` delegates; a modern shape below 9 without a baseline and a redefined shape at 9 are refused. |
 | reference HTTP config (§4.5) | example source and generated config grant cleartext only to loopback; off-device hosts and wrong loopback ports denied before token lookup; release-device probe with a synthetic bearer distinguishes transport policy from origin permission |
 | seed completion (runtime, §5.2) | marker-only lock retries do not repeat imports; exhaustion retains rows and retries next launch without replacing newer synced rows; non-lock errors are not retried; row-import failure never stamps completion; failed upgrade retains the old marker; matching completion skips import; build, asset-length and missing-file changes trigger import |
-| native HTTP (§4.5) | deny unlisted schemes, hosts and ports before token lookup; generated strict decoding and nonce denial reach the runtime; host token callback takes precedence and token is read per request; page credential and transport headers rejected; real cross-origin redirects returned without contacting the target; authenticated 401 emits once; UTF-8 body and header limits, streamed response cap and total deadline (including late token lookup) enforced; malformed UTF-8 and transport errors disclose no remote text |
+| native HTTP (§4.5) | deny unlisted schemes, hosts and ports before token lookup; generated strict decoding and nonce denial reach the runtime; host token callback takes precedence and token is read per request; page credential and transport headers rejected; real cross-origin redirects returned without contacting the target; authenticated 401 emits once; UTF-8 body and header limits, streamed response cap and total deadline (including late token lookup) enforced; malformed UTF-8 and transport errors disclose no remote text; **the deadline is `E_TIMEOUT`, a transport failure while the OS reports no interface is `E_OFFLINE` and the same failure online — or with no connectivity source — stays `E_INTERNAL`, while an HTTP status is never reinterpreted by connectivity and neither code carries remote text; every size refusal names the observed size and the limit, the streamed one as a floor** |
 | reference REST adapter | real 600-row pull over two pages without skipped rows; durable USNs, tombstones and idempotent push across restart; reused operation id with different payload rejected; lost-reply retry returns current winning row; 601 queued operations accepted within the byte limit and replayed without repeating REST writes; **an item key of `.` or `..` is refused for both a write and a delete, before any upstream request, and refuses the whole batch** (those two survive `encodeURIComponent`, so URL resolution strips them as dot segments and the write lands on the upstream's collection or root endpoint instead) |
 | `valence.mjs` (the skill's `valence.test.mjs`) | key directory inside git, including through a link; keyring entry never overwritten; signing key must match the keyring; sign/verify round trip; tampering, bad signature, unknown key, other `appId` and unsafe paths rejected; native extensions rejected; **a bundle file under the reserved `_host/` prefix is refused by both `bundle` and `verify`, and a relative asset URL in the entry page warns**; **a service-worker registration in the output warns**; `seq` monotonic with the same clock and a slow clock; floor only rises; **a floor above the store build's seq is refused for an OTA, allowed up to that seq, allowed for a `--store` or `--builtin` build, warned about when carried forward, and warned rather than refused when a pipeline restates a carried floor it is not actually raising** (refusing that deadlocked against "the floor only goes up", leaving no buildable number); CSP hashes (CRLF-safe, `wasm-unsafe-eval` only with `.wasm`); additive-only against `storeSchema`, recorded only by `--store`; **a second `--store` build cannot rewrite the recorded schema with a non-additive one, `--rebaseline` lets it through with a warning, and `--store` reports what it recorded**; **`--store` warns when a channel points below the seq it just wrote**; **`requires.bridge` rising above the shipped store build warns, and `--requires-bridge` silences it**; new names need `since` above the shipped version; reserved and colliding names, **including one name declared as both a method and an event**; **a built-in that grows a param is refused without the sibling name that gates it — with and without a store baseline, the sibling the runtime names rather than any name, and the version bump still required on top**; SvelteKit co-located files aren't routes; `web.declaredRoutes` is validated, feeds the manifest and the baseline, and silences the inactive-check warning a project with no scannable routes gets; atomic and validated seed, with a warning for unseeded buckets; the CLI runs through a link; **a wrong `verify --files` level says the directory is wrong rather than naming the first file as missing**; **a built-in declared below its reserved `since` at the built-in's own signature is refused, naming that number, for `notify.*`/`badge.*` at 11, `push.*` at 12, `share.image` at 14 and `notify.pendingIds` at 16, while the same name at a different signature is preserved as app-owned — **including one that differs only in its return, which a params-only comparison missed** — a floorless built-in delegates at any `since`, an app-owned name that merely shares the namespace is untouched, and a name the recorded store schema already shipped is let through**; **an unrecognised name in an area the package ships built-ins in warns and raises a `doctor` WARN naming `create-valence update`, while the template itself and a method outside every such area warn about nothing**; **a built-in's structured return declared with a field this generator has no entry for names that field and the same command, where a known field at the wrong type does not**; a built-in may be omitted but not redefined with a different shape, including `secure.*` and `auth.*`; **a built-in's optional field is passed through when the app's type declares it, omitted from the delegation when it does not, still refused at the wrong type, and additive against a type a `--store` build already recorded — while an app's own shipped type may not grow at all**; generated Dart passes `analyze --fatal-infos` against `package:valence` and satisfies the dispatch cases; the generated `bridge.g.ts` binds the package, including `METHOD_SINCE` refusing a method newer than the host and `EVENT_SINCE` gating an event through `has()` |
 | updater (dart test) | each check 1–7 rejects; `pointer.seq` below `pending` drops `pending`; the rollout gate is deterministic; size cap; **a bundle requiring exactly `hostBridgeVersion` is accepted**; **check 5 refuses a `requires.data` key that is malformed or writable** (the mirror of "a newer bridge is refused": without it a host can under-report its version and brick itself on first launch after a schema bump); **check 5 compares against the generated constant, not a second literal**; an update isn't pending until its data pairs are synced; **a bundle requiring a pair the device lacks becomes pending only after step 7 pulls that pair, and never on an offline device**; **a device holding v1 and v2 of one bucket satisfies a requirement for either** |

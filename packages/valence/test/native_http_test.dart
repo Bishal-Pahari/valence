@@ -14,11 +14,13 @@ void main() {
           {Set<String> origins = const {'https://api.test'},
           Future<String?> Function()? token,
           void Function()? expired,
+          bool Function()? online,
           http.Client Function()? factory}) =>
       ValenceHttp(
         origins: origins,
         token: token ?? () async => 'secret',
         onUnauthorized: expired ?? () {},
+        online: online,
         clientFactory:
             factory ?? () => MockClient((_) async => http.Response('ok', 200)),
       );
@@ -227,10 +229,75 @@ void main() {
         token: () => token.future,
         factory: () => throw StateError('late request started'));
     await expectLater(
-        a.request(url: 'https://api.test'), error(BridgeErrorCode.internal));
+        a.request(url: 'https://api.test'), error(BridgeErrorCode.timeout));
     token.complete('secret');
     await Future<void>.delayed(Duration.zero);
   }, timeout: const Timeout(Duration(seconds: 30)));
+
+  // K F-69's sibling: a page could not tell "no network" from "the server broke" from "that was not
+  // UTF-8", and the first is the only one where the honest UI is silence.
+  test('offline is distinguished from a transport failure, and both stay quiet',
+      () async {
+    final broken = MockClient(
+        (_) async => throw const FormatException('secret token and URL'));
+    try {
+      await api(factory: () => broken, online: () => false)
+          .request(url: 'https://api.test');
+      fail('expected error');
+    } on BridgeError catch (e) {
+      expect(e.code, BridgeErrorCode.offline);
+      expect(e.message, isNot(contains('secret')));
+    }
+    // Online, or with no connectivity source at all, the same failure stays E_INTERNAL: a captive
+    // portal and a down server are not offline, and the host must not claim they are.
+    for (final online in [() => true, null]) {
+      await expectLater(api(factory: () => broken, online: online)
+          .request(url: 'https://api.test'),
+          error(BridgeErrorCode.internal));
+    }
+    // An HTTP status is an answer, not a failure, so connectivity never reinterprets one.
+    expect(
+        (await api(online: () => false).request(url: 'https://api.test')).status,
+        200);
+  });
+
+  test('every size refusal names the observed size and the limit', () async {
+    Future<String> message(Future<Object?> call) async {
+      try {
+        await call;
+        fail('expected error');
+      } on BridgeError catch (e) {
+        return e.message;
+      }
+    }
+
+    expect(
+        await message(api().request(
+            url: 'https://api.test', method: 'POST', body: 'é' * 32769)),
+        contains('65538 bytes; the limit is 65536'));
+    expect(
+        await message(api(
+                factory: () => MockClient((_) async =>
+                    http.Response('x' * 70000, 200)))
+            .request(url: 'https://api.test')),
+        contains('70000 bytes; the limit is 65536'));
+    // A streamed refusal stops reading, so it reports a floor and says that is what it is.
+    expect(
+        await message(api(
+                factory: () => MockClient.streaming((_, __) async =>
+                    http.StreamedResponse(
+                        Stream.fromIterable([
+                          List.filled(32768, 65),
+                          List.filled(32769, 65)
+                        ]),
+                        200)))
+            .request(url: 'https://api.test')),
+        contains('over the limit of 65536 bytes (65537 read'));
+    expect(
+        await message(
+            api().request(url: 'https://api.test', headers: {'x': 'a' * 16384})),
+        contains('bytes; the limit is 16384'));
+  });
   test('bodyless responses do not use representation Content-Length as body size', () async {
     for (final item in [('HEAD', 200), ('GET', 204), ('GET', 304)]) {
       final response = await api(factory: () => MockClient.streaming((_, __) async =>

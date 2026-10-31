@@ -31,6 +31,15 @@ abstract final class BridgeErrorCode {
   /// A refusal, not a fault: nothing changed. The caller syncs the outbox or asks for the discard.
   static const pending = 'E_PENDING';
 
+  /// The OS reports no network interface, so the call was never going to reach anything (§4.5).
+  ///
+  /// A host-side fact that discloses nothing about the remote, which is why it can have a code of its
+  /// own. It is *not* reachability: a captive portal or a down server is [internal], not this.
+  static const offline = 'E_OFFLINE';
+
+  /// A host-side deadline passed — today only `http.request`'s 20 seconds (§4.5).
+  static const timeout = 'E_TIMEOUT';
+
   /// Anything else.
   static const internal = 'E_INTERNAL';
 }

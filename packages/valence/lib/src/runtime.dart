@@ -1023,6 +1023,9 @@ final class Valence {
         token: config.authToken ?? secure.authToken,
         onUnauthorized: () =>
             emit(eventScript('auth.expired', const <String, Object?>{})),
+        // The same value `app.online` reports, read at the moment the request failed rather than
+        // sampled by the page from a second source at some other instant (§4.5, §4.6).
+        online: () => _online,
       ).request(url: url, method: method, headers: headers, body: body);
 
   late final _imageShare =

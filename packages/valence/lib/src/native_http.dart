@@ -27,6 +27,7 @@ final class ValenceHttp {
     required this.origins,
     required this.token,
     required this.onUnauthorized,
+    this.online,
     http.Client Function()? clientFactory,
   }) : _clientFactory = clientFactory ?? http.Client.new;
 
@@ -40,6 +41,13 @@ final class ValenceHttp {
 
   /// Called for a 401 on a request that carried the host token.
   final void Function() onUnauthorized;
+
+  /// The host's current connectivity, if it has one: the `app.online` value (§4.6).
+  ///
+  /// It turns a transport failure into `E_OFFLINE` when the OS says there is no interface at all. That
+  /// is the one failure an offline-first page most wants to tell apart, and it is a host-side fact, so
+  /// it leaks nothing about the remote. Left null the failure stays `E_INTERNAL`.
+  final bool Function()? online;
   final http.Client Function() _clientFactory;
 
   /// UTF-8 body limit in each direction.
@@ -133,8 +141,10 @@ final class ValenceHttp {
     _checkHeaders(values);
     final bytes = utf8.encode(body ?? '');
     if (bytes.length > bodyLimit) {
-      throw const BridgeError(
-          BridgeErrorCode.tooLarge, 'request body exceeds 64 KiB');
+      // Sizes, not just the fact: "paginate or give up?" is the question a cap raises, and it cannot be
+      // answered from a bare refusal. A byte count of the app's own payload discloses nothing.
+      throw BridgeError(BridgeErrorCode.tooLarge,
+          'request body is ${bytes.length} bytes; the limit is $bodyLimit');
     }
 
     http.Client? client;
@@ -144,7 +154,7 @@ final class ValenceHttp {
       // Token lookup can finish after the deadline. Never start a late request.
       if (expired) {
         throw const BridgeError(
-            BridgeErrorCode.internal, 'HTTP deadline exceeded');
+            BridgeErrorCode.timeout, 'the 20-second HTTP deadline passed');
       }
       if (bearer != null && bearer.isNotEmpty) {
         values['authorization'] = 'Bearer $bearer';
@@ -165,13 +175,19 @@ final class ValenceHttp {
           response.statusCode != 204 &&
           response.statusCode != 304 &&
           (response.contentLength ?? 0) > bodyLimit) {
-        throw const BridgeError(
-            BridgeErrorCode.tooLarge, 'response body exceeds 64 KiB');
+        throw BridgeError(
+            BridgeErrorCode.tooLarge,
+            'response declares ${response.contentLength} bytes; '
+                'the limit is $bodyLimit');
       }
       await for (final chunk in response.stream) {
         if (result.length + chunk.length > bodyLimit) {
-          throw const BridgeError(
-              BridgeErrorCode.tooLarge, 'response body exceeds 64 KiB');
+          // Reading stopped here, so this is a lower bound and says so. The actual size is unknown and
+          // guessing it would be worse than naming the floor the page can plan a `Range` against.
+          throw BridgeError(
+              BridgeErrorCode.tooLarge,
+              'response body is over the limit of $bodyLimit bytes '
+                  '(${result.length + chunk.length} read before stopping)');
         }
         result.addAll(chunk);
       }
@@ -190,12 +206,18 @@ final class ValenceHttp {
         expired = true;
         client?.close();
         throw const BridgeError(
-            BridgeErrorCode.internal, 'HTTP deadline exceeded');
+            BridgeErrorCode.timeout, 'the 20-second HTTP deadline passed');
       });
     } on BridgeError {
       rethrow;
     } on Object {
       // Transport/decoder exceptions can contain URLs, headers or remote text. Do not reflect them.
+      // "No network interface" is the host's own fact, though, and it is the one case where the honest
+      // UI is silence rather than an apology — so it gets its own code and no remote text either way.
+      if (online?.call() == false) {
+        throw const BridgeError(BridgeErrorCode.offline,
+            'the device reports no network interface');
+      }
       throw const BridgeError(
           BridgeErrorCode.internal, 'HTTP transport or UTF-8 decoding failed');
     } finally {
@@ -208,8 +230,8 @@ final class ValenceHttp {
     final size = headers.entries.fold<int>(
         0, (n, e) => n + utf8.encode('${e.key}: ${e.value}\r\n').length);
     if (size > headerLimit) {
-      throw const BridgeError(
-          BridgeErrorCode.tooLarge, 'HTTP headers exceed 16 KiB');
+      throw BridgeError(BridgeErrorCode.tooLarge,
+          'HTTP headers are $size bytes; the limit is $headerLimit');
     }
   }
 }

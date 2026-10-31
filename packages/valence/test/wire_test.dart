@@ -75,9 +75,12 @@ void main() {
           BridgeErrorCode.denied,
           BridgeErrorCode.cancelled,
           BridgeErrorCode.tooLarge,
+          BridgeErrorCode.pending,
+          BridgeErrorCode.offline,
+          BridgeErrorCode.timeout,
           BridgeErrorCode.internal,
         },
-        {'E_UNKNOWN', 'E_PARAMS', 'E_UNSUPPORTED', 'E_DENIED', 'E_CANCELLED', 'E_TOO_LARGE', 'E_INTERNAL'},
+        {'E_UNKNOWN', 'E_PARAMS', 'E_UNSUPPORTED', 'E_DENIED', 'E_CANCELLED', 'E_TOO_LARGE', 'E_PENDING', 'E_OFFLINE', 'E_TIMEOUT', 'E_INTERNAL'},
       );
     });
 
