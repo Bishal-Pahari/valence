@@ -89,6 +89,7 @@ class StubNavigationDelegate extends PlatformNavigationDelegate {
   late PageEventCallback started;
   late PageEventCallback finished;
   late UrlChangeCallback urlChanged;
+  late WebResourceErrorCallback resourceError;
 
   @override
   Future<void> setOnNavigationRequest(
@@ -111,7 +112,8 @@ class StubNavigationDelegate extends PlatformNavigationDelegate {
   Future<void> setOnHttpError(HttpResponseErrorCallback callback) async {}
 
   @override
-  Future<void> setOnWebResourceError(WebResourceErrorCallback callback) async {}
+  Future<void> setOnWebResourceError(WebResourceErrorCallback callback) async =>
+      resourceError = callback;
 }
 
 class StubWebViewWidget extends PlatformWebViewWidget {

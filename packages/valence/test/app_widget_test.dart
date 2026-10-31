@@ -16,6 +16,14 @@ import 'package:webview_flutter_platform_interface/webview_flutter_platform_inte
 import 'helpers.dart';
 import 'webview_stub.dart';
 
+/// What iOS reports when the WebView's content process is killed to reclaim memory (§3).
+const contentProcessGone = WebResourceError(
+  errorCode: 2,
+  description: 'WKErrorDomain: the web content process was terminated',
+  errorType: WebResourceErrorType.webContentProcessTerminated,
+  isForMainFrame: true,
+);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late TestKey key;
@@ -726,6 +734,50 @@ void main() {
     expect(log.lines.where((line) => line.startsWith('ready: timed out')),
         isEmpty);
     expect(webview.controller.loads, hasLength(1));
+  });
+
+  testWidgets(
+      'a dead content process reloads the same route and counts no trial failure',
+      (tester) async {
+    await mount(tester, pending: true);
+    final controller = webview.controller;
+    expect(runtime.state.serving, trial.seq);
+    await tester.runAsync(() async =>
+        controller.navigation.started('${runtime.server!.origin}/notes'));
+    await tester.runAsync(
+        () async => controller.navigation.resourceError(contentProcessGone));
+    await io(tester);
+    expect(controller.loads, hasLength(2));
+    expect(controller.loads.last.toString(), '${runtime.server!.origin}/notes',
+        reason: 'the same bundle, at the route the user was on');
+    expect(runtime.manifest!.seq, trial.seq,
+        reason: 'the device killed the renderer, so the trial stays on screen');
+    // The ticker armed for the page that died must not fire: its timeout would spend a §2.4 strike.
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 1200)));
+    await io(tester);
+    expect(runtime.state.trialFails, 0, reason: '${log.lines}');
+    expect(runtime.state.serving, trial.seq);
+    expect(log.lines.where((line) => line.startsWith('ready: timed out')),
+        isEmpty);
+  });
+
+  testWidgets('a content process that keeps dying stops being reloaded',
+      (tester) async {
+    await mount(tester);
+    final controller = webview.controller;
+    for (var i = 0; i < 4; i++) {
+      await tester.runAsync(
+          () async => controller.navigation.resourceError(contentProcessGone));
+      await io(tester);
+    }
+    expect(controller.loads, hasLength(4),
+        reason: 'the start-up load plus three recoveries, then no more');
+    expect(
+        log.lines.where((line) => line.contains('died again after 3 reloads')),
+        hasLength(1));
+    expect(find.byKey(const ValueKey('stub-webview')), findsNothing,
+        reason: 'the dead WebView is released so the device can reclaim it');
   });
 
   testWidgets(

@@ -213,8 +213,7 @@ class _ValenceAppState extends State<ValenceApp>
           },
           onHttpError: (e) => _log(
               'webview http ${e.response?.statusCode} for ${e.request?.uri}'),
-          onWebResourceError: (e) =>
-              _log('webview resource error ${e.errorCode}: ${e.description}'),
+          onWebResourceError: _onWebResourceError,
         ),
       );
       await controller.loadRequest(
@@ -381,6 +380,53 @@ class _ValenceAppState extends State<ValenceApp>
     } else {
       _stopReadyTimer();
     }
+  }
+
+  /// How many content-process deaths one launch recovers from.
+  ///
+  /// ponytail: a flat cap, because the memory pressure that killed the renderer is usually still
+  /// there — reloading without end would spend the battery and leave the page blank anyway. Raise it
+  /// only with device evidence that a later attempt succeeds.
+  static const _maxRendererReloads = 3;
+  int _rendererReloads = 0;
+
+  void _onWebResourceError(WebResourceError e) {
+    _log('webview resource error ${e.errorCode}: ${e.description}');
+    if (e.errorType == WebResourceErrorType.webContentProcessTerminated) {
+      unawaited(_onRendererLoss());
+    }
+  }
+
+  /// §3: the WebView's content process was killed to reclaim memory, so the page is gone while the
+  /// host is still running.
+  ///
+  /// The device did that, not the release — so this reloads the same bundle at the same route, spends
+  /// no §2.4 trial strike, and tells the page nothing it has to handle. Android never reaches here:
+  /// `webview_flutter_android` exposes no `onRenderProcessGone`, so Chromium kills the whole process
+  /// first (§3, "Renderer loss").
+  Future<void> _onRendererLoss() async {
+    // The ready timer stops first. Its page no longer exists, and a timeout now would spend a strike
+    // on a bundle whose renderer the OS killed. `_onPageStarted` arms a fresh one for the reloaded
+    // page, so the trial still gets its whole window.
+    _stopReadyTimer();
+    final controller = _controller;
+    if (controller == null || _origin.isEmpty) return;
+    _pageLoaded = false;
+    if (_rendererReloads >= _maxRendererReloads) {
+      _log('webview: the content process died again after $_rendererReloads '
+          'reloads; giving up so the device can reclaim the WebView');
+      if (mounted) {
+        setState(() => _error = StateError(
+            'The WebView content process was killed $_maxRendererReloads times. '
+            'The device is out of memory; reopen the app.'));
+      }
+      return;
+    }
+    _rendererReloads++;
+    final target = Uri.parse('$_origin${_valence.restoration.route}');
+    _log('webview: the content process died; reloading $target '
+        '($_rendererReloads of $_maxRendererReloads), counting no trial failure');
+    await controller.loadRequest(target);
   }
 
   void _onPageFinished(String url) {
