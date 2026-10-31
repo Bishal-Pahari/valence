@@ -43,7 +43,7 @@ const TEMPLATES = join(import.meta.dirname, '..', 'templates');
 // Listed here rather than per test, because every new runtime capability has to land in exactly one place
 // for the "an older app still codegens" cases to keep meaning what they say.
 const SINCE_ABOVE_4 = {
-  methods: ['data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings', 'notify.permission', 'notify.schedule', 'notify.cancel', 'notify.pending', 'notify.pendingIds', 'notify.initial', 'notify.channels.set', 'badge.set', 'badge.clear', 'push.token', 'push.permission', 'push.initial', 'share.image'],
+  methods: ['app.openStore', 'data.getMany', 'sync.status', 'data.count', 'app.state', 'bundle.status', 'state.save', 'state.restore', 'auth.account', 'link.initial', 'permissions.check', 'permissions.request', 'permissions.openSettings', 'notify.permission', 'notify.schedule', 'notify.cancel', 'notify.pending', 'notify.pendingIds', 'notify.initial', 'notify.channels.set', 'badge.set', 'badge.clear', 'push.token', 'push.permission', 'push.initial', 'share.image'],
   events: ['app.appearance', 'sync.done', 'app.lifecycle', 'app.online', 'link.opened', 'permissions.changed', 'notify.tapped', 'notify.action', 'push.received', 'push.tapped', 'push.tokenChanged'],
   types: ['SyncStatus', 'AppState', 'BundleStatus', 'Link', 'PermissionState', 'NotifyScheduled', 'NotifyPending', 'PushMessage'],
 };
@@ -346,7 +346,7 @@ const editSchema = (root, fn) => {
 test('task restoration is optional, shape-frozen and delegated to the package', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 16);
+  assert.equal(schema.version, 17);
   assert.equal(schema.methods['state.save'].since, 8);
   assert.equal(schema.methods['state.restore'].since, 8);
   codegen({ root, cfg });
@@ -1361,7 +1361,7 @@ test('a retired method keeps its wire contract, loses its handler and stops warn
   // and the manifests directory.
   const row = async () => (await diagnose({ root, cfg })).find(([, name]) => name === 'oldest servable bundle');
   // With no release cut, the built-in bundle is the whole answer and it is at the current schema.
-  assert.match((await row())[2], /requires bridge 16 \(built-in seq \d+\)/);
+  assert.match((await row())[2], /requires bridge 17 \(built-in seq \d+\)/);
   // The OTA release pinned to an older host is what sets the line.
   bundle({ root, cfg, key, requiresBridge: 15, now: NOW + 1000 });
   const servable = await row();
@@ -1734,6 +1734,9 @@ test('schema 15 fields are nullable and additive against a recorded schema 14', 
   const { root, cfg, key } = fixture({ latest: true });
   editSchema(root, s => {
     s.version = 14;
+    delete s.methods['app.openStore'];
+    delete s.types.BundleStatus.requiredBridge;
+    delete s.types.BundleStatus.minHost;
     delete s.methods['notify.pendingIds'];
     delete s.types.AppInfo.builtins;
     delete s.types.SyncStatus.reason;
@@ -2418,7 +2421,7 @@ test('notify.pendingIds is a schema-16 built-in that returns bare IDs and cannot
   const { root, cfg, key } = fixture({ latest: true });
   cfg.notifications = { enabled: true, icon: 'ic_stat_demo' };
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 16);
+  assert.equal(schema.version, 17);
   assert.equal(schema.methods['notify.pendingIds'].since, 16);
   // notify.pending keeps every field it has: an app that reads it still gets titles and payloads.
   assert.equal(schema.methods['notify.pending'].returns, 'NotifyPending[]');
@@ -2467,7 +2470,7 @@ test('push builtins freeze permission and nullable initial-message shapes', () =
 test('push uses reserved schema 12 while older app-owned push shapes remain custom', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 16);
+  assert.equal(schema.version, 17);
   assert.equal(schema.methods['auth.account'].since, 13);
   for (const group of ['methods', 'events']) {
     for (const [name, def] of Object.entries(schema[group])) {
@@ -2481,6 +2484,7 @@ test('push uses reserved schema 12 while older app-owned push shapes remain cust
   assert.match(ts, /'push.initial': 12/);
   editSchema(root, (s) => {
     s.version = 11;
+    delete s.methods['app.openStore'];
     delete s.types.AppInfo.builtins;
     delete s.methods['notify.pendingIds'];
     delete s.methods['share.image'];
@@ -2502,7 +2506,7 @@ test('push uses reserved schema 12 while older app-owned push shapes remain cust
  test('schema 16 pending IDs are additive, shape-frozen and delegated', () => {
   const { root, cfg, key } = fixture({ latest: true });
   const latest = readFileSync(schemaFile(root), 'utf8');
-  editSchema(root, s => { s.version = 15; delete s.methods['notify.pendingIds']; });
+  editSchema(root, s => { s.version = 15; delete s.methods['app.openStore']; delete s.types.BundleStatus.requiredBridge; delete s.types.BundleStatus.minHost; delete s.methods['notify.pendingIds']; });
   bundle({ root, cfg, key, store: true, now: NOW });
   writeFileSync(schemaFile(root), latest);
   codegen({ root, cfg });
@@ -2515,4 +2519,29 @@ test('push uses reserved schema 12 while older app-owned push shapes remain cust
   writeFileSync(schemaFile(root), latest);
   editSchema(root, s => { s.methods['notify.pendingIds'].since = 15; });
   assert.throws(() => codegen({ root, cfg }), /since|below/);
+});
+
+
+test('R31 signed minimum-host policy, numeric validation, builtin self-refusal and legacy codegen', () => {
+  const f = fixture({ latest: true });
+  const release = bundle({ ...f, minHost: 18, now: NOW });
+  assert.equal(release.manifest.minHost, 18);
+  assert.equal(verifyBundle({ ...release, keyring: f.keyring, appId: f.cfg.appId }).minHost, 18);
+  for (const minHost of [0, -1, 1.5, '18', null, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => bundle({ ...f, minHost, now: NOW }), /min-host/);
+  }
+  assert.throws(() => bundle({ ...f, minHost: 18, builtin: true, now: NOW }), /exceeds this built-in/);
+  const generated = codegen({ root: f.root, cfg: f.cfg });
+  const dart = readFileSync(join(f.root, 'mobile/lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart, /await valence.openStore/);
+  assert.match(dart, /requiredBridge: s.requiredBridge/);
+  editSchema(f.root, (schema) => {
+    delete schema.types.BundleStatus.requiredBridge;
+    delete schema.types.BundleStatus.minHost;
+    delete schema.methods['app.openStore'];
+  });
+  codegen({ root: f.root, cfg: f.cfg });
+  assert.match(readFileSync(join(f.root, 'mobile/lib/valence/bridge.g.dart'), 'utf8'), /needsStoreUpdate \? 'rejected'/);
+  f.cfg.store = { iosAppId: '../wrong' };
+  assert.throws(() => codegen({ root: f.root, cfg: f.cfg }), /iosAppId/);
 });

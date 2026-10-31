@@ -53,6 +53,7 @@ const RESERVED_TYPES = new Set('Json Methods Events Object String Number Boolean
 // what exists. A field never moves from `fields` to `optional` or back: `fields` is the shape every host
 // has always returned.
 const BUILTINS = {
+  'app.openStore': { minSince: 17, params: {}, returns: 'void', call: () => 'await valence.openStore();' },
   'state.save': { params: { json: 'json?' }, returns: 'void', call: () => 'valence.stateSave(p.json);' },
   'state.restore': { params: {}, returns: 'json?', call: () => 'return valence.stateRestore();' },
 
@@ -118,11 +119,11 @@ const BUILTINS = {
     params: {},
     returns: {
       fields: { serving: 'int', pending: 'int?', trial: 'int?', reason: 'string', offered: 'int?', checkedAt: 'int?' },
-      optional: { urgent: 'bool?' },
+      optional: { urgent: 'bool?', requiredBridge: 'int?', minHost: 'int?' },
     },
     call: (t, has) =>
       `final s = ${has('urgent') ? 'await valence.bundleStatusWithUrgency()' : 'valence.bundleStatus()'};
-        return ${t}(serving: s.serving, pending: s.pending, trial: s.trial, reason: s.reason.name, offered: s.offered, checkedAt: s.checkedAt${has('urgent') ? ', urgent: s.urgent' : ''});`,
+        return ${t}(serving: s.serving, pending: s.pending, trial: s.trial, reason: ${has('requiredBridge') ? 's.reason.name' : "s.reason == ValenceBundleReason.needsStoreUpdate ? 'rejected' : s.reason.name"}, offered: s.offered, checkedAt: s.checkedAt${has('urgent') ? ', urgent: s.urgent' : ''}${has('requiredBridge') ? ', requiredBridge: s.requiredBridge' : ''}${has('minHost') ? ', minHost: s.minHost' : ''});`,
   },
   'data.get': {
     params: { bucket: 'string', key: 'string' },
@@ -529,7 +530,7 @@ const relativeAssetRefs = (html) => {
 };
 
 // store: this built-in bundle goes to the stores, so its routes and bridge schema become the baseline (implies builtin).
-export function bundle({ root, cfg, key, builtin = false, store = false, rebaseline = false, floor, requiresBridge, urgent = false, now = Date.now() }) {
+export function bundle({ root, cfg, key, builtin = false, store = false, rebaseline = false, floor, requiresBridge, minHost, urgent = false, now = Date.now() }) {
   builtin ||= store;
   const p = paths(root, cfg);
   const src = resolve(root, cfg.web.out);
@@ -644,6 +645,7 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
   // requires.bridge is a one-way door like floor: check 5 makes every host below it refuse this bundle *and* every
   // later release, because they inherit the same default. has() exists so one bundle can serve old and new hosts, so
   // say so when the default would undo it.
+  if (minHost !== undefined && (!Number.isSafeInteger(minHost) || minHost < 1)) throw new Error('--min-host must be a positive safe integer');
   const bridge = requiresBridge ?? (builtin ? schema.version : baseline.storeSchema?.version ?? schema.version);
   // A built-in bundle is the one bundle its own host cannot decline: check 5 refuses it on first launch and a fresh
   // install has no `current` to fall back to, so the app has nothing to paint (§2.4 step 1). Compare against the
@@ -651,6 +653,7 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
   if (builtin) {
     const generated = existsSync(p.dart) ? /\bconst hostBridgeVersion = (\d+);/.exec(readFileSync(p.dart, 'utf8'))?.[1] : undefined;
     const hostBridge = generated === undefined ? schema.version : Number(generated);
+    if ((minHost ?? 0) > hostBridge) throw new Error(`--min-host ${minHost} exceeds this built-in host bridge ${hostBridge}`);
     if (bridge > hostBridge) {
       throw new Error(
         `requires.bridge would be ${bridge}, above the ${generated === undefined ? `schema version ${hostBridge}` : `hostBridgeVersion ${hostBridge} in ${relative(root, p.dart)}`}, so this host refuses its own built-in bundle at check 5 and a fresh install has nothing to serve. ${generated !== undefined && hostBridge < schema.version ? 'Run codegen: the generated constant is behind the schema.' : 'Bump the schema, or drop --requires-bridge for a built-in build.'}`,
@@ -688,6 +691,7 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
     version: `${new Date(now).toISOString().slice(0, 10)}+${seq}`,
     floor: floor ?? baseline.floor ?? 0,
     requires: { bridge, data: cfg.data ?? {} },
+    ...(minHost === undefined ? {} : { minHost }),
     entry,
     csp: buildCsp(blobs.get(files[entry].h).toString('utf8'), cfg, Object.keys(files).some((f) => f.toLowerCase().endsWith('.wasm'))),
     urgent,
@@ -768,6 +772,7 @@ export function verifyBundle({ manifestPath, filesDir, keyring, appId }) {
   const m = JSON.parse(bytes);
   if (m.format !== 1) throw new Error(`unsupported manifest format ${m.format}`);
   if (appId && m.appId !== appId) throw new Error(`manifest is for ${m.appId}, not ${appId}`);
+  if (Object.hasOwn(m, 'minHost') && (!Number.isSafeInteger(m.minHost) || m.minHost < 1)) throw new Error('minHost must be a positive safe integer');
   if (!Number.isInteger(m.seq) || !Number.isInteger(m.floor) || m.floor > m.seq) throw new Error('bad seq/floor');
   if (!Object.hasOwn(m.files, m.entry)) throw new Error(`entry ${m.entry} is not in files`);
   // Validate every entry before looking at the directory, so a malformed manifest is still named as malformed.
@@ -1515,6 +1520,8 @@ const dartStr = (s) =>
     .replace(/[\x00-\x1f\x7f]/g, (c) => `\\u{${c.charCodeAt(0).toString(16)}}`)}'`;
 
 export function genDartConfig(cfg, keyring) {
+  const iosAppId = cfg.store?.iosAppId;
+  if (iosAppId !== undefined && (typeof iosAppId !== 'string' || !/^[0-9]{1,20}$/.test(iosAppId))) throw new Error('store.iosAppId must be a numeric Apple App Store ID string');
   const linkOrigins = validateLinkOrigins(cfg.links?.origins ?? []);
 
   const kinds = cfg.permissions?.kinds ?? [];
@@ -1550,6 +1557,7 @@ export function genDartConfig(cfg, keyring) {
     '  bridgeVersion: hostBridgeVersion,',
     '  notificationEventFields: hostNotificationEventFields,',
     `  notificationsEnabled: ${cfg.notifications?.enabled ?? false},`,
+    ...(iosAppId === undefined ? [] : [`  iosAppId: ${dartStr(iosAppId)},`]),
     `  notificationIcon: ${dartStr(cfg.notifications?.icon ?? 'ic_stat_valence')},`,
     '  channel: valenceOtaChannel,',
     `  otaBase: ${dartStr(cfg.ota?.base ?? '')},`,
@@ -1999,7 +2007,7 @@ const HELP = `Valence CLI ${VALENCE_VERSION} (spec: references/contracts.md)
   valence version                        print the CLI version (doctor compares it with the skill copy)
   valence keygen                         new Ed25519 key in ~/.valence/keys, public key into valence/keyring.json
   valence codegen [--check]              bridge.schema.json -> bridge.g.ts, bridge.g.dart, config.g.dart
-  valence bundle [--builtin | --store [--rebaseline]] [--floor N] [--requires-bridge N] [--urgent] [--key file]
+  valence bundle [--builtin | --store [--rebaseline]] [--floor N] [--requires-bridge N] [--min-host N] [--urgent] [--key file]
                                     sign the web build: --builtin into the host assets, else into .valence/dist-ota;
                                     --store = --builtin for a build you submit to the stores (records the baseline);
                                     --rebaseline lets --store overwrite a recorded store schema it would otherwise refuse
@@ -2034,6 +2042,7 @@ export async function main(argv) {
       urgent: { type: 'boolean', default: false },
       floor: { type: 'string' },
       'requires-bridge': { type: 'string' },
+      'min-host': { type: 'string' },
       channel: { type: 'string', default: 'production' },
       seq: { type: 'string' },
       rollout: { type: 'string' },
@@ -2080,6 +2089,7 @@ export async function main(argv) {
       rebaseline: v.rebaseline,
       urgent: v.urgent,
       floor: v.floor === undefined ? undefined : int(v.floor, '--floor'),
+      minHost: v['min-host'] === undefined ? undefined : int(v['min-host'], '--min-host', 1),
       requiresBridge: v['requires-bridge'] === undefined ? undefined : int(v['requires-bridge'], '--requires-bridge', 1),
     });
     for (const w of r.warnings) console.warn(`warning: ${w}`);

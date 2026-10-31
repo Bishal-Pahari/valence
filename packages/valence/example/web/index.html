@@ -35,6 +35,9 @@
       <pre id="batch">reading data.getMany…</pre>
       <pre id="status">reading sync.status…</pre>
       <pre id="link">No link received</pre>
+      <button id="store-update">Open app store</button>
+      <button id="read-update">Read update status</button>
+      <pre id="store-status" role="status"></pre>
     </section>
 
     <section>
@@ -421,6 +424,15 @@
           } catch (e) { document.getElementById('share-result').textContent = String(e); }
         });
       }
+
+      document.getElementById('store-update').addEventListener('click', async () => {
+        try { await call('app.openStore'); }
+        catch (e) { document.getElementById('store-status').textContent = String(e); }
+      });
+      document.getElementById('read-update').addEventListener('click', async () => {
+        try { document.getElementById('store-status').textContent = JSON.stringify(await call('bundle.status')); }
+        catch (e) { document.getElementById('store-status').textContent = String(e); }
+      });
 
       (async () => {
         try {
