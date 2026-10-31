@@ -1,5 +1,83 @@
 # Integration acceptance refresh - 2026-10-31
 
+## App-c iteration 22 completed follow-up
+
+Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 22.
+Packages remains code d771105 / site 53d3a91. All 29 feature and compatibility
+tips, including sync-fixes, plus packages are ancestors of integration in both
+repos. No missing merge or eligible must-have remains. S1 stays parked; S2 needs
+a Play account.
+
+The current Settings return improves the evidence without closing old failures:
+
+- Loaded App info XML, saved PID 29459 and the viewed painted app screenshot
+  before explicit relaunch establish one same-process Settings return. Current
+  lastanr says no ANR since boot. This does not establish memory-pressure
+  resilience or repair major F-35/F-36; their earlier observations remain valid.
+- Ordinary launch again brings up the orphaned picker without an App C PID
+  (F-29); explicit fresh-task recovery is a separate result. Four foreground
+  sync replies report ok/pending0, without establishing four worker overlaps
+  or repairing major/open F-33. Settled offline/pending1 and reconnect/ok/pending0
+  are accepted separately. Startup open completion is not first-paint timing.
+
+Separately checked saved background acceptance without operating either app:
+
+- Exact new callback begin 21:31:09.711, complete 21:31:12.430 and WorkManager
+  SUCCESS 21:31:12.450 share PID 32285 and are absent from the before log.
+  First worker receipts pull units above cursor 320002 and acknowledge two
+  outgoing inspection objects. The inbound fixture already existed: USN 330002
+  updates it to origin 330000, rather than proving insertion of a new key.
+- Supplied pre-resume native SQLite results contain that incoming row, outgoing
+  objects at USNs 330001/330002 and outboxCount=0. This run checked supplied
+  results, not an independent database extraction. The forced execution observed
+  after 483.355 seconds proves one run, not long-term scheduling cadence.
+- Independently compared both raw activation files: byte-identical, SHA256
+  baec7203e81bf6121b17ba031f81200e38b2bbb39f010f0e61d63ff9dec002c0,
+  current 1793461074 / pending 1793461086 / trial=null. Final saved state commits
+  1793461086 with pending/trial=null after resume. Cleanup records airplane off,
+  stopped app/mocks, unreachable owned services and no forwards. All 39 supplied
+  final audit checks pass; their preliminary missing-file failures are excluded.
+
+Decision: preserve users' data, shipped contracts, additive R31 revision 17 and
+transaction/lease/retry rules. A successful Settings return is useful regression
+evidence, not a reason to dismiss the earlier ANR or process/renderer loss.
+Require blocking-thread/transaction-owner evidence and recovery coverage before
+a causal runtime change. F-27 host-file lifecycle, F-29 ordinary launch and F-34
+stale banner remain open or limited; app pagination remains deferred. Kundalini
+F-63/F-65 and F-64 adoption status are unchanged.
+
+Evidence validation: BOM-aware saved-result assertions, exact new callback lines,
+raw hashes, all 29 branch-tip ancestry checks in both repos and unchanged
+implementation trees against gated R31 code 38a7714 / site fb7bc44. The first
+local lastanr assertion used uppercase No; it passed after matching the actual
+lowercase saved text. No runtime assertion or test was changed.
+
+Fresh package/site gates on the unchanged combined implementation (October 31).
+Logs: `%TEMP%/valence-oct31-app22-*.log`.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 107 passed, zero failures/skips; generated Dart and strict/verbatim TS ran |
+| Core flutter test --no-pub --concurrency=2 | 556 passed |
+| Core / push dart analyze --fatal-infos . | No issues in either package |
+| Core / push flutter pub publish --dry-run | Zero warnings; push retains one local-override hint |
+| Push / example flutter test --no-pub | 2 / 28 passed |
+| Bridge node --test test/*.test.ts | 29 passed, zero failures/skips |
+| Bridge strict/verbatim TypeScript | Passed with -p tsconfig.json --strict --verbatimModuleSyntax |
+| Root / bridge npm pack --dry-run | Passed / passed |
+| Site npm run build / SEO | 44 pages passed |
+| Debug APK / standalone Windows py Firebase audit | Passed, assembleDebug 235.9s / PASS: graph, manifest and all 19 DEX files |
+
+The APK used process-scoped 2 GiB Gradle heap, 1 GiB metaspace, two workers
+and ActiveProcessorCount=2. The existing app_badge_plus Kotlin migration warning
+remains. The Firebase audit ran standalone through Windows py after the build.
+Full gates passed on their first completed runs; no test assertion was weakened.
+
+Integration readiness is not beta acceptance. No emulator run, independent
+runtime review, app writes, protected-branch changes, package/schema changes,
+pushes or publications occurred. iOS and real remote push remain unverified.
+
+
 ## App-c iteration 21 completed follow-up
 
 Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 21.
