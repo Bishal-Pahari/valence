@@ -35,7 +35,34 @@ Independent review found no confirmed remaining issue and ran eight focused R31
 Flutter tests successfully. No protected branch merge/commit, test-app writes,
 version bump, pushes or publications.
 
-Integration gate rerun: PENDING. Earlier full gates below retain their original scope.
+Integration gate rerun completed 2026-10-31 on the merged implementation:
+
+| Gate | Result |
+|---|---|
+| npm test | 107 passed, zero skips; generated Dart ran |
+| Core flutter test --concurrency=1 | 556 passed |
+| Core fatal-info Dart analysis | No issues |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 29 passed / passed / passed |
+| Example tests | 28 passed |
+| Push tests / fatal-info analysis | 2 passed / no issues |
+| Core / push pub publish --dry-run | Zero warnings / zero warnings, one existing override hint |
+| Root npm pack --dry-run | Passed |
+| Site build and SEO | 44 pages passed |
+| Example codegen check / signed builtin | No stale output / seq 1793431100 verified |
+| Debug APK | Passed in 26.7s |
+| Windows py Firebase audit | PASS: package graph, manifest and all 19 DEX files free of Firebase SDK references |
+
+APK SHA256 is 18123186a1fbfd5cdaf3071d733c0fb2bf43e485941b5992c664f8ddb84cb8b3,
+identical to the device-tested R31 APK. Gate logs: %TEMP%/valence-r31-integration-*.log.
+Implementation trees still match codex/r31, both worktrees are clean, and packages
+heads remain d771105 / 53d3a91. The final changes below this validation are reports
+only; the package/site source and signed artifacts are unchanged.
+
+Earlier full gates below retain their original scope. R31 readiness does not close
+app-c F-33/F-27, establish network policy delivery, or verify iOS or a public store
+upgrade. No additional must-have is eligible; S1 stays parked and S2 needs a Play
+account. All app repositories remained read-only and the shared emulator was released.
+
 
 
 ## App-c iteration 12 follow-up
