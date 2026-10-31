@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: cache selected REST responses offline
+
+Revision 18 adds `data.cache` behind a compiled per-bucket `cache` grant.
+Regenerate and ship a store host to opt in. Cached values are disposable overlays
+with no server cursor or outbox; pulls replace them and recorded account changes
+clear them. Existing synced rows and pending writes survive database migration 3.
+Read [the guide](https://getvalence.pages.dev/docs/guides/rest-cache/) before using
+account data or changing bucket schemas.
+
 ## Unreleased: what happens when the OS kills the WebView
 
 **Read this before you ship to a cheap phone.** Your page does not run in your app's process. The

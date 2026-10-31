@@ -126,3 +126,12 @@ Development startup logs `dev: serving upstream <origin>` and says OTA checks, t
 commits and `bundle.applyUpdate` are disabled. Each skipped ready, signed reload, update check
 or apply call also logs a `dev:` diagnostic. A successful call in this mode does not prove an
 OTA transition. Restart without `VALENCE_DEV_URL` for signed offline and rollback validation.
+
+## REST cache example
+
+The example schema declares `data.cache` at revision 18 and grants `plants` in
+compiled `cacheBuckets`. Its wiring test writes a disposable REST-shaped value,
+reads it back through the bridge and rejects caching in writable `shelf`. The
+checked-in signed builtin remains the previously verified revision-17 bundle;
+new schema wiring alone is not a new signed UI or Android device acceptance.
+See [REST caching](../../../docs/rest-cache.md). iOS remains experimental and untested.

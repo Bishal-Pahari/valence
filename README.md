@@ -282,3 +282,7 @@ Remote push is a native package opt-in: add `valence_push` and pass `createFireb
 Store-host update prompts and signed mandatory policies are documented in
 [Forcing an update](docs/forcing-an-update.md). Revision 17 adds fixed-destination `app.openStore`,
 nullable status fields and a native blocker; older runtimes cannot be forced.
+
+Cache selected REST responses for offline reads with revision-18 `data.cache`,
+behind a compiled per-bucket grant. See [REST caching](docs/rest-cache.md) for
+pull precedence, account clearing, retention and schema lifetimes.
