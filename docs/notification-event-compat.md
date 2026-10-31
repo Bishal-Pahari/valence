@@ -8,6 +8,73 @@ ID. Regenerated config names the compatible events and fields; a native adapter 
 event using the original ID carried inside the app's own payload. Warm and cold taps use the same
 conversion without changing the shipped schema or erasing its baseline.
 
+## App-c iteration-10 acceptance refresh - 2026-10-31
+
+### In plain terms
+
+App-c has now adopted the supported adapter without changing its shipped schema.
+Its real warm tap preserves the string ID, and the cold reminder opens the intended
+inspection with its retained photo. This closes F-30 for that app and snapshot.
+A separate foreground sync transaction error, F-33, remains open; a successful
+retry and this branch's package tests do not close it.
+
+Both apps' findings and newest reports were read read-only: Kundalini 16 and
+app-c 10. The earlier iteration-9 failure below is historical. Independently
+checked app-c's iteration-10 captures:
+
+- `warm-tap-events.json` contains string ID `iteration-10-warm` and the page on
+  Flat 1; `event-contract-check.json` has one tap, no violations and passed=true.
+  The host passes `notificationEventAdapter`, generated config supplies
+  `hostNotificationEventFields`, and cold startup consumes `notifications.initial()`.
+- `reconnect.json` returns E_INTERNAL with "no current transaction" for COMMIT.
+  `database-error-logcat.txt` places the error at 08:26:46.529 between worker begin
+  at 08:26:46.380 and completion at 08:26:48.415 in PID 4518. This establishes
+  overlap and a failed call, not its cause, data loss or permanent damage.
+  `reconnect-retry.json` succeeds with reason=ok and pending=0: recovery only.
+- Independently hashed both raw background activation files: SHA256
+  `b8c751e9fc92c5cde6947e0f38244666801bca381fa40ea8e572c40c8c1f56af`.
+  The eligible **forced** periodic run preserves current 1793414964, pending
+  1793415091 and trial=null. Both pulls return zero rows; two outgoing objects
+  are acknowledged. This proves neither natural cadence nor new inbound data.
+- `final-state.json` records current 1793415091, previous 1793414964,
+  pending/trial=null and bad 1793414884. The report excludes an interrupted
+  build-2-to-3 retained upgrade; later build-3 reinstalls do not replace that test.
+
+Decision, security and users' data first: keep the reviewed runtime and additive
+event declarations. Do not swallow COMMIT errors, classify them as busy, change
+transaction/lease budgets or clear app data on temporal overlap alone. The next
+F-33 investigation needs a retained-database Android UI/worker reproduction and
+transaction ownership evidence. No eligible new must-have exists; S1 remains
+parked, S2 needs a Play account and the post-beta Playground is not started.
+F-27's host-file lifecycle documentation gap remains open. F-31 is corrected in
+the refreshed app docs. Real remote push and iOS remain unverified.
+
+Bases remain code packages `d771105ad666e84b29c1545ed7b6db403f79d46a` and site
+packages `53d3a919b999fe62fee3d3928bbaf3a235068c58`; merging each into
+`codex/notify-event-compat` reports already up to date. All numbered feature tips,
+link-compat and sync-fixes are ancestors of packages in both repos. Schema 16,
+R4 since 11 and pendingIds since 16 remain unchanged. Only reports change; the
+existing security checklist still applies. No new runtime review or emulator run,
+test-app write, protected-branch merge, version bump, push or publication.
+
+Fresh logs: `%TEMP%/valence-oct31-app10-*.log`.
+
+| Gate | Result |
+| --- | --- |
+| npm test | 106 passed, zero skips; generated Dart and strict/verbatim TS ran |
+| Core / push / example Flutter tests | 548 / 2 / 27 passed |
+| Core / push fatal-info Dart analysis | No issues in either package |
+| Core / push pub publish --dry-run | Zero warnings; push retains one override hint |
+| Bridge tests / strict-verbatim TS | 29 passed / passed |
+| Root / bridge npm pack --dry-run | Passed / passed |
+| Site build / SEO | 43 pages passed |
+| Example codegen / signature verification | written: []; seq 1793209750, two files verified |
+| Debug APK / standalone Windows py Firebase audit | Passed, assembleDebug 41.5s / PASS: graph, manifest, all 19 DEX files |
+
+The APK used process-scoped 2 GiB heap, 1 GiB metaspace, two Gradle workers and
+ActiveProcessorCount=2. The existing app_badge_plus Kotlin migration warning
+remains. No installation or F-33 device acceptance is inferred.
+
 ## Final retirement-review R4 refresh - 2026-10-31
 
 ### In plain terms
