@@ -1,5 +1,65 @@
 # Integration acceptance refresh - 2026-10-31
 
+## App-c iteration 16 completed follow-up
+
+Read both findings and newest reports read-only: Kundalini 16 and app-c 16.
+Packages remains code d771105 / site 53d3a91. All 29 checked numbered feature
+and compatibility tips, plus packages, are ancestors of integration in both
+repositories. No missing merge or eligible must-have remains. S1 stays parked;
+S2 needs a Play account.
+
+Checked retained iteration-16 artifacts without operating or modifying either app:
+
+- Current fresh-task PID 424 starts background sync at 16:40:31.807, before
+  open completes at 16:40:31.995; the callback completes at 16:40:45.388.
+  startup-logcat.txt is historical; fresh-task-logcat.txt supplies this overlap
+  on the prior OTA, before the rebuilt install. No original COMMIT recurrence
+  appears in this interval. Non-reproduction does not repair major/open F-33.
+- The initial retained-task launch produces no app PID; explicit fresh-task
+  recovery paints retained data. This does not establish a Valence cause or
+  recovery of the original ghost task. The recreated unfinished-picker/link/
+  process-kill sequence on rebuilt host4 reaches Carlow and returns native
+  unit-0402. The combined app-owned latest-link/early-listener mitigation is
+  preserved; no built-in link contract or package repair follows from it.
+- Unlike iteration 15's host3-only isolated worker, this isolated run follows
+  the host4 rebuild. The observer records forced execution after 484 seconds.
+  Callback begin/complete counts each increase from four to five; PID 4424 begins
+  at 16:59:36.159, completes at 16:59:37.661 and reports WorkManager SUCCESS at
+  16:59:37.674. The first owned mock request block pulls two unit rows above
+  cursor 140001 and acknowledges two outgoing inspection objects. Later
+  foreground requests are excluded. This is not natural periodic cadence.
+- The supplied pre-resume SQLite result records iteration-16-inbound at USN
+  150002, outgoing objects at USNs 150001/150002 and outboxCount=0. Its companion
+  review records stable private DB/WAL snapshots. This run checked supplied
+  rows and receipts; it did not extract or independently query the device DB.
+- Independently hashed both raw activation files: each is SHA256
+  87399eea2140d060408894c700964feb9194bcbb5eb3062e19dc5eb1765a0809.
+  Current 1793444756, pending 1793444775 and trial=null stay byte-identical.
+  This extends pending-OTA preservation evidence to the rebuilt host4 interval.
+- The warm tap preserves string ID iteration-16-rebuilt-warm; its audit records
+  one tap/zero violations. Final state commits 1793444775 with pending/trial=null.
+  The supplied 40-check audit passes; cleanup records airplane off, stopped app
+  and mocks, unreachable mock endpoints and no forwards. Retained release
+  validation followed by explicit backup restoration remains distinct from
+  uninterrupted release-to-debug adoption. Cross-clock latency is not inferred.
+
+Decision: preserve users' data, shipped contracts, additive R31 revision 17 and
+transaction/lease/retry rules. A successful overlap cannot close F-33. App-c
+F-27's host-file lifecycle/limits guidance remains open; the existing 50-unit/
+200-inspection pagination limit stays deferred app scope. Kundalini's F-63/F-65
+and F-64 retirement-tooling adoption status are unchanged. Its app schema 17
+for deep-link adoption is separate from the runtime's R31 revision 17.
+
+Validation: read-only evidence assertions including raw hashes, branch ancestry,
+unchanged implementation trees against fully gated R31 integration code 38a7714 /
+site fb7bc44, matching new report sections and git diff --check. Earlier October 31
+full gates retain their original scope; no fresh package/site gate pass, emulator
+run or independent runtime review is claimed for this report-only update.
+Integration readiness is not beta acceptance. No app writes, protected-branch
+changes, package/schema changes, pushes or publications. iOS and real remote push
+delivery remain unverified.
+
+
 ## App-c iteration 15 completed follow-up
 
 Read both findings and newest reports read-only: Kundalini 16 and app-c 15.
