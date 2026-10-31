@@ -1114,6 +1114,8 @@ loaded" as "nothing has synced"; that is what `sync.status()` is for.
 | `reason` | why the last completed check ended as it did, from the closed set below |
 | `offered` | the seq the pointer offered on that check, when it got that far |
 | `checkedAt` | when that check finished, epoch milliseconds, or null before the first one |
+| `requiredBridge` | nullable revision-17 needed host version from the last authenticated incompatible offer |
+| `minHost` | nullable revision-17 active signed mandatory host policy, independent of last network result |
 
 `reason` is a closed set, and every value maps to a sentence a page can show:
 
@@ -1125,7 +1127,8 @@ loaded" as "nothing has synced"; that is what `sync.status()` is for.
 - `offline` — the pointer, the manifest, the signature or a file could not be fetched. This describes the check at `checkedAt`, not current reachability. It stays the last result until another check completes: foreground connectivity reports retry automatically, as do UI start, resume and the foreground interval (§2.3). `app.online` does not clear it or promise success, and `bundle.status()` does not start a request. Show "could not check on the last attempt" rather than asserting that the device is still offline; re-read status after reconnect and listen for `bundle.updateReady` when a bundle becomes pending.
 - `rejected` — the manifest or a file failed its checks (§2.3 checks 1–7). **This is the one that
   deserves an alert in your own telemetry:** it means a published release is unservable, or the bytes
-  were tampered with, and no device will take it.
+  were tampered with. Older status declarations also use it for an incompatible host.
+- `needsStoreUpdate` - authenticated offer requires a newer store host; opt-in status shapes include `requiredBridge` (revision 17, section 2.5). Legacy declarations without that field keep `rejected`.
 - `toobig` — over `bundleSizeCap`, or the data pull hit `dataSizeCap`.
 - `waitingForData` — step 7 has not finished pulling the `requires.data` pairs, so the bundle exists but
   is not usable yet. On a device that is offline or whose server has not published the pair, this is
