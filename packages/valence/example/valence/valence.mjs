@@ -1715,21 +1715,70 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
     // Signatures are not checked here: the OTA row above verifies every one of these manifests and fails
     // on a bad one, so re-verifying would only duplicate its failure. This row is arithmetic over seq and
     // requires.bridge, and a value it cannot trust is counted rather than used.
-    const add = (what, m) => {
+    const servable = [];
+    const add = (what, m, filesDir) => {
       if (Number.isSafeInteger(m.requires?.bridge) && m.requires.bridge >= 1) bridges.push({ what, bridge: m.requires.bridge });
       else unreadable++;
+      servable.push({ what, seq: m.seq, bridge: m.requires?.bridge, files: m.files, filesDir });
     };
-    const builtinPath = join(host, 'assets', 'valence', 'builtin', 'manifest.json');
+    const builtinDir = join(host, 'assets', 'valence', 'builtin');
+    const builtinPath = join(builtinDir, 'manifest.json');
     if (existsSync(builtinPath)) {
       const m = readJson(builtinPath);
-      add(`built-in seq ${m.seq}`, m);
+      add(`built-in seq ${m.seq}`, m, join(builtinDir, 'files'));
     }
     const dir = join(p.ota, 'manifests');
     const local = (existsSync(dir) ? readdirSync(dir).filter((f) => /^\d+\.json$/.test(f)) : []).map((f) => readJson(join(dir, f)));
-    for (const m of local) add(`OTA seq ${m.seq}`, m);
+    for (const m of local) add(`OTA seq ${m.seq}`, m, join(p.ota, 'files'));
     const { schema, owners, namespaces } = loadPluginSchema(root, cfg);
     const retired = parseSchema(schema, owners, namespaces).methods.filter((m) => m.retired).map((m) => m.name);
-    const note = retired.length ? ` Retired: ${retired.join(', ')} — a retirement is safe only once no bundle at or above that line calls the method.` : '';
+    // The row used to state the condition and leave it unanswered, which made the one number a retirement
+    // turns on computable only by hand, over blobs the CLI itself stores and indexes (K F-69). It has every
+    // manifest and every file, so it answers: which servable bundle still references the method.
+    //
+    // Two things keep the answer honest. `codegen` emits `METHOD_SINCE` — `"notify.daily": 4` — into *every*
+    // bundle it has ever built, call site or not, so the tool must not count its own declaration table as a
+    // call; stripping `"<name>": <n>` first is what the hand-scan got wrong in the unsafe direction. And a
+    // text search cannot prove *absence*: a name assembled at runtime, or a blob that will not decode, is
+    // unknown rather than clear, and the message says so instead of granting permission it cannot grant.
+    const blobs = new Map();
+    const mentions = (h, filesDir) => {
+      const key = `${filesDir} ${h}`;
+      if (!blobs.has(key)) {
+        try {
+          // Either quote style: the generator emits `'notify.daily': 1` and a minifier may rewrite it.
+          const text = readFileSync(join(filesDir, h)).toString('utf8').replace(/['"][\w.]+['"]\s*:\s*\d+/g, '');
+          blobs.set(key, new Set(retired.filter((name) => text.includes(name))));
+        } catch {
+          blobs.set(key, null);
+        }
+      }
+      return blobs.get(key);
+    };
+    let note = '';
+    let hazard = false;
+    if (retired.length) {
+      const callers = new Map(retired.map((name) => [name, []]));
+      let unread = 0;
+      for (const b of servable) {
+        const found = new Set();
+        for (const f of Object.values(b.files ?? {})) {
+          const m = mentions(f.h, b.filesDir);
+          if (m === null) unread++;
+          else for (const name of m) found.add(name);
+        }
+        for (const name of found) callers.get(name).push(b);
+      }
+      const limit = unread ? `; ${unread} file${unread === 1 ? '' : 's'} could not be read, so absence is not established` : '';
+      note = ` ${retired.map((name) => {
+        const hit = callers.get(name);
+        if (!hit.length) return `No servable bundle's files reference ${name}, so retiring it is safe here — a name a bundle assembles at runtime would not be found${limit}.`;
+        const newest = hit.reduce((a, b) => ((b.seq ?? 0) > (a.seq ?? 0) ? b : a));
+        return `${name} is still referenced by ${hit.length} servable bundle${hit.length === 1 ? '' : 's'}, newest ${newest.what}${Number.isSafeInteger(newest.bridge) ? ` (requires bridge ${newest.bridge})` : ''}: a device on one of them gets E_UNSUPPORTED. Retire it once those bundles are no longer servable${limit}.`;
+      }).join(' ')}`;
+      // A hazard that clears when the hazard clears, not a standing warning about a correct state (§4.1).
+      hazard = [...callers.values()].some((hit) => hit.length);
+    }
     const oldest = bridges.length ? bridges.reduce((a, b) => (b.bridge < a.bridge ? b : a)) : null;
     const seen = `${local.length} local OTA manifest${local.length === 1 ? '' : 's'}${existsSync(builtinPath) ? ' and the built-in bundle' : ''}${unreadable ? `, ${unreadable} without a usable requires.bridge` : ''}`;
     // `.valence/dist-ota/` is gitignored and `baseline.json` is committed, so a fresh clone — or a project
@@ -1744,7 +1793,8 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
       return `baseline.json records OTA seq ${lastSeq}, whose manifest is not under ${relative(root, dir)} — dist-ota is gitignored, so this checkout cannot see what was published and the lowest requires.bridge in the field is not computable here (${seen}).${note}`;
     }
     if (!oldest) return `no readable local bundle (${seen}), so there is no line to compare against.${note}`;
-    return { msg: `requires bridge ${oldest.bridge} (${oldest.what}); ${seen}; only releases on this machine are visible, and the published floor is not subtracted because a device that never committed it keeps serving an older bundle.${note}` };
+    const msg = `requires bridge ${oldest.bridge} (${oldest.what}); ${seen}; only releases on this machine are visible, and the published floor is not subtracted because a device that never committed it keeps serving an older bundle.${note}`;
+    return hazard ? msg : { msg };
   }, 'rebuild the built-in bundle and keep every released manifest under dist-ota/manifests, then rerun valence doctor');
   await check('database directory', () => {
     const name = cfg.host.database ?? 'valence.db';
@@ -1898,6 +1948,11 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
       if (!Array.isArray(files) || !files.length) throw new Error('mapping must be a nonempty test-file array');
       for (const file of files) {
         if (typeof file !== 'string' || !/^(test|integration_test)\/[A-Za-z0-9_./-]+_test\.dart$/.test(file) || file.split('/').includes('..')) throw new Error('mapping must name host-relative test files');
+        // Say what happened. `realpathSync` on a deleted file throws `ENOENT ... lstat '<path>'`, which
+        // reads like a broken checkout — and the commonest way to get here is the *supported* one: a
+        // retirement (§4.1) makes a method's native code and its tests deletable, and this file, which the
+        // same CLI maintains, is the bookkeeping the deletion leaves behind.
+        if (!existsSync(join(host, file))) throw new Error(`mapped test ${file} no longer exists; remove it from .valence/test-matrix.json (retiring a method makes its tests deletable, and nothing prunes this file for you)`);
         const target = realpathSync(join(host, file));
         const rel = relative(realpathSync(host), target);
         if (rel.startsWith('..') || resolve(host, rel) !== target) throw new Error('test mapping leaves host directory');

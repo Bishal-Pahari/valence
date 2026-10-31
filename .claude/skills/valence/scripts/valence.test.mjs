@@ -1367,8 +1367,29 @@ test('a retired method keeps its wire contract, loses its handler and stops warn
   const servable = await row();
   assert.equal(servable[0], 'PASS'); // a permanent WARN is the thing F-64 is about
   assert.match(servable[2], /requires bridge 15 \(OTA seq \d+\)/);
-  assert.match(servable[2], /Retired: notify\.daily/);
   assert.match(servable[2], /only releases on this machine/);
+  // K F-69: the row stated the condition and left it unanswered, so the one number a retirement turns on
+  // was hand analysis over the blobs the CLI itself stores. No bundle here calls the method, and the row
+  // says so without claiming more than a text search can: a runtime-assembled name would be missed.
+  assert.match(servable[2], /No servable bundle's files reference notify\.daily, so retiring it is safe here/);
+  assert.match(servable[2], /assembles at runtime would not be found/);
+
+  // A bundle that does call it. The declaration table `codegen` puts in *every* bundle must not count as a
+  // call — that is the trap that made the hand-scan wrong in the unsafe direction — and a real call must.
+  const appJs = join(root, 'web', 'build', '_app', 'a.js');
+  writeFileSync(appJs, 'const METHOD_SINCE={"notify.daily":1,"data.get":1};console.log(1)');
+  const declared = bundle({ root, cfg, key, requiresBridge: 15, now: NOW + 500 });
+  const tableOnly = await row();
+  assert.equal(tableOnly[0], 'PASS');
+  assert.match(tableOnly[2], /No servable bundle's files reference notify\.daily/);
+  writeFileSync(appJs, 'const METHOD_SINCE={"notify.daily":1};await call("notify.daily",{hour:6})');
+  const calling = bundle({ root, cfg, key, requiresBridge: 16, now: NOW + 600 });
+  const hit = await row();
+  assert.equal(hit[0], 'WARN'); // a hazard that clears when the hazard does, not a standing warning
+  assert.match(hit[2], new RegExp(`notify\\.daily is still referenced by 1 servable bundle, newest OTA seq ${calling.manifest.seq} \\(requires bridge 16\\)`));
+  assert.match(hit[2], /gets E_UNSUPPORTED/);
+  assert.ok(declared.manifest.seq < calling.manifest.seq);
+  writeFileSync(appJs, 'console.log(1)');
 
   // A release below the published floor still counts. The floor is a per-install high-water mark raised
   // only when a device commits a bundle carrying it (§2.2), and the host serves `current` without

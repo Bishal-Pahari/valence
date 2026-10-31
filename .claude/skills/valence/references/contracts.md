@@ -695,9 +695,21 @@ bundles a device can still be served: **every** local release plus the built-in 
 floor is deliberately not subtracted — it is a per-install high-water mark raised only when a device
 *commits* a bundle carrying it (§2.2), and §2.4 serves `current` without enforcing check 4, so a device
 whose last commit predates the raise keeps serving that older bundle. Subtracting the floor would report
-a safer number than the field, which is the one direction this row must never be wrong in. `valence doctor`'s **`oldest servable bundle`** row reports it, with the retired names beside it,
+a safer number than the field, which is the one direction this row must never be wrong in. `valence doctor`'s **`oldest servable bundle`** row reports it,
 because computing it by hand across `baseline.json` and `dist-ota/manifests/` is exactly the arithmetic
 nobody does twice. The row sees only the releases on this machine, so it says so.
+
+**The row also answers whether a servable bundle still *calls* a retired method,** because the floor
+alone does not decide a retirement: a bundle at or above the line that calls it breaks. The CLI owns every
+manifest and every content-addressed file, so it searches them, and two things keep the answer honest.
+`codegen` emits `METHOD_SINCE` — `"notify.daily": 1` — into **every** bundle it has ever built, call site
+or not, so a declaration table must not count as a call; the row strips `"<name>": <n>` in either quote
+style first, which is the step a hand-scan gets wrong in the unsafe direction. And a text search cannot
+prove absence: a name a bundle assembles at runtime, or a file that will not decode, is unknown, and the
+row says so rather than granting permission it cannot grant. A method no servable bundle references
+reports safe; one that is still referenced makes the row **WARN**, naming the newest bundle that
+references it and its `requires.bridge`. That warning ends when the hazard does — when those bundles are
+no longer servable — so it is not the standing warning §4.1's retirement marker exists to end.
 
 ### 4.2 Wire protocol
 
@@ -1987,8 +1999,14 @@ stale-tooling warning. Retiring and un-retiring a method a store build shipped b
 guard while a real change to it stays refused; a core method, a built-in and a plugin method are each refused by name, and a non-`true` value is
 refused as a typo, as is `retired` on an event, which has no handler to retire. Doctor's `oldest servable bundle` row **passes with** the lowest `requires.bridge`
 across the built-in bundle and every local release — the published floor is not subtracted, because it
-binds only a device that has committed a bundle carrying it — names the retired methods, and says that
-only releases on this machine are visible. A release recorded in `baseline.lastSeq` whose manifest is not
+binds only a device that has committed a bundle carrying it — and says that
+only releases on this machine are visible. For each retired method it searches every servable bundle's
+files, discounting the `METHOD_SINCE` declaration table `codegen` puts in all of them in either quote
+style, and either reports no reference and names the limits of a text search or **WARNs** naming the
+newest bundle that still references it; a file it cannot read leaves absence unestablished and is
+reported too. **A mapped test that no longer exists** is named as a missing mapping with the prune to
+make, not as a filesystem errno — the commonest way to get there is the retirement that made the test
+deletable, and nothing prunes `.valence/test-matrix.json` for you. A release recorded in `baseline.lastSeq` whose manifest is not
 on disk (dist-ota is gitignored) makes the row WARN naming that seq instead of answering from the
 built-in bundle alone. A `--store` build prints a retirement or un-retirement in what it recorded, since
 the additive guard is deliberately blind to the key. The retired handler is compiled and dispatched in the
