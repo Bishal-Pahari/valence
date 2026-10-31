@@ -1,5 +1,62 @@
 # Integration acceptance refresh - 2026-10-31
 
+## App-c iteration 20 completed follow-up
+
+Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 20.
+Packages remains code d771105 / site 53d3a91. All 29 feature and compatibility
+tips, including sync-fixes, plus packages are ancestors of integration in both
+repos. No missing merge or eligible must-have remains. S1 stays parked; S2 needs
+a Play account.
+
+New major F-36 has direct saved evidence of renderer eviction and host termination:
+
+- At 19:18:43.137 lowmemorykiller kills renderer 19933 because the minimum memory
+  watermark remains breached. Chromium in host PID 19805 logs renderer loss at
+  19:18:43.347 and unhandled loss followed by application termination at
+  19:18:43.415. Exit-info independently records renderer LOW_MEMORY at
+  19:18:43.239 and host SIGNALED/status 9 at 19:18:43.685.
+- This establishes the immediate eviction/termination sequence, not the source
+  of memory pressure, a Valence leak or the cause of F-35. The saved lastanr
+  remains the historical 18:14:22 permission-focus ANR. Loaded App info and
+  explicit recovery do not establish uninterrupted Settings return.
+- Initial ordinary launch again opens an orphaned picker without an App C PID.
+  Fresh-task recovery and settled mixed-link retries do not close F-29.
+  Startup completion and later successful sync do not repair major/open F-33.
+
+Separately checked current background acceptance without operating either app:
+
+- One isolated execution is observed after 274 seconds, forced=true. Exact new
+  callback begin/complete lines and same-PID WorkManager SUCCESS at 19:32:37.626
+  are present in the saved native log. First worker mock receipts pull two units
+  above cursor 260001 and acknowledge two outgoing inspection objects.
+  Later foreground traffic is excluded; one run does not establish cadence.
+- Supplied pre-resume SQLite results record the incoming fixture at USN 270002,
+  outgoing inspection objects at USNs 270001/270002 and outboxCount=0.
+  This run checked supplied results, not an independent database extraction.
+- Independently compared and hashed both raw activation files: byte-identical,
+  SHA256 cf7e42b623cf2e743f56aa0f6257c7646bbfe091b3c589bba0642896e1cab0e2,
+  current 1793454074 / pending 1793454142 / trial=null. Final saved state commits
+  1793454142 with pending/trial=null after resume. Cleanup records airplane off,
+  stopped app/mocks, unreachable owned services and no forwards.
+
+Decision: preserve users' data, shipped contracts, additive R31 revision 17 and
+transaction/lease/retry rules. Record F-36 as a distinct major release qualification;
+do not infer a causal runtime fix from renderer eviction or fold it into F-35.
+Renderer-loss recovery coverage and actual blocking-thread evidence remain needed.
+F-27 host-file guidance and F-34 stale banner remain open; pagination is deferred
+app scope. Kundalini F-63/F-65 and F-64 adoption status remain unchanged.
+
+Validation: BOM-aware saved-evidence assertions (the initial UTF-8-only assertion
+failed on UTF-16 diagnostics and passed after encoding detection), raw hashes,
+all 29 branch-tip ancestry checks in both repos, unchanged implementation trees
+against fully gated R31 integration code 38a7714 / site fb7bc44, matching new
+report sections and git diff --check. Earlier October 31 full gates retain their
+original scope; no fresh package/site gate pass, emulator run or independent
+runtime review is claimed for this report-only refresh. Integration readiness
+is not beta acceptance. No app writes, protected-branch changes, package/schema
+changes, pushes or publications. iOS and real remote push remain unverified.
+
+
 ## App-c iteration 19 completed follow-up
 
 Reviewed both findings and newest reports read-only: Kundalini 16 and app-c 19.
