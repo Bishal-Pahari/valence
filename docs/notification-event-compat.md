@@ -63,8 +63,20 @@ The initial analyzer failure and a duplicate same-package test invocation
 from passing evidence; final serial package validation supersedes them.
 No new independent security review or emulator acceptance is claimed.
 
-Validation is in progress. The branch is not ready until every required gate
-passes on this base; final results will be recorded here.
+Final gates passed 2026-11-01 on the latest base: 107 root tests, zero
+failures/skips (real generated Dart and strict/verbatim generated TS ran);
+563 core, 2 push, 28 example and 29 bridge tests; clean core/push fatal-info
+analysis; strict/verbatim bridge TS; warning-free core/push pub dry-runs
+(push retains one local-override hint); root/bridge packaging dry-runs;
+44-page site build and SEO. Example codegen --check writes nothing; built-in
+signature/hash verification passes for seq 1793431100, two files.
+
+Debug APK build passed (379.0 seconds); the final incremental build on the
+merged base passed in 23.0 seconds. Standalone Windows py audit printed
+PASS: core graph and 19 DEX files / manifest contain no Firebase SDK references.
+Existing plugin Kotlin migration warnings remain. No emulator lock was taken,
+no test-app files were written, no package versions changed, and no protected
+branch commits, pushes or publication occurred. Logs: %TEMP%/valence-r4-refresh-*.log.
 
 ## November 1 R4 queue refresh - 2026-11-01
 
