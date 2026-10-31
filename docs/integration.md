@@ -1,4 +1,114 @@
-# Integration validation - 2026-10-30
+# Integration validation - 2026-10-31
+
+## In plain terms
+
+The latest shared candidate and the notification compatibility validation are now
+together on `codex/integration` in both repositories. Every required gate passed.
+No new feature or runtime change was needed. App-c's notification event audit still
+fails on its unadapted host; these package gates do not close that device finding.
+
+## Current bases, inclusion order and decision
+
+Code packages base: `d771105ad666e84b29c1545ed7b6db403f79d46a`.
+Site packages base: `53d3a919b999fe62fee3d3928bbaf3a235068c58`.
+
+Both integration branches fast-forwarded from the previous acceptance report to
+their newest packages base. Checked the required order below; every original tip
+is already an ancestor of packages, so merging those tips introduces nothing.
+All later numbered branches, link-compat and sync-fixes are also included in
+packages in both repositories. There were no conflicts to resolve.
+
+| Order | Branch | Code tip | Site tip |
+| --- | --- | --- | --- |
+| 1 | codex/r8 | 91589a47cb80a4b2f2ba8cf1a6d1ce3dc5a4eb4e | 072552f08d626d2915e63e7fda2c4c183c4380e3 |
+| 2 | codex/r7 | 969b1a4fb03d76d2af85c69987c4ed5eeb0eb840 | 965b8eb83a7412a9ec601919f227c2c0005a9252 |
+| 3 | codex/r6 | 5b64e06051fab10e0a01d8b3215c17f45d81c980 | 388cd9d3c0fd6043cfa21b0a6440916232847742 |
+| 4 | codex/r3 | db669ddd75ffeb97588fd62304122a58c242f3b0 | f45ccf28d741a2c6e05c766eeb6bff059900bcc5 |
+| 5 | codex/r4 | 588f8761807b1893933303533a04fa14c9975a6f | d8e5dd775dfaf902e206bc2f195c30537f797ba4 |
+| 6 | codex/r5 | 3cc1c0f4d062d13919adcfe5343434e00098fdea | 57a44b50dfd82800f151823ff1563d8a73340678 |
+| 7 | codex/r9 | 0c1b0fb01a48494991cdae4ab32369fb6a2af7b2 | 2913b4d0a743188808a66bd5b7db416ca870c52f |
+| 8 | codex/r10 | f3fcd0dac875fc30af226c7f1bf70750942c0550 | b905b742ab9d90984d513cdf7b99977eabd929f2 |
+| 9 | codex/r14 | fa6e16c55d84bb9a3162514a9c09b65cb634fd54 | fa5e8164a968bd74d943b8a50590dfbd010e08ca |
+
+Finally fast-forwarded the ready R4 follow-up, `codex/notify-event-compat`, into
+integration: code `02b2071beb7a4d1c34f839fbf56035bf0040ee75`, site
+`7ba42aa7332a1ec5e57b03c08344d582ab0a7447`. Its only difference from packages
+is `docs/notification-event-compat.md`; the compatibility implementation and its
+review fixes are already merged upstream. The gates below cover the same source
+bytes; the follow-up and this integration commit add validation reports only.
+
+Decision, security and data first: preserve the frozen runtime, shipped event
+meanings, application IDs and stored data. Keep combined schema 16, R4 since 11
+and pendingIds since 16. No package versions or schema numbers change. A numeric
+hash cannot recover an application's original string ID; retain the documented
+native adapter instead of coercion or rewriting an existing event declaration.
+Retain the upstream conservative retirement checks, including missing-release
+warnings and no subtraction of the per-device floor. No new security code or
+independent runtime review is part of this report-only refresh. S1 stays parked
+during the candidate freeze; S2 needs a Play account. No new must-have is eligible.
+
+## Latest app evidence and limits
+
+Read both apps' `VALENCE_FINDINGS.md` and newest completed reports: Kundalini
+iteration 16 and app-c iteration 9. Test-app repositories were read-only.
+
+Kundalini reports schema-17 store adoption, warm/cold/repeated custom links,
+unsafe-path rejection, pinned requires.bridge 16 OTA commitment and seven alarms
+restored after reboot without a manual launch. Its observed boot delay is not a
+delivery-time guarantee. Upstream packages now includes the F-63 link-manifest
+diagnostic, F-65 association-file refusal and F-64 method-retirement work; this
+does not establish adoption of those changes by the app. A bridge floor alone
+does not prove that an old method has no callers.
+
+App-c iteration 9 still reports F-30 FAIL. Independently read its
+`event-contract-check.json`: one tap, numeric ID 1997876972, expected string,
+passed=false. Its current mobile/lib contains neither notificationEventAdapter
+nor notificationEventFields, so this is not acceptance of the merged correction.
+It needs refreshed tooling/runtime, regeneration, native adapter wiring, a new
+host build and real warm/cold acceptance while preserving its shipped schema.
+
+Its `background-state-comparison.json` independently confirms identical before
+and after activation hashes with 1793383609 pending. The report records one
+natural due-time worker acknowledging two scalar writes; this is not a cadence
+guarantee. `final-state.json` confirms 1793383609 committed, pending/trial null
+and bad 1793383520 retained. Routing, background work and OTA success do not repair
+the separately failing event contract. F-27's remaining host-file lifecycle
+documentation gap stays open. F-31's permissions floor is corrected to schema 10
+upstream; its captured local guide is older. F-32 did not recur and does not
+establish a package cause. Real remote push and iOS remain unverified; iOS is
+experimental and untested.
+
+## Fresh gates on the current candidate
+
+Logs: `%TEMP%/valence-oct31-integration-*.log`.
+
+| Gate | Result |
+| --- | --- |
+| npm test | 106 passed, zero failures/skips; generated Dart and strict/verbatim generated TS ran |
+| Core flutter test --no-pub --concurrency=2 | 548 passed |
+| Core / push dart analyze --fatal-infos . | No issues in either package |
+| Core flutter pub publish --dry-run | Zero warnings |
+| Push flutter test --no-pub / pub publish --dry-run | 2 passed / zero warnings, one existing local-override hint |
+| Bridge node --test test/*.test.ts | 29 passed, zero failures/skips |
+| Bridge npx -y -p typescript tsc -p tsconfig.json --strict --verbatimModuleSyntax | Passed |
+| Root / bridge npm pack --dry-run | Passed / passed |
+| Example flutter test --no-pub | 27 passed |
+| Example codegen --check / built-in signature verification | written: []; seq 1793209750, two files verified |
+| Site npm run build / SEO | 43 pages passed |
+| Example flutter build apk --debug | Passed; assembleDebug 137.0 seconds |
+| Windows py example/tool/check_no_firebase.py | PASS: core graph, manifest and all 19 DEX files contain no Firebase SDK references |
+
+APK settings were process-scoped: 2 GiB Gradle heap, 1 GiB metaspace, two workers
+and ActiveProcessorCount=2. The existing app_badge_plus Kotlin migration warning
+remains. The Firebase audit ran standalone through py after the successful build.
+An initial manual verification used the wrong assets/builtin directory and failed
+ENOENT; only the corrected assets/valence/builtin invocation establishes the
+signature check above. No device installation, emulator session or new device
+acceptance is claimed. No protected branch commit/merge, test-app write, push or
+publication occurred. Integration readiness is conditional on the packages heads
+above; refresh if either moves before merging.
+
+## Historical validation - 2026-10-30
 
 ## Current decision and scope
 
