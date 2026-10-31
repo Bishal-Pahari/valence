@@ -318,15 +318,9 @@ void main() {
     final policy = await tester
         .runAsync(() => signBundle(key, seq: 50, overrides: {'minHost': 2}));
     respond = (request) async {
-      if (request.url.path.endsWith('/channels/production.json')) {
-        return http.Response('{"seq":50,"rollout":100}', 200);
-      }
-      if (request.url.path.endsWith('/50.json')) {
-        return http.Response.bytes(policy!.bytes, 200);
-      }
-      if (request.url.path.endsWith('/50.json.sig')) {
-        return http.Response(policy!.signature, 200);
-      }
+      if (request.url.path.endsWith('/channels/production.json')) return http.Response('{"seq":50,"rollout":100}', 200);
+      if (request.url.path.endsWith('/50.json')) return http.Response.bytes(policy!.bytes, 200);
+      if (request.url.path.endsWith('/50.json.sig')) return http.Response(policy!.signature, 200);
       return http.Response('', 404);
     };
     connectivity.add(['none']);
@@ -367,15 +361,9 @@ void main() {
     // Same manifest cannot be rewritten by an unsigned pointer; a later signed withdrawal can unblock.
     final withdrawal = await tester.runAsync(() => signBundle(key, seq: 60));
     respond = (request) async {
-      if (request.url.path.endsWith('/channels/production.json')) {
-        return http.Response('{"seq":60,"rollout":100}', 200);
-      }
-      if (request.url.path.endsWith('/60.json')) {
-        return http.Response.bytes(withdrawal!.bytes, 200);
-      }
-      if (request.url.path.endsWith('/60.json.sig')) {
-        return http.Response(withdrawal!.signature, 200);
-      }
+      if (request.url.path.endsWith('/channels/production.json')) return http.Response('{"seq":60,"rollout":100}', 200);
+      if (request.url.path.endsWith('/60.json')) return http.Response.bytes(withdrawal!.bytes, 200);
+      if (request.url.path.endsWith('/60.json.sig')) return http.Response(withdrawal!.signature, 200);
       final blob = withdrawal!.blobs[request.url.path.split('/').last];
       return blob == null
           ? http.Response('', 404)
@@ -399,15 +387,9 @@ void main() {
     final policy = await tester
         .runAsync(() => signBundle(key, seq: 50, overrides: {'minHost': 2}));
     respond = (request) async {
-      if (request.url.path.endsWith('/channels/production.json')) {
-        return http.Response('{"seq":50,"rollout":100}', 200);
-      }
-      if (request.url.path.endsWith('/50.json')) {
-        return http.Response.bytes(policy!.bytes, 200);
-      }
-      if (request.url.path.endsWith('/50.json.sig')) {
-        return http.Response(policy!.signature, 200);
-      }
+      if (request.url.path.endsWith('/channels/production.json')) return http.Response('{"seq":50,"rollout":100}', 200);
+      if (request.url.path.endsWith('/50.json')) return http.Response.bytes(policy!.bytes, 200);
+      if (request.url.path.endsWith('/50.json.sig')) return http.Response(policy!.signature, 200);
       return http.Response('', 404);
     };
     await tester.runAsync(() => runtime.updater.checkForUpdate());
