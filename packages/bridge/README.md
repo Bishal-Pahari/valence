@@ -143,3 +143,7 @@ Import `call` and `has` through the generated `bridge.g.ts`. Guard `has("share.i
 Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent. Older hosts omit them. See [capability revisions and durable status](https://getvalence.pages.dev/docs/guides/capabilities-and-status/).
 
 Schema 16 adds `notify.pendingIds()` for cancellation by difference even when full notification content exceeds the bridge reply cap. Keep `notify.pending()` unchanged; declare the new method at `since: 16`, regenerate, ship a store build and guard it with `has()`. Disabled hosts still deny the group. No delivery guarantee is added; iOS remains experimental and untested.
+
+Store-host update prompts and signed mandatory policies are documented in
+[Forcing an update](../../docs/forcing-an-update.md). Revision 17 adds fixed-destination `app.openStore`,
+nullable status fields and a native blocker; older runtimes cannot be forced.

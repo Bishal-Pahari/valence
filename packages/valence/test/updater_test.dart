@@ -69,9 +69,7 @@ void main() {
         if (manifestMatch != null) {
           final b = bundles[int.parse(manifestMatch.group(1)!)];
           if (b == null) return http.Response('no manifest', 404);
-          return manifestMatch.group(2) == null
-              ? http.Response.bytes(b.bytes, 200)
-              : http.Response(b.signature, 200);
+          return manifestMatch.group(2) == null ? http.Response.bytes(b.bytes, 200) : http.Response(b.signature, 200);
         }
         final fileMatch = RegExp(r'/files/([0-9a-f]{64})$').firstMatch(path);
         if (fileMatch != null) {
@@ -123,9 +121,7 @@ void main() {
     expect(stateFile.existsSync(), isFalse);
   });
 
-  test(
-      'R17 urgency reads only the verified pending manifest without activation',
-      () async {
+  test('R17 urgency reads only the verified pending manifest without activation', () async {
     final state = ValenceState(installId: 'i', pending: 20);
     final u = makeUpdater(state: state);
     for (final urgent in [false, true]) {
@@ -147,8 +143,7 @@ void main() {
     state.bad.clear();
     final wrongSeq = await signBundle(key, seq: 21, urgent: true);
     File('${manifestsDir.path}/20.json').writeAsBytesSync(wrongSeq.bytes);
-    File('${manifestsDir.path}/20.json.sig')
-        .writeAsStringSync(wrongSeq.signature);
+    File('${manifestsDir.path}/20.json.sig').writeAsStringSync(wrongSeq.signature);
     expect(await u.pendingUrgent(20), isNull);
     expect(await u.pendingUrgent(21), isNull);
     state.pending = null;
@@ -162,8 +157,8 @@ void main() {
       manifestsDir.createSync(recursive: true);
       File('${manifestsDir.path}/10.json').writeAsBytesSync(old.bytes);
       File('${manifestsDir.path}/10.json.sig').writeAsStringSync(old.signature);
-      final state = ValenceState(installId: 'i', current: 10,
-          floor: reason == 'floor' ? 20 : 0, bad: reason == 'bad' ? [10] : []);
+      final state = ValenceState(
+          installId: 'i', current: 10, floor: reason == 'floor' ? 20 : 0, bad: reason == 'bad' ? [10] : []);
       final before = jsonEncode(state.toJson());
       final refused = makeUpdater(state: state, assets: old.asAssets('assets/valence/builtin'));
       await expectLater(refused.developmentManifest(), throwsStateError);
@@ -175,6 +170,77 @@ void main() {
   }
 
   // ===========================================================================
+  test('R31 incompatible host reports signed requirement without activation', () async {
+    final b = await signBundle(key, seq: 50, requiresBridge: 2);
+    final state = ValenceState(installId: 'r31', current: 10, pending: 20);
+    final before = state.toJson();
+    final u = makeUpdater(state: state, client: otaHost(bundles: {50: b}, pointerSeq: 50));
+    expect(await u.checkForUpdate(), isNull);
+    expect(u.lastReason, ValenceBundleReason.needsStoreUpdate);
+    expect(u.lastRequiredBridge, 2);
+    expect(u.storeUpdateRequired, isFalse);
+    expect(state.toJson(), before);
+  });
+
+  test('R31 mandatory policy survives offline and only newer signed policy withdraws it', () async {
+    final b = await signBundle(key, seq: 50, overrides: {'minHost': 2});
+    final state = ValenceState(installId: 'r31', current: 10, trial: 20, serving: 20);
+    final before = state.toJson();
+    final u = makeUpdater(state: state, client: otaHost(bundles: {50: b}, pointerSeq: 50));
+    await u.checkForUpdate();
+    expect(u.storeUpdateRequired, isTrue);
+    expect(u.minHost, 2);
+    expect(state.toJson(), before);
+    final offline = makeUpdater(state: state, client: otaHost(bundles: {}));
+    await offline.restoreStorePolicy();
+    await offline.checkForUpdate();
+    expect(offline.lastReason, ValenceBundleReason.offline);
+    expect(offline.storeUpdateRequired, isTrue);
+    final old = await signBundle(key, seq: 40);
+    final replay = makeUpdater(state: state, client: otaHost(bundles: {40: old}, pointerSeq: 40));
+    await replay.restoreStorePolicy();
+    await replay.checkForUpdate();
+    expect(replay.storeUpdateRequired, isTrue);
+    final withdrawal = await signBundle(key, seq: 60);
+    final newer = makeUpdater(state: state, client: otaHost(bundles: {60: withdrawal}, pointerSeq: 60));
+    await newer.restoreStorePolicy();
+    await newer.checkForUpdate();
+    expect(newer.storeUpdateRequired, isFalse);
+    final restarted = makeUpdater(state: state);
+    await restarted.restoreStorePolicy();
+    expect(restarted.minHost, isNull);
+  });
+
+  test('R31 unsigned, malformed, wrong identity and below-floor policies cannot block', () async {
+    for (final override in <Map<String, Object?>>[
+      {'minHost': 2, 'appId': 'other.app'},
+      {'minHost': 2, 'seq': 49},
+      {'minHost': 2, 'entry': '../bad'},
+      {'minHost': 2, 'requires': {'bridge': 'oops'}},
+      {'minHost': 2, 'requires': {'bridge': 0}},
+      {'minHost': '2'},
+      {'minHost': 0},
+      {'minHost': null},
+    ]) {
+      final b = await signBundle(key, seq: 50, overrides: override);
+      final u = makeUpdater(state: ValenceState(installId: 'r31'), client: otaHost(bundles: {50: b}, pointerSeq: 50));
+      await u.checkForUpdate();
+      expect(u.lastReason, ValenceBundleReason.rejected, reason: '$override');
+      expect(u.minHost, isNull);
+    }
+    final b = await signBundle(key, seq: 50, overrides: {'minHost': 2});
+    for (final invalid in [
+      SignedBundle(b.bytes, base64Encode(List.filled(64, 0)), b.manifest, b.blobs),
+      b,
+    ]) {
+      final state = ValenceState(installId: 'r31', floor: identical(invalid, b) ? 51 : 0);
+      final u = makeUpdater(state: state, client: otaHost(bundles: {50: invalid}, pointerSeq: 50));
+      await u.checkForUpdate();
+      expect(u.lastReason, ValenceBundleReason.rejected);
+      expect(u.minHost, isNull);
+    }
+  });
+
   group('§2.3 step 1, the pointer', () {
     test('the compiled channel selects the beta pointer URL', () async {
       final seen = <String>[];
@@ -470,14 +536,22 @@ void main() {
           bundles: {20: bundle!},
           pointerSeq: 20,
           syncBodies: {
-            'plants': jsonEncode({'rows': [dataRow('fern', {'v': 2}, 1)], 'max': 1, 'more': false}),
+            'plants': jsonEncode({
+              'rows': [
+                dataRow('fern', {'v': 2}, 1)
+              ],
+              'max': 1,
+              'more': false
+            }),
           },
         ),
         log: log,
       );
       expect(await u.checkForUpdate(), 20);
       expect(state.pending, 20);
-      expect(await store.syncedPairs(), {'plants': {2}});
+      expect(await store.syncedPairs(), {
+        'plants': {2}
+      });
       expect(log.has('step 7 pulled 1 rows for plants v2'), isTrue);
     });
 
@@ -544,7 +618,11 @@ void main() {
           bundles: {20: bundle!},
           pointerSeq: 20,
           syncBodies: {
-            'plants': jsonEncode({'rows': [dataRow('fern', 1, 1)], 'max': 1, 'more': false}),
+            'plants': jsonEncode({
+              'rows': [dataRow('fern', 1, 1)],
+              'max': 1,
+              'more': false
+            }),
           },
         ),
       );
@@ -659,8 +737,16 @@ void main() {
           pointerSeq: 20,
           syncBodies: {
             // Completes — `more: false` returns before the budget check — and spends the whole cap.
-            'plants': jsonEncode({'rows': [dataRow('a', 'x' * 400, 1)], 'max': 1, 'more': false}),
-            'seeds': jsonEncode({'rows': [dataRow('b', 'y', 1)], 'max': 1, 'more': false}),
+            'plants': jsonEncode({
+              'rows': [dataRow('a', 'x' * 400, 1)],
+              'max': 1,
+              'more': false
+            }),
+            'seeds': jsonEncode({
+              'rows': [dataRow('b', 'y', 1)],
+              'max': 1,
+              'more': false
+            }),
           },
         ),
         log: log,
@@ -1231,7 +1317,9 @@ void main() {
         config: testConfig(key, dataSchemas: {'plants': 2}),
       );
       await u.garbageCollect();
-      expect(await store.allPairs(), {'plants': {2}});
+      expect(await store.allPairs(), {
+        'plants': {2}
+      });
     });
 
     test('GC after a commit leaves writable buckets untouched', () async {
@@ -1242,7 +1330,11 @@ void main() {
       await store.applyPullPage(bucket: 'plants', schema: 1, rows: [dataRow('a', 1, 1)], maxUsnAfter: 1);
       await store.applyPullPage(bucket: 'shelf', schema: 1, rows: [], maxUsnAfter: 0);
       await store.put('shelf', 'mine', {'precious': true}, opId: 'op-1');
-      await store.applyPushAck(bucket: 'shelf', acked: ['op-1'], rows: [dataRow('mine', {'precious': true}, 7)]);
+      await store.applyPushAck(bucket: 'shelf', acked: [
+        'op-1'
+      ], rows: [
+        dataRow('mine', {'precious': true}, 7)
+      ]);
 
       final state = ValenceState(installId: 'i', current: 10, trial: 20, serving: 20);
       final u = makeUpdater(
@@ -1329,15 +1421,21 @@ void main() {
       final u = makeUpdater(state: ValenceState(installId: 'i', current: 20), config: cfg, log: log);
       await u.garbageCollect();
       expect(log.has('another sync holds the lease'), isTrue);
-      expect(await store.allPairs(), {'plants': {1, 2}}, reason: 'no pair was dropped');
+      expect(
+          await store.allPairs(),
+          {
+            'plants': {1, 2}
+          },
+          reason: 'no pair was dropped');
       expect(File('${manifestsDir.path}/5.json').existsSync(), isFalse, reason: 'manifests still collected');
 
       await held.releaseLease();
       await u.garbageCollect();
-      expect(await store.allPairs(), {'plants': {2}});
+      expect(await store.allPairs(), {
+        'plants': {2}
+      });
     });
   });
-
 
   group('a mid-session reload does not re-run the UI-start transitions (§2.4)', () {
     test('serveAfterApplyUpdate shows the promoted bundle without spending a strike', () async {
@@ -1403,7 +1501,13 @@ void main() {
         client: otaHost(
           bundles: {20: b},
           pointerSeq: 20,
-          syncBodies: {'pull': jsonEncode({'rows': [dataRow('a', 1, 1)], 'max': 1, 'more': false})},
+          syncBodies: {
+            'pull': jsonEncode({
+              'rows': [dataRow('a', 1, 1)],
+              'max': 1,
+              'more': false
+            })
+          },
         ),
       );
       // Scheduled before the check, so the frame lands while the check is in flight.
@@ -1545,7 +1649,13 @@ void main() {
         store: store,
         config: cfg,
         client: MockClient(
-          (_) async => http.Response(jsonEncode({'rows': [dataRow('a', 1, 1)], 'max': 1, 'more': false}), 200),
+          (_) async => http.Response(
+              jsonEncode({
+                'rows': [dataRow('a', 1, 1)],
+                'max': 1,
+                'more': false
+              }),
+              200),
         ),
       );
       final result = await sync.run(readSchemas: {'plants': 1});

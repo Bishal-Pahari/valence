@@ -34,6 +34,7 @@ final class ValenceManifest {
     required this.version,
     required this.floor,
     required this.requiresBridge,
+    this.minHost,
     required this.requiresData,
     required this.entry,
     required this.csp,
@@ -101,6 +102,7 @@ final class ValenceManifest {
       version: raw['version'] is String ? raw['version']! as String : '',
       floor: reqInt('floor'),
       requiresBridge: requires['bridge'] is int ? requires['bridge']! as int : 1,
+      minHost: raw['minHost'] is int ? raw['minHost']! as int : null,
       requiresData: {
         for (final e in data.entries) e.key: e.value is int ? e.value! as int : -1,
       },
@@ -137,6 +139,9 @@ final class ValenceManifest {
   /// The minimum host bridge version (canonical check 5).
   final int requiresBridge;
 
+  /// Signed mandatory host bridge floor; absent means no mandatory update.
+  final int? minHost;
+
   /// The read-only `(bucket, schema)` pairs this UI reads (§5.4).
   final Map<String, int> requiresData;
 
@@ -166,7 +171,10 @@ final class ValenceManifest {
 /// reason are the only way to tell a healthy decline from a broken device (§2.3).
 final class ValenceCheckFailure implements Exception {
   /// Creates a failure naming the step from the canonical order, or the §2.3 step number.
-  const ValenceCheckFailure(this.step, this.reason);
+  const ValenceCheckFailure(this.step, this.reason, {this.requiredBridge});
+
+  /// A verified check-5 host incompatibility, never inferred from error text.
+  final int? requiredBridge;
 
   /// The check or algorithm step that stopped.
   final int step;
@@ -207,6 +215,7 @@ Future<ValenceManifest> checkManifest({
   required ValenceConfig config,
   required ValenceState state,
   required int? pointerSeq,
+  bool checkHostVersion = true,
 }) async {
   // 1. The Ed25519 signature over the exact bytes.
   final String keyId;
@@ -259,10 +268,21 @@ Future<ValenceManifest> checkManifest({
   // The comparison uses config.bridgeVersion, which codegen wires to the generated hostBridgeVersion.
   // A second literal here would let the host under-report its version and then refuse its own built-in
   // bundle on first launch, with nothing left to serve.
-  if (m.requiresBridge > config.bridgeVersion) {
+  final raw = jsonDecode(utf8.decode(bytes)) as Map<String, Object?>;
+  final bridge = (raw['requires'] as Map<String, Object?>)['bridge'];
+  if (bridge is! int || bridge < 1 || bridge > 9007199254740991) {
+    throw const ValenceCheckFailure(5, 'requires.bridge must be a positive safe integer');
+  }
+  final minHost = raw['minHost'];
+  if (raw.containsKey('minHost') && (minHost is! int || minHost < 1 || minHost > 9007199254740991)) {
+    throw const ValenceCheckFailure(5, 'minHost must be a positive safe integer');
+  }
+  final needed = m.minHost != null && m.minHost! > m.requiresBridge ? m.minHost! : m.requiresBridge;
+  if (checkHostVersion && needed > config.bridgeVersion) {
     throw ValenceCheckFailure(
       5,
-      'needs bridge ${m.requiresBridge}, host has ${config.bridgeVersion}',
+      'needs bridge $needed, host has ${config.bridgeVersion}',
+      requiredBridge: needed,
     );
   }
   // Whether the pairs are *present* is step 7's job, not this one: rejecting here for a pair the device

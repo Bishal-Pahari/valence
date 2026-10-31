@@ -160,6 +160,15 @@ class _ValenceAppState extends State<ValenceApp>
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       if (!mounted) return;
       // §2.4: the UI-start transitions, here and nowhere else.
+      if (!_devMode && _valence.updater.storeUpdateRequired) {
+        if (_valence.state.serving != null) {
+          _valence.state.serving = null;
+          _valence.updater.save();
+        }
+        if (mounted) setState(() {});
+        _armTriggers();
+        return;
+      }
       final manifest = _devMode
           ? await _valence.updater.developmentManifest()
           : await _valence.updater.activateForUiStart();
@@ -175,7 +184,8 @@ class _ValenceAppState extends State<ValenceApp>
       await _valence.prepareRestoration(manifest.seq);
       _origin = server.origin;
       if (_devMode) {
-        _log('dev: serving upstream ${Uri.parse(_devUrl).origin} on ${server.origin}; '
+        _log(
+            'dev: serving upstream ${Uri.parse(_devUrl).origin} on ${server.origin}; '
             'OTA checks, trials, ready commits and bundle.applyUpdate are disabled '
             '(signed schema context ${manifest.seq})');
       } else {
@@ -278,6 +288,7 @@ class _ValenceAppState extends State<ValenceApp>
   // ---------------------------------------------------------------------------
 
   void _onBridgeMessage(JavaScriptMessage message) {
+    if (!_devMode && _valence.updater.storeUpdateRequired) return;
     unawaited(() async {
       final nonce = _valence.server?.nonce ?? '';
       // bridgeDispatch never throws: it checks the nonce, decodes strictly and turns everything into a
@@ -355,7 +366,10 @@ class _ValenceAppState extends State<ValenceApp>
     final state = _valence.state;
     // Armed only while serving a trial. A `current` page is not on probation, so a slow start costs it
     // nothing — and a ready timeout on a `current` page must count no failure at all.
-    if (!_devMode && state.trial != null && state.serving == state.trial) {
+    if (!_devMode &&
+        !_valence.updater.storeUpdateRequired &&
+        state.trial != null &&
+        state.serving == state.trial) {
       _readyClock
         ..reset()
         ..start();
@@ -632,7 +646,23 @@ class _ValenceAppState extends State<ValenceApp>
       return;
     }
     try {
+      final wasBlocked = _valence.updater.storeUpdateRequired;
       await _valence.updater.checkForUpdate();
+      if (!mounted) return;
+      if (_valence.updater.storeUpdateRequired) {
+        _stopReadyTimer();
+        // A native policy interruption is not a failed trial on the next UI start.
+        _valence.state.serving = null;
+        _valence.updater.save();
+        setState(() {});
+      } else if (wasBlocked) {
+        // Recreate the page after a signed withdrawal; do not reuse a hidden page.
+        _updateTicker?.cancel();
+        await _connectivity?.cancel();
+        _controller = null;
+        await _valence.server?.close();
+        await _start();
+      }
     } on Object catch (e) {
       _log('update: check failed: $e');
     }
@@ -723,6 +753,40 @@ class _ValenceAppState extends State<ValenceApp>
   }
 
   Widget _buildHost(BuildContext context) {
+    if (!_devMode && _valence.updater.storeUpdateRequired) {
+      return Scaffold(
+          body: SafeArea(
+              child: Center(
+                  child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Update required',
+              style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 16),
+          const Text(
+              'Install the latest version from the store to continue. Your saved data stays on this device.',
+              textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          if (_valence.storeUrl != null)
+            FilledButton(
+                onPressed: () async {
+                  try {
+                    await _valence.openStore();
+                  } on Object catch (e) {
+                    _log('update: store could not open: $e');
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content:
+                              Text('Could not open the store. Try again.')));
+                    }
+                  }
+                },
+                child: const Text('Open store')),
+          TextButton(
+              onPressed: _checkForUpdate, child: const Text('Check again')),
+        ]),
+      ))));
+    }
     final error = _error;
     if (error != null) {
       return widget.onError?.call(error) ??

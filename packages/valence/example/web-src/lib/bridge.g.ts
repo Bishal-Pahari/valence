@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 16;
+export const BRIDGE_VERSION = 17;
 
 export interface AppInfo {
   platform: string;
@@ -60,6 +60,8 @@ export interface BundleStatus {
   offered?: number | null;
   checkedAt?: number | null;
   urgent?: boolean | null;
+  requiredBridge?: number | null;
+  minHost?: number | null;
 }
 
 export interface Link {
@@ -214,6 +216,7 @@ export interface Methods {
     fileName?: string | null;
     caption?: string | null;
   }; returns: string };
+  'app.openStore': { params: Record<string, never>; returns: void };
   'haptics.tap': { params: Record<string, never>; returns: void };
 }
 
@@ -310,6 +313,7 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'push.permission': 12,
   'push.initial': 12,
   'share.image': 14,
+  'app.openStore': 17,
   'haptics.tap': 1,
 };
 

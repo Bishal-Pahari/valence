@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased - store-host update policy
+
+- Supporting hosts distinguish an update needing a newer store build from rejected bytes.
+- Optional signed `minHost` requires a store upgrade with a native offline-persistent
+  screen, preserving rows, pending edits and trial attempts. A newer signed release
+  can withdraw it. Older runtimes cannot enforce this policy.
+- Revision 17 adds `app.openStore`, fixed to compiled store identity, and nullable
+  `requiredBridge` / `minHost` status fields. Regenerate and ship a store host before
+  relying on these; existing schemas keep their legacy rejected reason.
+
+
 ## Unreleased: retire a bridge method you no longer call
 
 A method of your own that nothing calls any more — the classic case is a hand-written

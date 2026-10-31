@@ -4,7 +4,7 @@ import 'dart:io';
 import 'dart:ui' show FlutterView;
 
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, defaultTargetPlatform;
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -84,7 +84,7 @@ final class ValenceAppInfo {
     required this.bundle,
     required this.locale,
     this.fontScale = 1,
-    this.builtins = 16,
+    this.builtins = 17,
   });
 
   /// `android`, `ios`, or whatever `Platform.operatingSystem` says.
@@ -305,6 +305,8 @@ final class Valence {
         client: client,
         log: log,
       );
+
+      await updater.restoreStorePolicy();
 
       final valence = Valence._(
         config: config,
@@ -626,6 +628,8 @@ final class Valence {
         reason: updater.lastReason,
         offered: updater.lastOffered,
         checkedAt: updater.lastCheckedAt,
+        requiredBridge: updater.lastRequiredBridge,
+        minHost: updater.minHost,
       );
 
   /// Reads the pending manifest's signed urgency without changing the synchronous API.
@@ -642,6 +646,8 @@ final class Valence {
       offered: status.offered,
       checkedAt: status.checkedAt,
       urgent: status.pending == pending ? urgent : null,
+      requiredBridge: status.requiredBridge,
+      minHost: status.minHost,
     );
   }
 
@@ -1027,6 +1033,19 @@ final class Valence {
           {String? bytes, String? path, String? fileName, String? caption}) =>
       _imageShare.share(
           bytes: bytes, path: path, fileName: fileName, caption: caption);
+
+  /// `app.openStore`. Destination is compiled configuration, never page input.
+  Future<void> openStore() async {
+    final url = storeUrl;
+    if (url == null) {
+      throw const BridgeError(
+          BridgeErrorCode.unsupported, 'store destination is not configured');
+    }
+    await openExternal(url.toString());
+  }
+
+  /// The platform store URL from store-compiled identity.
+  Uri? get storeUrl => valenceStoreUrl(config, defaultTargetPlatform.name);
 
   /// `open.external`. Only `https:`, `mailto:` and `tel:` leave the app.
   Future<void> openExternal(String url) async {

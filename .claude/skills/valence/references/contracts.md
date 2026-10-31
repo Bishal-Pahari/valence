@@ -293,6 +293,56 @@ A restore then starts clean from the built-in bundle, with a new `installId` (no
 
 ---
 
+### 2.5 Store-host update policy (built-ins revision 17)
+
+`minHost` is an optional positive safe integer in the **signed manifest**, measured
+in the app's generated host bridge version, not a package semver or OS build number.
+It does not belong in the unsigned pointer. Omission means no mandatory host policy.
+`bundle --min-host N` signs it; a built-in cannot demand a host above its own
+bridge version. `requires.bridge` keeps its existing compatibility meaning.
+
+Canonical checks retain their order. An authenticated check-5 host incompatibility
+is reported as `needsStoreUpdate`, with nullable `BundleStatus.requiredBridge` equal
+to max(requires.bridge, minHost). Other check failures remain `rejected`. Older
+schema declarations without requiredBridge keep receiving `rejected`. Revision-17
+schemas add nullable `requiredBridge` and `minHost` to BundleStatus and declare
+`app.openStore` at since 17. `minHost` reports the active mandatory policy, even
+when the last network attempt failed. `app.info().builtins >= 17` gates the fields.
+
+Only a manifest passing signature, appId, pointer seq, floor, requires shapes and
+path/hash/size checks can establish policy; no offered file is executed or made
+pending on an incompatible host. The signed policy envelope (exact bytes and
+signature) is atomically persisted separately from activation state, and verified
+again before UI startup, including offline. No floor, bad list, trial count, data
+or outbox is changed by a refusal. A newer authenticated manifest supersedes the
+policy, including one omitting minHost; an older/replayed manifest cannot clear it.
+Rollout still gates discovery. An unsigned pointer, fetch error or malformed
+manifest cannot set, raise or clear policy. Older runtimes ignore the additive
+field: first ship a store host supporting revision 17, then publish the policy.
+This cannot force an offline device that never received it or an older runtime.
+
+When verified minHost exceeds the compiled bridge version, ValenceApp shows a
+native blocking Update required screen instead of the web UI. Startup transitions
+and ready timers are suspended while blocked; no trial is consumed. Queued page
+messages cannot invoke the bridge. A policy discovered during a trial pauses its
+ready timer and clears only the volatile serving marker so the next startup does
+not treat the imposed block as a crash. Updates may still be checked to discover
+a newer signed withdrawal. Store-upgrade to a sufficient host unblocks the app.
+
+`app.openStore() -> void` has no page-controlled destination. Android opens
+https://play.google.com/store/apps/details?id=<compiled appId>. iOS uses the
+optional store-compiled `store.iosAppId` numeric Apple ID; absent configuration
+returns E_UNSUPPORTED. Launch failure returns E_INTERNAL. No market: scheme is
+added to open.external. iOS remains experimental and untested.
+
+R31 regression matrix: unauthenticated/wrong-app/wrong-seq/below-floor and
+malformed policies never block; incompatibility reports the needed version;
+mandatory blocking survives offline restart, preserves activation/data and is
+withdrawn only by a higher signed seq; legacy schemas retain rejected; store URLs
+are native constants; generated revision-17 Dart/TS and older shapes compile.
+
+---
+
 ## 3. Loopback server (dart:io `HttpServer`)
 
 ### Port
@@ -1064,6 +1114,8 @@ loaded" as "nothing has synced"; that is what `sync.status()` is for.
 | `reason` | why the last completed check ended as it did, from the closed set below |
 | `offered` | the seq the pointer offered on that check, when it got that far |
 | `checkedAt` | when that check finished, epoch milliseconds, or null before the first one |
+| `requiredBridge` | nullable revision-17 needed host version from the last authenticated incompatible offer |
+| `minHost` | nullable revision-17 active signed mandatory host policy, independent of last network result |
 
 `reason` is a closed set, and every value maps to a sentence a page can show:
 
@@ -1075,7 +1127,8 @@ loaded" as "nothing has synced"; that is what `sync.status()` is for.
 - `offline` — the pointer, the manifest, the signature or a file could not be fetched. This describes the check at `checkedAt`, not current reachability. It stays the last result until another check completes: foreground connectivity reports retry automatically, as do UI start, resume and the foreground interval (§2.3). `app.online` does not clear it or promise success, and `bundle.status()` does not start a request. Show "could not check on the last attempt" rather than asserting that the device is still offline; re-read status after reconnect and listen for `bundle.updateReady` when a bundle becomes pending.
 - `rejected` — the manifest or a file failed its checks (§2.3 checks 1–7). **This is the one that
   deserves an alert in your own telemetry:** it means a published release is unservable, or the bytes
-  were tampered with, and no device will take it.
+  were tampered with. Older status declarations also use it for an incompatible host.
+- `needsStoreUpdate` - authenticated offer requires a newer store host; opt-in status shapes include `requiredBridge` (revision 17, section 2.5). Legacy declarations without that field keep `rejected`.
 - `toobig` — over `bundleSizeCap`, or the data pull hit `dataSizeCap`.
 - `waitingForData` — step 7 has not finished pulling the `requires.data` pairs, so the bundle exists but
   is not usable yet. On a device that is offline or whose server has not published the pair, this is
@@ -1995,3 +2048,10 @@ R5 regression rows: exact data-only sync hints only; no payload-supplied config,
 R17 regression rows: independent app/built-in revisions; reporting-schema parameter coherence; nullable returned fields additive against schema 14; legacy delegation omission; persisted unauthorized/failed/scoped-success outcomes, agreement with returned failures after driver replacement, busy/error preservation and account clearing; signed pending urgency true/false, invalid signature/missing/stale sequence refusal and unchanged activation state.
 
 R27 regression rows: a generated core-only host resolves no firebase_* or valence_push packages; the core example APK has no Firebase provider/service or Firebase DEX classes. Opt-in adapter tests map native envelopes (including empty notifications), passive permission, registration, taps and events; core retains exact hints, caps, JSON escaping, disabled-host denials, native token/lease sync and unchanged activation state. Firebase device delivery remains blocked; iOS untested.
+
+
+
+R31: authenticated newer-host reporting, fixed store destination and unsupported iOS
+configuration; signed mandatory block, cold open revalidation and newer withdrawal;
+wrong signature/app/seq/floor and malformed requires/minHost cannot establish policy;
+blocked trials retain their attempts and queued page calls cannot dispatch.

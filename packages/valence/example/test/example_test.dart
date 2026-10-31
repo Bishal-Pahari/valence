@@ -403,13 +403,24 @@ void main() {
     },
   );
 
+  test('R31 generated status and store method retain nonce and strict params', () async {
+    final h = await handlers();
+    final status = (await dispatch(h, 'bundle.status'))['v']! as Map;
+    expect(status.containsKey('requiredBridge'), isTrue);
+    expect(status['requiredBridge'], isNull);
+    expect(status.containsKey('minHost'), isTrue);
+    expect(status['minHost'], isNull);
+    expect((await dispatch(h, 'app.openStore', withNonce: 'wrong'))['e'], containsPair('code', 'E_DENIED'));
+    expect((await dispatch(h, 'app.openStore', params: {'url': 'https://other.invalid'}))['e'], containsPair('code', 'E_PARAMS'));
+  });
+
   test(
     'R17 nullable fields marshal through the generated dispatcher',
     () async {
       final h = await handlers();
       final info = (await dispatch(h, 'app.info'))['v']! as Map;
-      expect(info['builtins'], 16);
-      expect(info['bridge'], 16);
+      expect(info['builtins'], 17);
+      expect(info['bridge'], 17);
       expect(
         ((await dispatch(h, 'sync.status'))['v']! as Map)['reason'],
         isNull,

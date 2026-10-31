@@ -21,6 +21,7 @@ final class ValenceConfig {
     required this.keyring,
     required this.bridgeVersion,
     this.otaBase = '',
+    this.iosAppId,
     this.syncBase = '',
     this.syncMode = ValenceSyncMode.api,
     this.writableBuckets = const {},
@@ -46,6 +47,9 @@ final class ValenceConfig {
 
   /// The reverse-domain id a manifest must carry (canonical check 2).
   final String appId;
+
+  /// Numeric Apple App Store identity, configured in the store build.
+  final String? iosAppId;
 
   /// `{keyId: base64 raw Ed25519 public key}`, compiled into the host by codegen.
   ///
@@ -153,6 +157,7 @@ final class ValenceConfig {
   }) =>
       ValenceConfig(
         appId: appId,
+        iosAppId: iosAppId,
         keyring: keyring,
         bridgeVersion: bridgeVersion,
         otaBase: otaBase ?? this.otaBase,
@@ -178,4 +183,19 @@ final class ValenceConfig {
         notificationIcon: notificationIcon,
         notificationEventFields: notificationEventFields,
       );
+}
+
+/// A store destination derived only from the native build's configuration.
+Uri? valenceStoreUrl(ValenceConfig config, String platform) {
+  if (platform == 'android') {
+    return Uri.https(
+        'play.google.com', '/store/apps/details', {'id': config.appId});
+  }
+  final id = config.iosAppId;
+  if (platform == 'ios' &&
+      id != null &&
+      RegExp(r'^[0-9]{1,20}$').hasMatch(id)) {
+    return Uri.https('apps.apple.com', '/app/id$id');
+  }
+  return null;
 }

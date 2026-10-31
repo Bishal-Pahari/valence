@@ -1,5 +1,5 @@
 {
-  "version": 16,
+  "version": 17,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -285,6 +285,11 @@
         "caption": "string?"
       },
       "returns": "string"
+    },
+    "app.openStore": {
+      "since": 17,
+      "params": {},
+      "returns": "void"
     }
   },
   "events": {
@@ -426,7 +431,9 @@
       "reason": "string",
       "offered": "int?",
       "checkedAt": "int?",
-      "urgent": "bool?"
+      "urgent": "bool?",
+      "requiredBridge": "int?",
+      "minHost": "int?"
     },
     "Link": {
       "url": "string",

@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 16;
+const hostBridgeVersion = 17;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale, this.fontScale, this.builtins});
@@ -116,12 +116,12 @@ final class AppState {
 }
 
 final class BundleStatus {
-  const BundleStatus({required this.serving, this.pending, this.trial, required this.reason, this.offered, this.checkedAt, this.urgent});
+  const BundleStatus({required this.serving, this.pending, this.trial, required this.reason, this.offered, this.checkedAt, this.urgent, this.requiredBridge, this.minHost});
 
   factory BundleStatus.fromJson(Object? j, [String f = 'BundleStatus']) {
     final m = decodeObject(j, f);
-    decodeKeys(m, const {'serving', 'pending', 'trial', 'reason', 'offered', 'checkedAt', 'urgent'}, f);
-    return BundleStatus(serving: decodeInt(m['serving'], '$f.serving'), pending: m['pending'] == null ? null : decodeInt(m['pending'], '$f.pending'), trial: m['trial'] == null ? null : decodeInt(m['trial'], '$f.trial'), reason: decodeString(m['reason'], '$f.reason'), offered: m['offered'] == null ? null : decodeInt(m['offered'], '$f.offered'), checkedAt: m['checkedAt'] == null ? null : decodeInt(m['checkedAt'], '$f.checkedAt'), urgent: m['urgent'] == null ? null : decodeBool(m['urgent'], '$f.urgent'));
+    decodeKeys(m, const {'serving', 'pending', 'trial', 'reason', 'offered', 'checkedAt', 'urgent', 'requiredBridge', 'minHost'}, f);
+    return BundleStatus(serving: decodeInt(m['serving'], '$f.serving'), pending: m['pending'] == null ? null : decodeInt(m['pending'], '$f.pending'), trial: m['trial'] == null ? null : decodeInt(m['trial'], '$f.trial'), reason: decodeString(m['reason'], '$f.reason'), offered: m['offered'] == null ? null : decodeInt(m['offered'], '$f.offered'), checkedAt: m['checkedAt'] == null ? null : decodeInt(m['checkedAt'], '$f.checkedAt'), urgent: m['urgent'] == null ? null : decodeBool(m['urgent'], '$f.urgent'), requiredBridge: m['requiredBridge'] == null ? null : decodeInt(m['requiredBridge'], '$f.requiredBridge'), minHost: m['minHost'] == null ? null : decodeInt(m['minHost'], '$f.minHost'));
   }
 
   final int serving;
@@ -131,8 +131,10 @@ final class BundleStatus {
   final int? offered;
   final int? checkedAt;
   final bool? urgent;
+  final int? requiredBridge;
+  final int? minHost;
 
-  Map<String, Object?> toJson() => {'serving': serving, 'pending': pending, 'trial': trial, 'reason': reason, 'offered': offered, 'checkedAt': checkedAt, 'urgent': urgent};
+  Map<String, Object?> toJson() => {'serving': serving, 'pending': pending, 'trial': trial, 'reason': reason, 'offered': offered, 'checkedAt': checkedAt, 'urgent': urgent, 'requiredBridge': requiredBridge, 'minHost': minHost};
 }
 
 final class Link {
@@ -625,6 +627,7 @@ abstract interface class BridgeHandlers {
   Future<String> pushPermission(PushPermissionParams p);
   Future<PushMessage?> pushInitial();
   Future<String> shareImage(ShareImageParams p);
+  Future<void> appOpenStore();
   Future<void> hapticsTap();
 }
 
@@ -712,6 +715,8 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<PushMessage?> pushInitial() async => throw const BridgeError('E_UNSUPPORTED', 'push.initial is not implemented');
   @override
   Future<String> shareImage(ShareImageParams p) async => throw const BridgeError('E_UNSUPPORTED', 'share.image is not implemented');
+  @override
+  Future<void> appOpenStore() async => throw const BridgeError('E_UNSUPPORTED', 'app.openStore is not implemented');
   @override
   Future<void> hapticsTap() async => throw const BridgeError('E_UNSUPPORTED', 'haptics.tap is not implemented');
 }
@@ -872,6 +877,10 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
       case 'share.image':
         final r = await h.shareImage(ShareImageParams.fromJson(p, 'p'));
         return replyOk(id, r);
+      case 'app.openStore':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        await h.appOpenStore();
+        return replyOk(id, null);
       case 'haptics.tap':
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         await h.hapticsTap();
@@ -1051,7 +1060,7 @@ abstract class ValenceBuiltins {
   /// `bundle.status`, from the package.
   Future<BundleStatus> bundleStatus() async {
     final s = await valence.bundleStatusWithUrgency();
-    return BundleStatus(serving: s.serving, pending: s.pending, trial: s.trial, reason: s.reason.name, offered: s.offered, checkedAt: s.checkedAt, urgent: s.urgent);
+    return BundleStatus(serving: s.serving, pending: s.pending, trial: s.trial, reason: s.reason.name, offered: s.offered, checkedAt: s.checkedAt, urgent: s.urgent, requiredBridge: s.requiredBridge, minHost: s.minHost);
   }
 
   /// `data.count`, from the package.
@@ -1154,6 +1163,11 @@ abstract class ValenceBuiltins {
   /// `share.image`, from the package.
   Future<String> shareImage(ShareImageParams p) async {
     return valence.shareImage(bytes: p.bytes, path: p.path, fileName: p.fileName, caption: p.caption);
+  }
+
+  /// `app.openStore`, from the package.
+  Future<void> appOpenStore() async {
+    await valence.openStore();
   }
 
   /// `haptics.tap`, from the package.
