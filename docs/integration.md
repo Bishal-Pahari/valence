@@ -1,5 +1,43 @@
 # Integration with current packages - 2026-11-02
 
+## November 2: iteration-50 acceptance follow-up
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 50,
+read-only. No eligible must-have or rebase item remains. Current packages bases
+remain code 90af361 / site 6eb2bd6; ancestry checks confirm both bases and all
+32 feature tips in the merge-order table are included in both integrations.
+
+App-c's saved receipts were compared independently:
+
+- Settings returned painted in the original PID 4793. This successful attempt
+  does not close historical F-36 or establish renderer-loss recovery.
+- The artifact audit contains 56 passing consistency checks, not 56 independent
+  device reruns. The strengthened R29 fixture is app-side validation, not a
+  shipped runtime change or exhaustive privacy/concurrency proof.
+- An early forced registered job was refused before schedule and is excluded.
+  The later observed execution has forced=false, after 364.945 seconds of
+  observation. Full-log callback begin 05:29:03.588, completion 05:29:04.845 and
+  SUCCESS 05:29:04.855 share PID 7535. One execution proves no recurring cadence.
+- Stable native receipts show outbox 2/incoming absent before the worker, then
+  incoming origin 1170000/usn 1170002, exact outgoing inspection objects and
+  outbox 0 before foreground. Both outgoing objects match the saved write params.
+- Independently hashed raw activation files are byte-identical, SHA256
+  f32e1a9c8cfcb82567c318939776aa905ada97591032a1dd5bb86095803db04c:
+  current 1793576113, pending 1793576122, trial null. The report records the
+  final commit after observation. The excluded notification-receiver start
+  is preserved separately from the accepted post-delivery cold-tap attempt.
+
+Decision: preserve security, user data and the candidate freeze. Successful
+retries do not justify weakening rollback strikes, account isolation or leases.
+S1 remains deliberately parked; S2 needs a Play account. Historical findings
+remain open or qualified; Kundalini has not yet accepted S6/S7/S8.
+
+This is an evidence-ledger change only. Ancestry and diff hygiene were checked;
+implementation trees are unchanged. Earlier November 2 full gates retain their
+recorded scope; no fresh full-gate, device or runtime-review pass is claimed.
+No test-app writes, protected-branch changes, version/schema changes, push or
+publication.
+
 ## November 2: iteration-49 acceptance follow-up
 
 Read both apps' VALENCE_FINDINGS.md and newest completed reports, Kundalini 18 /
