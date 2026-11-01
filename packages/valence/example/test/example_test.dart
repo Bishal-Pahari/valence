@@ -432,7 +432,7 @@ void main() {
     () async {
       final h = await handlers();
       final info = (await dispatch(h, 'app.info'))['v']! as Map;
-      expect(info['builtins'], 18);
+      expect(info['builtins'], 19);
       expect(info['bridge'], hostBridgeVersion);
       expect(
         ((await dispatch(h, 'sync.status'))['v']! as Map)['reason'],

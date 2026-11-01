@@ -87,7 +87,7 @@ final class ValenceAppInfo {
     required this.bundle,
     required this.locale,
     this.fontScale = 1,
-    this.builtins = 18,
+    this.builtins = 19,
   });
 
   /// `android`, `ios`, or whatever `Platform.operatingSystem` says.
@@ -274,7 +274,8 @@ final class Valence {
       trace.start('store');
       final store =
           await _openStore(config, support, documentsDir, log, databaseFactory);
-      await store.revokeCachesExcept(config.cacheBuckets.difference(config.writableBuckets));
+      await store.revokeCachesExcept(
+          config.cacheBuckets.difference(config.writableBuckets));
       if (!store.isWal) {
         log('store: journal_mode is "${store.journalMode}", not wal; the concurrency the data layer '
             'assumes is not available on this filesystem');
@@ -331,6 +332,14 @@ final class Valence {
           eventScript('link.opened', {'url': link.url, 'path': link.path}));
       // The widget attaches later, so route the urgent-update callback through the runtime.
       updater.onUpdateReady = (seq) => valence.onUpdateReady?.call(seq);
+      updater.onChecked = () {
+        if (config.bundleCheckedEvent) {
+          valence._emitState(eventScript('bundle.checked', {
+            'reason': updater.lastReason.name,
+            'requiredBridge': updater.lastRequiredBridge,
+          }));
+        }
+      };
       // §4.4: a rejected token is the page's problem to fix, so it has to reach the page. Buffered like
       // every other event, which matters here because a cold start's first sync beats the entry page.
       sync.onUnauthorized = () =>
@@ -463,6 +472,20 @@ final class Valence {
   /// `bundle.updateReady` into the page, which may then call `bundle.applyUpdate`.
   void Function(int seq)? onUpdateReady;
 
+  /// Custom hosts must wire this to their coalesced discovery AND native policy transition.
+  /// ValenceApp owns it while attached; direct updater calls do not enforce the native screen.
+  Future<void> Function()? onCheckForUpdate;
+
+  /// Explicit discovery, without applying a pending bundle (contracts 4.6).
+  Future<void> checkBundleUpdate() async {
+    final check = onCheckForUpdate;
+    if (_view == null || check == null) {
+      throw const BridgeError(BridgeErrorCode.unsupported,
+          'the attached host does not support explicit update checks');
+    }
+    await check();
+  }
+
   /// The bound server, once the host widget has started it.
   ValenceServer? get server => _server;
 
@@ -492,7 +515,10 @@ final class Valence {
 
   /// Detaches only the view being disposed, so it cannot authorize permission prompts.
   void detach(ValenceHostView view) {
-    if (identical(_view, view)) _view = null;
+    if (identical(_view, view)) {
+      _view = null;
+      onCheckForUpdate = null;
+    }
   }
 
   /// Records the server and manifest the host widget is serving. Called by [ValenceApp].
@@ -781,13 +807,16 @@ final class Valence {
   Future<void> dataCache(String bucket, String key, Object? value) async {
     final schema = schemaFor(bucket);
     if (config.writableBuckets.contains(bucket)) {
-      throw const BridgeError(BridgeErrorCode.denied, 'data.cache requires a read-only bucket');
+      throw const BridgeError(
+          BridgeErrorCode.denied, 'data.cache requires a read-only bucket');
     }
     if (!config.cacheBuckets.contains(bucket)) {
-      throw const BridgeError(BridgeErrorCode.denied, 'data.cache requires a compiled cache bucket grant');
+      throw const BridgeError(BridgeErrorCode.denied,
+          'data.cache requires a compiled cache bucket grant');
     }
     if (key == '.' || key == '..') {
-      throw const BridgeError(BridgeErrorCode.params, 'data.cache refuses dot-segment keys');
+      throw const BridgeError(
+          BridgeErrorCode.params, 'data.cache refuses dot-segment keys');
     }
     if (_switchingAccount) {
       throw const BridgeError(BridgeErrorCode.internal,
@@ -1068,8 +1097,9 @@ final class Valence {
       _lastSeenUsn[bucket] = 0;
     }
     if (config.writableBuckets.isNotEmpty || config.cacheBuckets.isNotEmpty) {
-      emit(eventScript(
-          'sync.changed', {'buckets': {...config.writableBuckets, ...config.cacheBuckets}.toList()}));
+      emit(eventScript('sync.changed', {
+        'buckets': {...config.writableBuckets, ...config.cacheBuckets}.toList()
+      }));
     }
   }
 
