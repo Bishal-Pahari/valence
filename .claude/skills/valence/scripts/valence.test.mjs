@@ -1281,6 +1281,41 @@ test('a schema shipped in a store build is additive only', () => {
   assert.throws(() => codegen({ root, cfg }), /cannot be removed/);
 });
 
+test("a refused built-in names the reserved minimum beside the additive one", () => {
+  // K F-73: a guide printed `since: 17` as a literal, and 17 is the *reserved* number — the floor at
+  // which the package implements `app.openStore` rather than generating an abstract handler. For an app
+  // already past it the two numbers disagree, and the refusal that followed reads like "the package has
+  // not shipped this yet", which is what sends someone off to write native code they do not need. It
+  // knows both numbers, so it says both.
+  const latest = fixture({ latest: true });
+  editSchema(latest.root, (s) => delete s.methods['app.openStore']);
+  codegen(latest);
+  bundle({ ...latest, store: true, now: NOW });
+  editSchema(latest.root, (s) => (s.methods['app.openStore'] = { since: 17, params: {}, returns: 'void' }));
+  assert.throws(() => codegen(latest),
+    /needs since > 18 \(and version bumped to at least that\), and at least 17 to use the package's implementation — so declare 19/);
+
+  // Below the reserved number, `assertReservedSince` catches it first — and used to answer with the
+  // reserved number alone, which this baseline refuses, so the same trap was two steps long.
+  editSchema(latest.root, (s) => (s.methods['app.openStore'].since = 3));
+  assert.throws(() => codegen(latest),
+    /Use "since": 19 — 17 is the reserved minimum, and a name new since your store build at version 18 also needs since above it/);
+
+  // On a baseline below the reserved number the two agree, and only the one number is named.
+  const { root, cfg, key } = fixture();
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  editSchema(root, (s) => (s.methods['app.openStore'] = { since: 3, params: {}, returns: 'void' }));
+  assert.throws(() => codegen({ root, cfg }), /Use "since": 17: a built-in's since is reserved/);
+
+  // An app-owned method has no reserved number, so nothing is invented for it.
+  editSchema(root, (s) => {
+    delete s.methods['app.openStore'];
+    s.methods['haptics.tap'] = { since: 2, params: {}, returns: 'void' };
+  });
+  assert.throws(() => codegen({ root, cfg }), /needs since > 4 \(and version bumped to at least that\)$/m);
+});
+
 test('the package reports the built-in revision the template schema is at', () => {
   // `AppInfo.builtins` is the runtime's own capability revision (§4), in the same number space as the
   // reserved schema versions the CLI owns. Nothing else compares the two, and both sides are literals:

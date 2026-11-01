@@ -1036,8 +1036,12 @@ export function assertReservedSince(s, storeSchema) {
     const sameReturns = builtinReturnMatches(m, want.returns, s);
     if (!sameParams || !sameReturns) continue; // the app's own method, with its own shape
     const reserved = reservedSince(m.name);
+    // The number to *declare* is not always the reserved one: `assertAdditive` separately needs a new
+    // name above the store baseline, so an app already past the reserved number must go higher. Saying
+    // `reserved` alone sent K F-73 round the loop twice — refused here, told to write 17, refused again.
+    const declare = Math.max(reserved, (storeSchema?.version ?? 0) + 1);
     throw new Error(
-      `"${m.name}" has the built-in's own signature but "since": ${m.since}, below the ${reserved} the runtime reserves for that name — so the delegation is not generated, ValenceBuiltins will not satisfy the abstract handler, and writing it by hand reimplements a built-in. Use "since": ${reserved}: a built-in's since is reserved, even though your schema's own version is yours. (A method of your own under this name, with a different signature, is preserved as it always was.)`,
+      `"${m.name}" has the built-in's own signature but "since": ${m.since}, below the ${reserved} the runtime reserves for that name — so the delegation is not generated, ValenceBuiltins will not satisfy the abstract handler, and writing it by hand reimplements a built-in. Use "since": ${declare}${declare === reserved ? '' : ` — ${reserved} is the reserved minimum, and a name new since your store build at version ${storeSchema.version} also needs since above it`}: a built-in's since is reserved, even though your schema's own version is yours. (A method of your own under this name, with a different signature, is preserved as it always was.)`,
     );
   }
 }
@@ -1200,7 +1204,11 @@ export function assertAdditive(shipped, current) {
   for (const kind of ['methods', 'events']) {
     for (const [name, def] of Object.entries(current[kind] ?? {})) {
       if (!Object.hasOwn(shipped[kind] ?? {}, name) && !(def.since > shipped.version)) {
-        throw new Error(`${kind} "${name}" is new since the store build, so it needs since > ${shipped.version} (and version bumped to at least that)`);
+        // Both numbers, because a guide that prints the reserved one as a literal reads like the number
+        // to declare, and the gap only opens for an app already past it (K F-73). A built-in's reserved
+        // `minSince` is a floor for *delegation*; this refusal's number is a floor for *additivity*.
+        const reserved = kind === 'methods' ? BUILTINS[name]?.minSince : undefined;
+        throw new Error(`${kind} "${name}" is new since the store build, so it needs since > ${shipped.version} (and version bumped to at least that)${reserved ? `, and at least ${reserved} to use the package's implementation — so declare ${Math.max(reserved, shipped.version + 1)}` : ''}`);
       }
     }
   }
