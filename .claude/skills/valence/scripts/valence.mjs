@@ -115,6 +115,7 @@ const BUILTINS = {
     call: (t) => `final s = valence.appState();
         return ${t}(lifecycle: s.lifecycle.name, online: s.online);`,
   },
+  'bundle.check': { minSince: 19, params: {}, returns: 'void', call: () => 'await valence.checkBundleUpdate();' },
   'bundle.status': {
     params: {},
     returns: {
@@ -1119,6 +1120,10 @@ export function parseSchema(schema, pluginMethods = new Set(), pluginNamespaces 
     }
     seen.set(c, x);
   }
+  const checked = events.find((e) => e.name === 'bundle.checked' && e.since >= 19);
+  if (checked && canonical(Object.fromEntries(checked.payload.map((f) => [f.name, `${f.type.base}${f.type.list ? '[]' : ''}${f.type.nullable ? '?' : ''}`]))) !== canonical({ reason: 'string', requiredBridge: 'int?' })) {
+    throw new Error('bundle.checked payload must stay {reason: string, requiredBridge: int?}');
+  }
   const classNames = new Set(typeList.map((t) => t.name));
   for (const m of methods) if (classNames.has(pascal(m.name) + 'Params')) throw new Error(`${m.name}: params class name collides with a type`);
   return { version, types: typeList, methods, events, pluginNamespaces: [...pluginNamespaces] };
@@ -1402,6 +1407,7 @@ function dartBuiltins(s) {
   const notificationEvents = s.events.filter(autoNotificationEvent);
   const o = [
     '/// Automatic notification events; pre-11 declarations remain app-owned.',
+    `const hostBundleCheckedEvent = ${s.events.some((e) => e.name === 'bundle.checked' && e.since >= 19)};`,
     'const hostNotificationEventFields = <String, Set<String>>{',
     // Only the fields the native response actually carries. A field the app declared on top of them is
     // left out rather than emitted as null, and is warned about instead.
@@ -1621,6 +1627,7 @@ export function genDartConfig(cfg, keyring) {
     // host that under-reports its version refuses its own built-in bundle on first launch.
     '  bridgeVersion: hostBridgeVersion,',
     '  notificationEventFields: hostNotificationEventFields,',
+    '  bundleCheckedEvent: hostBundleCheckedEvent,',
     `  notificationsEnabled: ${cfg.notifications?.enabled ?? false},`,
     ...(iosAppId === undefined ? [] : [`  iosAppId: ${dartStr(iosAppId)},`]),
     `  notificationIcon: ${dartStr(cfg.notifications?.icon ?? 'ic_stat_valence')},`,

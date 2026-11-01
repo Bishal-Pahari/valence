@@ -135,3 +135,5 @@ reads it back through the bridge and rejects caching in writable `shelf`. The
 checked-in signed builtin remains the previously verified revision-17 bundle;
 new schema wiring alone is not a new signed UI or Android device acceptance.
 See [REST caching](../../../docs/rest-cache.md). iOS remains experimental and untested.
+
+The generated schema declares revision-19 bundle.check and bundle.checked. See the explicit-check guide for the subscription and Retry flow; the signed built-in UI is unchanged.

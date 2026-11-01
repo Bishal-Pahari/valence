@@ -91,6 +91,7 @@ void main() {
     });
     runtime = await Valence.open(
       testConfig(key, writableBuckets: {'shelf'}).copyWith(
+        bundleCheckedEvent: true,
         readyTimeout: const Duration(milliseconds: 80),
         updateInterval: const Duration(seconds: 5),
       ),
@@ -531,6 +532,77 @@ void main() {
     expect(controller.loads, hasLength(1));
     expect(controller.scripts.where((s) => s.contains('bundle.updateReady')),
         hasLength(1));
+  });
+
+  testWidgets(
+      'explicit checks report incompatible offers without pending or apply',
+      (tester) async {
+    await mount(tester);
+    await io(tester);
+    final controller = webview.controller;
+    controller.navigation.finished(controller.loads.last.toString());
+    controller.scripts.clear();
+    final incompatible = await signBundle(key, seq: 20, requiresBridge: 20);
+    respond = (request) async {
+      if (request.url.path.endsWith('/channels/production.json')) {
+        return http.Response('{"seq":20,"rollout":100}', 200);
+      }
+      if (request.url.path.endsWith('/20.json.sig')) {
+        return http.Response(incompatible.signature, 200);
+      }
+      if (request.url.path.endsWith('/20.json')) {
+        return http.Response.bytes(incompatible.bytes, 200);
+      }
+      return http.Response('', 404);
+    };
+    final before = pointerRequests();
+    await tester.runAsync(() => Future.wait([
+          runtime.checkBundleUpdate(),
+          runtime.checkBundleUpdate(),
+        ]));
+    await io(tester);
+    expect(pointerRequests(), before + 1);
+    expect(runtime.bundleStatus().reason, ValenceBundleReason.needsStoreUpdate);
+    expect(runtime.bundleStatus().requiredBridge, 20);
+    expect(runtime.state.pending, isNull);
+    expect(runtime.state.trial, isNull);
+    expect(controller.loads, hasLength(1));
+    final events =
+        controller.scripts.where((s) => s.contains('bundle.checked'));
+    expect(events, hasLength(1));
+    expect(events.single, contains('needsStoreUpdate'));
+    expect(events.single, contains('requiredBridge'));
+    expect(controller.scripts.where((s) => s.contains('bundle.updateReady')),
+        isEmpty);
+  });
+
+  testWidgets('explicit checks enforce a signed mid-session store block',
+      (tester) async {
+    await mount(tester);
+    await io(tester);
+    final policy = await signBundle(key, seq: 20, overrides: {'minHost': 20});
+    respond = (request) async {
+      if (request.url.path.endsWith('/channels/production.json')) {
+        return http.Response('{"seq":20,"rollout":100}', 200);
+      }
+      if (request.url.path.endsWith('/20.json.sig')) {
+
+        return http.Response(policy.signature, 200);
+
+      }
+      if (request.url.path.endsWith('/20.json')) {
+
+        return http.Response.bytes(policy.bytes, 200);
+
+      }
+      return http.Response('', 404);
+    };
+    await tester.runAsync(() => runtime.checkBundleUpdate());
+    await tester.pump();
+    expect(find.text('Update required'), findsOneWidget);
+    expect(runtime.server, isNull);
+    expect(runtime.state.serving, isNull);
+    expect(runtime.state.trialFails, 0);
   });
 
   testWidgets('live handovers coalesce concurrent update checks',

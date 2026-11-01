@@ -286,3 +286,5 @@ nullable status fields and a native blocker; older runtimes cannot be forced.
 Cache selected REST responses for offline reads with revision-18 `data.cache`,
 behind a compiled per-bucket grant. See [REST caching](docs/rest-cache.md) for
 pull precedence, account clearing, retention and schema lifetimes.
+
+Revision 19 adds `bundle.check()` and `bundle.checked` so a page can request a check and learn when an offer needs a newer store host, even when no bundle becomes pending. [Explicit checks and completion](docs/bundle-checks.md).

@@ -2,6 +2,8 @@
 
 ## Unreleased: three host fixes from an independent review
 
+- Schema 19 adds explicit `bundle.check` and `bundle.checked` completion, including offers needing a newer store host. Regenerate and rebuild to opt in; pending-only `bundle.updateReady` is unchanged.
+
 - **A blocked host no longer rebinds its loopback server.** `Valence.unbound()` forgets the
   server and the manifest when a mid-session `minHost` block takes the page down, so
   `ValenceApp`'s resume — which rebinds any server whose liveness probe fails, because iOS

@@ -8,7 +8,7 @@ export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
 export type { Json };
 
-export const BRIDGE_VERSION = 18;
+export const BRIDGE_VERSION = 19;
 
 export interface AppInfo {
   platform: string;
@@ -222,6 +222,7 @@ export interface Methods {
     key: string;
     value?: Json | null;
   }; returns: void };
+  'bundle.check': { params: Record<string, never>; returns: void };
   'haptics.tap': { params: Record<string, never>; returns: void };
 }
 
@@ -274,6 +275,10 @@ export interface Events {
   'push.tokenChanged': {
     token: string;
   };
+  'bundle.checked': {
+    reason: string;
+    requiredBridge?: number | null;
+  };
 }
 
 export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
@@ -320,6 +325,7 @@ export const METHOD_SINCE: { readonly [M in keyof Methods]: number } = {
   'share.image': 14,
   'app.openStore': 17,
   'data.cache': 18,
+  'bundle.check': 19,
   'haptics.tap': 1,
 };
 
@@ -339,6 +345,7 @@ export const EVENT_SINCE: { readonly [E in keyof Events]: number } = {
   'push.received': 12,
   'push.tapped': 12,
   'push.tokenChanged': 12,
+  'bundle.checked': 19,
 };
 
 /** Browser fallbacks for this app, so the same build also runs as the website. */

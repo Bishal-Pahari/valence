@@ -459,7 +459,7 @@ void main() {
     final v = await open(
         config: testConfig(key, bridgeVersion: 41, writableBuckets: {'shelf'}));
     expect(v.appInfo().bridge, 41);
-    expect(v.appInfo().builtins, 18);
+    expect(v.appInfo().builtins, 19);
     expect((await v.syncStatus()).reason, isNull);
     await v.authSetToken('a', account: 'a');
     await v.store.hostPrefSet('valence.sync.reason', 'unauthorized');
@@ -1586,6 +1586,33 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 5));
       }
       expect(spy.events, contains('sync.done'));
+    });
+
+    test('completion opt-in drops unloaded events and explicit checks need a host', () async {
+      final v = await open(config: testConfig(key, otaBase: '').copyWith(bundleCheckedEvent: true));
+      final spy = _ScriptSpy()..pageLoaded = false;
+      v.attach(spy);
+      await v.updater.checkForUpdate();
+      expect(spy.events, isEmpty);
+      expect(v.bundleStatus().reason, ValenceBundleReason.unconfigured);
+      spy.pageLoaded = true;
+      await v.updater.checkForUpdate();
+      expect(spy.events, ['bundle.checked']);
+      await expectLater(v.checkBundleUpdate(), throwsA(isA<BridgeError>()));
+      var calls = 0;
+      v.onCheckForUpdate = () async { calls++; };
+      await v.checkBundleUpdate();
+      expect(calls, 1);
+      v.detach(spy);
+      await expectLater(v.checkBundleUpdate(), throwsA(isA<BridgeError>()));
+    });
+
+    test('absent completion declaration remains silent', () async {
+      final v = await open(config: testConfig(key, otaBase: ''));
+      final spy = _ScriptSpy();
+      v.attach(spy);
+      await v.updater.checkForUpdate();
+      expect(spy.events, isEmpty);
     });
 
     test('bundle.status before any check says idle rather than "up to date"',

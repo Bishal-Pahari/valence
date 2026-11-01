@@ -2,6 +2,8 @@
 
 ## Unreleased: five fixes from an independent review
 
+- Schema 19 adds explicit `bundle.check` and `bundle.checked` completion, including offers needing a newer store host. Regenerate and rebuild to opt in; pending-only `bundle.updateReady` is unchanged.
+
 Nothing here needs anything from your app; regenerate and rebuild as usual.
 
 - **A blocked host could put your bundle back on the loopback port.** When a signed
