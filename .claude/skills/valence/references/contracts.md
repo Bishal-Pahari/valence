@@ -1452,6 +1452,11 @@ the host to adopt it. Its payload is a notification to re-read bundle.status,
 not a command to apply an update. It uses the unbuffered state-event path; mount
 reads recover the latest completed state without replaying stale checks.
 
+The legacy bundle.status projection is unchanged: without nullable requiredBridge
+in its declared return type it still reports rejected. A page using the status
+re-read recipe must declare that field; the completion event independently
+reports the authenticated incompatible-offer reason and requirement.
+
 bundle.updateReady keeps its existing meaning: a verified bundle became pending.
 It never fires for an offer refused at check 5. Subscribe to bundle.checked before
 the mount read; re-read bundle.status on each completion. For a user-triggered

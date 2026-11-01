@@ -11,6 +11,8 @@ exact payload `{reason: string, requiredBridge: int?}`. Both have reserved minim
 cover it, refresh the CLI, regenerate, upgrade the native package and rebuild.
 Older hosts need a store release; an OTA cannot add this capability.
 
+For the status re-read recipe below, also declare nullable `requiredBridge: int?` on the return type of `bundle.status` (whatever your app calls that type). A legacy status shape without it preserves its `rejected` projection; the completion event independently carries authenticated `needsStoreUpdate` and `requiredBridge`.
+
 Subscribe before the mount read, and read the authoritative status on completion:
 
 ```ts
