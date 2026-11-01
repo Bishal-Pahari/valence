@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased: a cookie jar for one origin, so a CSRF-protected API is reachable
+
+Nothing changes unless you ask for it. If you do not add `http.cookieJar`, `http.request` behaves
+exactly as it did: no cookie is sent, every `Set-Cookie` is discarded, and nothing is stored.
+
+- **A session-cookie or CSRF-protected API was unreachable, not just awkward.** `http.request`
+  forbids your page from sending `Cookie` — a page that can set one for the origin the host trusts
+  with your bearer token can forge one — and it kept no cookies of its own. So the default shape of a
+  Django `POST` (a `csrftoken` cookie plus a matching `X-CSRFToken` header), and the Rails
+  equivalent, could not be completed at all: the host had neither half of the pair and no app code
+  could supply either. That is two of the most widely deployed server frameworks.
+- **The opt-in is one origin in your config.** `"http": { "origins": [...], "cookieJar": { "origin":
+  "https://api.example.com", "csrf": { "cookie": "csrftoken", "header": "X-CSRFToken" } } }`. The host
+  then replays that origin's cookies and sets the header from the cookie it holds. Your page is
+  unchanged, and still cannot read a cookie, set one, or send one anywhere — including the mirrored
+  header, which it gets `E_DENIED` for, because a value it chose would not match what the server is
+  about to compare. Drop `csrf` if you only need a session cookie replayed.
+- **Four things `codegen` refuses rather than warns about,** because each is configuration that reads
+  as working and is not: an origin that is not also in `http.origins` (the jar would never fill), more
+  than one origin, a cleartext origin that is not loopback (a jar replays a credential on every
+  request, which is a stronger claim than a token you grant per call), and a mirrored header the host
+  already sets. `valence doctor` gains a **cookie jar** row so you can see the live answer.
+- **It behaves like a browser where that is safe, and more strictly where it is not.** Host-only by
+  `Domain`, so a cookie never reaches a sibling subdomain; `Path` matched properly; `Max-Age` over
+  `Expires`; at most 16 cookies, 4096 bytes each and 8 KiB in all, with anything over a cap dropped and
+  logged rather than failing your request. A cookie with **no** expiry is a session cookie and never
+  leaves memory, so a restart is a new session. One with an expiry lives in the same
+  Keystore/Keychain storage as your token.
+- **It is cleared with the token.** Every path that clears the bearer token clears the jar in the same
+  step — `auth.setToken(null)`, including the sign-out of an app that never passed an `account` and so
+  clears no rows, and an account switch, under the same sync lease. A token refresh for the same
+  account clears nothing. It **survives an OTA update**, deliberately: the origin is compiled into your
+  native build and no manifest can change it, so signing a user out of their session for a UI update
+  would cost something and protect nothing. Drop or move `cookieJar` in a later store build and the old
+  origin's cookies are revoked on the next launch.
+
 ## Unreleased: five fixes from an independent review
 
 - Schema 19 adds explicit `bundle.check` and `bundle.checked` completion, including offers needing a newer store host. Regenerate and rebuild to opt in; pending-only `bundle.updateReady` is unchanged.

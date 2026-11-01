@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased: an optional host-held cookie jar for one compiled origin
+
+- **`ValenceConfig.cookieJar` (`ValenceCookieJar`) opts one origin into a host-held jar (contracts
+  §4.5.1).** Null by default, and null means exactly today's behaviour: `ValenceHttp` sends no
+  `Cookie`, discards every `Set-Cookie`, and touches secure storage only to notice there is nothing to
+  revoke. The origin is compiled from `http.cookieJar` by `valence codegen`, which refuses one that is
+  not also in `http.origins`, a cleartext non-loopback one, and a mirrored CSRF header the host
+  already controls.
+- **`ValenceCookies` holds the jar for the runtime's lifetime,** so one secure-storage read serves
+  every request. It is host-only by `Domain`, matches `Path` per RFC 6265 §5.1.4, prefers `Max-Age`
+  over `Expires`, caps at 16 cookies / 4096 bytes each / 8 KiB total, keeps a session cookie in memory
+  only, and persists an expiring one at the reserved `valence.http.cookies` key, which `secure.get`
+  cannot read. A malformed `Set-Cookie`, an over-cap cookie and unwritable storage are logged, never
+  thrown at the page.
+- **`Valence.cookies.clear()` runs on every path that clears the bearer token:** `authSetToken(null)`,
+  including the sign-out of a host that recorded no account and therefore clears no rows, and the §5.3
+  account switch, inside the sync lease and before the new token is written.
+- **`Valence.open` revokes a jar the build no longer grants,** reading first and writing only when
+  there is something to delete. It **never fails the open**: a stored jar that cannot be deleted seals
+  the jar for that launch — it sends and absorbs nothing — and an unreadable Keystore reads as absent
+  like every other §4.4 read, so the jar runs in memory.
+- **`ValenceHttp.hostControlled` is now public,** and the CSRF mirror is checked against it: a
+  configured header the host already sets throws `E_INTERNAL` rather than silently overwriting the
+  bearer token or the jar's own `Cookie`. The CLI refuses the same names, and the two lists are on
+  independent release trains, so this is the backstop that makes a drift loud.
+
 ## Unreleased: three host fixes from an independent review
 
 - Schema 19 adds explicit `bundle.check` and `bundle.checked` completion, including offers needing a newer store host. Regenerate and rebuild to opt in; pending-only `bundle.updateReady` is unchanged.
