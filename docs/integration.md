@@ -1,5 +1,67 @@
 # Integration acceptance refresh ? 2026-11-01
 
+## App-c iteration 29 evidence refresh - 2026-11-01
+
+### In plain terms
+
+Settings return still loses the app under memory pressure. This run directly
+records Android killing both the renderer and the host; a later restart and
+successful feature checks do not establish a stability fix. All must-have work
+is done or ready, and the integration queue remains current.
+
+Read both findings and newest reports read-only: Kundalini 17 and app-c 29.
+Packages remains code 778b20c / site 9ed2ee9. Independently checked all 30 exact
+feature/compatibility tips in the table below against their current branches
+and integration ancestry in both repos, including S7 at schema 18. No missing
+merge or eligible must-have remains. S1 stays deliberately parked, S2 requires
+a Play account, and the other builder explicitly names S6 as its next task.
+Do not overlap that credential-store work while ownership remains unresolved.
+
+Saved-result checks, without operating either app:
+
+- Full Settings log lines 60711 and 60734 name renderer 5553 at
+  13:22:56.967 and host 5471 at 13:22:56.996 as lowmemorykiller targets.
+  Exit-info records LOW_MEMORY for both. This differs from a renderer kill
+  followed only by Chromium terminating the host; a callback would not by
+  itself prevent a direct OS host kill. No package leak or root cause of
+  memory pressure is established. F-36 remains open.
+- The initial worker callback completed offline after its parent-owned mock
+  disappeared. WorkManager SUCCESS alone is not sync evidence. The replacement
+  mock's host healthcheck is also excluded. Original queued-data/activation
+  baselines were retained; the full-log baseline was renewed after that failed
+  callback. An unconfirmed one-off request and early refused force are excluded.
+- Independently compared the final worker's exact lines against the renewed
+  before log and full after log: begin 13:52:15.924, complete 13:52:17.220 and
+  SUCCESS 13:52:17.227 are new, with host PID 8433. The saved pre-resume SQLite
+  receipt contains incoming origin 540000 at USN 540002, two outgoing objects
+  at USNs 540001/540002 and outboxCount=0. This checks retained receipts, not a
+  fresh extraction. Execution is explicitly forced after eligibility; no
+  natural cadence is claimed.
+- Independently hashed and compared raw before/after activation bytes:
+  SHA256 9fc77d17d6ba3aa2c0c1ab3b599b37a177a769482fc2f46eb953d89c1e903809.
+  Current stays 1793519202, pending 1793519211, trial=null. Saved final state
+  subsequently commits 1793519211 with pending/trial=null.
+- Native widget preferences independently read 6 -> 7 -> 6 remaining, total 7,
+  with next Flat 2 -> Flat 1 -> Flat 2. Wrong-page screenshots remain excluded.
+  Saved cleanup records stopped app/mocks, airplane mode off and no forwards.
+  The supplied audit reports 43 passing consistency assertions; this includes
+  qualified failures and is not an unconditional stability pass.
+
+App-c F-27/F-29/F-33/F-34/F-35/F-36/F-37/F-38 and pagination remain open or
+qualified. Kundalini has not accepted S7; its cookie-paired CSRF gap remains S6.
+Decision: preserve security and user data. Do not change leases, rollback
+strikes or navigation policy on the strength of successful retries or an OS
+memory-pressure observation; those changes need evidence identifying their
+actual failure path.
+
+Only the matching integration ledgers change. Implementation/build inputs
+remain identical to fully gated code 8d800f6 / site 6276993; the combined gate
+table below retains its original scope and date. No fresh full gates, runtime
+review, emulator execution, test-app writes, package/schema bump, protected
+branch changes, push or publication are claimed. Fresh verification covers
+ancestry, exact saved log lines, independent hashes, preferences and diff
+hygiene. iOS remains experimental and untested.
+
 ## App-c iteration 28 evidence refresh - 2026-11-01
 
 ### In plain terms
