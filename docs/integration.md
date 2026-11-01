@@ -1,5 +1,64 @@
 # Integration acceptance refresh ? 2026-11-01
 
+## App-c iteration 38 evidence refresh - 2026-11-01
+
+### In plain terms
+
+Read both apps' findings and newest completed reports read-only: Kundalini 17 and
+app-c 38. This app-c attempt retains Settings PID 4677 and reports painted return;
+camera/gallery and mixed-picker links pass within the app report's scope. These
+observations do not close historical intermittent findings or establish a repair.
+F-38's documentation correction is already in this integration; the local preview
+receipts remain identical to iteration 37, so app-side adoption is not established.
+
+Decision: preserve security and users' data; do not change rollback, navigation,
+credential storage or sync leases on a successful observation. No eligible
+must-have or missing integration merge remains. S1 remains deliberately parked,
+S2 needs a Play account, and the other builder explicitly names S6 next.
+Kundalini has not yet accepted S7; its cookie-paired CSRF gap remains open.
+
+### Independently checked saved evidence
+
+- The exact callback begin (20:00:22.477), complete (20:00:23.902) and native
+  WorkManager SUCCESS (20:00:23.921) lines share PID 7022, are absent from
+  `background-full-log-before.txt`, and appear in `worker-full-logcat.txt`.
+  `worker-execution.json` records forced=true and 497.988 seconds observed.
+  This proves one explicitly triggered execution, not natural periodic cadence.
+- The supplied stable native SQLite baseline records outbox 2/incoming absent.
+  Before-resume receipt records incoming origin 810000/usn 810002, both outgoing
+  inspection rows and outbox 0. These are saved native receipts, not a new
+  database extraction by this reviewer.
+- Raw before/after activation files are byte-identical, independently hashed
+  SHA256 `0d8604fac3dbae73dd5033f0f3d49ca1f0a1c37adfe268240f03f26591d456ff`:
+  current 1793541967, pending 1793541977, trial null. Final state commits 1793541977.
+- Settings PID receipts both say 4677. Native widget preferences record left
+  6-to-7-to-6; the runner receipt names corrected mock base 800200 and capture
+  before HOME. No independent screenshot inspection is claimed here.
+- Final original-inspection receipt preserves note/checks/done/photo identity;
+  native and legacy reminder queues are empty and final sync pending is 0.
+  Renewed cleanup receipt is timestamped 14:16:20.320 UTC after the cold-link
+  recheck and records stopped app/mocks, airplane off and no forwards.
+- All 50 saved artifact-audit entries report passed. The two archive-hash
+  receipts and eleven local documentation receipts match iteration 37 exactly;
+  this comparison does not fingerprint the Flutter source tree.
+
+### Integration and validation scope
+
+Verified all 31 recorded exact branch tips, including renderer diagnostics, and
+both packages bases are ancestors of current integration in both repositories.
+Bases remain code `778b20c` / site `9ed2ee9`; pre-refresh integration heads are
+code `43c7da1` / site `7456b33`. No branch needs rebasing or another merge.
+
+Only matching `docs/integration.md` ledgers change. Implementation, spec, schema
+and website build inputs are identical to fully gated code `27b4cd8` / site
+`16e3fd6` documented below. Fresh checks in this run are saved-artifact assertions,
+tip/ancestry checks, unchanged-input checks and diff hygiene. Full package/build
+gates were not rerun; their earlier November 1 results retain their original scope.
+
+No new runtime work, emulator/device run, independent runtime review, app write,
+protected-branch change, version bump, push or publication. iOS and Firebase
+delivery remain unverified; the app report does not establish beta acceptance.
+
 ## Renderer diagnostic correction and app-c iteration 37 - 2026-11-01
 
 ### In plain terms
