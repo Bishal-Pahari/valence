@@ -1,5 +1,53 @@
 # Integration acceptance refresh ? 2026-11-01
 
+## App-c iteration 30 evidence refresh - 2026-11-01
+
+### In plain terms
+
+The latest Settings return survives in the same process, but that does not
+repair the historical memory-pressure kills or permission ANR. No eligible
+must-have or missing integration merge remains. Read both findings and newest
+reports read-only: Kundalini 17 and app-c 30.
+
+Packages remains code 778b20c / site 9ed2ee9. Independently checked all 30 exact
+feature/compatibility tips against their current branches and integration
+ancestry in both repos, plus both packages bases. S1 remains deliberately
+parked, S2 needs a Play account, and the other builder explicitly names S6 next.
+Decision: preserve security and users' data; avoid overlapping credential-store
+work or changing leases, rollback strikes or navigation policy without causal
+evidence. Kundalini has not yet accepted S7; its cookie-paired CSRF gap remains.
+
+Saved-result checks, without operating either app:
+
+- Settings PID receipts both name 5074, and the pre-relaunch DOM contains the
+  painted unit list. This supports this return only; F-35/F-36 remain open.
+- Independently matched the exact new worker lines against the full baseline
+  and after log: begin 14:30:28.449, complete 14:30:29.719 and WorkManager
+  SUCCESS 14:30:29.728 share PID 7907. The saved pre-resume SQLite receipt has
+  incoming origin 570000 at USN 570002, outgoing objects at 570001/570002 and
+  outboxCount=0. This checks saved receipts, not a fresh database extraction.
+- Execution was explicitly forced after eligibility, with 498.815 seconds of
+  observation. No natural cadence or production durability is established.
+- Independently compared raw activation bytes and recomputed their SHA256:
+  f69f1930df398741186c56eeaa4d21e6ea298b2d8496f2c447f01ff0cc90a2ae.
+  Current remains 1793522222, pending 1793522232, trial/serving=null. The saved
+  final state subsequently commits 1793522232 with pending/trial=null.
+- Native widget preferences independently read 6 -> 7 -> 6, total 7, with next
+  Flat 2 -> Flat 1 -> Flat 2. Wrong-page screenshots remain excluded. Saved
+  cleanup records stopped app/mocks, airplane mode off and no forwards. The
+  supplied audit records 43 passing artifact checks, not a stability guarantee.
+
+F-27/F-29/F-33/F-34/F-35/F-36/F-37/F-38 and pagination remain open or qualified.
+Copied fallback scripts were not executed evidence. Initial invocation errors
+and the APK commands' combined PowerShell exit 1 remain qualified in the app's
+runner notes; explicit build completions are not a clean combined-shell result.
+
+Only matching integration ledgers change. Implementation/build inputs remain
+identical to fully gated code 8d800f6 / site 6276993; the combined gate table
+below retains its original scope and date. No fresh full gates, runtime review,
+emulator execution, app writes, package/schema bump, protected-branch change,
+push or publication is claimed. iOS remains experimental and untested.
+
 ## App-c iteration 29 evidence refresh - 2026-11-01
 
 ### In plain terms
