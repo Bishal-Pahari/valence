@@ -1,5 +1,58 @@
 # Integration acceptance refresh ? 2026-11-01
 
+## App-c iteration 31 evidence refresh - 2026-11-01
+
+### In plain terms
+
+Settings return again loses both renderer and host to direct Android memory
+pressure. Explicit relaunch recovers the app; it does not repair F-36 or prove
+uninterrupted return. No eligible must-have or missing integration merge remains.
+Read both findings and newest reports read-only: Kundalini 17 and app-c 31.
+
+Packages remains code 778b20c / site 9ed2ee9. Independently checked all 30 exact
+feature/compatibility tips against current branches and integration ancestry in
+both repos, together with both packages bases. S1 remains deliberately parked,
+S2 needs a Play account, and the other builder explicitly names S6 next.
+Decision: preserve security and users' data; avoid overlapping credential-store
+work or changing leases, rollback strikes or navigation policy without causal
+evidence. Kundalini has not yet accepted S7; cookie-paired CSRF remains S6.
+
+Saved-result checks, without operating either app:
+
+- Settings full-log lines 57090 and 57096 directly name renderer 5384 and host
+  5308 as lowmemorykiller targets at 15:14:28.151 and 15:14:28.192 (41 ms apart).
+  Exit-info records LOW_MEMORY at 15:14:28.195 and 15:14:28.268 respectively.
+  Kill-request timestamps and exit timestamps are distinct receipts. This does
+  not establish a package leak or a callback-only cause; F-36 remains open.
+- Four earlier foreground probes returned ok/pending 0 after force requests;
+  actual worker overlap was not established and F-33 stays open. A separate
+  isolated run has exactly one new begin 15:29:24.477, complete 15:29:25.906 and
+  WorkManager SUCCESS 15:29:25.915, all PID 8266. Each exact line was independently
+  checked absent from the full before log and present in the full after log.
+- Saved stable pre-worker SQLite receipt records outbox 2 and incoming absent.
+  Pre-resume receipt records incoming origin 600000 at USN 600002, outgoing rows
+  at USNs 600001/600002 and outbox 0. These are supplied native receipts, not a
+  fresh extraction. Execution was explicitly forced after eligibility, with
+  529.592 seconds observed; no natural cadence or production durability claim.
+- Independently compared raw activation bytes and recomputed matching SHA256
+  4603dccdc27597fa132313ee9cffce78389140ad81d0439ed4e83975683e628e.
+  Current 1793525726, pending 1793525735 and trial/serving=null remain unchanged.
+  Saved final state subsequently commits 1793525735 with pending/trial=null.
+- Native widget preferences independently read 6 -> 7 -> 6, total 7, next
+  Flat 2 -> Flat 1 -> Flat 2. Initial wrong-page screenshots are excluded. Cleanup
+  records stopped app/mocks, airplane mode off and no forwards. The supplied
+  audit records 44 passing artifact checks, not a stability guarantee.
+
+F-27/F-29/F-33/F-34/F-35/F-36/F-37/F-38 and pagination remain open or qualified.
+Runner notes retain the corrected verify invocation, stale share-fixture label,
+failed pre-relaunch socket capture and excluded mixed-task probe overlap.
+
+Only matching integration ledgers change. Implementation/build inputs remain
+identical to fully gated code 8d800f6 / site 6276993; the combined gate table below
+retains its original scope and date. No fresh full gates, runtime review,
+emulator execution, app writes, package/schema bump, protected-branch change,
+push or publication is claimed. iOS remains experimental and untested.
+
 ## App-c iteration 30 evidence refresh - 2026-11-01
 
 ### In plain terms
