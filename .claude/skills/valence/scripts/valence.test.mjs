@@ -1502,6 +1502,10 @@ test('a retired method keeps its wire contract, loses its handler and stops warn
   assert.equal(hit[0], 'WARN'); // a hazard that clears when the hazard does, not a standing warning
   assert.match(hit[2], new RegExp(`notify\\.daily is still referenced by 1 servable bundle, newest OTA seq ${calling.manifest.seq} \\(requires bridge 16\\)`));
   assert.match(hit[2], /gets E_UNSUPPORTED/);
+  // K F-72: with no floor published there is no lever at all, and the row now says which one to pull
+  // rather than only stating the hazard.
+  assert.match(hit[2], /no floor has been published, so every install can still be on any of them/);
+  assert.match(hit[2], new RegExp(`Publish a floor above ${calling.manifest.seq} to narrow this`));
   assert.ok(declared.manifest.seq < calling.manifest.seq);
   writeFileSync(appJs, 'console.log(1)');
 
@@ -1514,6 +1518,24 @@ test('a retired method keeps its wire contract, loses its handler and stops warn
   const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
   writeFileSync(baselinePath, JSON.stringify({ ...baseline, floor: old.manifest.seq + 1 }));
   assert.match((await row())[2], /requires bridge 12/);
+  // K F-72, the other half: the WARN was unclearable by any supported action. Publishing a floor above
+  // every referencing bundle is the only lever, kundalini pulled it and watched the row not move, and the
+  // only thing that silenced it was deleting release manifests. The hazard is now split: bundles at or
+  // above the floor are reachable by every install and keep the WARN; below it, only an install that
+  // never committed the floor is affected, which is residual risk no checkout can measure — a sentence,
+  // not a warning nothing can end.
+  const cleared = await row();
+  assert.equal(cleared[0], 'PASS');
+  assert.match(cleared[2], new RegExp(`none at or above the published floor ${old.manifest.seq + 1}`));
+  assert.match(cleared[2], /never committed that floor/);
+  assert.match(cleared[2], /as safe as the floor is old/);
+  // A floor at or below the referencing bundle still warns, and counts how many are exposed.
+  writeFileSync(baselinePath, JSON.stringify({ ...baseline, floor: calling.manifest.seq }));
+  const partial = await row();
+  assert.equal(partial[0], 'WARN');
+  assert.match(partial[2], new RegExp(`of which 1 is at or above the published floor ${calling.manifest.seq}`));
+  assert.match(partial[2], /whatever it has committed/);
+  assert.match(partial[2], new RegExp(`Publish a floor above ${calling.manifest.seq} to bring this to zero`));
   writeFileSync(baselinePath, JSON.stringify(baseline));
 
   // dist-ota is gitignored while baseline.json is committed, so a fresh clone sees a recorded release

@@ -338,8 +338,12 @@ bundle, with the published floor **not** subtracted, because a floor binds only 
 committed a bundle carrying it (§2.2). It is the number a
 retirement turns on (§4.1). For each retired method it also searches every servable bundle's files —
 discounting the `METHOD_SINCE` table codegen puts in all of them — and either reports that nothing
-references it, naming what a text search cannot prove, or **WARNs** naming the newest bundle that still
-does, which is a device heading for `E_UNSUPPORTED`. It WARNs instead when `baseline.lastSeq` records a release whose manifest is
+references it, naming what a text search cannot prove, or measures the references against the published
+floor, which is the only lever that ends the hazard: **WARN** with no floor at all, **WARN** with a count
+while any referencing bundle is at or above it (those break on every device), and **PASS** with the
+residue stated — an install that never committed that floor is still on an older bundle, and no checkout
+can see it — once every referencing bundle is below it. Without that split the WARN was unclearable by
+any supported action (K F-72), and a standing warning is how a build output stops being read. It WARNs instead when `baseline.lastSeq` records a release whose manifest is
 not on disk, which is what a fresh clone or a CI release pipeline looks like. A `§8` row whose mapped test
 file is gone names the mapping and the prune, since a retirement is what usually deletes it. Git scanning excludes ignored files
 and history; unavailable Git is WARN. Rotate exposed keys and audit history separately.

@@ -830,9 +830,25 @@ or not, so a declaration table must not count as a call; the row strips `"<name>
 style first, which is the step a hand-scan gets wrong in the unsafe direction. And a text search cannot
 prove absence: a name a bundle assembles at runtime, or a file that will not decode, is unknown, and the
 row says so rather than granting permission it cannot grant. A method no servable bundle references
-reports safe; one that is still referenced makes the row **WARN**, naming the newest bundle that
-references it and its `requires.bridge`. That warning ends when the hazard does — when those bundles are
-no longer servable — so it is not the standing warning §4.1's retirement marker exists to end.
+reports safe; one that is still referenced is measured **against the published floor**, which is the only
+lever that ends the hazard:
+
+- **No floor published:** **WARN.** Every install can be on any of those bundles, and the row names the
+  seq to publish a floor above.
+- **One or more referencing bundles at or above the floor:** **WARN**, with how many. A device on one of
+  those gets `E_UNSUPPORTED` whatever it has committed, so this is a hazard the operator can act on, and
+  the row names the seq that brings the count to zero.
+- **Every referencing bundle below the floor:** **PASS**, with the residue stated in a sentence: the only
+  install still affected is one that has never committed that floor, which keeps serving an older bundle
+  and which no checkout can see.
+
+The floor is still never *subtracted* from the `requires.bridge` line above — that would report a safer
+number than the field. What it does here is split a count. Without the split the WARN was **unclearable
+by any supported action** (K F-72): publishing a floor above every referencing bundle and seeing a device
+commit it moved nothing, and the only thing that silenced the row was deleting release manifests from
+`dist-ota/`, trading a warning for the local record of what was signed. A standing warning about a state
+the operator cannot change is how a build output stops being read, which is the failure §4.1's retirement
+marker exists to end.
 
 ### 4.2 Wire protocol
 
@@ -2238,8 +2254,10 @@ across the built-in bundle and every local release — the published floor is no
 binds only a device that has committed a bundle carrying it — and says that
 only releases on this machine are visible. For each retired method it searches every servable bundle's
 files, discounting the `METHOD_SINCE` declaration table `codegen` puts in all of them in either quote
-style, and either reports no reference and names the limits of a text search or **WARNs** naming the
-newest bundle that still references it; a file it cannot read leaves absence unestablished and is
+style, and either reports no reference and names the limits of a text search or measures the references
+against the published floor: **WARN** with no floor at all and **WARN** with a count when any referencing
+bundle is at or above it, both naming the seq to publish a floor above, and **PASS** with the
+never-committed-the-floor residue stated when every referencing bundle is below it; a file it cannot read leaves absence unestablished and is
 reported too. **A mapped test that no longer exists** is named as a missing mapping with the prune to
 make, not as a filesystem errno — the commonest way to get there is the retirement that made the test
 deletable, and nothing prunes `.valence/test-matrix.json` for you. A release recorded in `baseline.lastSeq` whose manifest is not

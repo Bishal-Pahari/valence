@@ -1836,14 +1836,32 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
         for (const name of found) callers.get(name).push(b);
       }
       const limit = unread ? `; ${unread} file${unread === 1 ? '' : 's'} could not be read, so absence is not established` : '';
+      // K F-72: the row stated the hazard and refused to measure it against the one lever that ends it, so
+      // the WARN was unclearable by any supported action. Publishing a floor above every referencing
+      // bundle, and seeing a device commit it, moved nothing — the only thing that silenced the row was
+      // deleting release manifests, which trades a warning for the local record of what was signed.
+      //
+      // The floor still is not *subtracted* — it is a per-install high-water mark, and `_serve` loads
+      // `current` without re-running check 4, so a device whose last commit predates the raise keeps
+      // serving an older bundle (§2.2, §2.4). What it can do is split the count. Bundles at or above the
+      // published floor are reachable by every install; bundles below it are reachable only by an install
+      // that has not committed the floor yet. The first group is a hazard the operator can act on and so
+      // keeps the WARN; the second is residual risk that no tool here can measure, so it is reported as a
+      // sentence on a PASS rather than as a warning nothing can end.
+      const floor = baseline.floor ?? 0;
       note = ` ${retired.map((name) => {
         const hit = callers.get(name);
         if (!hit.length) return `No servable bundle's files reference ${name}, so retiring it is safe here — a name a bundle assembles at runtime would not be found${limit}.`;
         const newest = hit.reduce((a, b) => ((b.seq ?? 0) > (a.seq ?? 0) ? b : a));
-        return `${name} is still referenced by ${hit.length} servable bundle${hit.length === 1 ? '' : 's'}, newest ${newest.what}${Number.isSafeInteger(newest.bridge) ? ` (requires bridge ${newest.bridge})` : ''}: a device on one of them gets E_UNSUPPORTED. Retire it once those bundles are no longer servable${limit}.`;
+        const atFloor = floor > 0 ? hit.filter((b) => (b.seq ?? 0) >= floor).length : hit.length;
+        const where = `${name} is still referenced by ${hit.length} servable bundle${hit.length === 1 ? '' : 's'}, newest ${newest.what}${Number.isSafeInteger(newest.bridge) ? ` (requires bridge ${newest.bridge})` : ''}`;
+        if (floor === 0) return `${where}: a device on one of them gets E_UNSUPPORTED, and no floor has been published, so every install can still be on any of them. Publish a floor above ${newest.seq} to narrow this${limit}.`;
+        if (atFloor) return `${where}, of which ${atFloor} ${atFloor === 1 ? 'is' : 'are'} at or above the published floor ${floor}: a device on ${atFloor === 1 ? 'it' : 'one of those'} gets E_UNSUPPORTED whatever it has committed. Publish a floor above ${newest.seq} to bring this to zero${limit}.`;
+        return `${where}, none at or above the published floor ${floor}, so the only install still affected is one that has never committed that floor — it keeps serving an older bundle, which this checkout cannot see. Retiring ${name} is as safe as the floor is old${limit}.`;
       }).join(' ')}`;
       // A hazard that clears when the hazard clears, not a standing warning about a correct state (§4.1).
-      hazard = [...callers.values()].some((hit) => hit.length);
+      hazard = [...callers.values()].some((hit) =>
+          hit.length && (floor === 0 || hit.some((b) => (b.seq ?? 0) >= floor)));
     }
     const oldest = bridges.length ? bridges.reduce((a, b) => (b.bridge < a.bridge ? b : a)) : null;
     const seen = `${local.length} local OTA manifest${local.length === 1 ? '' : 's'}${existsSync(builtinPath) ? ' and the built-in bundle' : ''}${unreadable ? `, ${unreadable} without a usable requires.bridge` : ''}`;
