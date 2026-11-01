@@ -54,11 +54,39 @@ final class ValenceCookies {
   ValenceCookies({
     required this.jar,
     required ValenceSecure secure,
+    Set<String> origins = const {},
     ValenceLogger log = defaultValenceLogger,
     DateTime Function() now = DateTime.now,
   })  : _secure = secure,
         _log = log,
-        _now = now;
+        _now = now {
+    // The same three rules `codegen` enforces, enforced again here. `codegen` and the package are on
+    // independent release trains, and a host may write `ValenceConfig` by hand — so a cleartext jar, or
+    // one aimed at an origin `http.request` cannot reach, must not simply work. Sealed and logged rather
+    // than thrown: a misconfigured jar is not a reason an app cannot start.
+    final policy = jar;
+    if (policy == null) return;
+    final uri = Uri.tryParse(policy.origin);
+    final loopback = {'127.0.0.1', 'localhost', '[::1]', '::1'};
+    final String? refusal;
+    if (uri == null ||
+        !{'http', 'https'}.contains(uri.scheme) ||
+        uri.host.isEmpty ||
+        uri.origin != policy.origin) {
+      refusal = 'is not an exact, normalised HTTP(S) origin';
+    } else if (uri.scheme == 'http' && !loopback.contains(uri.host)) {
+      refusal = 'is cleartext and not loopback, so the jar would replay a credential in the clear';
+    } else if (origins.isNotEmpty && !origins.contains(uri.origin)) {
+      refusal = 'is not in http.origins, so http.request can never reach it';
+    } else {
+      refusal = null;
+    }
+    if (refusal != null) {
+      _sealed = true;
+      _log('cookies: refusing the configured jar — "${policy.origin}" $refusal; no cookie will be '
+          'sent or stored. Fix http.cookieJar and run codegen, which refuses this too');
+    }
+  }
 
   /// The compiled policy, or null when this build granted no jar.
   final ValenceCookieJar? jar;
@@ -77,7 +105,10 @@ final class ValenceCookies {
   static const maxJarBytes = 8 * 1024;
 
   final Map<String, _Jarred> _cookies = {};
-  bool _loaded = false;
+
+  /// The one load, memoized as a future rather than a flag: a bool set before the platform read awaits
+  /// lets a second concurrent call through on an empty jar, and two bridge messages do dispatch at once.
+  Future<void>? _loading;
 
   /// The origin the persisted cookies were set by, so [revoke] can tell a changed build apart.
   String? _origin;
@@ -94,15 +125,22 @@ final class ValenceCookies {
   /// were told to forget, so the jar stops working for the process rather than carrying them.
   bool owns(Uri url) {
     final policy = jar;
-    return policy != null && !_sealed && url.origin == policy.origin;
+    if (policy == null || _sealed) return false;
+    // `Uri.origin` throws for a non-HTTP(S) scheme or an empty host. `ValenceHttp` rejects both before
+    // it gets here, but this is public on the runtime, and "the jar refused" is the only safe answer to
+    // a URL that has no origin to compare.
+    if (!{'http', 'https'}.contains(url.scheme) || url.host.isEmpty) return false;
+    return url.origin == policy.origin;
   }
 
   /// Drops every cookie, in memory and in secure storage (§4.4 sign-out, §5.3 switch, §4.5.1 revocation).
   ///
   /// Always runs, even for a build with no jar: that is what makes it a revocation rather than a clear.
+  /// Memory first, so a write that fails still leaves this launch carrying nothing.
   Future<void> clear() async {
     _cookies.clear();
-    _loaded = true;
+    _origin = null;
+    _loading = Future.value();
     await _secure.write(secureCookieJarKey, null);
   }
 
@@ -116,18 +154,21 @@ final class ValenceCookies {
   /// at all, which is a far worse outcome than a jar that declines to work.
   Future<void> revoke() async {
     final policy = jar;
-    if (policy == null) {
+    if (policy == null || _sealed) {
       // A read, and a write only when something is actually there. The overwhelming majority of builds
       // grant no jar, and they should pay neither a Keystore write nor its failure.
-      _loaded = true;
+      _loading = Future.value();
       if (await _secure.read(secureCookieJarKey) == null) return;
       await _revokeOrSeal();
       return;
     }
     await _load();
-    if (_origin != null && _origin != policy.origin) {
-      _log('cookies: the jar origin changed from $_origin to ${policy.origin}; '
-          'clearing ${_cookies.length} cookie(s) of the previous origin');
+    // An envelope with no recorded origin is revoked too, not kept: "I do not know whose these are" is
+    // not the same answer as "they are this build's", and an older or future envelope shape would
+    // otherwise have its cookies adopted by whatever origin this build happens to configure.
+    if (_cookies.isNotEmpty && _origin != policy.origin) {
+      _log('cookies: the stored jar is ${_origin == null ? 'of no recorded origin' : 'of $_origin'}, '
+          'not ${policy.origin}; clearing ${_cookies.length} cookie(s)');
       await _revokeOrSeal();
     }
   }
@@ -147,22 +188,27 @@ final class ValenceCookies {
   Future<String?> header(Uri url) async {
     if (!owns(url)) return null;
     await _load();
-    _expire();
-    final path = url.path.isEmpty ? '/' : url.path;
+    await _expire();
     final send = [
       for (final c in _cookies.values)
-        if (_pathMatches(path, c.path)) '${c.name}=${c.value}',
+        if (_pathMatches(_requestPath(url), c.path)) '${c.name}=${c.value}',
     ];
     return send.isEmpty ? null : send.join('; ');
   }
 
-  /// The value of the configured CSRF cookie, or null when there is no pair or no cookie yet.
+  /// The value of the configured CSRF cookie for [url], or null when there is no pair or no cookie.
+  ///
+  /// Path-matched like [header], and that is not pedantry: the mirrored header would otherwise hand the
+  /// token's value to a path the server scoped the cookie away from, while the `Cookie` half stayed
+  /// behind — a half-pair the server must reject, on a path the page chose.
   Future<String?> csrfValue(Uri url) async {
     final name = jar?.csrfCookie;
     if (name == null || !owns(url)) return null;
     await _load();
-    _expire();
-    return _cookies[name]?.value;
+    await _expire();
+    final cookie = _cookies[name];
+    if (cookie == null || !_pathMatches(_requestPath(url), cookie.path)) return null;
+    return cookie.value;
   }
 
   /// Takes `Set-Cookie` values from a response. Nothing here can fail the request (§4.5.1).
@@ -185,6 +231,12 @@ final class ValenceCookies {
           domain.replaceFirst(RegExp(r'^\.'), '').toLowerCase() !=
               url.host.toLowerCase()) {
         _log('cookies: ignored "${parsed.name}" scoped to Domain=$domain, not ${url.host}');
+        continue;
+      }
+      // The jar's own origin may be cleartext loopback (§4.5.1's carve-out, which the reference example
+      // uses), and a `Secure` cookie is a server asking for the opposite of that. Honour the ask.
+      if (parsed.secure && url.scheme != 'https') {
+        _log('cookies: ignored Secure cookie "${parsed.name}"; ${url.origin} is not HTTPS');
         continue;
       }
       // RFC 6265: Max-Age wins over Expires, and zero or less is a deletion.
@@ -221,9 +273,9 @@ final class ValenceCookies {
   }
 
   /// Loads the persisted cookies once. A session cookie was never written, so it is simply absent.
-  Future<void> _load() async {
-    if (_loaded) return;
-    _loaded = true;
+  Future<void> _load() => _loading ??= _read();
+
+  Future<void> _read() async {
     final raw = await _secure.read(secureCookieJarKey);
     if (raw == null) return;
     try {
@@ -232,6 +284,7 @@ final class ValenceCookies {
       _origin = stored['origin'] is String ? stored['origin'] as String : null;
       final rows = stored['cookies'];
       if (rows is! List) return;
+      var bytes = 0;
       for (final row in rows) {
         if (row is! Map<String, Object?>) continue;
         final name = row['name'];
@@ -244,10 +297,20 @@ final class ValenceCookies {
             expires is! int) {
           continue;
         }
-        _cookies[name] = _Jarred(name, value, path,
+        final cookie = _Jarred(name, value, path,
             DateTime.fromMillisecondsSinceEpoch(expires, isUtc: true));
+        // The same caps the write path enforces. Only this process writes this key, so an over-cap
+        // envelope means a restored backup or a future shape — neither of which gets to be unbounded.
+        if (cookie.size > maxCookieBytes ||
+            _cookies.length >= maxCookies ||
+            bytes + cookie.size > maxJarBytes) {
+          _log('cookies: dropped stored "$name"; the jar is at its caps');
+          continue;
+        }
+        bytes += cookie.size;
+        _cookies[name] = cookie;
       }
-      _expire();
+      await _expire();
     } on Object catch (e) {
       // Unreadable storage is an empty jar, never a failed request: the server will set a cookie again.
       _log('cookies: could not decode the stored jar ($e); starting empty');
@@ -279,10 +342,16 @@ final class ValenceCookies {
     }
   }
 
-  void _expire() {
+  /// Drops expired cookies, and writes that through: an expired credential has no business staying at
+  /// rest in the Keystore until the next `Set-Cookie` happens to come along.
+  Future<void> _expire() async {
     final now = _now();
+    final before = _cookies.length;
     _cookies.removeWhere((_, c) => c.expires != null && !c.expires!.isAfter(now));
+    if (_cookies.length != before) await _persist();
   }
+
+  static String _requestPath(Uri url) => url.path.isEmpty ? '/' : url.path;
 
   /// RFC 6265 §5.1.4: a cookie with no `Path` takes the request's directory.
   static String _defaultPath(String? path, Uri url) {

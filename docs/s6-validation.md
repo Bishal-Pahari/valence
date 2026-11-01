@@ -1,7 +1,8 @@
 # S6 validation: the host-managed cookie jar (contracts §4.5.1)
 
 **Date:** 2026-11-02. **Branch:** `packages`. **Commits:** `e14f2b6` (feature), `81e55b9` (README,
-SKILL, changelogs), site `42bde41`. **Finding closed:** K F-66 (major).
+SKILL, changelogs), `17148e3` (adapter, example, this record), plus the review fixes below; site
+`42bde41`. **Finding closed:** K F-66 (major).
 
 ## What was being checked
 
@@ -53,10 +54,56 @@ The sign-out row is the one worth naming twice: this app had never passed `accou
 clears no rows at all. The jar still went, which is the behaviour §4.5.1 asks for and the one an
 implementation that only hooked the account switch would have missed.
 
+## The reviewer pass
+
+An independent `valence-reviewer` pass over the new write path returned **no critical and no high**
+finding, and confirmed the core property with file-and-line evidence: every path that can emit a
+`Cookie` header or the mirror sits inside the exact-origin gate, redirects are still unfollowed,
+`Set-Cookie` is stripped unconditionally, the key is unreadable through `secure.get`, `E_PENDING` is
+raised before the clear so a refused switch moves no cookie, Dart's `Uri.origin` and Node's
+`URL.origin` normalise identically (so a case or `:443` difference cannot split the two comparisons),
+and the CLI's host-header list is set-for-set identical to the package's today. It also checked
+something that looks like a bug and is not: `copyWith` has no `cookieJar` parameter, so
+`cookieJar: cookieJar` reads the field and preserves the jar.
+
+**Two MEDIUMs, both real, both fixed.**
+
+1. **A failed Keystore delete during a sign-out was not durable.** The clear ran *after* the token
+   writes, so a delete that failed left the token gone and the cookies on disk under a matching origin.
+   The next launch restored them, and the next sign-in — an adoption, because the recorded id went with
+   the token — would have carried the previous user's session under the new user's bearer. Fixed by
+   clearing **before** the token writes on both the sign-out and the switch path, which is the order
+   §5.3 already prescribes for rows, for the reason it already states: the failure between two steps has
+   to be the recoverable one. A sign-out now fails with the user still signed in, holding their own
+   cookies.
+2. **The jar origin had no runtime validation,** while the CSRF header deliberately had a runtime
+   backstop — so a hand-written `ValenceConfig` got the cleartext credential replay `codegen` refuses,
+   or a silently dead jar from a mixed-case origin. `ValenceCookies` now applies the same three rules
+   itself and seals rather than throwing, since a misconfigured jar is not a reason an app cannot start.
+
+**Eight LOWs, all fixed.** `csrfValue` was not path-matched, so the mirror could go to a path the cookie
+was scoped away from. A natural expiry left the credential at rest until the next `Set-Cookie` happened
+along. The post-token header-limit refusal named a total that included the bearer token and the jar,
+which a page could binary-search. The reload from storage enforced none of the caps and treated an
+envelope with no recorded origin as this build's. The load was memoized as a flag set before its await,
+so two concurrent first calls could race. `Secure` was parsed and discarded, which matters precisely
+because the loopback carve-out is cleartext. §4.5.1 claimed "every path that clears the bearer token"
+when §4.4 is explicit that an empty-string token is not a sign-out. And the site guide's "`Path` is
+matched as a browser matches it" overstated a jar that holds one cookie per name, not one per name and
+path.
+
+The last LOW listed five behaviours the §8 row claimed and no test covered: the 8-KiB total cap and its
+replacement arithmetic, `Set-Cookie` stripping with a jar actually configured, the `doctor` row, and
+`headersSplitValues` against a real multi-header response. All are now tested — the last through a real
+loopback `HttpServer` with a comma inside an `Expires` date, which is the case that splitter can get
+wrong, and which needed `HttpOverrides.global = null` because the test binding answers 400 without a
+socket. The reviewer also observed that the adapter and example half of S6 was uncommitted while it ran;
+that is commit `17148e3`, made before the review returned.
+
 ## Gates
 
-Root: **111** tests, zero skips (the generated-Dart and generated-TS compile tests ran, not skipped).
-`packages/valence`: **593** tests (20 new), clean `dart analyze --fatal-infos`.
+Root: **113** tests, zero skips (the generated-Dart and generated-TS compile tests ran, not skipped).
+`packages/valence`: **603** tests (30 new), clean `dart analyze --fatal-infos`.
 `packages/bridge`: 29 tests. `packages/valence/example`: 29 tests, clean analyzer, `doctor` prints the
 new `cookie jar` row with the configured origin and pair. Reference adapter: 2 tests.
 Site: 45-page build with `check-seo` passing, including the new in-page anchor the accounts guide links to.
@@ -69,5 +116,11 @@ Site: 45-page build with `check-seo` passing, including the new in-page anchor t
   after a restart is covered by `cookies_test.dart`, not by a device.
 - **A real HTTPS origin.** The device run used the loopback carve-out. The HTTPS requirement is enforced
   at `codegen`, which the CLI test covers; no remote TLS endpoint was exercised.
-- **Multiple `Set-Cookie` headers in one response.** The adapter sets one. `headersSplitValues` is what
-  splits them, and its lookahead (`,` followed by a cookie-name token) is exercised only in unit tests.
+- **A re-run after the review fixes.** The device table above was taken on the tree as of `17148e3`,
+  before the two MEDIUMs were fixed. What it shows is unaffected — the clear happened on both paths,
+  and the fix changed only its order relative to the token writes — but no device run exercised the
+  fixed order, and the emulator lock was released before the review returned. The reordering is covered
+  by `runtime_test.dart` and by 603 passing core tests, not by a device.
+- **Multiple `Set-Cookie` headers in one response** on a device. Covered by a real loopback
+  `HttpServer` in `cookies_test.dart`, with the awkward `Expires` comma; the adapter sets one, so the
+  device run exercised the single-header path.

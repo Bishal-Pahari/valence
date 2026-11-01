@@ -400,8 +400,11 @@ final class Valence {
 
   /// The optional §4.5.1 cookie jar. Held for the runtime's lifetime, so one secure-storage read serves
   /// every request rather than one per call. Empty and inert unless the build granted an origin.
-  late final ValenceCookies cookies =
-      ValenceCookies(jar: config.cookieJar, secure: secure, log: _log);
+  late final ValenceCookies cookies = ValenceCookies(
+      jar: config.cookieJar,
+      origins: config.httpOrigins,
+      secure: secure,
+      log: _log);
 
   /// Deep links captured on UI startup. Background workers do not start this listener.
   late final ValenceLinks links;
@@ -951,16 +954,22 @@ final class Valence {
     // no recorded id, so it is another adoption rather than a switch, and the first account's rows and
     // queued writes survive under the second account's token. Recording first means that failure
     // leaves the id with the token it already had, and the next different account is a real switch.
+    // §4.5.1: the jar goes with the token on *every* sign-out, including the one that is not an account
+    // switch because no id was ever recorded — those cookies are still the credentials of the user who
+    // just left. A refresh (same account, new bearer) must leave them alone.
+    //
+    // **Before** the token writes, for the reason §5.3 gives for clearing rows first: the failure
+    // between the two steps has to be the recoverable one. A Keystore that cannot delete the jar throws
+    // here, so nothing is signed out and the user still holds their own cookies. The other order leaves
+    // the token gone and the cookies on disk, where the next sign-in — an adoption, because the id went
+    // with the token — would carry the previous user's session under the new user's bearer.
+    if (signOut) await cookies.clear();
     if (signOut) {
       await secure.setAuthAccount(null);
     } else if (next != null) {
       await secure.setAuthAccount(next);
     }
     await secure.setAuthToken(token);
-    // §4.5.1: the jar goes with the token on *every* sign-out, including the one that is not an account
-    // switch because no id was ever recorded. Those cookies are still the credentials of the user who
-    // just left, and a refresh — same account, new bearer — must leave them alone.
-    if (signOut) await cookies.clear();
   }
 
   /// The §4.4 switch: clear, then store, **both** under the §5.6 sync lease.
@@ -1042,10 +1051,11 @@ final class Valence {
       // Secure storage writes one key at a time. Remove A's bearer before recording B, then write
       // B's bearer only after B's identity is durable. Every crash/failure between these writes leaves
       // no token, never B's credentials under A's identity (which would also restore A's task draft).
-      await secure.setAuthToken(null);
-      // Inside the lease and before the new token, for the same reason the rows are: a request made
-      // with B's bearer must never carry A's session cookie (§4.5.1).
+      // Before the token writes, like the rows and for the same reason (§4.5.1): a Keystore that
+      // cannot delete the jar throws here, leaving A signed in with A's own cookies, rather than
+      // leaving them on disk for B to inherit.
       await cookies.clear();
+      await secure.setAuthToken(null);
       await secure.setAuthAccount(to);
       restoration.bindAccount(to);
       await secure.setAuthToken(token);

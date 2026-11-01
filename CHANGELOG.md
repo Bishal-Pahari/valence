@@ -28,8 +28,10 @@ exactly as it did: no cookie is sent, every `Set-Cookie` is discarded, and nothi
   logged rather than failing your request. A cookie with **no** expiry is a session cookie and never
   leaves memory, so a restart is a new session. One with an expiry lives in the same
   Keystore/Keychain storage as your token.
-- **It is cleared with the token.** Every path that clears the bearer token clears the jar in the same
-  step — `auth.setToken(null)`, including the sign-out of an app that never passed an `account` and so
+- **It is cleared when the user signs out,** and before the token is written — so a device whose
+  Keystore cannot delete the jar fails the sign-out with the user still signed in, rather than leaving
+  their session cookie for whoever signs in next. Every path that signs a user out clears the jar in the
+  same step — `auth.setToken(null)`, including the sign-out of an app that never passed an `account` and so
   clears no rows, and an account switch, under the same sync lease. A token refresh for the same
   account clears nothing. It **survives an OTA update**, deliberately: the origin is compiled into your
   native build and no manifest can change it, so signing a user out of their session for a UI update

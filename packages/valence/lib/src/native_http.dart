@@ -200,7 +200,10 @@ final class ValenceHttp {
         // sending the pair it does not have would do the same.
         if (header != null && csrf != null) values[header] = csrf;
       }
-      _checkHeaders(values);
+      // The page's own headers were already measured and named a size before this point. This second
+      // check includes the bearer token, the `Cookie` header and the mirror, so naming the total would
+      // let a page binary-search the byte length of credentials it cannot read (§4.5.1).
+      _checkHeaders(values, disclose: false);
       final connection = _clientFactory();
       client = connection;
       final req = http.Request(verb, uri)..followRedirects = false;
@@ -274,12 +277,16 @@ final class ValenceHttp {
     }
   }
 
-  static void _checkHeaders(Map<String, String> headers) {
+  static void _checkHeaders(Map<String, String> headers, {bool disclose = true}) {
     final size = headers.entries.fold<int>(
         0, (n, e) => n + utf8.encode('${e.key}: ${e.value}\r\n').length);
     if (size > headerLimit) {
-      throw BridgeError(BridgeErrorCode.tooLarge,
-          'HTTP headers are $size bytes; the limit is $headerLimit');
+      throw BridgeError(
+          BridgeErrorCode.tooLarge,
+          disclose
+              ? 'HTTP headers are $size bytes; the limit is $headerLimit'
+              : 'the headers the host adds do not fit under the $headerLimit-byte limit '
+                  'beside the ones this request supplied');
     }
   }
 }

@@ -2610,6 +2610,33 @@ test('S6 codegen compiles one cookie-jar origin and refuses every unsafe shape',
 });
 
 
+test('doctor reports the cookie jar, and a broken one never reaches a row', async () => {
+  const { root, cfg } = fixture();
+  const row = async () => (await diagnose({ root, cfg })).find(([, name]) => name === 'cookie jar');
+
+  cfg.http = { origins: ['https://api.example.com'] };
+  const off = await row();
+  assert.equal(off[0], 'PASS');
+  assert.match(off[2], /no http\.cookieJar/);
+  assert.match(off[2], /out of scope/);
+
+  cfg.http.cookieJar = { origin: 'https://api.example.com', csrf: { cookie: 'csrftoken', header: 'X-CSRFToken' } };
+  const on = await row();
+  assert.equal(on[0], 'PASS');
+  assert.match(on[2], /https:\/\/api\.example\.com: csrftoken mirrored into X-CSRFToken/);
+  assert.match(on[2], /the page may not supply/);
+
+  cfg.http.cookieJar = { origin: 'https://api.example.com' };
+  assert.match((await row())[2], /no csrf pair/);
+
+  // Every rule is enforced when the config loads, so a broken jar is not one failing row: it stops
+  // codegen, doctor and anything else that reads the config. That is what §4.5.1 claims, so prove it.
+  writeFileSync(join(root, 'valence', 'valence.config.json'),
+    JSON.stringify({ ...cfg, http: { origins: ['https://api.example.com'], cookieJar: { origin: 'http://lan.test:8080' } } }));
+  assert.throws(() => loadConfig(root), /not in http\.origins/);
+});
+
+
 test('legacy CSP origins do not grant native credentials or break codegen', () => {
   const { root, cfg } = fixture();
   cfg.web.connect = ['https://analytics.example.test/collect', 'https://maps.example.test'];

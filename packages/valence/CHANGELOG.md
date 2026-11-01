@@ -21,6 +21,16 @@
   there is something to delete. It **never fails the open**: a stored jar that cannot be deleted seals
   the jar for that launch — it sends and absorbs nothing — and an unreadable Keystore reads as absent
   like every other §4.4 read, so the jar runs in memory.
+- **An independent review of the new write path found two MEDIUMs and eight LOWs; all are fixed.** The
+  clear now runs **before** the token writes on both the sign-out and the switch path, so a Keystore
+  that cannot delete the jar fails the sign-out with the user still signed in rather than leaving their
+  session for the next adoption to inherit. `ValenceCookies` validates its own origin — HTTPS unless
+  loopback, exactly normalised, present in `httpOrigins` — and seals rather than replaying a credential
+  in the clear for a hand-written config. `csrfValue` is path-matched like `header`. `Secure` is dropped
+  over the cleartext loopback carve-out. A natural expiry is written through. The caps are applied on
+  the reload from storage, an envelope with no recorded origin is revoked rather than adopted, the load
+  is memoized as a future rather than a flag, `owns` refuses a URL with no origin to compare, and the
+  post-token header-limit refusal names no size, so it cannot be used to measure credentials.
 - **`ValenceHttp.hostControlled` is now public,** and the CSRF mirror is checked against it: a
   configured header the host already sets throws `E_INTERNAL` rather than silently overwriting the
   bearer token or the jar's own `Cookie`. The CLI refuses the same names, and the two lists are on
