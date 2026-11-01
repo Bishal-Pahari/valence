@@ -2145,8 +2145,12 @@ it and the first thing to fail would be the store build, on a device.
   Codegen records only the notification events the runtime may emit in `hostNotificationEventFields`,
   wired through `valenceConfig`, with only the fields a validated response carries (`id`, `payload`,
   `action`). The scheduler automatically emits only those events and fields. An event qualifies at
-  `since >= 11` with `id` declared `int`; anything else stays app-owned, even when its methods delegate
-  scheduling to the native service, so no integer ID is sent over a frozen string-ID event.
+  `since >= 11` with `id` declared `int` **and every response field it declares typed to hold what the
+  response fills**: `id` is `int`, `payload` is `string` or `string?`, and `action` is `string?` on
+  `notify.tapped` — which is the event chosen precisely *because* the action is null — or either width on
+  `notify.action`. Anything else stays app-owned, even when its methods delegate scheduling to the native
+  service, so no integer ID is sent over a frozen string-ID event and no String goes out over a field the
+  app declared as a number.
   Disqualification is a **codegen warning, never a refusal**: events are not shape-checked by
   `assertBuiltinShapes`, so a since-11 declaration carrying an extra field or a required `payload` has
   always generated, and §4.1 refuses changing a shipped event — a refusal would leave such an app
@@ -2231,9 +2235,12 @@ generated-Dart suite.
 
 R4 notification event compatibility (§6.5): a frozen pre-11 string-ID event survives codegen/check with
 its baseline unchanged and no automatic built-in emission. An event qualifies for automatic emission only
-at since 11+ with an `int` id; a string id, an extra declared field and a required `payload` each
-**generate with a warning rather than being refused**, the extra field is omitted from the emitted event,
-and the disqualified event is absent from `hostNotificationEventFields`. A pre-11 declaration warns
+at since 11+ with an `int` id **and no response field typed to something the response cannot fill** — a
+`payload: int`, an `action: bool`, or a non-nullable `action` on `notify.tapped` each disqualify, while
+the same `action: string` on `notify.action` qualifies. A string id, a wrongly typed known field, an extra
+declared field and a required `payload` each **generate with a warning rather than being refused**, the
+warning names the declared type beside the one the response fills, the extra field is omitted from the
+emitted event, and the disqualified event is absent from `hostNotificationEventFields`. A pre-11 declaration warns
 naming `notificationEventAdapter`. Compile the documented legacy adapter against real generated code.
 Exercise warm/cold conversion, consume-once cold access without double emission, the newest-16 startup
 queue, invalid responses rejected before adaptation, adapter failure dropping the event while logging

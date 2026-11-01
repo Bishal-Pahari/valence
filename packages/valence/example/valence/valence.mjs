@@ -282,6 +282,25 @@ const BUILTIN_AREAS = new Set(Object.keys(BUILTINS).map((n) => n.split('.')[0]))
 const NOTIFICATION_RESPONSE_FIELDS = new Set(['id', 'payload', 'action']);
 const NOTIFICATION_EVENTS = new Set(['notify.tapped', 'notify.action']);
 
+/// Per event, the declared types each response field can actually hold.
+///
+/// `id` is always a non-null int and `payload` always a non-null String, so only `payload` accepts both
+/// widths. `action` is null for **every** `notify.tapped` — whether it is null is what chooses between
+/// the two event names — so a non-nullable `action` there is a type the first tap breaks.
+const NOTIFICATION_FIELD_TYPES = {
+  'notify.tapped': { id: ['int'], payload: ['string', 'string?'], action: ['string?'] },
+  'notify.action': { id: ['int'], payload: ['string', 'string?'], action: ['string', 'string?'] },
+};
+
+/// The response fields this event declares with a type the runtime cannot fill.
+///
+/// Fields the response does not carry at all are not mismatches: those are left out of the emitted event
+/// and warned about separately.
+function notificationFieldMismatches(e) {
+  const allowed = NOTIFICATION_FIELD_TYPES[e.name] ?? {};
+  return e.payload.filter((f) => allowed[f.name] && !allowed[f.name].includes(typeString(f.type)));
+}
+
 /// Whether the runtime may emit this event by itself.
 ///
 /// Reserved at 11, and `id` must be the `int` the native scheduler actually produces. An event that fails
@@ -296,7 +315,8 @@ const NOTIFICATION_EVENTS = new Set(['notify.tapped', 'notify.action']);
 /// runtime adds later is unknown to an older copy of this CLI.
 function autoNotificationEvent(e) {
   return NOTIFICATION_EVENTS.has(e.name) && e.since >= 11 &&
-    e.payload.some((f) => f.name === 'id' && typeString(f.type) === 'int');
+    e.payload.some((f) => f.name === 'id' && typeString(f.type) === 'int') &&
+    notificationFieldMismatches(e).length === 0;
 }
 
 /// Warns about a notification event the runtime will not emit, and about declared fields it cannot fill.
@@ -307,7 +327,13 @@ export function notificationEventWarnings(s) {
   return s.events.flatMap((e) => {
     if (!NOTIFICATION_EVENTS.has(e.name)) return [];
     if (!autoNotificationEvent(e)) {
-      return [`"${e.name}" stays your own event, so the runtime will not emit it: it is ${e.since < 11 ? `declared at since ${e.since}, below the reserved 11` : 'declared without "id" as an int, which is what the native scheduler produces'}. That is deliberate — a built-in shape must never go out over an event you have already shipped — but nothing else reports it, and has("${e.name}") answers from your schema either way, so a page would subscribe and receive nothing. Pass "notificationEventAdapter" to Valence.open to convert each response into your own generated event, and apply the same conversion to valence.notifications.initial() for a cold tap.`];
+      const mismatched = notificationFieldMismatches(e);
+      const reason = e.since < 11
+        ? `declared at since ${e.since}, below the reserved 11`
+        : !e.payload.some((f) => f.name === 'id' && typeString(f.type) === 'int')
+          ? 'declared without "id" as an int, which is what the native scheduler produces'
+          : `declared with ${mismatched.map((f) => `"${f.name}" as ${typeString(f.type)}`).join(' and ')}, and the native response fills ${mismatched.map((f) => `${f.name} as ${NOTIFICATION_FIELD_TYPES[e.name][f.name].join(' or ')}`).join(' and ')}`;
+      return [`"${e.name}" stays your own event, so the runtime will not emit it: it is ${reason}. That is deliberate — a built-in shape must never go out over an event you have already shipped — but nothing else reports it, and has("${e.name}") answers from your schema either way, so a page would subscribe and receive nothing. Pass "notificationEventAdapter" to Valence.open to convert each response into your own generated event, and apply the same conversion to valence.notifications.initial() for a cold tap.`];
     }
     const extra = e.payload.filter((f) => !NOTIFICATION_RESPONSE_FIELDS.has(f.name)).map((f) => `"${f.name}"`);
     return extra.length

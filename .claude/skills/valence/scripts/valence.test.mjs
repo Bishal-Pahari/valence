@@ -232,6 +232,33 @@ test('notification emission metadata preserves frozen legacy events and filters 
   assert.equal(r.warnings.length, 1);
   assert.match(r.warnings[0], /declares "extra", which a native notification response does not carry/);
 
+  // A *known* field with a type the response cannot fill is app-owned too. Checking only `id` let a
+  // `payload: int, action: bool` schema qualify, and the runtime then sent a String and a nullable
+  // String through an event table typed otherwise — a lie the generated types cannot catch.
+  editSchema(modern.root, s => { s.events['notify.tapped'].payload = { id: 'int', payload: 'int', action: 'bool' }; });
+  r = codegen(modern);
+  assert.doesNotMatch(readFileSync(join(modern.root, modern.cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8'),
+    /'notify.tapped':/, 'no string payload goes out over an int-payload event');
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /"payload" as int and "action" as bool/);
+  assert.match(r.warnings[0], /fills payload as string or string\? and action as string\?/);
+  assert.match(r.warnings[0], /notificationEventAdapter/);
+
+  // `notify.tapped` is the event chosen *because* the action is null, so a non-nullable `action` there
+  // receives null on every tap; the same declaration is fine on `notify.action`.
+  editSchema(modern.root, s => { s.events['notify.tapped'].payload = { id: 'int', action: 'string' }; });
+  r = codegen(modern);
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /"action" as string, and the native response fills action as string\?/);
+  editSchema(modern.root, s => {
+    s.events['notify.tapped'].payload = { id: 'int' };
+    s.events['notify.action'] = { since: 11, payload: { id: 'int', action: 'string' } };
+  });
+  r = codegen(modern);
+  assert.deepEqual(r.warnings, []);
+  assert.match(readFileSync(join(modern.root, modern.cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8'),
+    /'notify.action': \{'id', 'action'\}/);
+
   // A pre-11 event is app-owned by its number alone, and that is reported rather than left silent:
   // has() answers from the schema and stays true, so a page would subscribe and receive nothing.
   const legacy = fixture();
