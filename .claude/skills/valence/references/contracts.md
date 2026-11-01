@@ -551,9 +551,13 @@ takes the same port and no page is loaded, reload it on the kept nonce.
 
 *Distinguishing it afterwards* (§5.1.1 and the startup-diagnostics guide): `dumpsys activity exit-info`
 shows the renderer exiting `reason=3 (LOW_MEMORY)` and the host exiting `reason=2 (SIGNALED) status=9`
-within the same second, at `importance=400`. An ANR, a Dart crash and an lmkd kill of the host itself
-all look different; a host `SIGNALED/9` that *follows* a renderer `LOW_MEMORY` is this, and nothing the
-app's own code did caused it.
+within the same second, at `importance=400`, in the observed unhandled-loss case. Those exit reasons
+alone do not establish causation: correlate timestamps and PIDs with full logcat. The Chromium
+termination line establishes this path for that process; a direct lmkd host kill instead names the
+host package in the kill line, and handling renderer loss cannot prevent that separate kill. An ANR
+names the affected package. These records do not establish a Valence memory leak or rule out memory
+use by app code. Preserve evidence before recovery; a successful restart does not close a prior
+intermittent failure.
 
 ### Platform setup
 
