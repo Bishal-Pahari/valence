@@ -1,5 +1,5 @@
 {
-  "version": 18,
+  "version": 19,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -299,6 +299,11 @@
         "value": "json?"
       },
       "returns": "void"
+    },
+    "bundle.check": {
+      "since": 19,
+      "params": {},
+      "returns": "void"
     }
   },
   "events": {
@@ -393,6 +398,13 @@
       "since": 12,
       "payload": {
         "token": "string"
+      }
+    },
+    "bundle.checked": {
+      "since": 19,
+      "payload": {
+        "reason": "string",
+        "requiredBridge": "int?"
       }
     }
   },
