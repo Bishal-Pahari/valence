@@ -1,5 +1,59 @@
 # Integration acceptance refresh ? 2026-11-01
 
+## App-c iteration 34 evidence refresh - 2026-11-01
+
+### In plain terms
+
+Settings return again loses the renderer and host, this time with direct
+lowmemorykiller records for both. A renderer callback cannot promise survival
+of a direct host eviction. Recovery closes no intermittent finding. Read both
+findings and newest reports read-only: Kundalini 17 and app-c 34.
+
+Packages remains code 778b20c / site 9ed2ee9. Independently checked all 30 exact
+feature/compatibility tips against their current branches and integration
+ancestry in both repos; both packages bases are also included. No eligible
+must-have or missing integration merge remains. S1 remains deliberately parked,
+S2 needs a Play account, and the other builder explicitly names S6 next in the
+roadmap. Decision: preserve security and users' data; avoid overlapping credential
+storage or speculative changes to leases, rollback strikes and navigation policy.
+Kundalini has not accepted S7; its cookie-paired CSRF gap remains open.
+
+Saved-result checks, without operating either app:
+
+- Full Settings log directly names renderer 4836 as a lowmemorykiller target at
+  17:13:27.928, then host 4761 at 17:13:27.960, with host RSS 538704 kB. Both
+  exit-info records report LOW_MEMORY. The report's .973/28.060 timestamps are
+  exit-info receipts, distinct from the kill log events. Unlike iteration 33,
+  this does not establish Chromium termination of the host. Neither a Valence
+  leak diagnosis nor a runtime repair follows from these records.
+- Warm mixed-picker link launch names App C MainActivity in this observation;
+  this success does not close intermittent F-29. No screenshot inspection is
+  claimed here.
+- Compared full before/after worker logs: exact new begin 17:28:03.254,
+  complete 17:28:04.483 and WorkManager SUCCESS 17:28:04.491 share PID 7545 and
+  are absent from the baseline. Execution receipt records forced=true and
+  466.953 seconds observed; this establishes one execution, not natural cadence.
+- Supplied stable pre-worker SQLite receipt records outbox 2/incoming absent;
+  pre-resume receipt records incoming origin 690000 at USN 690002, both outgoing
+  rows at 690001/690002 and outbox 0. These are saved native receipts, not a fresh
+  database extraction. Callback/SUCCESS alone would not establish transfer.
+- Independently hashed raw activation files: both SHA256
+  96a54f7e9415e1b11e6d8378053efc7e688241534fd22c1585e537fabd5f96d5.
+  Current 1793532906, pending 1793532915 and trial/serving=null remain unchanged.
+  Saved final state subsequently commits 1793532915 with pending/trial=null.
+- Native widget preference receipts read fieldnote.left 6 -> 7 -> 6 and next
+  Flat 2 -> Flat 1 -> Flat 2. Saved cleanup records stopped app/mocks, airplane
+  off and no forwards. The initial unstable sync snapshot is excluded; the
+  default npm audit and subsequent offline reinstall remain disclosed by the
+  runner. These qualifications are not additional Valence defects.
+
+F-27/F-29/F-33/F-34/F-35/F-36/F-37/F-38 and pagination remain open or qualified.
+Only matching integration ledgers change. Implementation/build inputs remain
+identical to fully gated code 8d800f6 / site 6276993; prior gate results retain
+their original scope/date. No fresh full gates, runtime repair, emulator run,
+app writes, package/schema bump, protected-branch change, push or publication
+is claimed. iOS remains experimental and untested.
+
 ## App-c iteration 33 evidence refresh - 2026-11-01
 
 ### In plain terms
