@@ -67,6 +67,45 @@ void main() {
             .having((e) => e.message, 'message', contains(fragment)),
       );
 
+  test(
+      'the §4.5.1 cookie jar clears with the token, including a sign-out that clears no rows',
+      () async {
+    const jar = ValenceCookieJar(
+        origin: 'https://api.test',
+        csrfCookie: 'csrftoken',
+        csrfHeader: 'X-CSRFToken');
+    final data = <String, String>{};
+    final v = await open(
+        config: testConfig(key, writableBuckets: {'shelf'}, cookieJar: jar),
+        secure: testSecure(data));
+    final url = Uri.parse('https://api.test/x');
+    Future<void> seed() => v.cookies.absorb(Uri.parse('https://api.test/login'),
+        const ['sessionid=abc; Max-Age=600']);
+
+    // Adoption and refresh move no row, and must move no cookie either.
+    await seed();
+    await v.authSetToken('jwt-a', account: 'user-a');
+    expect(data[secureCookieJarKey], isNotNull);
+    await v.authSetToken('jwt-a2', account: 'user-a');
+    expect(await v.cookies.header(url), 'sessionid=abc',
+        reason: 'a refresh for the same account clears nothing');
+
+    // The §5.3 switch takes the jar with the rows, inside the lease.
+    await v.authSetToken('jwt-b', account: 'user-b');
+    expect(data[secureCookieJarKey], isNull);
+    expect(await v.cookies.header(url), isNull);
+
+    // A sign-out with no recorded id clears no row — and must still clear the cookies.
+    final plain = await open(
+        config: testConfig(key, cookieJar: jar), secure: testSecure(data));
+    await plain.cookies.absorb(
+        Uri.parse('https://api.test/login'), const ['sessionid=xyz; Max-Age=600']);
+    expect(data[secureCookieJarKey], isNotNull);
+    await plain.authSetToken(null);
+    expect(data[secureCookieJarKey], isNull);
+    expect(await plain.cookies.header(url), isNull);
+  });
+
   test('R31 store launcher uses compiled identity and reports unsupported and launch failures', () async {
     final v = await open();
     final channel = const MethodChannel('plugins.flutter.io/url_launcher');

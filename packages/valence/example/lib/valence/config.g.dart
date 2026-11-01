@@ -23,6 +23,7 @@ const valenceConfig = ValenceConfig(
   cacheBuckets: {'plants'},
   permissionKinds: {'camera', 'location', 'notifications', 'contacts', 'bluetooth', 'microphone', 'photos'},
   httpOrigins: {'http://127.0.0.1:8787'},
+  cookieJar: ValenceCookieJar(origin: 'http://127.0.0.1:8787', csrfCookie: 'csrftoken', csrfHeader: 'X-CSRFToken'),
   linkOrigins: {'https://links.example.invalid', 'valence-example://app'},
   seedSchemas: {},
 );

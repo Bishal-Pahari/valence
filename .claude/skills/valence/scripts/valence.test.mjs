@@ -2556,6 +2556,60 @@ test('codegen freezes native HTTP shape and compiles only exact http.origins', (
 });
 
 
+// §4.5.1. Every refusal here is configuration that reads as working and is not, so each one is an
+// error rather than a warning: the jar would silently never fill, or would replay a credential in the
+// clear, or would overwrite a header the host already owns.
+test('S6 codegen compiles one cookie-jar origin and refuses every unsafe shape', () => {
+  const { root, cfg } = fixture();
+  const read = () => readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'config.g.dart'), 'utf8');
+
+  // Absent by default: no field at all, so an existing host keeps exactly today's behaviour.
+  cfg.http = { origins: ['https://api.example.com'] };
+  codegen({ root, cfg });
+  assert.ok(!read().includes('cookieJar'));
+
+  cfg.http.cookieJar = { origin: 'https://API.example.com:443', csrf: { cookie: 'csrftoken', header: 'X-CSRFToken' } };
+  codegen({ root, cfg });
+  assert.match(read(), /cookieJar: ValenceCookieJar\(origin: 'https:\/\/api\.example\.com', csrfCookie: 'csrftoken', csrfHeader: 'X-CSRFToken'\)/);
+
+  // csrf is optional; without it the jar is Set-Cookie replay only.
+  cfg.http.cookieJar = { origin: 'https://api.example.com' };
+  codegen({ root, cfg });
+  assert.match(read(), /cookieJar: ValenceCookieJar\(origin: 'https:\/\/api\.example\.com'\)/);
+
+  // Loopback may be cleartext, because that is what the reference example and adb reverse use.
+  cfg.http.origins = ['http://127.0.0.1:8787', 'https://api.example.com'];
+  cfg.http.cookieJar = { origin: 'http://127.0.0.1:8787' };
+  codegen({ root, cfg });
+  assert.match(read(), /cookieJar: ValenceCookieJar\(origin: 'http:\/\/127\.0\.0\.1:8787'\)/);
+
+  cfg.http.origins = ['https://api.example.com', 'http://lan.test:8080', 'https://other.example.com'];
+  const refusals = [
+    [{ origin: 'https://other.test' }, /not in http\.origins/],
+    [{ origin: 'http://lan.test:8080' }, /cleartext/],
+    [{ origin: 'https://api.example.com/path' }, /exact HTTP/],
+    [{ origin: 'https://user@api.example.com' }, /exact HTTP/],
+    [{ origin: 'https://*.example.com' }, /exact HTTP/],
+    [{ origin: 42 }, /must be an object with an origin/],
+    ['https://api.example.com', /must be an object with an origin/],
+    [{ origin: 'https://api.example.com', extra: 1 }, /unknown key/],
+    [{ origin: 'https://api.example.com', csrf: { cookie: 'csrftoken' } }, /must be \{cookie, header\}/],
+    [{ origin: 'https://api.example.com', csrf: { cookie: 'csrftoken', header: 'X-CSRFToken', extra: 1 } }, /must be \{cookie, header\}/],
+    [{ origin: 'https://api.example.com', csrf: { cookie: 'bad name', header: 'X-CSRFToken' } }, /cookie-name token/],
+    [{ origin: 'https://api.example.com', csrf: { cookie: 'csrftoken', header: 'X CSRF' } }, /valid header name/],
+    // The ones that would overwrite what the host sets, case-insensitively and by prefix.
+    [{ origin: 'https://api.example.com', csrf: { cookie: 'csrftoken', header: 'Authorization' } }, /controlled by the host/],
+    [{ origin: 'https://api.example.com', csrf: { cookie: 'csrftoken', header: 'cookie' } }, /controlled by the host/],
+    [{ origin: 'https://api.example.com', csrf: { cookie: 'csrftoken', header: 'Sec-Fetch-Mode' } }, /controlled by the host/],
+    [{ origin: 'https://api.example.com', csrf: { cookie: 'csrftoken', header: 'Proxy-Authorization' } }, /controlled by the host/],
+  ];
+  for (const [cookieJar, pattern] of refusals) {
+    cfg.http.cookieJar = cookieJar;
+    assert.throws(() => codegen({ root, cfg }), pattern, JSON.stringify(cookieJar));
+  }
+});
+
+
 test('legacy CSP origins do not grant native credentials or break codegen', () => {
   const { root, cfg } = fixture();
   cfg.web.connect = ['https://analytics.example.test/collect', 'https://maps.example.test'];

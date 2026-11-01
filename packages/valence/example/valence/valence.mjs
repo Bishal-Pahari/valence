@@ -428,6 +428,7 @@ export function loadConfig(root) {
     if (cfg.data?.[b] !== undefined) throw new Error(`valence.config.json: writable bucket "${b}" must not be in data (writable buckets never change schema, contracts §5.4)`);
   }
   validateCacheBuckets(cfg);
+  validateCookieJar(cfg, cfg.http?.origins ?? []);
   return cfg;
 }
 
@@ -437,6 +438,56 @@ function validateCacheBuckets(cfg) {
         (cfg.writable ?? []).includes(b)) || new Set(cfg.cache).size !== cfg.cache.length)) {
     throw new Error('cache must be an array of unique declared read-only bucket names');
   }
+}
+
+// §4.5.1: the one origin a build may opt into a host-held cookie jar for. Everything here is a refusal
+// rather than a warning, because each one is a configuration that reads as working and is not: a jar for
+// an origin `http.request` cannot reach never fills, a cleartext jar replays a credential in the clear on
+// every request, and a mirrored header the host already owns would overwrite the bearer token.
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
+// Mirrors ValenceHttp.hostControlled. They are independent release trains, so the runtime also throws
+// on a header that reaches it — a drift fails loudly at the first request instead of silently.
+const HOST_HEADERS = new Set(['authorization', 'cookie', 'cookie2', 'host', 'origin', 'referer',
+  'connection', 'content-length', 'transfer-encoding', 'upgrade', 'te', 'trailer', 'expect',
+  'accept-encoding', 'keep-alive']);
+const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+export function validateCookieJar(cfg, origins) {
+  const jar = cfg.http?.cookieJar;
+  if (jar === undefined || jar === null) return null;
+  if (typeof jar !== 'object' || Array.isArray(jar) || typeof jar.origin !== 'string') {
+    throw new Error('http.cookieJar must be an object with an origin, and optionally csrf: {cookie, header}');
+  }
+  for (const k of Object.keys(jar)) {
+    if (!['origin', 'csrf'].includes(k)) throw new Error(`http.cookieJar: unknown key "${k}"`);
+  }
+  let u;
+  try { u = new URL(jar.origin); } catch { /* rejected below */ }
+  if (!u || !['http:', 'https:'].includes(u.protocol) || u.username || u.password || u.search || u.hash ||
+      (u.pathname !== '/' && u.pathname !== '') || jar.origin.includes('*')) {
+    throw new Error('http.cookieJar.origin must be an exact HTTP(S) origin without credentials, paths, query or fragment');
+  }
+  if (!origins.some((o) => { try { return new URL(o).origin === u.origin; } catch { return false; } })) {
+    throw new Error(`http.cookieJar.origin ${u.origin} is not in http.origins, so http.request can never reach it and the jar would never fill`);
+  }
+  if (u.protocol === 'http:' && !LOOPBACK_HOSTS.has(u.hostname)) {
+    throw new Error(`http.cookieJar.origin ${u.origin} is cleartext; a jar replays a credential on every request, so it must be HTTPS (loopback excepted for local testing)`);
+  }
+  const csrf = jar.csrf;
+  if (csrf === undefined || csrf === null) return `ValenceCookieJar(origin: ${dartStr(u.origin)})`;
+  if (typeof csrf !== 'object' || Array.isArray(csrf) ||
+      typeof csrf.cookie !== 'string' || typeof csrf.header !== 'string' ||
+      Object.keys(csrf).some((k) => !['cookie', 'header'].includes(k))) {
+    throw new Error('http.cookieJar.csrf must be {cookie, header}, both strings');
+  }
+  if (!HEADER_NAME.test(csrf.cookie)) throw new Error(`http.cookieJar.csrf.cookie "${csrf.cookie}" is not a cookie-name token`);
+  if (!HEADER_NAME.test(csrf.header)) throw new Error(`http.cookieJar.csrf.header "${csrf.header}" is not a valid header name`);
+  const lower = csrf.header.toLowerCase();
+  if (HOST_HEADERS.has(lower) || lower.startsWith('proxy-') || lower.startsWith('sec-')) {
+    throw new Error(`http.cookieJar.csrf.header "${csrf.header}" is controlled by the host (§4.5); mirroring into it would overwrite what the host sets`);
+  }
+  return `ValenceCookieJar(origin: ${dartStr(u.origin)}, csrfCookie: ${dartStr(csrf.cookie)}, ` +
+    `csrfHeader: ${dartStr(csrf.header)})`;
 }
 
 const paths = (root, cfg) => ({
@@ -1610,6 +1661,7 @@ export function genDartConfig(cfg, keyring) {
       throw new Error('http.origins entries must be exact HTTP(S) origins without credentials, paths, query or fragment');
     }
   }
+  const jar = validateCookieJar(cfg, connect);
   const ring = Object.entries(keyring).map(([k, v]) => `${dartStr(k)}: ${dartStr(v)}`).join(', ');
   const data = Object.entries(cfg.data ?? {}).map(([k, v]) => `${dartStr(k)}: ${v}`).join(', ');
   validateCacheBuckets(cfg);
@@ -1632,6 +1684,7 @@ export function genDartConfig(cfg, keyring) {
     `  cacheBuckets: {${(cfg.cache ?? []).map(dartStr).join(', ')}},`,
     `  permissionKinds: {${kinds.map(dartStr).join(', ')}},`,
     `  httpOrigins: {${connect.map((o) => dartStr(new URL(o).origin)).join(', ')}},`,
+    ...(jar === null ? [] : [`  cookieJar: ${jar},`]),
     `  linkOrigins: {${linkOrigins.map(dartStr).join(', ')}},`,
     `  seedSchemas: {${Object.entries(cfg.seedSchemas ?? {}).map(([b, ns]) => `${dartStr(b)}: [${ns.join(', ')}]`).join(', ')}},`,
   ];
@@ -1987,6 +2040,20 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
       return `http.origins grants cleartext to ${cleartext.join(', ')}; that grant is live in release builds and carries the host token (§4.5). Use HTTPS for anything off-device`;
     }
   }, 'use HTTP(S) URLs in web.connect and exact trusted origins in http.origins; run codegen and ship a store build for native origin changes');
+  // §4.5.1: a jar is a credential store, and the ways it can be quietly inactive all look like working
+  // configuration from the outside. validateCookieJar throws on each of them; this row is what makes the
+  // configured state visible when it is correct, so "is the jar on?" is answerable without reading Dart.
+  await check('cookie jar', () => {
+    const jar = cfg.http?.cookieJar;
+    if (jar === undefined || jar === null) {
+      return { msg: 'no http.cookieJar, so no cookie is ever sent or stored; a CSRF or session-cookie API is out of scope (§4.5.1)' };
+    }
+    validateCookieJar(cfg, cfg.http?.origins ?? []);
+    const pair = jar.csrf
+      ? `${jar.csrf.cookie} mirrored into ${jar.csrf.header}, which the page may not supply`
+      : 'no csrf pair, so only Set-Cookie replay';
+    return { msg: `${new URL(jar.origin).origin}: ${pair}` };
+  }, 'set http.cookieJar.origin to one HTTPS origin that is also in http.origins (loopback may be cleartext for local testing), give csrf a cookie name and a header the host does not already control, then run codegen and ship a store build');
   await check('stack report', () => {
     if (!existsSync(join(root, '.valence', 'stack-check.md'))) return 'missing .valence/stack-check.md; run the docs-scout phase';
     return 'report present; freshness and policy wording require review';

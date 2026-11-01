@@ -30,7 +30,14 @@
   "http": {
     "origins": [
       "http://127.0.0.1:8787"
-    ]
+    ],
+    "cookieJar": {
+      "origin": "http://127.0.0.1:8787",
+      "csrf": {
+        "cookie": "csrftoken",
+        "header": "X-CSRFToken"
+      }
+    }
   },
   "links": {
     "origins": [

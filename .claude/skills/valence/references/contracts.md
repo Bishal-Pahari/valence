@@ -1008,6 +1008,10 @@ needs after a cold start. The host then attaches it itself:
 - `Authorization: Bearer <token>` on every pull and push of a **writable** bucket (§5.3, §5.5);
 - and on every `http.request` the host performs for the page (§4.5).
 
+The other reserved key a page can never read is `valence.http.cookies`, the persisted half of the
+optional §4.5.1 cookie jar. It is written only by the host, cleared by every path that clears the token,
+and holds no session cookies — those never leave memory.
+
 **Public read-only buckets stay unauthenticated,** so a CDN can serve them and a cache can keep them. If a
 read-only bucket needs a user's identity it is the wrong shape for this: make it writable, or put the
 identity in the path your publisher writes.
@@ -1061,6 +1065,10 @@ at the reserved key `valence.auth.account`. It is written only by this method an
   - Synced/seeded read-only rows and their cursors are **not** touched. They are
     public and remain available while signed out. Disposable REST cache overlays
     are cleared under ?5.5.1, because their payloads may be account-specific.
+  - **The §4.5.1 cookie jar goes with the token,** in the same step and under the same lease: a session
+    or CSRF cookie is a credential of the account that just left, and a request made after the switch
+    must not carry it. A sign-out clears it even for an app that never recorded an id and therefore
+    clears no rows — the cookies are still that user's.
   - **The clear and the store are both under the §5.6 sync lease**, which the host waits up to five
     seconds for and throws `E_INTERNAL` rather than clearing without. Two different syncs are the
     hazard, and only one of them is obvious: a push already in flight has read the old token and would
@@ -1162,19 +1170,16 @@ Connection, Content-Length, Transfer-Encoding, Upgrade, TE, Trailer, Expect, Acc
 Keep-Alive (case insensitive). The host obtains the R1 token per request, with
 `ValenceConfig.authToken` taking precedence over secure storage, and sets Authorization itself.
 A 401 on a request carrying that token emits `auth.expired` once for that request, retains the
-token, and still returns the HTTP response. No cookie jar is used; Set-Cookie and Set-Cookie2
-are omitted from returned headers.
-
-**So a cookie-paired CSRF token cannot be completed, and an endpoint that requires one is out of scope
-for this method.** The host can send neither half of a double-submit pair: not the cookie, because a page
-that can set one can forge it for the origin the host trusts with the bearer token, and not a matching
-header, because obtaining the token means a prior GET whose `Set-Cookie` the host also discards. This is
-the default shape of a Django `POST` (`csrftoken` + `X-CSRFToken`) and of the Rails equivalent, so **check
-for it while choosing the API, not after shipping against it:** `doctor` and `codegen` cannot predict it,
-and no amount of app code works around it. A bearer-token or header-key API, or a `csrf_exempt` endpoint,
-is reachable; a session-cookie API is not. Origins in this list are trusted with the user's token:
-an API that echoes credentials can disclose them in its response, so never allow third-party
-origins. This is a CORS bypass for the app's API, not a credential firewall against that API.
+token, and still returns the HTTP response. Set-Cookie and Set-Cookie2 are always omitted from returned
+headers, and **by default no cookie jar is used at all** — so a cookie-paired CSRF token cannot be
+completed and a session-cookie API is out of reach, which is the default shape of a Django `POST`
+(`csrftoken` + `X-CSRFToken`). §4.5.1 is the opt-in that closes that, for **one** compiled origin, with
+the page still unable to see or set a cookie. Without it, a bearer-token or header-key API, or a
+`csrf_exempt` endpoint, is reachable and a session-cookie API is not — **check which one you have while
+choosing the API, not after shipping against it:** no amount of app code works around it, and `doctor`
+reports only whether a jar is configured, never what the API requires. Origins in this list are trusted
+with the user's token: an API that echoes credentials can disclose them in its response, so never allow
+third-party origins. This is a CORS bypass for the app's API, not a credential firewall against that API.
 
 Each call has a 20-second total deadline, including token lookup and reading the response;
 timeout closes its dedicated client. Request and response bodies are capped at 64 KiB each,
@@ -1206,6 +1211,94 @@ USNs, retains tombstones, and acknowledges push ids idempotently. Its pull `max`
 row included when `more` is true, never a later server head that would skip unseen rows.
 The example is one loopback-only user's database; multi-user deployments must isolate state
 by authenticated identity, enforce authorization and put TLS in front of it.
+
+#### 4.5.1 The host-managed cookie jar, for one compiled origin
+
+`Cookie` stays on the deny-list above for a reason that does not go away: a page that can set a cookie
+for the origin the host trusts with the bearer token can forge one. The gap that reason left is that a
+double-submit CSRF token — `csrftoken` plus `X-CSRFToken`, the default of a Django `POST`, and the Rails
+`session` equivalent — was then **structurally unreachable**, not merely awkward, and that is the shape of
+two of the most widely deployed server frameworks. So the host completes the pair itself, and the page
+still never sees a cookie.
+
+**It is off unless the store build asks for it.** `http.cookieJar` in `valence.config.json` is compiled
+into `ValenceConfig.cookieJar`, the way `http.origins` is:
+
+```json
+"http": {
+  "origins": ["https://api.example.com"],
+  "cookieJar": { "origin": "https://api.example.com", "csrf": { "cookie": "csrftoken", "header": "X-CSRFToken" } }
+}
+```
+
+- **One origin, and it must already be in `http.origins`.** Not a list: a jar is a credential store, and
+  one is the number this exists to serve. `codegen` and `doctor` refuse an origin that is not also
+  granted native access, because a jar for an origin `http.request` cannot reach is dead configuration
+  that reads as working.
+- **HTTPS, with the usual loopback carve-out.** A cookie is a credential, so a cleartext jar would put
+  one on the wire in the clear on every request. `codegen` refuses any `http://` origin except
+  `127.0.0.1`, `[::1]` and `localhost`, which is what the reference example and `adb reverse` use for
+  local testing. This is **narrower** than `http.origins`, which still permits a configured cleartext
+  host (§4.5): the bearer token there is at least the app's own deliberate grant per request, while a jar
+  replays whatever the server set, forever, unprompted.
+- **`csrf` is optional and is the whole point when present.** Before each request the host reads the
+  named cookie out of the jar and sets the named header to its value. `cookie` must be a cookie-name
+  token; `header` must be a valid header name and must not be one of the host-controlled names above.
+  **The page cannot supply the mirrored header either:** it joins the deny-list for this build and a page
+  that sends it gets `E_DENIED`, because a page-chosen value would silently break the pair the server is
+  about to compare — and because "the host owns this header" is the only rule here that is simple enough
+  to be right. When the cookie is absent the header is simply not sent; the server's own 403 is the
+  honest answer, and it is what a browser would do too.
+
+**What the jar does, per request to that exact origin.** It sends one `Cookie` header built from its
+unexpired cookies whose path matches (RFC 6265 §5.1.4 prefix matching), and absorbs `Set-Cookie` from the
+response. Nothing else changes: `Set-Cookie` is still stripped from the headers the page receives, there
+is still no page-visible cookie API, and redirects are still never followed — so a cookie cannot leave
+the origin by a 302 either.
+
+**What it refuses.**
+
+- **Any other origin, including another entry in `http.origins`.** Exact origin match, scheme, host and
+  effective port. One jar, one origin, no sharing.
+- **Widening by `Domain`.** A `Domain` attribute that is not exactly the jar's host, leading dot
+  stripped, case-insensitive, drops the cookie. The jar is host-only, so a cookie can never reach a
+  sibling subdomain the app did not configure.
+- **Unbounded growth.** At most 16 cookies, at most 4096 bytes per `name=value`, at most 8 KiB total.
+  A cookie that would exceed a cap is dropped and logged, and the request still succeeds: a server's
+  `Set-Cookie` is not the page's input, so it is not the page's error.
+- **A malformed `Set-Cookie`.** Skipped and logged, never partially applied.
+
+**Lifetime, which is the part a credential store gets wrong.**
+
+- `Max-Age` wins over `Expires`, as in RFC 6265. `Max-Age` of zero or less deletes the cookie now.
+- **A cookie with no expiry is a session cookie and lives in memory only.** A process restart is a new
+  session, so it is gone — persisting a credential the server scoped to one session would be more than
+  the server asked for. A cookie with an expiry is persisted in secure storage, beside the token, at the
+  reserved key `valence.http.cookies`.
+- **The jar is cleared with the token.** Every path that clears the bearer token clears the jar in the
+  same step: `auth.setToken(null)` (whether or not it counts as an account switch) and the §5.3 account
+  switch, inside the same sync lease and before the new token is stored. A token *refresh* for the same
+  account clears nothing, exactly as it moves no row.
+- **It is revoked at `Valence.open` when the build no longer grants it,** before any request can be
+  made — the same shape as `data.cache`'s bucket grants (§5.5.1). A store build that drops
+  `http.cookieJar`, or points it at a different origin, finds no cookies of the old one.
+  - That revocation runs on every launch of every app, so it **reads first and writes only when there
+    is something to delete**, and it **never fails `Valence.open`**: a Keystore the OS has invalidated
+    would otherwise stop the app starting at all. If a stored jar is visible and cannot be deleted, the
+    jar is **sealed for that launch** — it sends no cookie and absorbs none — because carrying
+    credentials a revocation could not remove is the one outcome worse than not having a jar.
+    An unreadable Keystore reads as "no stored jar" like every other §4.4 read, so the jar simply runs
+    in memory for that launch and nothing is persisted.
+- **It survives an OTA update,** and that is deliberate: the jar origin is compiled native
+  configuration, which no manifest can change, and the bearer token survives an update too. An update is
+  a new UI for the same app and the same user; signing them out of their session for it would cost
+  something and protect nothing.
+
+**It grants the page no authority it did not have.** The page could already make the host send the user's
+bearer token to this origin; it can now make the host send the user's cookies to the same origin. What it
+still cannot do is read either, set either, or aim either anywhere else. `doctor` has a `cookie jar` row
+reporting the configured origin, whether it is also an `http.origins` entry, and the CSRF pair — so a
+jar that is quietly inactive is a check failure rather than a silent one.
 
 ### 4.6 Lifecycle, connectivity and update status
 
@@ -2332,6 +2425,7 @@ R12 regression rows: batch reads preserve requested order, deduplicate, isolate 
 | reference HTTP config (§4.5) | example source and generated config grant cleartext only to loopback; off-device hosts and wrong loopback ports denied before token lookup; release-device probe with a synthetic bearer distinguishes transport policy from origin permission |
 | seed completion (runtime, §5.2) | marker-only lock retries do not repeat imports; exhaustion retains rows and retries next launch without replacing newer synced rows; non-lock errors are not retried; row-import failure never stamps completion; failed upgrade retains the old marker; matching completion skips import; build, asset-length and missing-file changes trigger import |
 | native HTTP (§4.5) | deny unlisted schemes, hosts and ports before token lookup; generated strict decoding and nonce denial reach the runtime; host token callback takes precedence and token is read per request; page credential and transport headers rejected; real cross-origin redirects returned without contacting the target; authenticated 401 emits once; UTF-8 body and header limits, streamed response cap and total deadline (including late token lookup) enforced; malformed UTF-8 and transport errors disclose no remote text; **the deadline is `E_TIMEOUT`, a transport failure while the OS reports no interface is `E_OFFLINE` and the same failure online — or with no connectivity source — stays `E_INTERNAL`, while an HTTP status is never reinterpreted by connectivity and neither code carries remote text; every size refusal names the observed size and the limit, the streamed one as a floor** |
+| cookie jar (§4.5.1) | absent by default: no `Cookie` is sent and the jar is not consulted; configured, a `Set-Cookie` from the jar origin is replayed on the next request to that exact origin and on no other granted origin; the configured CSRF cookie is mirrored into the configured header, the header is refused as `E_DENIED` when the page supplies it, and an absent cookie sends no header; a `Domain` widening to a parent or sibling host, a `Path` that does not match, an expired cookie, a `Max-Age` of zero and a malformed `Set-Cookie` are all dropped without failing the request; `Max-Age` wins over `Expires`; a cookie with no expiry never reaches secure storage and is gone after a restart while an expiring one is reloaded; the 16-cookie, 4096-byte and 8-KiB caps drop the offending cookie and keep the response; `Set-Cookie` stays absent from the headers the page receives; the jar clears on `auth.setToken(null)` with no recorded account, on a §5.3 switch under the lease, and is revoked at `Valence.open` when the build drops the grant or names another origin, while a same-account refresh clears nothing; **a revocation that cannot reach secure storage seals the jar for the launch rather than failing `Valence.open`, and an unreadable Keystore runs it in memory instead**; a mirrored header the host already controls is `E_INTERNAL` at the request rather than a silent overwrite of the bearer token; `codegen` and `doctor` refuse an origin outside `http.origins`, a cleartext non-loopback origin, a host-controlled mirrored header and a malformed cookie name |
 | reference REST adapter | real 600-row pull over two pages without skipped rows; durable USNs, tombstones and idempotent push across restart; reused operation id with different payload rejected; lost-reply retry returns current winning row; 601 queued operations accepted within the byte limit and replayed without repeating REST writes; **an item key of `.` or `..` is refused for both a write and a delete, before any upstream request, and refuses the whole batch** (those two survive `encodeURIComponent`, so URL resolution strips them as dot segments and the write lands on the upstream's collection or root endpoint instead) |
 | `valence.mjs` (the skill's `valence.test.mjs`) | key directory inside git, including through a link; keyring entry never overwritten; signing key must match the keyring; sign/verify round trip; tampering, bad signature, unknown key, other `appId` and unsafe paths rejected; native extensions rejected; **a bundle file under the reserved `_host/` prefix is refused by both `bundle` and `verify`, and a relative asset URL in the entry page warns**; **a service-worker registration in the output warns**; `seq` monotonic with the same clock and a slow clock; floor only rises; **a floor above the store build's seq is refused for an OTA, allowed up to that seq, allowed for a `--store` or `--builtin` build, warned about when carried forward, and warned rather than refused when a pipeline restates a carried floor it is not actually raising** (refusing that deadlocked against "the floor only goes up", leaving no buildable number); CSP hashes (CRLF-safe, `wasm-unsafe-eval` only with `.wasm`); additive-only against `storeSchema`, recorded only by `--store`; **a second `--store` build cannot rewrite the recorded schema with a non-additive one, `--rebaseline` lets it through with a warning, and `--store` reports what it recorded**; **`--store` warns when a channel points below the seq it just wrote**; **`requires.bridge` rising above the shipped store build warns, and `--requires-bridge` silences it**; new names need `since` above the shipped version; reserved and colliding names, **including one name declared as both a method and an event**; **a built-in that grows a param is refused without the sibling name that gates it — with and without a store baseline, the sibling the runtime names rather than any name, and the version bump still required on top**; SvelteKit co-located files aren't routes; `web.declaredRoutes` is validated, feeds the manifest and the baseline, and silences the inactive-check warning a project with no scannable routes gets; atomic and validated seed, with a warning for unseeded buckets; the CLI runs through a link; **a wrong `verify --files` level says the directory is wrong rather than naming the first file as missing**; **a built-in declared below its reserved `since` at the built-in's own signature is refused, naming that number, for `notify.*`/`badge.*` at 11, `push.*` at 12, `share.image` at 14 and `notify.pendingIds` at 16, while the same name at a different signature is preserved as app-owned — **including one that differs only in its return, which a params-only comparison missed** — a floorless built-in delegates at any `since`, an app-owned name that merely shares the namespace is untouched, and a name the recorded store schema already shipped is let through**; **both refusals name `max(reserved, baseline + 1)` as the number to declare — the reserved minimum alone on a baseline below it, and the higher number plus the reserved one above it — while an app-owned name gets no reserved number at all**; **an unrecognised name in an area the package ships built-ins in warns and raises a `doctor` WARN naming `create-valence update`, while the template itself and a method outside every such area warn about nothing**; **a built-in's structured return declared with a field this generator has no entry for names that field and the same command, where a known field at the wrong type does not**; a built-in may be omitted but not redefined with a different shape, including `secure.*` and `auth.*`; **a built-in's optional field is passed through when the app's type declares it, omitted from the delegation when it does not, still refused at the wrong type, and additive against a type a `--store` build already recorded — while an app's own shipped type may not grow at all**; generated Dart passes `analyze --fatal-infos` against `package:valence` and satisfies the dispatch cases; the generated `bridge.g.ts` binds the package, including `METHOD_SINCE` refusing a method newer than the host and `EVENT_SINCE` gating an event through `has()` |
 | updater (dart test) | each check 1–7 rejects; `pointer.seq` below `pending` drops `pending`; the rollout gate is deterministic; size cap; **a bundle requiring exactly `hostBridgeVersion` is accepted**; **check 5 refuses a `requires.data` key that is malformed or writable** (the mirror of "a newer bridge is refused": without it a host can under-report its version and brick itself on first launch after a schema bump); **check 5 compares against the generated constant, not a second literal**; an update isn't pending until its data pairs are synced; **a bundle requiring a pair the device lacks becomes pending only after step 7 pulls that pair, and never on an offline device**; **a device holding v1 and v2 of one bucket satisfies a requirement for either** |

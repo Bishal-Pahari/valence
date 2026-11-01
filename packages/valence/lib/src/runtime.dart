@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'config.dart';
 import 'appearance.dart';
+import 'cookies.dart';
 
 import 'image_share.dart';
 import 'log.dart';
@@ -35,6 +36,8 @@ import 'updater.dart';
 import 'wire.dart';
 
 export 'config.dart' show ValenceConfig, ValenceSyncMode;
+export 'cookies.dart'
+    show ValenceCookieJar, ValenceCookies, secureCookieJarKey;
 export 'log.dart' show ValenceLogger, defaultValenceLogger;
 export 'links.dart' show ValenceLink, ValenceLinks;
 export 'manifest.dart'
@@ -320,6 +323,9 @@ final class Valence {
         hostBuild: hostBuild,
         log: log,
       );
+      // Before the page can reach `http.request`: a build that dropped its jar, or moved it, must not
+      // leave the previous origin's session cookie at rest in the Keystore (§4.5.1).
+      await valence.cookies.revoke();
       valence.links = links;
       links.onOpened = (link) => valence.emit(
           eventScript('link.opened', {'url': link.url, 'path': link.path}));
@@ -391,6 +397,11 @@ final class Valence {
 
   /// Keystore- and Keychain-backed storage for the bearer token and the page's own secrets (§4.4).
   final ValenceSecure secure;
+
+  /// The optional §4.5.1 cookie jar. Held for the runtime's lifetime, so one secure-storage read serves
+  /// every request rather than one per call. Empty and inert unless the build granted an origin.
+  late final ValenceCookies cookies =
+      ValenceCookies(jar: config.cookieJar, secure: secure, log: _log);
 
   /// Deep links captured on UI startup. Background workers do not start this listener.
   late final ValenceLinks links;
@@ -946,6 +957,10 @@ final class Valence {
       await secure.setAuthAccount(next);
     }
     await secure.setAuthToken(token);
+    // §4.5.1: the jar goes with the token on *every* sign-out, including the one that is not an account
+    // switch because no id was ever recorded. Those cookies are still the credentials of the user who
+    // just left, and a refresh — same account, new bearer — must leave them alone.
+    if (signOut) await cookies.clear();
   }
 
   /// The §4.4 switch: clear, then store, **both** under the §5.6 sync lease.
@@ -1028,6 +1043,9 @@ final class Valence {
       // B's bearer only after B's identity is durable. Every crash/failure between these writes leaves
       // no token, never B's credentials under A's identity (which would also restore A's task draft).
       await secure.setAuthToken(null);
+      // Inside the lease and before the new token, for the same reason the rows are: a request made
+      // with B's bearer must never carry A's session cookie (§4.5.1).
+      await cookies.clear();
       await secure.setAuthAccount(to);
       restoration.bindAccount(to);
       await secure.setAuthToken(token);
@@ -1063,6 +1081,7 @@ final class Valence {
   }) =>
       ValenceHttp(
         origins: config.httpOrigins,
+        cookies: cookies,
         token: config.authToken ?? secure.authToken,
         onUnauthorized: () =>
             emit(eventScript('auth.expired', const <String, Object?>{})),

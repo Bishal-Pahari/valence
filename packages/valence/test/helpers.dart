@@ -129,6 +129,7 @@ ValenceConfig testConfig(
   int dataSizeCap = 50 * 1024 * 1024,
   ValenceSyncMode syncMode = ValenceSyncMode.api,
   int pullPageLimit = 500,
+  ValenceCookieJar? cookieJar,
 }) =>
     ValenceConfig(
       appId: appId,
@@ -143,6 +144,7 @@ ValenceConfig testConfig(
       bundleSizeCap: bundleSizeCap,
       dataSizeCap: dataSizeCap,
       pullPageLimit: pullPageLimit,
+      cookieJar: cookieJar,
     );
 
 /// Opens a store on a fresh temp file.
@@ -179,6 +181,15 @@ ValenceSecure brokenSecure({ValenceLogger log = _silent}) {
   return ValenceSecure(log: log);
 }
 
+/// A [ValenceSecure] that can read [data] but never write it.
+///
+/// The one state that matters for §4.5.1's revocation: a stored jar is visible and cannot be deleted.
+/// A wholly broken platform reads as absent, so there is nothing to revoke and nothing to seal.
+ValenceSecure readOnlySecure(Map<String, String> data, {ValenceLogger log = _silent}) {
+  FlutterSecureStoragePlatform.instance = _ReadOnlySecureStoragePlatform(data);
+  return ValenceSecure(log: log);
+}
+
 void _silent(String _) {}
 
 final class _BrokenSecureStoragePlatform extends FlutterSecureStoragePlatform {
@@ -201,6 +212,33 @@ final class _BrokenSecureStoragePlatform extends FlutterSecureStoragePlatform {
   Future<void> write({required String key, required String value, required Map<String, String> options}) => _fail();
 
   Future<Never> _fail() => Future.error(MissingPluginException('no secure storage on this platform'));
+}
+
+final class _ReadOnlySecureStoragePlatform extends FlutterSecureStoragePlatform {
+  _ReadOnlySecureStoragePlatform(this.data);
+
+  final Map<String, String> data;
+
+  @override
+  Future<bool> containsKey({required String key, required Map<String, String> options}) async =>
+      data.containsKey(key);
+
+  @override
+  Future<void> delete({required String key, required Map<String, String> options}) => _fail();
+
+  @override
+  Future<void> deleteAll({required Map<String, String> options}) => _fail();
+
+  @override
+  Future<String?> read({required String key, required Map<String, String> options}) async => data[key];
+
+  @override
+  Future<Map<String, String>> readAll({required Map<String, String> options}) async => data;
+
+  @override
+  Future<void> write({required String key, required String value, required Map<String, String> options}) => _fail();
+
+  Future<Never> _fail() => Future.error(MissingPluginException('secure storage is read-only here'));
 }
 
 /// `SQLITE_BUSY`, worded and coded exactly as Android reports it when the schema upgrade's
