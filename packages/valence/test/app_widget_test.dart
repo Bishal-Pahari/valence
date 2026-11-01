@@ -241,6 +241,7 @@ void main() {
         await runtime.appReady();
         await runtime.applyUpdate();
         await host.reloadPage();
+        await runtime.checkBundleUpdate();
       });
       await lifecycle(tester, AppLifecycleState.paused);
       await lifecycle(tester, AppLifecycleState.resumed);
@@ -274,7 +275,7 @@ void main() {
               .where((line) => line.startsWith('dev: update check skipped'))
               .length,
           greaterThanOrEqualTo(3),
-          reason: 'startup, resume and periodic check');
+          reason: 'startup, explicit, resume and periodic check');
       expect(log.lines.join('\n'), isNot(contains(runtime.server!.nonce)));
     });
   } else {
