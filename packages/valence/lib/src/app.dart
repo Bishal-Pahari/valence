@@ -712,7 +712,35 @@ class _ValenceAppState extends State<ValenceApp>
     }
   }
 
-  Future<void> _checkForUpdate() async {
+  /// Takes the loopback server down and forgets it, so nothing rebinds it (§2.5).
+  ///
+  /// `_valence.unbound()` first and synchronously: a resume racing the teardown must not find a server
+  /// to reclaim.
+  Future<void> _closeServer() async {
+    final server = _valence.server;
+    _valence.unbound();
+    await server?.close();
+  }
+
+  /// Coalesced, because every overlapping caller used to run the whole UI transition.
+  ///
+  /// There are five triggers — start-up, resume, the foreground ticker, a connectivity report and the
+  /// blocking screen's "Check again" — and the updater coalesces only *discovery*. Two callers that each
+  /// captured `wasBlocked = true` would therefore both see the withdrawal and both run `_start()`: two
+  /// `activateForUiStart` calls, so the second reads the first's own `serving` as a previous crash and
+  /// spends a §2.4 trial attempt, plus a second server, a second ticker and a second connectivity
+  /// subscription with the first of each leaked. Joining the run in flight is also what "Check again"
+  /// should do while the ticker is already asking.
+  ///
+  /// The lock is deliberately held across `_start()`, which means `_armTriggers`'s own first check is
+  /// joined rather than run again on the withdrawal path. That check would be a few hundred milliseconds
+  /// behind the one that just discovered the withdrawal, and the ticker asks again anyway.
+  Future<void> _checkForUpdate() =>
+      _updateCheck ??= _runUpdateCheck().whenComplete(() => _updateCheck = null);
+
+  Future<void>? _updateCheck;
+
+  Future<void> _runUpdateCheck() async {
     if (_devMode) {
       _log('dev: update check skipped; OTA discovery is disabled');
       return;
@@ -733,7 +761,7 @@ class _ValenceAppState extends State<ValenceApp>
         // mid-session branch catching up with it. The ticker and connectivity stay, because a signed
         // withdrawal has to be discoverable without the user pressing "Check again".
         _controller = null;
-        await _valence.server?.close();
+        await _closeServer();
         if (!mounted) return;
         setState(() {});
       } else if (wasBlocked) {
@@ -741,7 +769,7 @@ class _ValenceAppState extends State<ValenceApp>
         _updateTicker?.cancel();
         await _connectivity?.cancel();
         _controller = null;
-        await _valence.server?.close();
+        await _closeServer();
         await _start();
       }
     } on Object catch (e) {

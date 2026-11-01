@@ -493,6 +493,19 @@ final class Valence {
         () => (manifest: manifest, corrupt: server.corruptHashes);
   }
 
+  /// Forgets the server and the bundle the host widget has just taken down (§2.5).
+  ///
+  /// Closing the socket is not enough on its own. [ValenceApp] rebinds a server whose liveness probe
+  /// fails, because iOS reclaims listening sockets during a suspend — so a *deliberately* closed server
+  /// that is still referenced looks exactly like a reclaimed one, and the next resume would put the
+  /// bundle back on `127.0.0.1` behind a mandatory store-update block. Dropping the manifest with it
+  /// keeps a late `app.ready` from the torn-down page out of [ValenceUpdater.commitTrial].
+  void unbound() {
+    _server = null;
+    _manifest = null;
+    updater.repairFrom = null;
+  }
+
   /// §5.2: imports the bundled seed on first launch **and after a host upgrade**, not on every launch.
   ///
   /// `Valence.open` is awaited in `main()` before `runApp`, so the extraction is in front of the first

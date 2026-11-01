@@ -315,6 +315,9 @@ void main() {
       'R31 native block pauses trial, denies queued bridge and accepts signed withdrawal',
       (tester) async {
     await mount(tester, pending: true);
+    // Captured while there still is one: the teardown below forgets the server as well as closing it,
+    // so that a later resume cannot mistake it for a socket iOS reclaimed and rebind it (§2.5).
+    final origin = runtime.server!.origin;
     final policy = await tester
         .runAsync(() => signBundle(key, seq: 50, overrides: {'minHost': 2}));
     respond = (request) async {
@@ -344,7 +347,6 @@ void main() {
     // server have to go too, or the old page keeps running behind the blocking screen: its timers fire,
     // its own CSP-allowed origins stay reachable, and the host keeps pushing events into it.
     final scripts = webview.controller.scripts.length;
-    final origin = runtime.server!.origin;
     runtime.emit('window.__valence&&window.__valence.e("x",{})');
     await io(tester);
     expect(webview.controller.scripts.length, scripts);
@@ -408,6 +410,88 @@ void main() {
     expect(find.text('Update required'), findsOneWidget);
     expect(webview.controllers, isEmpty);
     expect(runtime.state.toJson(), before);
+  });
+
+  /// Blocks mid-session, leaving the blocking screen up and the server closed.
+  Future<String> blockMidSession(WidgetTester tester) async {
+    await mount(tester, pending: true);
+    final origin = runtime.server!.origin;
+    final policy = await tester
+        .runAsync(() => signBundle(key, seq: 50, overrides: {'minHost': 2}));
+    respond = (request) async {
+      if (request.url.path.endsWith('/channels/production.json')) return http.Response('{"seq":50,"rollout":100}', 200);
+      if (request.url.path.endsWith('/50.json')) return http.Response.bytes(policy!.bytes, 200);
+      if (request.url.path.endsWith('/50.json.sig')) return http.Response(policy!.signature, 200);
+      return http.Response('', 404);
+    };
+    connectivity.add(['none']);
+    await io(tester);
+    connectivity.add(['wifi']);
+    await waitFor(
+        tester, () => runtime.updater.storeUpdateRequired, 'mandatory policy');
+    expect(find.text('Update required'), findsOneWidget);
+    return origin;
+  }
+
+  Future<String> probe(WidgetTester tester, String origin) async =>
+      await tester.runAsync(() async {
+        try {
+          await http.get(Uri.parse('$origin/'));
+          return 'answered';
+        } on Object {
+          return 'closed';
+        }
+      }) ??
+      'closed';
+
+  testWidgets('a block survives a background and resume with no server rebound',
+      (tester) async {
+    final origin = await blockMidSession(tester);
+    // iOS reclaims listening sockets during a suspend, so the resume rebinds a server whose liveness
+    // probe fails — and a *deliberately* closed one that is still referenced looks identical. Without
+    // `unbound()` the resume put the bundle and the `/_host/` routes back on 127.0.0.1, on the kept
+    // nonce, behind the blocking screen (§2.5).
+    await lifecycle(tester, AppLifecycleState.paused);
+    await lifecycle(tester, AppLifecycleState.resumed);
+    await io(tester);
+    expect(runtime.server, isNull);
+    expect(runtime.manifest, isNull);
+    expect(await probe(tester, origin), 'closed');
+    expect(find.text('Update required'), findsOneWidget);
+    expect(find.byKey(const ValueKey('stub-webview')), findsNothing);
+  });
+
+  testWidgets('overlapping withdrawal checks start the page once',
+      (tester) async {
+    await blockMidSession(tester);
+    final withdrawal = await tester.runAsync(() => signBundle(key, seq: 60));
+    respond = (request) async {
+      if (request.url.path.endsWith('/channels/production.json')) return http.Response('{"seq":60,"rollout":100}', 200);
+      if (request.url.path.endsWith('/60.json')) return http.Response.bytes(withdrawal!.bytes, 200);
+      if (request.url.path.endsWith('/60.json.sig')) return http.Response(withdrawal!.signature, 200);
+      final blob = withdrawal!.blobs[request.url.path.split('/').last];
+      return blob == null
+          ? http.Response('', 404)
+          : http.Response.bytes(blob, 200);
+    };
+    // Two "Check again" taps without awaiting the first check. Both used to capture `wasBlocked = true`
+    // and both run the whole transition: a second `activateForUiStart` reads the first one's own
+    // `serving` as a previous crash and spends a §2.4 strike, and a second server, ticker and
+    // connectivity subscription are bound with the first of each leaked.
+    await tester.runAsync(() => tester.tap(find.text('Check again')));
+    await tester.runAsync(() => tester.tap(find.text('Check again')));
+    await waitFor(
+        tester,
+        () =>
+            !runtime.updater.storeUpdateRequired &&
+            webview.controllers.length == 2 &&
+            webview.controllers.last.loads.isNotEmpty,
+        'signed withdrawal');
+    await io(tester);
+    expect(find.text('Update required'), findsNothing);
+    expect(webview.controllers, hasLength(2));
+    expect(runtime.state.trialFails, 0);
+    expect(runtime.state.trial, trial.seq);
   });
 
   testWidgets(

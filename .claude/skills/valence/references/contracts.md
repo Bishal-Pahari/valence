@@ -377,7 +377,11 @@ are native constants, **built from the platform value the runtime actually passe
 lowercase literal, and `doctor` warns when `appId` and the Android `applicationId` disagree**; a
 withdrawal persists as a bare seq, so an install with no policy verifies no signature at launch and a
 replayed older policy is still refused; **a policy discovered mid-session takes the page down — no
-controller and no bound loopback server — rather than hiding it behind the blocking screen**; the
+controller and no bound loopback server — rather than hiding it behind the blocking screen**, and the
+server is **forgotten as well as closed**, because §3's resume rebinds a server whose liveness probe
+fails and would otherwise put the bundle back on `127.0.0.1` behind the block; **the update check is
+coalesced across its five triggers**, so two overlapping withdrawal checks start the page once rather
+than spending a §2.4 trial attempt on the first start's own `serving`; the
 release that drops a signed `minHost` warns; generated revision-17 Dart/TS and older shapes compile.
 
 ---
@@ -2322,5 +2326,7 @@ the store destination is built from `TargetPlatform.<x>.name` as the runtime pas
 branch is reachable, and `doctor`'s `store listing` row compares `appId` with the Android
 `applicationId`; a withdrawal persists as a bare seq, so an unblocked install verifies no signature at
 launch while a replayed older policy is still refused; a mid-session block leaves no WebView controller
-and no bound loopback server, and the host pushes no further events into the old page; a release that
+and no bound loopback server, and the host pushes no further events into the old page; **a block survives
+a background and a resume with the port still closed and nothing rebound**; **two overlapping withdrawal
+checks start the page exactly once, binding one server and spending no trial attempt**; a release that
 omits a previously signed `minHost` warns, naming the number.
