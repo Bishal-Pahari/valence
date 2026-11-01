@@ -1,3 +1,4 @@
+import 'cookies.dart';
 import 'notifications.dart';
 
 /// How the host pulls read-only buckets (contracts §5.3).
@@ -40,6 +41,7 @@ final class ValenceConfig {
     this.seedAsset = 'assets/valence/seed.db',
     this.authToken,
     this.httpOrigins = const {},
+    this.cookieJar,
     this.linkOrigins = const {},
     this.permissionKinds = const {},
     this.notificationsEnabled = false,
@@ -131,6 +133,12 @@ final class ValenceConfig {
   /// Compiled from `http.origins`; empty denies every request. Never supplied by an OTA manifest.
   final Set<String> httpOrigins;
 
+  /// The one origin this build opts a host-held cookie jar in for (§4.5.1), or null for none.
+  ///
+  /// Compiled from `http.cookieJar`; its origin must also be in [httpOrigins], and `codegen` refuses a
+  /// cleartext non-loopback one, because a jar replays a credential on every request.
+  final ValenceCookieJar? cookieJar;
+
   /// Exact HTTPS/custom-scheme origins accepted as local routes (§6.3).
   final Set<String> linkOrigins;
 
@@ -190,6 +198,7 @@ final class ValenceConfig {
         seedAsset: seedAsset,
         authToken: authToken ?? this.authToken,
         httpOrigins: httpOrigins ?? this.httpOrigins,
+        cookieJar: cookieJar,
         linkOrigins: linkOrigins ?? this.linkOrigins,
         permissionKinds: permissionKinds ?? this.permissionKinds,
         notificationsEnabled: notificationsEnabled,

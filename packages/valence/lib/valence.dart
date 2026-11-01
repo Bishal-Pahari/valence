@@ -24,6 +24,8 @@ export 'src/runtime.dart'
         ValenceBundleStatus,
         ValenceCheckFailure,
         ValenceConfig,
+        ValenceCookieJar,
+        ValenceCookies,
         ValenceFileEntry,
         ValenceHostView,
         ValenceHttp,
@@ -65,5 +67,6 @@ export 'src/runtime.dart'
         maxListLimit,
         normaliseRequestPath,
         secureAuthTokenKey,
+        secureCookieJarKey,
         secureAuthAccountKey,
         maxMessageBytes;
