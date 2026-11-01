@@ -1,5 +1,58 @@
 # Integration acceptance refresh ? 2026-11-01
 
+## App-c iteration 39 in-progress checkpoint - 2026-11-01
+
+### In plain terms
+
+Reviewed both apps' findings, Kundalini's completed iteration 17, app-c's completed
+iteration 38 and its newest, explicitly unfinished iteration 39 report. Iteration
+39's later findings record busy-sync and Settings-return failures; the short
+report has not yet incorporated those checkpoints. Neither recovery nor later
+successful feature probes closes the historical reliability findings.
+
+Decision: preserve security and users' data. Do not weaken lease ownership,
+rollback or navigation rules on these observations. No eligible must-have or
+missing integration merge remains. S1 stays deliberately parked, S2 needs a Play
+account, and the other builder's roadmap note explicitly names S6 next. Avoid
+overlapping that credential-store work. Kundalini has not yet accepted S7.
+
+### Independently checked saved evidence
+
+- `settings-return-full-logcat.txt` explicitly names lowmemorykiller targets:
+  renderer 5329 at 20:46:34.291 and host 5225 at 20:46:34.376, 85 ms apart.
+  Exit-info records LOW_MEMORY for both at .406 and .458 respectively. This
+  supports direct host eviction; a renderer callback cannot prevent that kill.
+- Saved Settings PID receipts change from 5225 to 6495. The pre-relaunch page
+  inspection fails with a closed socket. A new process is not an uninterrupted
+  return of the original host. No independent screenshot inspection claimed.
+- The supplied stable native receipt records lease `1793545128518:5225` and
+  outbox 1. Paired-clock bounds put the device 37,318-37,369 ms behind the host
+  at capture. Host-minus-lease arithmetic does not establish an expired lease,
+  blocked owner, deadlock or COMMIT failure.
+- Recovery attempts record three busy/pending-1 replies followed by ok/pending-0
+  at host 15:01:29.121 UTC. The restoration sync also records ok/pending-0.
+  These saved receipts establish recovery, not a causal fix or owner timeline;
+  no independent database extraction was performed here.
+- Iteration 39's two archive hashes match iteration 38. Archive identity does
+  not fingerprint the Flutter source tree. OTA, isolated-worker and final
+  cleanup acceptance are not claimed for the unfinished iteration.
+
+### Integration and validation scope
+
+All 31 recorded exact feature tips and both packages bases are ancestors of the
+current integrations: code `f82a4f6`, site `5f61842`, based on packages `778b20c`
+and `9ed2ee9`. No queue branch needs refreshing on these unchanged bases.
+
+Only matching integration ledgers change. Fresh ancestry, unchanged-input and
+diff checks pass; implementation and site build inputs remain identical to fully
+gated code `27b4cd8` / site `16e3fd6`. Full package/build gates were not rerun;
+their earlier November 1 results retain their original scope. No roadmap status
+changed because no item was taken and no new integration assembly was required.
+
+No emulator run, test-app write, runtime fix, version change, protected-branch
+change, push or publication. iOS remains experimental and untested. This
+checkpoint does not establish beta acceptance.
+
 ## App-c iteration 38 evidence refresh - 2026-11-01
 
 ### In plain terms
