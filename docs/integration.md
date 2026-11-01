@@ -1,5 +1,71 @@
 # Integration acceptance refresh ? 2026-11-01
 
+## App-c iteration 28 evidence refresh - 2026-11-01
+
+### In plain terms
+
+The newest app run fixes its own missing widget refresh after remote sync.
+Its saved native preferences move 6 -> 7 -> 6 before HOME, with the original
+inspection restored. This needs no runtime change. The ordinary launcher still
+returns to an orphan picker, and successful retries do not close the intermittent
+concurrency, permission ANR or renderer-loss findings.
+
+Read both apps' findings and newest reports read-only: Kundalini 17 and app-c
+28. Current packages remains code 778b20c / site 9ed2ee9. Independently checked
+all 30 exact tips in the merge table below: every branch still names that tip,
+and every tip plus packages is an ancestor of integration in both repos. The
+rebase queue is current; no missing integration merge or eligible must-have
+remains. S1 stays deliberately parked and S2 requires a Play account. S6 remains
+unclaimed here because the other builder's November 1 entry explicitly names it
+as its next task; its status still says todo, so ownership needs coordination
+before either builder starts the credential store. S7 remains ready at schema 18.
+
+Saved-result checks, without operating either app:
+
+- The widget retry records base 500200 and passed=true. Independently read the
+  three native preference files: left 6/7/6, total 7 throughout, next Flat 2 /
+  Flat 1 / Flat 2. The corresponding row receipts change done=false then restore
+  done=true while retaining the original note/photo id. The first restoration
+  returned busy and remains excluded from full-pass acceptance.
+- The worker is explicitly forced after eligibility: background-force.txt says
+  Running job [FORCED], worker-execution.json says forced=true and 142.039s.
+  That observation interval does not establish natural scheduler cadence.
+- Checked all three exact timestamped worker lines against the full baseline
+  and after log. Begin 05:40:22.207, completion 05:40:24.191 and WorkManager
+  SUCCESS 05:40:24.208 share PID 31112; each is absent before and present after.
+- The supplied pre-resume native SQLite receipt contains the incoming unit at
+  origin 510000 / USN 510002, both outgoing objects at USNs 510001/510002 and
+  outboxCount=0. This checks supplied results, not a fresh database extraction.
+- Independently compared and hashed both raw activation files: byte-identical,
+  SHA256 81a1a79ace5ea30da847d5589355e5d80500a3847d280d2ef37d65affd8ff49d.
+  Current stays 1793490621, pending 1793490634, trial=null. Final saved state
+  subsequently commits 1793490634 with pending/trial=null.
+- The supplied audit has 43 passing assertions. Final sync reports ok/pending0,
+  modern pending IDs are empty, and cleanup records stopped app/owned mocks,
+  airplane mode off, unreachable owned services and no forwards.
+
+Ordinary-launch F-29 recurs before clear-task recovery. Early bridge access and
+an adb pidof timeout fail in the harness before meaningful native replies;
+concurrent APK builds limit attribution, and failed UIAutomator idle captures
+precede the actual taps. Preserve those exclusions. Four successful foreground
+probes, a null lease after settling and a same-PID Settings return do not locate
+a blocked owner or fix F-33/F-35/F-36/F-37. F-27, F-34, F-38 and pagination remain
+open or qualified. Kundalini's cookie gap remains S6; S7 has no app acceptance yet.
+
+Decision: preserve security boundaries and users' data. Keep transaction/lease
+semantics until contemporaneous request, acquisition, renewal, release and
+paired-clock evidence identifies the blocker; avoid overlapping credential-store
+work while its ownership is ambiguous.
+
+This change updates only the two integration ledgers. Their implementation and
+build inputs are unchanged from fully gated code 8d800f6 / site 6276993. The S7
+combined gate table below retains its original scope and date; no fresh npm,
+Flutter, analyzer, packaging, APK, site-build, runtime-review or emulator pass is
+claimed. Fresh checks cover branch-tip ancestry, saved receipts, exact worker
+lines, independent raw hashes, matching ledger text and diff hygiene. No test-app
+writes, protected-branch changes, package/schema version changes, push or
+publication occurred. iOS remains experimental and untested.
+
 ## S7 and ready R4 integration ? 2026-11-01
 
 ### In plain terms
