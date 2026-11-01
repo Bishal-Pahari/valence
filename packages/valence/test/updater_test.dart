@@ -977,7 +977,7 @@ void main() {
       final state = ValenceState(installId: 'i', current: 10);
       final log = LogSpy();
       final u = makeUpdater(state: state, log: log);
-      u.countFailure();
+      await u.countFailure();
       expect(state.trialFails, 0);
       expect(state.bad, isEmpty);
       expect(log.has('nothing to count'), isTrue);
@@ -1018,7 +1018,7 @@ void main() {
       final state = ValenceState(installId: 'i', current: 10, trial: 20, trialFails: 1, pending: 20);
       final log = LogSpy();
       final u = makeUpdater(state: state, log: log);
-      u.countFailure();
+      await u.countFailure();
       expect(state.bad, contains(20));
       expect(state.pending, isNull);
       expect(log.has('marking it bad'), isTrue);
@@ -1235,9 +1235,9 @@ void main() {
       final state = ValenceState(installId: 'i', current: 10, pending: 20);
       final u = makeUpdater(state: state);
       expect(await u.applyUpdate(), 20);
-      u.countFailure();
+      await u.countFailure();
       expect(state.trialFails, 1);
-      u.countFailure();
+      await u.countFailure();
       expect(state.bad, contains(20));
       expect((await u.activateForUiStart()).seq, 10);
     });
@@ -1415,7 +1415,7 @@ void main() {
       // The WebView is still showing the trial page, whose chunks and fonts are CAS files this marking has
       // just made collectable. Deleting them under a live page produces a filesystem error where §2.4's
       // delete-and-500 path should be, and that path cannot recover a seq which is now in bad.
-      makeUpdater(state: marking).countFailure();
+      await makeUpdater(state: marking).countFailure();
       expect(marking.bad, [20]);
       expect(frames, hasLength(1));
 
@@ -1501,7 +1501,7 @@ void main() {
       final state = ValenceState(installId: 'i', current: 10, trial: 20, serving: 20);
       final u = makeUpdater(state: state);
 
-      u.countFailure();
+      await u.countFailure();
       expect(state.trialFails, 1);
       final served = await u.serveCurrent();
       expect(served.seq, 10, reason: 'the user goes back to the last good bundle immediately');
@@ -1512,6 +1512,48 @@ void main() {
       expect((await u.activateForUiStart()).seq, 20);
       expect(state.serving, 20);
       expect(state.trialFails, 1, reason: 'still one, so there is a second chance left');
+    });
+
+    test('a given-up trial takes its REST overlays with it, not the rows under them',
+        () async {
+      // A cache key is versioned by nothing a rollback moves: `requires.data` describes the *bucket*
+      // schema, and a release that changes the shape of a payload it caches normally leaves that alone.
+      // So `current` came back and read values in the trial's shape, through a union that prefers the
+      // overlay over the server row — rendering wrong on exactly the data the rollback escaped. §2.4
+      // promises the previous bundle returns with its data intact; its data is the server rows and the
+      // outbox, and those stay.
+      final current = await signBundle(key, seq: 10);
+      final trial = await signBundle(key, seq: 20);
+      current.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      trial.writeTo(manifestsDir: manifestsDir, casDir: casDir);
+      await store.applyPullPage(
+          bucket: 'user',
+          schema: 1,
+          rows: [
+            {'k': 'row', 'v': 'server', 'u': 3, 'd': 0}
+          ],
+          maxUsnAfter: 3);
+      await store.put('user', 'queued', 'edit', opId: 'op');
+      await store.cache('user', 1, 'overlay', 'from the trial');
+      final state = ValenceState(installId: 'i', current: 10, trial: 20, serving: 20);
+      final u = makeUpdater(state: state);
+
+      await u.countFailure();
+      expect(state.trialFails, 1);
+      expect(await store.get('user', 1, 'overlay'), isNull,
+          reason: 'one strike already puts current back on screen');
+      expect(await store.get('user', 1, 'row'), 'server');
+      expect((await store.outbox('user')).single.id, 'op');
+      expect(await store.maxUsn('user', 1), 3);
+
+      // And again on the strike that marks it bad.
+      await store.cache('user', 1, 'overlay', 'from the retry');
+      state.serving = 20;
+      await u.countFailure();
+      expect(state.bad, contains(20));
+      expect(await store.get('user', 1, 'overlay'), isNull);
+      expect(await store.get('user', 1, 'row'), 'server');
+      expect((await store.outbox('user')).single.id, 'op');
     });
   });
 

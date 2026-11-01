@@ -57,6 +57,11 @@ const maxListLimit = 500;
 const maxCacheValueBytes = 65536;
 
 // Cache is an overlay, not server history. Filtering and key pagination apply to the union once.
+// ponytail: handed to sqflite's `table` argument, which works only because `escapeName` quotes reserved
+// keywords and passes anything else through verbatim (sqflite_common 2.5.14, `sql_builder.dart`). A
+// release that starts quoting identifiers turns this into `FROM "(SELECT …)"` and every read fails at
+// once — with no analyzer signal, but loudly in `cache_test.dart`, which walks get/getMany/list/count
+// over the union. If that day comes, move the four `db.query` call sites to `rawQuery`, as `count` does.
 const _visibleRows = '(SELECT bucket, schema, key, value, -2 AS usn, 0 AS deleted FROM cache '
     'UNION ALL SELECT bucket, schema, key, value, usn, deleted FROM kv '
     'WHERE NOT EXISTS (SELECT 1 FROM cache c WHERE c.bucket = kv.bucket '
@@ -375,6 +380,21 @@ final class ValenceStore {
     await databaseOperation('store.cache', () => db.insert('cache', {
       'bucket': bucket, 'schema': schema, 'key': key, 'value': json,
     }, conflictAlgorithm: ConflictAlgorithm.replace), _log);
+  }
+
+  /// Drops every overlay because the bundle that wrote them is being given up on (§2.4, §5.5.1).
+  ///
+  /// A cache key is not versioned by anything a rollback moves: `requires.data` describes the *bucket*
+  /// schema, and a release that changes the shape of a REST payload it caches usually leaves that alone.
+  /// So after a trial is abandoned, `current` reads back values in the trial's shape, through a union that
+  /// prefers the overlay over the server row — the reverted bundle rendering wrong on exactly the data the
+  /// rollback existed to escape. §2.4 promises the previous bundle comes back with its data intact, and
+  /// its data is the server rows and the outbox, both untouched here. The overlay is disposable by
+  /// construction, so throwing it away costs a refetch and keeps the promise.
+  Future<void> clearCaches() async {
+    final rows = await databaseOperation(
+        'store.clearCaches', () => db.delete('cache'), _log);
+    if (rows > 0) _log('store: dropped $rows cached REST overlays');
   }
 
   /// Removes retained overlays when a store build revokes their compiled grant.

@@ -1772,6 +1772,18 @@ not a way to save user edits or authenticate server data.
   between schemas. The old schema's cache remains available for rollback until
   the ordinary post-commit pair garbage collector drops it. Cache-only pairs
   participate in that collection without becoming synced pairs.
+- **A trial that is given up on takes every overlay with it.** `countFailure` —
+  both strikes, not only the one that marks a bundle `bad`, because one strike
+  already puts `current` back on screen — deletes the whole cache table. A cache
+  key is versioned by nothing a rollback moves: `requires.data` describes the
+  *bucket* schema, and a release that changes the shape of a REST payload it
+  caches usually leaves that alone, so the same bucket, schema and key held the
+  trial's shape and the union prefers the overlay over the server row. §2.4
+  promises the previous bundle comes back **with its data intact**, and its data
+  is the server rows, the cursors and the outbox — all untouched here. The
+  overlay is disposable by construction, so dropping it costs a refetch and
+  keeps the promise. The schema-bump rule above is the *other* case: there the
+  old schema's cache is still the right shape for the bundle being reverted to.
 - An account switch/sign-out of a **recorded account** clears all cached rows
   atomically with the writable rows, even for public buckets: a REST response
   may contain account data. In-flight cache writes settle before the clear;
@@ -2194,9 +2206,12 @@ strict nonce and parameter dispatch, UTF-8 size cap and previous-value retention
 mixed-source reads/count/key pagination and deduplication; pull/tombstone/seed
 precedence; no outbox/cursor/freshness/activation readiness; durable offline read;
 schema isolation and cache-only GC; account adoption/refresh/refused switch,
-switch/sign-out clearing and in-flight/transition write barriers; v1/v2 database
+switch/sign-out clearing and in-flight/transition write barriers, **with the switch's
+`sync.changed` buckets read from the emitted script and a synced read-only row surviving
+beneath the overlay that goes**; **a given-up trial dropping every overlay on each of the
+two strikes while its server rows, cursor and outbox survive**; v1/v2 database
 migration preserves rows and pending writes. Covered in `cache_test.dart`,
-`runtime_test.dart`, CLI generated-Dart tests and the example wiring test.
+`updater_test.dart`, `runtime_test.dart`, CLI generated-Dart tests and the example wiring test.
 
 S5 renderer loss (§3): a `webContentProcessTerminated` resource error reloads the **same** manifest at
 the route the page was on, counts no trial failure, and leaves the §2.4 trial serving — including the

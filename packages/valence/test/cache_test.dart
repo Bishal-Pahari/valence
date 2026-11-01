@@ -203,6 +203,13 @@ void main() {
   test(
       'account adoption/refresh retain cache; refused switch retains it; switch/sign-out clear it',
       () async {
+    final view = _CacheView();
+    v.attach(view);
+    await v.store.applyPullPage(
+        bucket: 'days',
+        schema: 1,
+        rows: [row('synced', 'server', 4)],
+        maxUsnAfter: 4);
     await v.dataCache('days', 'private', 'A');
     await v.authSetToken('a', account: 'A');
     await v.authSetToken('a2', account: 'A');
@@ -210,11 +217,22 @@ void main() {
     await v.store.put('notes', 'unsent', 'edit', opId: 'unsent');
     await expectLater(v.authSetToken('b', account: 'B'), error('E_PENDING'));
     expect(await v.dataGet('days', 'private'), 'A');
+    view.scripts.clear();
     await v.authSetToken('b', account: 'B', discardPending: true);
     expect(await v.dataGet('days', 'private'), isNull);
+    // §5.5.1: the switch's `sync.changed` names the cache-enabled buckets too, or a page holding a
+    // rendered list of overlays never learns the rows under it have gone.
+    expect(
+        view.scripts.where((s) => s.contains('sync.changed')).join(),
+        contains('days'));
+    // A writable bucket's rows go with the account; a read-only bucket's *synced* rows are not the
+    // account's to take, and only the overlay over them is cleared.
+    expect(await v.dataGet('days', 'synced'), 'server');
+    expect(await v.store.maxUsn('days', 1), 4);
     await v.dataCache('days', 'private', 'B');
     await v.authSetToken(null);
     expect(await v.dataGet('days', 'private'), isNull);
+    expect(await v.dataGet('days', 'synced'), 'server');
   });
 
   test(

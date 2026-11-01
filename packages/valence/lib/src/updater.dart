@@ -668,7 +668,7 @@ final class ValenceUpdater {
     // strikes and marks whatever is being served bad.
     if (state.trial != null && state.serving == state.trial) {
       _log('update: the last UI start showed trial ${state.trial} and did not confirm it');
-      countFailure();
+      await countFailure();
     }
 
     // --- Step 3: a pending bundle, with no trial. --------------------------
@@ -741,7 +741,7 @@ final class ValenceUpdater {
       // The manifest is gone, which should be impossible because garbage collection keeps it. Treat it as
       // a failed trial rather than refusing to start.
       _log('update: trial ${state.trial} has no manifest on disk; counting it as a failure');
-      countFailure();
+      await countFailure();
       save();
     }
     if (state.current != null) {
@@ -876,7 +876,9 @@ final class ValenceUpdater {
   ///
   /// Runs from the UI-start crash check or from a ready timeout. **If `trial` is null there is nothing to
   /// count:** a ready timeout on a `current` page means the app is slow, not that a release is bad.
-  void countFailure() {
+  /// `async` only for the cache drop. Everything that decides the outcome runs synchronously first, so a
+  /// caller that cannot await still gets the state transition; what it would lose is the eviction.
+  Future<void> countFailure() async {
     final trial = state.trial;
     if (trial == null) {
       _log('update: no trial, so nothing to count as a failure and nothing to mark bad');
@@ -902,6 +904,9 @@ final class ValenceUpdater {
       _log('update: trial $trial failed once; it gets one more UI start');
     }
     save();
+    // Both strikes, not only the second: one strike also puts `current` back on screen, and the overlay
+    // the trial wrote would be read by it either way (§5.5.1, "given up on").
+    await store.clearCaches();
   }
 
   /// Commits the trial that is on screen, after `app.ready` arrived from it.

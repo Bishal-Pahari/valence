@@ -475,7 +475,7 @@ class _ValenceAppState extends State<ValenceApp>
     }
     _log(
         'ready: app.ready did not arrive within ${_valence.config.readyTimeout.inSeconds}s for trial $trial');
-    _valence.updater.countFailure();
+    await _valence.updater.countFailure();
     await _reloadCurrent();
   }
 
