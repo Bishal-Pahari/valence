@@ -8,6 +8,67 @@ ID. Regenerated config names the compatible events and fields; a native adapter 
 event using the original ID carried inside the app's own payload. Warm and cold taps use the same
 conversion without changing the shipped schema or erasing its baseline.
 
+## November 2 R4 queue refresh - 2026-11-02
+
+### In plain terms
+
+R4 is the first queue entry whose recorded base became stale. Both notification
+compatibility branches fast-forwarded to newest packages: code
+`a0c14d3240db386d2f6f027cfb04c8a2adc2304a`, site
+`43dae8a642b5852e615bfe5ac0ae9a8a1dd24d31`. This refresh changes no runtime,
+codegen, template or public guide beyond those upstream commits. The site moved
+during validation; its notification field-type correction superseded an equivalent
+local paragraph before the final site rebuild.
+
+Decision: preserve security and users' data, then compatibility. Retain combined
+schema 18, notification methods/events since 11 and pendingIds since 16. The
+roadmap's allocation table still says 17+ free, but R31 uses 17 and S7 uses 18;
+neither downgrading the inherited schema nor allocating a revision is justified.
+Only R4's Status cell changes in the shared roadmap. This is one queue refresh,
+not a fresh integration build or a new feature item.
+
+Read both findings and newest completed reports read-only: Kundalini 18 and
+app-c 45. Kundalini verified F-68/F-69/F-70, adopted store-update policy at its
+own schema 19 and reports new retirement-warning, since-guidance and status-event
+gaps F-72/F-73/F-74. Upstream addresses the since diagnostic and site guidance;
+this refresh does not claim app adoption or close the other findings. Its signed
+blocking/withdrawal probes are reported app evidence, not repeated here.
+
+App-c still reproduces F-36. Independently checked its full log: Chromium names
+renderer 4983 and explicitly terminates host 4897 at 01:33:08.294 after renderer
+loss. Replacement PID 6311 and later recovery do not establish survival. Its
+event-contract receipt passes with one observed tap and no violations. All 51
+supplied artifact checks pass, explicitly retaining the observed F-36 failure
+and five harness exclusions. These consistency checks are not device acceptance.
+The supplied worker receipt records forced=true and 437.146 seconds; independently
+compared raw activation files are identical, SHA256
+`581f0f346af781512892ac7b9f3c03864a08e6e46a8c5d13371508310679d557`.
+One triggered execution establishes no natural cadence or production durability.
+Historical reliability findings remain open; no fresh device run is claimed.
+
+Security checklist: upstream 3d37833 checks every declared notification response
+field's type before automatic emission, warns for app-owned shapes and preserves
+the shipped baseline. Its regression cases cover invalid payload/action types
+and nullable action on taps. No local trust-boundary implementation changes:
+nonce/navigation, adapter structural validation, strict decoding, bounded queues,
+signature order, atomic state, account isolation and release dev-mode exclusion
+remain intact. No new independent security review is claimed. Android renderer
+loss remains the documented limitation; iOS remains experimental and untested.
+
+Fresh gates passed 2026-11-02: 110 root tests with zero failures/skips (generated
+Dart and strict/verbatim generated TS ran); 576 core, 2 push, 29 example and
+29 bridge tests; clean core/push fatal-info Dart analysis; strict/verbatim
+bridge TypeScript; zero-warning core/push pub dry-runs (push has its existing
+local-override hint); root/bridge pack dry-runs; example codegen --check;
+45-page site build and SEO on the final site base. Debug APK passed (101.4s);
+standalone Windows py audit printed: PASS: core graph and 19 DEX files / manifest
+contain no Firebase SDK references. The existing app_badge_plus Kotlin migration
+warning remains. Logs: %TEMP%/valence-r4-nov2-*.log.
+
+No emulator lock or device run, test-app writes, version changes, protected-branch
+commits, pushes or publication. Diff checks pass; only this matching validation
+note differs from the recorded packages bases in each worktree.
+
 ## November 1 second R4 queue refresh - 2026-11-01
 
 ### In plain terms
