@@ -84,6 +84,16 @@ The offline bundle and seed still work without that server.
 For the release-device transport probe and its synthetic-only credential, see
 [R23 validation](../../../docs/r23-validation.md).
 
+### The cookie jar (§4.5.1)
+
+`http.cookieJar` grants the same loopback origin a host-held jar with a `csrftoken`/`X-CSRFToken`
+pair — loopback is the one cleartext origin a jar may name, which is why the demo can use it.
+The adapter's `GET /csrf` hands out the cookie and `POST /csrf/echo` accepts only a header matching
+it, which is the default Django `POST` shape. **CSRF POST through the cookie jar** does both calls and
+prints whether the page could see `Set-Cookie` (it cannot) beside the `202`-shaped
+`{accepted: true}`. **Try to send the CSRF header myself** proves the mirrored header is refused with
+`E_DENIED`: the page cannot supply either half, which is the whole point of the jar holding them.
+
 ## R8 layout probe
 
 The signed page displays app.appearance and logical insets, pads content with the host variables, uses 48px buttons and exposes optional fontScale through app.info. Rotate, resize, change font size and toggle system dark mode without reloading. See [accessibility](../../../docs/accessibility.md). iOS remains experimental and untested.

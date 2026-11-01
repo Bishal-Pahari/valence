@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 
 const MAX_BYTES = 1024 * 1024;
 const encode = (v) => JSON.stringify(v);
@@ -77,6 +77,24 @@ export function createAdapter({ database, upstream, token, upstreamToken, fetchI
       if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw failure(401);
       const url = new URL(req.url, 'http://localhost');
       if (req.method === 'GET' && url.pathname === '/rpc') return { native: true, authenticated: true };
+      // The double-submit CSRF shape, the way Django's default `POST` does it: a GET hands out a
+      // `csrftoken` cookie, and a POST is accepted only when `X-CSRFToken` carries the same value. It is
+      // here so contracts §4.5.1's cookie jar has something real to be checked against — a Valence page
+      // can supply neither half itself, which is the whole reason the jar exists.
+      if (req.method === 'GET' && url.pathname === '/csrf') {
+        const value = randomBytes(16).toString('hex');
+        return { body: { issued: true }, setCookie: `csrftoken=${value}; Path=/; Max-Age=600; HttpOnly` };
+      }
+      if (req.method === 'POST' && url.pathname === '/csrf/echo') {
+        await jsonBody(req);
+        const cookie = /(?:^|;\s*)csrftoken=([0-9a-f]{32})(?:;|$)/.exec(req.headers.cookie ?? '')?.[1];
+        const header = req.headers['x-csrftoken'];
+        // Length-independent compare, then constant time: an absent cookie and a wrong one are the
+        // same refusal, and neither says which half was missing.
+        if (!cookie || typeof header !== 'string' || header.length !== cookie.length ||
+            !timingSafeEqual(Buffer.from(header), Buffer.from(cookie))) throw failure(403);
+        return { accepted: true };
+      }
       if (req.method === 'GET' && url.pathname === '/items') {
         const since = Number(url.searchParams.get('since') ?? 0);
         const limit = Number(url.searchParams.get('limit') ?? 500);
@@ -136,8 +154,14 @@ export function createAdapter({ database, upstream, token, upstreamToken, fetchI
     const operation = tail.then(run);
     tail = operation.catch(() => {});
     operation.then((v) => {
-      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-      res.end(encode(v));
+      // Only `/csrf` uses this: a route that has to set a cookie returns `{body, setCookie}`.
+      const cookie = v?.setCookie;
+      res.writeHead(200, {
+        'content-type': 'application/json',
+        'cache-control': 'no-store',
+        ...(cookie ? { 'set-cookie': cookie } : {}),
+      });
+      res.end(encode(cookie ? v.body : v));
     }, (e) => {
       res.writeHead(e.status ?? 502, { 'content-type': 'application/json' });
       res.end(encode({ error: 'adapter request failed' }));

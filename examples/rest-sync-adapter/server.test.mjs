@@ -13,6 +13,45 @@ const listen = async (server) => {
 };
 const close = (server) => new Promise((r) => server.close(r));
 
+// The double-submit pair contracts §4.5.1's cookie jar exists to complete. A Valence page can supply
+// neither half, so this route is what a device check of the jar is checked against.
+test('the CSRF route accepts only a header that matches the cookie it issued', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'valence-adapter-'));
+  const upstream = createServer((_, res) => { res.setHeader('content-type', 'application/json'); res.end('[]'); });
+  const upstreamUrl = await listen(upstream);
+  const adapter = createAdapter({ database: join(dir, 'csrf.db'), upstream: upstreamUrl, token: 'app-secret' });
+  const base = await listen(adapter);
+  t.after(async () => {
+    adapter.closeAllConnections(); upstream.closeAllConnections();
+    await close(adapter); await close(upstream);
+    assert.ok(dir.startsWith(join(tmpdir(), 'valence-adapter-')));
+    rmSync(dir, { recursive: true, force: true });
+  });
+  const auth = { authorization: 'Bearer app-secret', 'content-type': 'application/json' };
+
+  const issued = await fetch(`${base}/csrf`, { headers: auth });
+  assert.equal(issued.status, 200);
+  assert.deepEqual(await issued.json(), { issued: true });
+  const cookie = /csrftoken=([0-9a-f]{32})/.exec(issued.headers.get('set-cookie'))[1];
+  assert.match(issued.headers.get('set-cookie'), /Path=\/; Max-Age=600; HttpOnly/);
+
+  const post = (headers) => fetch(`${base}/csrf/echo`, { method: 'POST', body: '{}', headers: { ...auth, ...headers } });
+  // Neither half alone, a wrong value, and a right value against no cookie: all one refusal.
+  for (const headers of [
+    {},
+    { cookie: `csrftoken=${cookie}` },
+    { 'x-csrftoken': cookie },
+    { cookie: `csrftoken=${cookie}`, 'x-csrftoken': 'f'.repeat(32) },
+    { cookie: 'csrftoken=nope', 'x-csrftoken': 'nope' },
+  ]) assert.equal((await post(headers)).status, 403, JSON.stringify(headers));
+
+  const ok = await post({ cookie: `csrftoken=${cookie}`, 'x-csrftoken': cookie });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(await ok.json(), { accepted: true });
+  // Still bearer-gated like every other route, and the cookie is not a second way in.
+  assert.equal((await fetch(`${base}/csrf`, { headers: { cookie: `csrftoken=${cookie}` } })).status, 401);
+});
+
 test('REST snapshots, 600-row paging, tombstones and durable idempotent push', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'valence-adapter-'));
 

@@ -88,6 +88,8 @@
       <p>Native HTTP to the local reference adapter. Set its bearer token above first.</p>
       <button id="http">http.request</button>
       <button id="http-denied">Try an unlisted origin</button>
+      <button id="http-csrf">CSRF POST through the cookie jar</button>
+      <button id="http-csrf-forge">Try to send the CSRF header myself</button>
       <pre id="http-result"></pre>
     </section>
 
@@ -360,6 +362,44 @@
           lines.push(`secure.get("valence.auth.token") → ${e}`);
         }
         await showAuth(lines.join('\n'));
+      });
+
+      // §4.5.1. The page does neither half of the double-submit pair: it cannot read the `csrftoken`
+      // cookie the GET sets, and it cannot send `X-CSRFToken`. The host holds the jar and completes it.
+      document.getElementById('http-csrf').addEventListener('click', async () => {
+        const out = document.getElementById('http-result');
+        try {
+          const issued = await call('http.request', { url: 'http://127.0.0.1:8787/csrf' });
+          const posted = await call('http.request', {
+            url: 'http://127.0.0.1:8787/csrf/echo',
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{}',
+          });
+          out.textContent = JSON.stringify({
+            // Proof the page never saw the cookie: the host strips Set-Cookie from what it returns.
+            setCookieVisibleToPage: Object.keys(issued.headers).some((h) => /^set-cookie/i.test(h)),
+            issued: issued.body,
+            posted: { status: posted.status, body: posted.body },
+          }, null, 2);
+        } catch (e) {
+          out.textContent = String(e);
+        }
+      });
+
+      document.getElementById('http-csrf-forge').addEventListener('click', async () => {
+        const out = document.getElementById('http-result');
+        try {
+          await call('http.request', {
+            url: 'http://127.0.0.1:8787/csrf/echo',
+            method: 'POST',
+            headers: { 'X-CSRFToken': 'forged' },
+            body: '{}',
+          });
+          out.textContent = 'the host accepted a page-supplied CSRF header, which it must not';
+        } catch (e) {
+          out.textContent = `refused, as §4.5.1 requires: ${e}`;
+        }
       });
 
       for (const [id, url] of [['http', 'http://127.0.0.1:8787/rpc'], ['http-denied', 'https://unlisted.invalid/']]) {
