@@ -1,5 +1,71 @@
 # Integration acceptance refresh ? 2026-11-01
 
+## Renderer diagnostic correction and app-c iteration 37 - 2026-11-01
+
+### In plain terms
+
+Corrected F-38: the website now names `serving` as the marker cleared at the
+renderer recovery cap; `trial` and its failure count remain for retry. Below the
+cap the page reloads, while the cap shows the native error view. Spec and both
+diagnostic guides now require PID/time-correlated full logs before attributing a
+host exit, rather than treating exit-info alone as conclusive.
+
+Read both findings and latest reports read-only: Kundalini 17 / app-c 37.
+Independently checked Settings PID receipts (4829 before and after), the external
+camera ANR record (com.android.camera2/CaptureActivity, 18:45:58), and the saved
+three-image decoded-dimension result. The camera retry is a separate success,
+not a repair. F-40's request for diagnostic guidance is addressed without adding
+automatic media recovery. F-29/F-33/F-35/F-36/F-37 remain open or qualified.
+
+Decision: correct the documented transition and attribution; preserve rollback,
+navigation policy, credential storage, leases and users' data. No eligible
+must-have remains. S1 stays parked, S2 needs a Play account and the other builder
+explicitly names S6 next. Kundalini has not accepted S7 and its cookie-paired CSRF
+gap remains open.
+
+### Integration and review
+
+Packages bases remain code 778b20c / site 9ed2ee9. Verified all 30 previously
+recorded exact branch tips and both bases are ancestors of integration in both
+repos. With unchanged packages, appended this documentation-only branch to the
+existing recorded merge order, after S7:
+
+| Branch | Code tip | Site tip |
+| --- | --- | --- |
+| codex/renderer-diagnostics | dc53ba05fcfc5108e88896ab9cd6218bdbcb0f25 | d3fd0d95cc232e26ae8e3e739da2e96d0db05887 |
+
+Pre-ledger merged heads: code 27b4cd8 / site 16e3fd6. Existing feature schema
+numbers, including S7 revision 18, are unchanged. Compared the wording with
+`_onRendererLoss` and the persisted-state assertions in `app_widget_test.dart`.
+No executable change or new security path; no separate security review is claimed.
+Details: `docs/renderer-diagnostics-clarity.md` in the code repo.
+
+### Fresh combined gates
+
+| Gate | Result on code 27b4cd8 / site 16e3fd6 |
+| --- | --- |
+| Root `npm test` | 109 passed, zero failures/skips; generated Dart and strict/verbatim TS ran |
+| Core `flutter test` / fatal-info analysis | 573 passed / no issues |
+| Core pub dry run | 0 warnings |
+| Push `flutter test` / fatal-info analysis | 2 passed / no issues |
+| Push pub dry run | 0 warnings; 1 local-path override hint, override excluded from uploads |
+| Example `flutter test` | 29 passed |
+| Example debug APK | Built; existing app_badge_plus Kotlin Gradle Plugin compatibility warning |
+| Windows `py tool/check_no_firebase.py` | PASS: core graph and 19 DEX files / manifest contain no Firebase SDK references |
+| Bridge tests / strict-verbatim TypeScript | 29 passed / passed |
+| Root and bridge `npm pack --dry-run` | Passed |
+| Site build and SEO | 45 pages OK |
+| `git diff --check` | Passed |
+
+Logs: `%TEMP%/valence-diagnostics-*.log`. These are fresh package/build gates,
+not device acceptance.
+
+No test-app writes, emulator run, screenshot inspection, iOS acceptance,
+protected-branch change, version bump, push or publication. App-runner results
+retain their original scope; they are not package gates. Final ledger commits
+change only evidence.
+
+
 ## App-c iteration 35 evidence refresh - 2026-11-01
 
 ### In plain terms
