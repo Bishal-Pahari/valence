@@ -1,5 +1,61 @@
 # Integration acceptance refresh ? 2026-11-01
 
+## App-c iteration 32 evidence refresh - 2026-11-01
+
+### In plain terms
+
+An unforced isolated worker transfers the queued rows, but ordinary launch still
+restores an orphan photo picker. Recovery through the existing link does not
+repair F-29. Read both findings and newest reports read-only: Kundalini 17 and
+app-c 32. No eligible must-have or missing integration merge remains.
+
+Packages remains code 778b20c / site 9ed2ee9. Independently checked all 30 exact
+feature/compatibility tips against their current branches and integration ancestry
+in both repos, plus both packages bases. S1 remains deliberately parked, S2 needs
+a Play account, and the other builder explicitly names S6 next. Decision: preserve
+security and users' data; avoid overlapping credential-store work or changing
+leases, rollback strikes or navigation policy without causal evidence. Kundalini
+has not accepted S7 yet; its cookie-paired CSRF gap remains S6.
+
+Saved-result checks, without operating either app:
+
+- Settings before/after PID receipts both name 6681 and the pre-relaunch DOM
+  contains the painted unit list. This supports this return only; F-35/F-36
+  remain open. The earlier adb PID timeout remains an excluded failed attempt.
+- Independently compared full before/after worker logs: exactly one fresh begin
+  15:58:17.197, complete 15:58:18.424 and WorkManager SUCCESS 15:58:18.432, all
+  PID 8686. Every exact line is absent from the full baseline. Saved execution
+  receipt records forced=false and 280.478 seconds observed; this establishes
+  one execution, not reliable periodic cadence.
+- Supplied stable pre-worker SQLite receipt records outbox 2/incoming absent;
+  pre-resume receipt records incoming origin 630000 at USN 630002, both outgoing
+  rows at 630001/630002 and outbox 0. These are saved native receipts, not a fresh
+  database extraction; callback/SUCCESS alone would not establish transfer.
+- Independently compared raw activation bytes and recomputed matching SHA256
+  bc1d1822529064a0f173b04eb5b34caf1ac4b6a204895091b145c810312119b5.
+  Current 1793527719, pending 1793527728, trial/serving=null remain unchanged.
+  Saved final state subsequently commits 1793527728 with pending/trial=null.
+- Native widget preferences independently read fieldnote.left 6 -> 7 -> 6,
+  total 7, next Flat 2 -> Flat 1 -> Flat 2. The first local assertion guessed
+  the field name as incomplete and failed; inspecting the XML and rerunning
+  against fieldnote.left passes. This was a checker mistake, not a product bug.
+- Saved failure activities directly show the photo picker as top resumed
+  activity. Reported process absence and explicit-link recovery remain scoped
+  F-29 evidence; successful earlier launches do not erase this recurrence.
+  Overlapping retained-release screenshots are excluded; the sequential repeat
+  supplies the retained-data receipt. No screenshot inspection is claimed here.
+- Supplied audit has 47 passing consistency checks. Its detailed independent
+  review covered 46; the primary runner's addendum records the final cold-link
+  check and repeated cleanup. Saved cleanup records stopped app/mocks, airplane
+  off and no forwards. Consistency checks are not another device execution.
+
+F-27/F-29/F-33/F-34/F-35/F-36/F-37/F-38 and pagination remain open or qualified.
+Only matching integration ledgers change. Implementation/build inputs remain
+identical to fully gated code 8d800f6 / site 6276993; the combined gate table below
+retains its original scope and date. No fresh full gates, runtime review,
+emulator execution, app writes, package/schema bump, protected-branch change,
+push or publication is claimed. iOS remains experimental and untested.
+
 ## App-c iteration 31 evidence refresh - 2026-11-01
 
 ### In plain terms
