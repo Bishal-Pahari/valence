@@ -57,9 +57,13 @@ chromium: [ERROR:…/aw_browser_terminator.cc:124] Render process (19933) kill (
           update) wasn't handed by all associated webviews, killing application.
 ```
 
-An ANR names the app in `dumpsys activity anr`; an lmkd kill of the host names the
-package in the `lowmemorykiller` line rather than the sandboxed process. A renderer
-`LOW_MEMORY` followed by a host `SIGNALED/9` is this and nothing else.
+Correlate full logcat timestamps and PIDs with exit-info. The Chromium termination
+line establishes unhandled renderer loss for that process; the exit reasons alone
+do not establish the cause. An ANR names the affected package in
+`dumpsys activity anr`; a direct lmkd kill of the host names the host package in the
+`lowmemorykiller` line. A renderer callback cannot prevent a direct host kill.
+Neither a successful restart nor this signature establishes a Valence memory leak
+or rules out memory use by the app.
 
 0.4 cannot prevent it on Android; the shim is priced for 0.5. Because no host code
 runs, `serving` survives in `state.json` and the next UI start cannot tell the
@@ -67,7 +71,9 @@ eviction from a bundle that crashed the app, so an eviction during a trial spend
 one of its two section 2.4 strikes. Where a platform reports the loss — iOS, as a
 `webContentProcessTerminated` resource error — the host reloads the same manifest at
 the same route, counts no strike, and at the cap drops the controller and clears
-`serving`. A resume that reclaims the same port reloads the page when none is
+`serving`, retaining `trial` and its failure count for retry on the next launch.
+At the cap the host shows its error view; below it the page sees a reload.
+A resume that reclaims the same port reloads the page when none is
 loaded. Unit tests cover all three; the Android half is unobservable from Dart by
 construction, and a tripwire test fails when the plugin exposes the callback.
 
@@ -76,6 +82,17 @@ exit-info <app-id>` before restarting. Record build/snapshot revision and whethe
 the emulator had completed booting. Preserve the database and account; a successful
 restart does not establish a root cause. Keep captures local and check existing
 app/native logs for private data before sharing them.
+
+## External camera and picker failures
+
+Record the foreground activity's package and the package named in the ANR before
+recovery. An input-dispatch ANR in `com.android.camera2`, as in app-c iteration 37,
+is external camera evidence, not proof of a Valence host ANR or renderer eviction.
+Preserve full logcat, exit-info and the ANR record, exclude the failed capture,
+then verify that a separate retry returns a decodable image. Success on retry does
+not identify or repair the first failure. Preserve host data/account and record
+any process stop or reset. Custom media handlers own their cancellation/error
+results; no automatic recovery is added by these diagnostics.
 
 Decision: instrument pending database futures at their existing boundaries, keeping
 transaction executors, lease ownership, lock classification, retries and data
