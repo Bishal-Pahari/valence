@@ -1,5 +1,65 @@
 # Integration acceptance refresh ? 2026-11-01
 
+## App-c iteration 41 completed evidence - 2026-11-01
+
+### In plain terms
+
+Read both findings and newest completed reports: Kundalini 17 and app-c 41.
+App-c reports no new framework defect in this scoped pass. Offline/reconnect,
+original-PID Settings return and camera retry probes pass without closing the
+historical reliability findings. Kundalini has not yet accepted S7.
+
+Decision: preserve security and users' data. A passing retry supplies no cause
+for changing leases, rollback or navigation policy. No eligible must-have or
+missing queue/integration merge remains. S1 stays deliberately parked, S2 needs
+a Play account, and the existing coordination note reserves S6 as the other
+builder's next item. Do not overlap that credential store.
+
+### Independently checked saved evidence
+
+- All 50 entries in the supplied artifact audit report passed. This is receipt
+  consistency, not another device run or unconditional acceptance. The initial
+  unsupported positional verify invocation remains excluded; the report records
+  a corrected invocation. Historical findings remain open or qualified.
+- Exact full-log subtraction confirms one new callback begin at 22:28:34.155,
+  complete at 22:28:35.318 and WorkManager SUCCESS at 22:28:35.328, all PID 7561.
+  None of those exact lines occurs in the full pre-worker baseline. Execution
+  was explicitly triggered; 498.703 seconds observed proves neither natural
+  scheduling cadence nor production durability.
+- Supplied stable native baseline records outbox 2/incoming absent. Before-resume
+  SQLite receipt records incoming origin 900000 at USN 900002, both outgoing
+  inspection objects at 900001/900002 and outbox 0. This review does not extract
+  the database independently or establish server op-ID deduplication.
+- Independently compared and hashed raw activation files are byte-identical,
+  SHA256 `b1c4d91a91485b5491915787774f408483e512f8894d7a498f7ccde392416c66`:
+  current 1793550903, pending 1793550912, trial null. The report records final
+  commitment of 1793550912 after cleanup.
+- Settings PID receipts both name 4848. Native widget preferences read left
+  6-to-7-to-6; the supplied proof records capture before HOME and mock base
+  890200. Cleanup records stopped app/mocks, airplane off and no forwards at
+  16:45:06.006 UTC. No independent screenshot inspection is claimed here.
+- Archive identity with iteration 40 is reported, not an entire Flutter source
+  fingerprint. Release-binary acceptance remains limited to retained/fresh
+  airplane startup; native SQLite, bridge and worker probes used debug.
+
+### Integration and validation scope
+
+Independently verified all 31 recorded exact feature tips against current
+branches and ancestry in both integrations, plus unchanged packages bases
+778b20c / 9ed2ee9. Pre-refresh heads are code ce03173 / site 2f194c3. No branch
+needs refreshing or another merge.
+
+Only matching integration ledgers change. Fresh saved-artifact assertions,
+ancestry, unchanged-input and diff checks pass. Implementation and site build
+inputs remain identical to fully gated code 27b4cd8 / site 16e3fd6. Full package
+and build gates were not rerun; earlier November 1 results retain their original
+scope. No roadmap status changed because no item or integration assembly was
+undertaken.
+
+No emulator run, test-app write, runtime fix, version change, protected-branch
+change, push or publication. iOS remains experimental and untested. This update
+does not establish beta acceptance or close historical reliability gaps.
+
 ## App-c iteration 40 completed evidence - 2026-11-01
 
 ### In plain terms
