@@ -1,5 +1,60 @@
 # Changelog
 
+## Unreleased: five fixes from an independent review
+
+Nothing here needs anything from your app; regenerate and rebuild as usual.
+
+- **A blocked host could put your bundle back on the loopback port.** When a signed
+  `minHost` policy blocks the app mid-session, the host takes the page down and closes the
+  little local server that was serving the bundle. It kept *referencing* that server
+  though, and the resume path deliberately rebinds a server whose liveness probe fails,
+  because iOS reclaims listening sockets while an app is suspended — so a deliberately
+  closed server looked exactly like a reclaimed one. Backgrounding a blocked app and
+  coming back bound a new listener and served the bundle again, behind the blocking
+  screen. It does not any more.
+- **Two overlapping update checks could spend a trial attempt.** Five things trigger an
+  update check — start-up, resume, the foreground ticker, a connectivity report, and the
+  blocking screen's "Check again" — and two of them overlapping after a signed withdrawal
+  each ran the whole transition. That meant two activations, and the second read the
+  first's own in-progress activation as a previous crash: a strike against a release that
+  never failed, plus a duplicate server, ticker and connectivity subscription. The check
+  is now coalesced, so a second caller joins the run in flight.
+- **A notification event could be typed as something the runtime never sends.** An event
+  qualified for automatic emission on its `since` and its `id` alone, so a schema
+  declaring `payload: int` or `action: bool` generated cleanly and then received the
+  string the runtime actually sends — through generated types saying otherwise, which is
+  a lie nothing could catch, because the types come from the same wrong declaration.
+  Every response field you declare must now be typed to hold what the response fills
+  (`payload` is `string` or `string?`; `action` is `string?` on `notify.tapped`, which is
+  the event chosen *because* the action is null). A mismatch makes the event your own and
+  warns, naming both types, with `notificationEventAdapter` as the move. Still a warning
+  and never a refusal, because the additive-only rule means a refusal would leave such an
+  app nothing but a rebaseline.
+- **A failed trial left its cached REST values behind.** `data.cache` values are keyed by
+  bucket, data schema and key — and none of those moves when a bundle is rolled back, so
+  the previous bundle came back and read values in the failed one's shape, through a read
+  that prefers the cached value over the server row. The host now drops the cache on each
+  of the two strikes. Your server rows, cursors and queued writes are untouched; the
+  cache costs a refetch, which is what makes it disposable.
+- **`doctor`'s retirement warning can now be cleared.** The `oldest servable bundle` row
+  warns while a servable bundle still calls a method you retired, and it used to refuse to
+  measure that against the published floor — the only supported way to make an old bundle
+  unservable. The warning was therefore unclearable by any action: publishing a floor above
+  every referencing bundle moved nothing, and the only thing that silenced it was deleting
+  release manifests. The references are now split by the floor. At or above it, they break
+  on every device and the row warns with a count and the seq to publish above. Entirely
+  below it, the row passes and says what is left: an install that has never committed that
+  floor is still on an older bundle, and nothing in your checkout can see it.
+
+**If a built-in is refused for its `since`, the message now gives you the number to
+write.** A built-in's reserved `since` is a floor at which the package implements the
+method for you — not the number to declare. For an app already past it, the additive-only
+rule needs a higher one, and the old refusal named only one of the two numbers, which read
+like "the package has not shipped this yet". Both refusals now name
+`max(reserved, your baseline + 1)`, and the forcing-an-update guide no longer prints a
+reserved number as a literal.
+
+
 ## Unreleased: cache selected REST responses offline
 
 Revision 18 adds `data.cache` behind a compiled per-bucket `cache` grant.

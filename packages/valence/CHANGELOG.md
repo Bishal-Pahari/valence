@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased: three host fixes from an independent review
+
+- **A blocked host no longer rebinds its loopback server.** `Valence.unbound()` forgets the
+  server and the manifest when a mid-session `minHost` block takes the page down, so
+  `ValenceApp`'s resume — which rebinds any server whose liveness probe fails, because iOS
+  reclaims listening sockets during a suspend — cannot mistake a deliberately closed server
+  for a reclaimed one and put the bundle and the `/_host/` routes back on `127.0.0.1` behind
+  the block.
+- **The update check is coalesced across its five triggers.** Start-up, resume, the
+  foreground ticker, a connectivity report and the blocking screen's "Check again" each ran
+  the whole transition, so two overlapping checks after a signed withdrawal ran
+  `activateForUiStart` twice — the second reading the first's own `serving` as a previous
+  crash and spending a §2.4 trial attempt — and bound a second server, ticker and
+  connectivity subscription with the first of each leaked.
+- **A trial the host gives up on takes its `data.cache` overlays with it.**
+  `ValenceUpdater.countFailure` clears the cache table on both strikes, not only the one
+  that marks a bundle bad, because one strike already puts `current` back on screen. A
+  cache key is versioned by nothing a rollback moves, so the reverted bundle was reading
+  values in the failed one's shape. Server rows, bucket cursors and the outbox are
+  untouched.
+
+
 ## Unreleased: cache selected REST responses offline
 
 Revision 18 adds `data.cache` behind a compiled per-bucket `cache` grant.
