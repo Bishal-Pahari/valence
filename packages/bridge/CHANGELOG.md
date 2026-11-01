@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased: cache selected REST responses offline
+## Unreleased: explicit update checks and completed-check notifications
 
 - Schema 19 adds explicit `bundle.check` and `bundle.checked` completion, including offers needing a newer store host. Regenerate and rebuild to opt in; pending-only `bundle.updateReady` is unchanged.
+
+## Unreleased: cache selected REST responses offline
 
 Revision 18 adds `data.cache` behind a compiled per-bucket `cache` grant.
 Regenerate and ship a store host to opt in. Cached values are disposable overlays

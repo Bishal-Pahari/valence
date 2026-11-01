@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased: explicit update checks and completed-check notifications
+
+- Schema 19 adds explicit `bundle.check` and `bundle.checked` completion, including offers needing a newer store host. Regenerate and rebuild to opt in; pending-only `bundle.updateReady` is unchanged.
+
 ## Unreleased: a cookie jar for one origin, so a CSRF-protected API is reachable
 
 Nothing changes unless you ask for it. If you do not add `http.cookieJar`, `http.request` behaves
@@ -37,8 +41,6 @@ exactly as it did: no cookie is sent, every `Set-Cookie` is discarded, and nothi
   origin's cookies are revoked on the next launch.
 
 ## Unreleased: five fixes from an independent review
-
-- Schema 19 adds explicit `bundle.check` and `bundle.checked` completion, including offers needing a newer store host. Regenerate and rebuild to opt in; pending-only `bundle.updateReady` is unchanged.
 
 Nothing here needs anything from your app; regenerate and rebuild as usual.
 
