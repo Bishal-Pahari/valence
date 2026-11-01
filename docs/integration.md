@@ -1,5 +1,62 @@
 # Integration acceptance refresh ? 2026-11-01
 
+## App-c iteration 39 completed evidence - 2026-11-01
+
+### In plain terms
+
+Reviewed both findings and the newest completed reports: Kundalini 17 and app-c
+39. This supersedes the unfinished checkpoint below for completion scope only.
+App-c still records the busy-sync failure and direct renderer/host LOW_MEMORY
+eviction before recovery. Completing the later probes does not repair those
+failures or establish uninterrupted Settings return.
+
+Decision: preserve security and users' data; do not change leases, rollback or
+navigation rules without an established cause. No eligible must-have or missing
+integration merge remains. S1 stays deliberately parked, S2 needs a Play account,
+and the other builder explicitly names S6 next. Avoid overlapping that credential
+store. Kundalini has not yet accepted S7.
+
+### Independently checked saved evidence
+
+- All 51 entries in the supplied artifact audit report passed; its two observed
+  failures remain explicit. This checks saved receipts, not another device run.
+- Full-log subtraction finds exactly one new callback begin at 21:24:21.316,
+  complete at 21:24:22.441 and native WorkManager SUCCESS at 21:24:22.451, all
+  PID 3875. These exact lines are absent from the full pre-worker baseline.
+  The execution receipt records forced=true after 803.585 seconds observed;
+  this proves one explicitly triggered execution, not natural periodic cadence.
+- The supplied stable native baseline records outbox 2/incoming absent. The
+  before-foreground receipt records incoming origin 840000 at USN 840002, both
+  outgoing inspection objects at 840001/840002 and outbox 0. No independent
+  database extraction or server op-ID deduplication check is claimed here.
+- Independently hashed raw activation files are byte-identical, SHA256
+  `0e1feead208cf49a6ba022ec878f6699646359a238839729f93763ec6e662276`:
+  current 1793546738, pending 1793546747, trial null. Final saved state commits
+  1793546747 and clears pending/trial.
+- Native widget preferences record left 6-to-7-to-6. The proof receipt names
+  corrected mock base 830200 and capture before HOME. Saved cleanup records
+  stopped app/mocks, airplane off and no forwards at 15:40:59.769 UTC.
+  No independent screenshot inspection is claimed here.
+- Both archive hashes still match iteration 38. This does not fingerprint the
+  Flutter source tree. The report limits release-binary evidence to retained
+  and fresh airplane startup; bridge/native SQLite/worker probes used debug.
+
+### Integration and validation scope
+
+Verified all 31 recorded exact feature tips against current branches and ancestry
+in both integrations, plus packages bases 778b20c / 9ed2ee9. Pre-refresh heads are
+code 12e8ba8 / site dd64d7f. No branch needs refreshing or another merge.
+
+Only matching integration ledgers change. Fresh artifact assertions, ancestry,
+unchanged-input and diff checks pass. Implementation and site build inputs remain
+identical to fully gated code 27b4cd8 / site 16e3fd6. Full package/build gates were
+not rerun; the earlier November 1 results retain their original scope. No roadmap
+status changed because no item was taken and no integration assembly was needed.
+
+No emulator run, test-app write, runtime fix, version change, protected-branch
+change, push or publication. iOS remains experimental and untested. This evidence
+refresh does not establish beta acceptance or close historical reliability gaps.
+
 ## App-c iteration 39 in-progress checkpoint - 2026-11-01
 
 ### In plain terms
