@@ -1,5 +1,57 @@
 # Integration acceptance refresh ? 2026-11-01
 
+## App-c iteration 33 evidence refresh - 2026-11-01
+
+### In plain terms
+
+Settings return again loses the renderer and then the host; a mixed-picker link
+again reaches the picker instead of the requested page. Recovery closes neither
+F-36 nor F-29. Read both findings and newest reports read-only: Kundalini 17 and
+app-c 33. No eligible must-have or missing integration merge remains.
+
+Packages remains code 778b20c / site 9ed2ee9. Independently checked all 30 current
+feature/compatibility tips and both packages bases are ancestors of integration
+in both repos. S1 remains deliberately parked, S2 needs a Play account, and the
+other builder explicitly names S6 next in the roadmap. Decision: preserve security
+and users' data; avoid overlapping credential-store work or speculative changes
+to leases, rollback strikes and navigation policy. Kundalini has not accepted S7.
+
+Saved-result checks, without operating either app:
+
+- Full Settings log directly names renderer 4902 as a lowmemorykiller target at
+  16:45:29.101 and Chromium in host 4824 explicitly terminating the application
+  at 16:45:29.175 for unhandled renderer loss. The report's .134/.263 timestamps
+  are exit-info receipts, distinct from those log events. This supports F-36's
+  recurrence, not a Valence leak diagnosis or a repair.
+- The failed warm launch receipt names the system photo picker; the saved activity
+  dump independently names it as top resumed activity. Explicit-link recovery is
+  a separate result. No screenshot inspection is claimed here.
+- Compared full before/after worker logs: the exact new begin 16:59:54.267,
+  complete 16:59:55.347 and WorkManager SUCCESS 16:59:55.360 share PID 7737 and
+  are absent from the baseline. Execution receipt records forced=true and
+  345.433 seconds observed; this establishes one execution, not natural cadence.
+- Supplied stable pre-worker SQLite receipt records outbox 2/incoming absent;
+  pre-resume receipt records incoming origin 660000 at USN 660002, both outgoing
+  rows at 660001/660002 and outbox 0. These are saved native receipts, not a fresh
+  database extraction. Callback/SUCCESS alone would not establish transfer.
+- Independently hashed raw activation files: both SHA256
+  0aca339906b5b1d4eb85fba6a6cda35df89408811aaa08af493f08c45592ecff.
+  Current 1793531295, pending 1793531304 and trial/serving=null remain unchanged.
+  Saved final state subsequently commits 1793531304 with pending/trial=null.
+- Native widget preference receipts read fieldnote.left 6 -> 7 -> 6 and next
+  Flat 2 -> Flat 1 -> Flat 2. The initial widget attempt refused background
+  lifecycle before mutation; its result is excluded from acceptance.
+- Supplied audit records 49 passing consistency checks, not another device run.
+  Saved cleanup records stopped app/mocks, airplane off and no forwards. The
+  runner's corrected verify invocation and other exclusions remain explicit.
+
+F-27/F-29/F-33/F-34/F-35/F-36/F-37/F-38 and pagination remain open or qualified.
+Only matching integration ledgers change. Implementation/build inputs remain
+identical to fully gated code 8d800f6 / site 6276993; prior gate results retain
+their original scope/date. No fresh full gates, runtime repair, emulator run,
+app writes, package/schema bump, protected-branch change, push or publication
+is claimed. iOS remains experimental and untested.
+
 ## App-c iteration 32 evidence refresh - 2026-11-01
 
 ### In plain terms
