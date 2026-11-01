@@ -1,5 +1,57 @@
 # Integration acceptance refresh ? 2026-11-01
 
+## App-c iteration 35 evidence refresh - 2026-11-01
+
+### In plain terms
+
+Settings return again loses the renderer, followed by Chromium terminating the
+host for unhandled renderer loss. Recovery closes no intermittent finding.
+Read both findings and newest reports read-only: Kundalini 17 and app-c 35.
+
+Packages remains code 778b20c / site 9ed2ee9. Independently checked all 30 exact
+feature/compatibility tips against their current branches and integration
+ancestry in both repos; both packages bases are also included. No eligible
+must-have or missing integration merge remains. S1 remains deliberately parked,
+S2 needs a Play account, and the other builder explicitly names S6 next in the
+roadmap. Decision: preserve security and users' data; avoid overlapping credential
+storage or speculative changes to leases, rollback strikes and navigation policy.
+Kundalini has not accepted S7; its cookie-paired CSRF gap remains open.
+
+Saved-result checks, without operating either app:
+
+- Full Settings log names renderer 5083 as a lowmemorykiller target at
+  17:43:15.556, then Chromium in host 5004 explicitly terminating the application
+  at 17:43:15.622 for unhandled renderer loss. Exit-info records renderer
+  LOW_MEMORY at .577 and host SIGNALED/status 9 at .725. These receipts differ
+  from the log event times. Unlike iteration 34, no direct host lmkd kill is
+  established. Neither a Valence leak diagnosis nor a runtime repair follows.
+- Mixed-picker warm/cold links pass in the supplied report without closing
+  intermittent F-29. No screenshot inspection is claimed here.
+- Compared full before/after worker logs: exact new begin 17:57:50.093,
+  complete 17:57:51.489 and WorkManager SUCCESS 17:57:51.499 share PID 8407 and
+  are absent from the baseline. Execution receipt records forced=true and
+  497.556 seconds observed; this establishes one execution, not natural cadence.
+- Supplied stable pre-worker SQLite receipt records outbox 2/incoming absent;
+  pre-resume receipt records incoming origin 720000 at USN 720002, both outgoing
+  rows at 720001/720002 and outbox 0. These are saved native receipts, not a fresh
+  database extraction. Callback/SUCCESS alone would not establish transfer.
+- Independently hashed raw activation files: both SHA256
+  69d7edd7daa457407fb7e681d86b265a1d924b8c3ba9c3522bbd30205427173d.
+  Current 1793534673, pending 1793534683 and trial/serving=null remain unchanged.
+  Final commitment of 1793534683 is reported by the app runner.
+- Native widget preference receipts read fieldnote.left 6 -> 7 -> 6 and next
+  Flat 2 -> Flat 1 -> Flat 2. Saved cleanup records stopped app/mocks, airplane
+  off and no forwards. Runner notes disclose corrected unsupported CLI/build
+  arguments and a current share fixture retaining iteration-33 text; these do
+  not establish additional runtime defects.
+
+F-27/F-29/F-33/F-34/F-35/F-36/F-37/F-38 and pagination remain open or qualified.
+Only matching integration ledgers change. Implementation/build inputs remain
+identical to fully gated code 8d800f6 / site 6276993; prior gate results retain
+their original scope/date. No fresh full gates, runtime repair, emulator run,
+app writes, package/schema bump, protected-branch change, push or publication
+is claimed. iOS remains experimental and untested.
+
 ## App-c iteration 34 evidence refresh - 2026-11-01
 
 ### In plain terms
