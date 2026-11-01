@@ -1,5 +1,43 @@
 # Integration with current packages - 2026-11-02
 
+## November 2: iteration-49 acceptance follow-up
+
+Read both apps' VALENCE_FINDINGS.md and newest completed reports, Kundalini 18 /
+app-c 49, read-only. No eligible must-have or queue refresh remains. Current packages
+bases are still code 90af361 / site 6eb2bd6; all 32 recorded branch tips and both
+packages bases are ancestors of the existing integration heads.
+
+Independently compared app-c's saved iteration-49 receipts:
+
+- The full Settings-return log records lmkd killing renderer 4684 at 04:44:25.351
+  and host 4589 at 04:44:25.373. Saved return PID is 5444 and pagePainted is false.
+  This is a failed survival attempt; later recovery does not repair it. This attempt
+  does not establish Chromium explicitly terminating the host or a memory leak.
+- The saved artifact audit has 53 passing consistency checks and explicitly records
+  the Settings failure. These checks are not unconditional reliability acceptance.
+- Worker execution is explicitly forced. Full-log callback begin 04:59:08.732,
+  completion 04:59:10.093 and SUCCESS 04:59:10.106 share PID 7371.
+- Stable pre-worker native receipt has outbox 2 and incoming absent. Before-resume
+  receipt has incoming origin 1140000/usn 1140002, outbox 0 and both outgoing
+  inspection objects matching their saved write parameters exactly.
+- Independently hashed raw activation files are byte-identical, SHA256
+  d9b9a4a942ffc8332078b9c6d13af03f767d955e004b3516024ee57485b93bb7:
+  current 1793574349, pending 1793574358, trial null. The app reports final commit
+  to 1793574358 after the observation. One forced execution proves no cadence.
+
+Decision: preserve security, user data and the candidate freeze. A direct OS eviction
+is not evidence that changing the renderer callback or rollback strikes would repair
+this attempt; a successful isolated worker does not resolve historical concurrency.
+No runtime, lease, retry, schema or package-version change is justified by these
+receipts. F-27/F-29/F-33/F-34/F-35/F-36/F-37/F-40 remain open or qualified.
+Kundalini has not yet accepted S6/S7/S8; F-72/F-73 remain recorded adoption/DX issues.
+S1 stays parked and S2 needs a Play account.
+
+This follow-up changes the integration ledgers only. Ancestry, matching new sections,
+unchanged implementation trees and diff hygiene were checked. The full gates below
+retain their original November 2 scope; no fresh gate, device or independent runtime
+review pass is claimed. No test-app writes, protected-branch changes, push or publication.
+
 ## In plain terms
 
 The previous integration omitted the final cookie-jar device-validation and review fixes.
