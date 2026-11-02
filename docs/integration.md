@@ -1,5 +1,55 @@
 # Integration with current packages - 2026-11-03
 
+## November 3: iteration 66 evidence intake; implementation unchanged
+
+Read both apps' VALENCE_FINDINGS.md and newest completed reports: Kundalini 18
+and app-c 66. No eligible must-have, changes-requested item or queue refresh
+remains. Packages refs remain 03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 (code)
+and 62f950ba1d52632b47fdd0e170bc41e18d467ae1 (site). All 36 exact recorded tips
+and both newest packages refs are ancestors of their respective integration HEADs.
+The tested implementation candidate remains 7385f4e / 1539b66.
+
+Decision: preserve security, users' data and the candidate while the apps exercise
+it. S1 remains deliberately parked; S2 needs a Play account. A successful retry is
+not a reason to weaken trial accounting, delete runtime publications, reset an
+account, infer a lock owner or close a historical reliability finding.
+
+App-c 66 records a painted Settings return in the same PID 5285. Inspected the
+saved screenshot: the retained list, completed inspection, original photo count
+and installed widget count are visible. This attempt succeeds; iteration 65's
+renderer/host termination and historical F-36 remain failures. The saved Settings
+log inventory includes other processes killed for memory pressure; those lines
+must not be mistaken for termination of this attempt's host.
+
+Replayed the saved artifact audit in an isolated context, intercepting its only
+write in memory: all 40 checks pass, including independent rehashing of both
+archived APKs. No app file was changed. This checks saved artifact consistency,
+not new device execution or unconditional reliability acceptance.
+
+Compared native worker baseline (outbox 2, incoming absent) with pre-foreground
+effects (outbox 0, incoming row and matching outgoing objects). Independently
+matched raw worker-full-logcat.txt: PID 8053 begins 01:36:59.444, completes
+01:37:00.990 and reports native BackgroundWorker SUCCESS at 01:37:00.999.
+Raw activation files are byte-identical, SHA256
+93c0b5a9c0bfd823f2cc4bafeae26fa09ea99ce239dd68d08f083ba1c24d4335,
+pending 1793648772, no trial. One explicitly triggered registered job establishes
+no natural eligibility or cadence. The later final commit is separate.
+
+The initial ADB forward timeout precedes the second permission request; actual
+denial and resumed grant remain separate evidence. Immediate post-restore offline
+sync during a connectivity transition is separate from settled reconnect success.
+Serial doctor reports 14 PASS / 10 WARN / 0 FAIL. Fresh release open completes in
+668 ms; retained positive accessibility sampling at 39050 ms includes polling and
+dump overhead, and is not exact first paint. Historical startup, busy-sync,
+background, media lifetime and doctor qualifications remain open. Kundalini's
+F-72/F-73/F-74 remain app-reported observations pending adoption and verification.
+
+Sources are read-only valence-test-app-c/evidence/iteration-66/ and both apps'
+findings/reports. This intake changes only mirrored integration notes. Earlier
+November 3 gates retain their original scope; no fresh full-gate, emulator
+acceptance or runtime security-review pass is claimed. No test-app write,
+protected-branch change, schema/version change, push, publication or deployment.
+
 ## November 3: iteration 65 evidence intake; implementation unchanged
 
 Read both apps' VALENCE_FINDINGS.md, including the historical finding inventories,
