@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased: response size grants
+
+Optional compiled `http.maxBodyBytes` accepts 1..262144 decompressed response bytes (default 65536). Regenerate and ship a host for larger REST responses. Request and escaped reply limits stay unchanged; doctor reports both limits.
+
 ## Unreleased: debugging tools and a web app checklist
 
 - `chrome://inspect` works in debug builds.

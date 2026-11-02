@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased: response size grants
+
+Optional compiled `http.maxBodyBytes` accepts 1..262144 decompressed response bytes (default 65536). Regenerate and ship a host for larger REST responses. Request and escaped reply limits stay unchanged; doctor reports both limits.
+
 ## Unreleased: inspect the WebView in debug builds
 
 A debug build now enables Android WebView inspection, so `chrome://inspect` shows the page with full DevTools. Profile and release never do (contracts §3.1).

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:valence/src/wire.dart' show replyOk;
 import 'package:valence/valence.dart';
 
 void main() {
@@ -15,12 +16,14 @@ void main() {
           Future<String?> Function()? token,
           void Function()? expired,
           bool Function()? online,
+          int maxBodyBytes = ValenceHttp.bodyLimit,
           http.Client Function()? factory}) =>
       ValenceHttp(
         origins: origins,
         token: token ?? () async => 'secret',
         onUnauthorized: expired ?? () {},
         online: online,
+        maxBodyBytes: maxBodyBytes,
         clientFactory:
             factory ?? () => MockClient((_) async => http.Response('ok', 200)),
       );
@@ -178,6 +181,97 @@ void main() {
         error(BridgeErrorCode.tooLarge));
   });
 
+  test(
+      'compiled response grant accepts real API size, bounds streams and preserves request cap',
+      () async {
+    const size = 133712;
+    final body = 'a' * size;
+    final factory = () => MockClient((_) async => http.Response(body, 200));
+    await expectLater(api(factory: factory).request(url: 'https://api.test'),
+        error(BridgeErrorCode.tooLarge));
+    final a = api(maxBodyBytes: size, factory: factory);
+    final response = await a.request(url: 'https://api.test');
+    expect(response.body, body);
+    expect(
+        jsonDecode(replyOk(1, {
+          'status': response.status,
+          'headers': response.headers,
+          'body': response.body
+        }))['ok'],
+        true);
+    await expectLater(
+        a.request(url: 'https://api.test', method: 'POST', body: body),
+        error(BridgeErrorCode.tooLarge));
+    await expectLater(
+        api(maxBodyBytes: size - 1, factory: factory)
+            .request(url: 'https://api.test'),
+        error(BridgeErrorCode.tooLarge));
+    await expectLater(
+        api(
+            maxBodyBytes: size,
+            factory: () =>
+                MockClient.streaming((_, __) async => http.StreamedResponse(
+                    Stream.fromIterable([
+                      List.filled(size, 65),
+                      [65]
+                    ]),
+                    200))).request(url: 'https://api.test'),
+        error(BridgeErrorCode.tooLarge));
+    for (final n in [0, -1, maxMessageBytes + 1]) {
+      expect(() => api(maxBodyBytes: n), throwsRangeError);
+    }
+    const config = ValenceConfig(
+        appId: 'test', keyring: {}, bridgeVersion: 4, httpMaxBodyBytes: size);
+    expect(config.copyWith().httpMaxBodyBytes, size);
+    expect(config.copyWith(httpMaxBodyBytes: 1).httpMaxBodyBytes, 1);
+  });
+
+  test(
+      'decompressed gzip bytes are bounded; escaped replies keep the envelope cap',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final text = 'a' * 133712;
+    final compressed = gzip.encode(utf8.encode(text));
+    expect(compressed.length, lessThan(65536));
+    server.listen((request) async {
+      request.response.headers.set('content-encoding', 'gzip');
+      request.response.contentLength = compressed.length;
+      request.response.add(compressed);
+      await request.response.close();
+    });
+    final origin = 'http://127.0.0.1:${server.port}';
+    await expectLater(
+        api(origins: {origin}, factory: http.Client.new).request(url: origin),
+        error(BridgeErrorCode.tooLarge));
+    expect(
+        (await api(
+                    origins: {origin},
+                    maxBodyBytes: 133712,
+                    factory: http.Client.new)
+                .request(url: origin))
+            .body,
+        text);
+    for (final text in [
+      '\u0000' * 65536,
+      '\u2028' * 44000,
+      'a' * maxMessageBytes
+    ]) {
+      final response = await api(
+              maxBodyBytes: maxMessageBytes,
+              factory: () => MockClient(
+                  (_) async => http.Response.bytes(utf8.encode(text), 200)))
+          .request(url: 'https://api.test');
+      final reply = replyOk(9, {
+        'status': response.status,
+        'headers': response.headers,
+        'body': response.body
+      });
+      expect(utf8.encode(reply).length, lessThanOrEqualTo(maxMessageBytes));
+      expect(jsonDecode(reply)['e']['code'], BridgeErrorCode.tooLarge);
+    }
+  });
+
   test('binary and transport failures disclose no remote exception text',
       () async {
     for (final client in [
@@ -251,13 +345,15 @@ void main() {
     // Online, or with no connectivity source at all, the same failure stays E_INTERNAL: a captive
     // portal and a down server are not offline, and the host must not claim they are.
     for (final online in [() => true, null]) {
-      await expectLater(api(factory: () => broken, online: online)
-          .request(url: 'https://api.test'),
+      await expectLater(
+          api(factory: () => broken, online: online)
+              .request(url: 'https://api.test'),
           error(BridgeErrorCode.internal));
     }
     // An HTTP status is an answer, not a failure, so connectivity never reinterprets one.
     expect(
-        (await api(online: () => false).request(url: 'https://api.test')).status,
+        (await api(online: () => false).request(url: 'https://api.test'))
+            .status,
         200);
   });
 
@@ -277,33 +373,33 @@ void main() {
         contains('65538 bytes; the limit is 65536'));
     expect(
         await message(api(
-                factory: () => MockClient((_) async =>
-                    http.Response('x' * 70000, 200)))
+                factory: () =>
+                    MockClient((_) async => http.Response('x' * 70000, 200)))
             .request(url: 'https://api.test')),
         contains('70000 bytes; the limit is 65536'));
     // A streamed refusal stops reading, so it reports a floor and says that is what it is.
     expect(
         await message(api(
-                factory: () => MockClient.streaming((_, __) async =>
-                    http.StreamedResponse(
-                        Stream.fromIterable([
-                          List.filled(32768, 65),
-                          List.filled(32769, 65)
-                        ]),
-                        200)))
-            .request(url: 'https://api.test')),
+            factory: () => MockClient.streaming((_, __) async =>
+                http.StreamedResponse(
+                    Stream.fromIterable(
+                        [List.filled(32768, 65), List.filled(32769, 65)]),
+                    200))).request(url: 'https://api.test')),
         contains('over the limit of 65536 bytes (65537 read'));
     expect(
-        await message(
-            api().request(url: 'https://api.test', headers: {'x': 'a' * 16384})),
+        await message(api()
+            .request(url: 'https://api.test', headers: {'x': 'a' * 16384})),
         contains('bytes; the limit is 16384'));
   });
-  test('bodyless responses do not use representation Content-Length as body size', () async {
+  test(
+      'bodyless responses do not use representation Content-Length as body size',
+      () async {
     for (final item in [('HEAD', 200), ('GET', 204), ('GET', 304)]) {
-      final response = await api(factory: () => MockClient.streaming((_, __) async =>
-        http.StreamedResponse(const Stream.empty(), item.$2,
-          contentLength: ValenceHttp.bodyLimit + 1)))
-        .request(url: 'https://api.test/large', method: item.$1);
+      final response = await api(
+              factory: () => MockClient.streaming((_, __) async =>
+                  http.StreamedResponse(const Stream.empty(), item.$2,
+                      contentLength: ValenceHttp.bodyLimit + 1)))
+          .request(url: 'https://api.test/large', method: item.$1);
       expect(response.status, item.$2);
       expect(response.body, isEmpty);
     }
@@ -320,8 +416,10 @@ void main() {
       'https://b\u00fccher.test/',
       'https://xn--bcher-kva.test/',
     ]) {
-      await expectLater(api(token: () async => fail('credential read for $url'))
-        .request(url: url), throwsA(isA<BridgeError>()));
+      await expectLater(
+          api(token: () async => fail('credential read for $url'))
+              .request(url: url),
+          throwsA(isA<BridgeError>()));
     }
   });
 
@@ -331,5 +429,4 @@ void main() {
       expect(r.status, 200);
     }
   });
-
 }

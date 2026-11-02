@@ -2539,6 +2539,28 @@ void main() {
 `;
 
 // Native HTTP policy is compiled into the host, not inferred from an OTA CSP.
+test('compiled HTTP response limits validate, generate and appear in doctor', async () => {
+  const { root, cfg } = fixture();
+  cfg.http = { origins: [] };
+  const read = () => readFileSync(join(root, cfg.host.dir, 'lib', 'valence', 'config.g.dart'), 'utf8');
+  for (const n of [undefined, 1, 133712, 262144]) {
+    if (n === undefined) delete cfg.http.maxBodyBytes;
+    else cfg.http.maxBodyBytes = n;
+    codegen({ root, cfg });
+    assert.match(read(), new RegExp(`httpMaxBodyBytes: ${n ?? 65536},`));
+    const row = (await diagnose({ root, cfg })).find(([, name]) => name === 'HTTP response limit');
+    assert.equal(row[0], 'PASS');
+    assert.match(row[2], new RegExp(`${n ?? 65536} decompressed`));
+    assert.match(row[2], /separate 262144-byte bridge envelope/);
+  }
+  for (const n of [null, '133712', 1.5, 0, -1, 262145, true]) {
+    cfg.http.maxBodyBytes = n;
+    assert.throws(() => codegen({ root, cfg }), /http.maxBodyBytes/);
+    const row = (await diagnose({ root, cfg })).find(([, name]) => name === 'HTTP response limit');
+    assert.equal(row[0], 'FAIL');
+  }
+});
+
 test('codegen freezes native HTTP shape and compiles only exact http.origins', () => {
   const { root, cfg } = fixture();
   cfg.http = { origins: [] };

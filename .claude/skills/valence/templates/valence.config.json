@@ -23,6 +23,7 @@
   "cache": [],
   "plugins": [],
   "http": {
+    "maxBodyBytes": 65536,
     "origins": []
   },
   "links": {

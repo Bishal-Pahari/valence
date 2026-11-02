@@ -40,6 +40,7 @@ final class ValenceConfig {
     this.seedAsset = 'assets/valence/seed.db',
     this.authToken,
     this.httpOrigins = const {},
+    this.httpMaxBodyBytes = 64 * 1024,
     this.cookieJar,
     this.linkOrigins = const {},
     this.permissionKinds = const {},
@@ -129,6 +130,10 @@ final class ValenceConfig {
   /// Compiled from `http.origins`; empty denies every request. Never supplied by an OTA manifest.
   final Set<String> httpOrigins;
 
+  /// Decompressed response UTF-8 byte cap for `http.request` (§4.5).
+  /// Compiled from `http.maxBodyBytes` (1..262144). The bridge envelope stays capped separately.
+  final int httpMaxBodyBytes;
+
   /// The one origin this build opts a host-held cookie jar in for (§4.5.1), or null for none.
   ///
   /// Compiled from `http.cookieJar`; its origin must also be in [httpOrigins], and `codegen` refuses a
@@ -166,6 +171,7 @@ final class ValenceConfig {
     int? pullPageLimit,
     Future<String?> Function()? authToken,
     Set<String>? httpOrigins,
+    int? httpMaxBodyBytes,
     Set<String>? linkOrigins,
     Set<String>? permissionKinds,
   }) =>
@@ -192,6 +198,7 @@ final class ValenceConfig {
         seedAsset: seedAsset,
         authToken: authToken ?? this.authToken,
         httpOrigins: httpOrigins ?? this.httpOrigins,
+        httpMaxBodyBytes: httpMaxBodyBytes ?? this.httpMaxBodyBytes,
         cookieJar: cookieJar,
         linkOrigins: linkOrigins ?? this.linkOrigins,
         permissionKinds: permissionKinds ?? this.permissionKinds,

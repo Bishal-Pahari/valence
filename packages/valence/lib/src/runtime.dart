@@ -1091,6 +1091,7 @@ final class Valence {
   }) =>
       ValenceHttp(
         origins: config.httpOrigins,
+        maxBodyBytes: config.httpMaxBodyBytes,
         cookies: cookies,
         token: config.authToken ?? secure.authToken,
         onUnauthorized: () =>

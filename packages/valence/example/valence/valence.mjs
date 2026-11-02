@@ -429,7 +429,17 @@ export function loadConfig(root) {
   }
   validateCacheBuckets(cfg);
   validateCookieJar(cfg, cfg.http?.origins ?? []);
+  validateHttpMaxBodyBytes(cfg);
   return cfg;
+}
+
+function validateHttpMaxBodyBytes(cfg) {
+  const n = cfg.http?.maxBodyBytes;
+  if (n === undefined) return 65536;
+  if (!Number.isInteger(n) || n < 1 || n > 262144) {
+    throw new Error('http.maxBodyBytes must be an integer from 1 through 262144 (decompressed response bytes); the JSON bridge envelope remains capped at 262144 bytes');
+  }
+  return n;
 }
 
 function validateCacheBuckets(cfg) {
@@ -1662,6 +1672,7 @@ export function genDartConfig(cfg, keyring) {
     }
   }
   const jar = validateCookieJar(cfg, connect);
+  const maxBodyBytes = validateHttpMaxBodyBytes(cfg);
   const ring = Object.entries(keyring).map(([k, v]) => `${dartStr(k)}: ${dartStr(v)}`).join(', ');
   const data = Object.entries(cfg.data ?? {}).map(([k, v]) => `${dartStr(k)}: ${v}`).join(', ');
   validateCacheBuckets(cfg);
@@ -1684,6 +1695,7 @@ export function genDartConfig(cfg, keyring) {
     `  cacheBuckets: {${(cfg.cache ?? []).map(dartStr).join(', ')}},`,
     `  permissionKinds: {${kinds.map(dartStr).join(', ')}},`,
     `  httpOrigins: {${connect.map((o) => dartStr(new URL(o).origin)).join(', ')}},`,
+    `  httpMaxBodyBytes: ${maxBodyBytes},`,
     ...(jar === null ? [] : [`  cookieJar: ${jar},`]),
     `  linkOrigins: {${linkOrigins.map(dartStr).join(', ')}},`,
     `  seedSchemas: {${Object.entries(cfg.seedSchemas ?? {}).map(([b, ns]) => `${dartStr(b)}: [${ns.join(', ')}]`).join(', ')}},`,
@@ -2043,6 +2055,10 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
   // §4.5.1: a jar is a credential store, and the ways it can be quietly inactive all look like working
   // configuration from the outside. validateCookieJar throws on each of them; this row is what makes the
   // configured state visible when it is correct, so "is the jar on?" is answerable without reading Dart.
+  await check('HTTP response limit', () => {
+    const cap = validateHttpMaxBodyBytes(cfg);
+    return { msg: `${cap} decompressed response bytes; request bodies stay at 65536; escaped JSON reply including headers must fit the separate 262144-byte bridge envelope` };
+  }, 'set http.maxBodyBytes to an integer 1..262144, regenerate and ship a store build; paginate responses that exceed the body or escaped reply limit');
   await check('cookie jar', () => {
     const jar = cfg.http?.cookieJar;
     if (jar === undefined || jar === null) {

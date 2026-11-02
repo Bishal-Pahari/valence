@@ -30,8 +30,12 @@ final class ValenceHttp {
     required this.onUnauthorized,
     this.online,
     this.cookies,
+    this.maxBodyBytes = bodyLimit,
     http.Client Function()? clientFactory,
-  }) : _clientFactory = clientFactory ?? http.Client.new;
+  }) : _clientFactory = clientFactory ?? http.Client.new {
+    RangeError.checkValueInInterval(
+        maxBodyBytes, 1, maxMessageBytes, 'maxBodyBytes');
+  }
 
   /// Origins compiled into the native host, never taken from an OTA manifest.
   /// HTTP grants cleartext token trust in release builds too; use HTTPS remotely.
@@ -56,8 +60,11 @@ final class ValenceHttp {
   final ValenceCookies? cookies;
   final http.Client Function() _clientFactory;
 
-  /// UTF-8 body limit in each direction.
+  /// Default response and fixed request UTF-8 body limit.
   static const bodyLimit = 64 * 1024;
+
+  /// Compiled decompressed response limit. Never supplied by a page.
+  final int maxBodyBytes;
 
   /// Header limit in each direction.
   static const headerLimit = 16 * 1024;
@@ -225,20 +232,23 @@ final class ValenceHttp {
       if (verb != 'HEAD' &&
           response.statusCode != 204 &&
           response.statusCode != 304 &&
-          (response.contentLength ?? 0) > bodyLimit) {
+          // A compressed Content-Length is not the decompressed size we grant.
+          (response.headers['content-encoding'] == null ||
+              response.headers['content-encoding'] == 'identity') &&
+          (response.contentLength ?? 0) > maxBodyBytes) {
         throw BridgeError(
             BridgeErrorCode.tooLarge,
             'response declares ${response.contentLength} bytes; '
-                'the limit is $bodyLimit');
+            'the limit is $maxBodyBytes');
       }
       await for (final chunk in response.stream) {
-        if (result.length + chunk.length > bodyLimit) {
+        if (result.length + chunk.length > maxBodyBytes) {
           // Reading stopped here, so this is a lower bound and says so. The actual size is unknown and
           // guessing it would be worse than naming the floor the page can plan a `Range` against.
           throw BridgeError(
               BridgeErrorCode.tooLarge,
-              'response body is over the limit of $bodyLimit bytes '
-                  '(${result.length + chunk.length} read before stopping)');
+              'response body is over the limit of $maxBodyBytes bytes '
+              '(${result.length + chunk.length} read before stopping)');
         }
         result.addAll(chunk);
       }
@@ -266,8 +276,8 @@ final class ValenceHttp {
       // "No network interface" is the host's own fact, though, and it is the one case where the honest
       // UI is silence rather than an apology — so it gets its own code and no remote text either way.
       if (online?.call() == false) {
-        throw const BridgeError(BridgeErrorCode.offline,
-            'the device reports no network interface');
+        throw const BridgeError(
+            BridgeErrorCode.offline, 'the device reports no network interface');
       }
       throw const BridgeError(
           BridgeErrorCode.internal, 'HTTP transport or UTF-8 decoding failed');
@@ -277,7 +287,8 @@ final class ValenceHttp {
     }
   }
 
-  static void _checkHeaders(Map<String, String> headers, {bool disclose = true}) {
+  static void _checkHeaders(Map<String, String> headers,
+      {bool disclose = true}) {
     final size = headers.entries.fold<int>(
         0, (n, e) => n + utf8.encode('${e.key}: ${e.value}\r\n').length);
     if (size > headerLimit) {
