@@ -1,5 +1,65 @@
 # Integration with current packages - 2026-11-03
 
+## November 3: iteration 69 evidence intake; implementation unchanged
+
+Read both apps' VALENCE_FINDINGS.md inventories and newest completed reports:
+Kundalini 18 and app-c 69. No eligible must-have, changes-requested item or queue
+refresh remains. Packages refs remain 03025560651d9df41fe4a7d6d0cc3ff4a12d3b29
+(code) and 62f950ba1d52632b47fdd0e170bc41e18d467ae1 (site). Both refs and all
+36 exact tips in the current merge-order table are ancestors of their respective
+integrations. Implementation remains the tested candidate 7385f4e / 1539b66.
+
+Decision: preserve security, users' data and the candidate while validation
+continues. S1 stays deliberately parked; S2 needs a Play account. Successful
+retries do not justify weaker trial accounting, account resets or deleting runtime
+publications. App-c 69 establishes no new Valence defect requiring a code change.
+
+Replayed the saved app-c 69 artifact audit in an isolated context with its sole
+write intercepted in memory: all 38 checks pass. The initial replay encountered
+the script's UTF-8 BOM before any audit execution; stripping that BOM in memory
+allowed the read-only replay. Independently hashed archived APKs:
+release 54711084 bytes, SHA256
+b3e90807ac72dd9423f8091f713a57056c469aebb82d59bd57e60d70b3a83ad9;
+debug 168851587 bytes, SHA256
+6015b99b667587e82e0ca12a15ac55f6ab08ca77d544936597090b9a7eb23819.
+No test-app file changed. Artifact consistency is separate from device execution.
+
+Settings receipt records return in the same PID 5769. Inspected the saved return
+image: painted list, completed inspection, original photo count and one installed
+widget. Memory-pressure kills of other processes do not establish loss of this
+host; historical F-36 remains open. Fresh release open completes in 622 ms,
+separately from paint. Preserve the initial unsettled widget screenshot and
+early denial image as excluded attempts; subsequent confirmation is separate.
+
+Independently compared saved preinstall, restored and final inspection fields
+(note, checks, done, unitKey) and photo IDs: identical. This addresses the app-local
+evidence gap recorded in this iteration; it is not a runtime retention fix.
+The app's saved native/archive photo-hash receipt also reports equality.
+
+Compared saved native baseline (outbox 2, incoming absent) with pre-foreground
+effects (outbox 0, incoming row and exact outgoing objects). Independently matched
+raw worker-full-logcat.txt: PID 8052 begins 04:37:41.347, completes 04:37:42.574
+and reports native BackgroundWorker SUCCESS at 04:37:42.585. Raw activation
+files are byte-identical, SHA256
+19b5f47e09b7fb6a1ca88b43c87fd6ceecd898905e669fd651019e217bfe9b10,
+pending 1793659499, no trial. One explicitly triggered registered execution
+proves no natural cadence; the 462.717-second observer wait is not callback
+duration. Final foreground commitment is later evidence.
+
+The app reports doctor 14 PASS / 10 WARN / 0 FAIL. Preserve structured child-command
+receipts separately from PowerShell stderr/wrapper status, and retain release
+offline/R27 scope separately from debug bridge/SQLite/OTA scope. Historical
+renderer/startup/background/busy-sync/media/doctor findings remain open or
+qualified. Kundalini F-72/F-73/F-74 remain app-reported pending adoption and
+verification. iOS remains experimental and untested.
+
+Sources are read-only valence-test-app-c/evidence/iteration-69/ and both apps'
+findings/reports. Only mirrored integration notes change. Earlier November 3 gates
+retain their scope; no fresh full-gate run, device acceptance or runtime security
+review is claimed. Exact-tip ancestry, unchanged implementation trees, mirrored
+notes and diff hygiene checked. No test-app writes, protected-branch changes,
+version/schema changes, push, publication or deployment.
+
 ## November 3: iteration 68 evidence intake; implementation unchanged
 
 Reviewed both apps' VALENCE_FINDINGS.md inventories and latest completed reports:
