@@ -459,8 +459,13 @@ export function validateCookieJar(cfg, origins) {
     throw new Error('http.cookieJar must be an object with an origin, and optionally csrf: {cookie, header}');
   }
   for (const k of Object.keys(jar)) {
-    if (!['origin', 'csrf'].includes(k)) throw new Error(`http.cookieJar: unknown key "${k}"`);
+    if (!['origin', 'csrf', 'sessionCookieDays'].includes(k)) throw new Error(`http.cookieJar: unknown key "${k}"`);
   }
+  if (Object.hasOwn(jar, 'sessionCookieDays') &&
+      (!Number.isInteger(jar.sessionCookieDays) || jar.sessionCookieDays < 1 || jar.sessionCookieDays > 30)) {
+    throw new Error('http.cookieJar.sessionCookieDays must be an integer from 1 through 30; omit it for memory-only session cookies');
+  }
+  const lifetime = jar.sessionCookieDays === undefined ? '' : `, sessionCookieDays: ${jar.sessionCookieDays}`;
   let u;
   try { u = new URL(jar.origin); } catch { /* rejected below */ }
   if (!u || !['http:', 'https:'].includes(u.protocol) || u.username || u.password || u.search || u.hash ||
@@ -474,7 +479,7 @@ export function validateCookieJar(cfg, origins) {
     throw new Error(`http.cookieJar.origin ${u.origin} is cleartext; a jar replays a credential on every request, so it must be HTTPS (loopback excepted for local testing)`);
   }
   const csrf = jar.csrf;
-  if (csrf === undefined || csrf === null) return `ValenceCookieJar(origin: ${dartStr(u.origin)})`;
+  if (csrf === undefined || csrf === null) return `ValenceCookieJar(origin: ${dartStr(u.origin)}${lifetime})`;
   if (typeof csrf !== 'object' || Array.isArray(csrf) ||
       typeof csrf.cookie !== 'string' || typeof csrf.header !== 'string' ||
       Object.keys(csrf).some((k) => !['cookie', 'header'].includes(k))) {
@@ -487,7 +492,7 @@ export function validateCookieJar(cfg, origins) {
     throw new Error(`http.cookieJar.csrf.header "${csrf.header}" is controlled by the host (§4.5); mirroring into it would overwrite what the host sets`);
   }
   return `ValenceCookieJar(origin: ${dartStr(u.origin)}, csrfCookie: ${dartStr(csrf.cookie)}, ` +
-    `csrfHeader: ${dartStr(csrf.header)})`;
+    `csrfHeader: ${dartStr(csrf.header)}${lifetime})`;
 }
 
 const paths = (root, cfg) => ({
@@ -2052,7 +2057,9 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
     const pair = jar.csrf
       ? `${jar.csrf.cookie} mirrored into ${jar.csrf.header}, which the page may not supply`
       : 'no csrf pair, so only Set-Cookie replay';
-    return { msg: `${new URL(jar.origin).origin}: ${pair}` };
+    const lifetime = jar.sessionCookieDays === undefined ? 'session cookies are memory-only'
+      : `session cookies persist for at most ${jar.sessionCookieDays} days from receipt; restart never extends them`;
+    return { msg: `${new URL(jar.origin).origin}: ${pair}; ${lifetime}` };
   }, 'set http.cookieJar.origin to one HTTPS origin that is also in http.origins (loopback may be cleartext for local testing), give csrf a cookie name and a header the host does not already control, then run codegen and ship a store build');
   await check('stack report', () => {
     if (!existsSync(join(root, '.valence', 'stack-check.md'))) return 'missing .valence/stack-check.md; run the docs-scout phase';

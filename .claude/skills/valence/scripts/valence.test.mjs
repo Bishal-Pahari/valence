@@ -2230,6 +2230,7 @@ test(
   () => {
     const { root, cfg } = fixture({ latest: true });
     cfg.cache = ['calendar'];
+    cfg.http = { origins: ['https://api.example.com'], cookieJar: { origin: 'https://api.example.com', sessionCookieDays: 7 } };
     cfg.plugins = ['probe.json'];
     const plugin = probePlugin();
     plugin.methods['probe.ping'] = { since: 1, params: {}, returns: 'void' };
@@ -2578,6 +2579,14 @@ test('S6 codegen compiles one cookie-jar origin and refuses every unsafe shape',
   assert.match(read(), /cookieJar: ValenceCookieJar\(origin: 'https:\/\/api\.example\.com'\)/);
 
   // Loopback may be cleartext, because that is what the reference example and adb reverse use.
+  cfg.http.cookieJar.sessionCookieDays = 7;
+  codegen({ root, cfg });
+  assert.match(read(), /sessionCookieDays: 7/);
+  for (const days of [null, 0, -1, 31, 1.5, '7', true]) {
+    cfg.http.cookieJar.sessionCookieDays = days;
+    assert.throws(() => codegen({ root, cfg }), /sessionCookieDays must be an integer/);
+  }
+
   cfg.http.origins = ['http://127.0.0.1:8787', 'https://api.example.com'];
   cfg.http.cookieJar = { origin: 'http://127.0.0.1:8787' };
   codegen({ root, cfg });
@@ -2628,6 +2637,9 @@ test('doctor reports the cookie jar, and a broken one never reaches a row', asyn
 
   cfg.http.cookieJar = { origin: 'https://api.example.com' };
   assert.match((await row())[2], /no csrf pair/);
+  assert.match((await row())[2], /session cookies are memory-only/);
+  cfg.http.cookieJar.sessionCookieDays = 7;
+  assert.match((await row())[2], /at most 7 days from receipt; restart never extends/);
 
   // Every rule is enforced when the config loads, so a broken jar is not one failing row: it stops
   // codegen, doctor and anything else that reads the config. That is what §4.5.1 claims, so prove it.

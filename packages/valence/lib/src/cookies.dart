@@ -19,6 +19,7 @@ final class ValenceCookieJar {
     required this.origin,
     this.csrfCookie,
     this.csrfHeader,
+    this.sessionCookieDays,
   });
 
   /// The exact origin whose cookies this jar holds. No other origin is ever sent them.
@@ -30,18 +31,24 @@ final class ValenceCookieJar {
   /// The header [csrfCookie]'s value is written to. The page may not supply it (§4.5.1).
   final String? csrfHeader;
 
+  /// Opt-in lifetime for cookies without server expiry: 1..30 days from receipt.
+  /// Null keeps them in memory only. Requires a new store build, never an OTA grant.
+  final int? sessionCookieDays;
+
   /// The lowercase header name the page is refused, or null when no pair is configured.
   String? get deniedHeader => csrfHeader?.toLowerCase();
 }
 
-/// One stored cookie. [expires] is null for a session cookie, which never reaches secure storage.
+/// One cookie, optionally retaining the receipt time of an opted-in session cookie.
 final class _Jarred {
-  const _Jarred(this.name, this.value, this.path, this.expires);
+  const _Jarred(this.name, this.value, this.path, this.expires,
+      [this.sessionStartedAt]);
 
   final String name;
   final String value;
   final String path;
   final DateTime? expires;
+  final DateTime? sessionStartedAt;
 
   int get size => utf8.encode('$name=$value').length;
 }
@@ -69,13 +76,17 @@ final class ValenceCookies {
     final uri = Uri.tryParse(policy.origin);
     final loopback = {'127.0.0.1', 'localhost', '[::1]', '::1'};
     final String? refusal;
-    if (uri == null ||
+    if (policy.sessionCookieDays != null &&
+        (policy.sessionCookieDays! < 1 || policy.sessionCookieDays! > 30)) {
+      refusal = 'has sessionCookieDays outside 1..30';
+    } else if (uri == null ||
         !{'http', 'https'}.contains(uri.scheme) ||
         uri.host.isEmpty ||
         uri.origin != policy.origin) {
       refusal = 'is not an exact, normalised HTTP(S) origin';
     } else if (uri.scheme == 'http' && !loopback.contains(uri.host)) {
-      refusal = 'is cleartext and not loopback, so the jar would replay a credential in the clear';
+      refusal =
+          'is cleartext and not loopback, so the jar would replay a credential in the clear';
     } else if (origins.isNotEmpty && !origins.contains(uri.origin)) {
       refusal = 'is not in http.origins, so http.request can never reach it';
     } else {
@@ -83,7 +94,8 @@ final class ValenceCookies {
     }
     if (refusal != null) {
       _sealed = true;
-      _log('cookies: refusing the configured jar — "${policy.origin}" $refusal; no cookie will be '
+      _log(
+          'cookies: refusing the configured jar — "${policy.origin}" $refusal; no cookie will be '
           'sent or stored. Fix http.cookieJar and run codegen, which refuses this too');
     }
   }
@@ -129,7 +141,8 @@ final class ValenceCookies {
     // `Uri.origin` throws for a non-HTTP(S) scheme or an empty host. `ValenceHttp` rejects both before
     // it gets here, but this is public on the runtime, and "the jar refused" is the only safe answer to
     // a URL that has no origin to compare.
-    if (!{'http', 'https'}.contains(url.scheme) || url.host.isEmpty) return false;
+    if (!{'http', 'https'}.contains(url.scheme) || url.host.isEmpty)
+      return false;
     return url.origin == policy.origin;
   }
 
@@ -166,8 +179,9 @@ final class ValenceCookies {
     // An envelope with no recorded origin is revoked too, not kept: "I do not know whose these are" is
     // not the same answer as "they are this build's", and an older or future envelope shape would
     // otherwise have its cookies adopted by whatever origin this build happens to configure.
-    if (_cookies.isNotEmpty && _origin != policy.origin) {
-      _log('cookies: the stored jar is ${_origin == null ? 'of no recorded origin' : 'of $_origin'}, '
+    if (_origin != policy.origin && (_origin != null || _cookies.isNotEmpty)) {
+      _log(
+          'cookies: the stored jar is ${_origin == null ? 'of no recorded origin' : 'of $_origin'}, '
           'not ${policy.origin}; clearing ${_cookies.length} cookie(s)');
       await _revokeOrSeal();
     }
@@ -180,7 +194,8 @@ final class ValenceCookies {
       // The cookies we were told to forget may still be on disk, so this process sends none of them.
       _sealed = true;
       _cookies.clear();
-      _log('cookies: could not revoke the stored jar ($e); the jar is disabled for this launch');
+      _log(
+          'cookies: could not revoke the stored jar ($e); the jar is disabled for this launch');
     }
   }
 
@@ -207,7 +222,8 @@ final class ValenceCookies {
     await _load();
     await _expire();
     final cookie = _cookies[name];
-    if (cookie == null || !_pathMatches(_requestPath(url), cookie.path)) return null;
+    if (cookie == null || !_pathMatches(_requestPath(url), cookie.path))
+      return null;
     return cookie.value;
   }
 
@@ -230,18 +246,20 @@ final class ValenceCookies {
       if (domain != null &&
           domain.replaceFirst(RegExp(r'^\.'), '').toLowerCase() !=
               url.host.toLowerCase()) {
-        _log('cookies: ignored "${parsed.name}" scoped to Domain=$domain, not ${url.host}');
+        _log(
+            'cookies: ignored "${parsed.name}" scoped to Domain=$domain, not ${url.host}');
         continue;
       }
       // The jar's own origin may be cleartext loopback (§4.5.1's carve-out, which the reference example
       // uses), and a `Secure` cookie is a server asking for the opposite of that. Honour the ask.
       if (parsed.secure && url.scheme != 'https') {
-        _log('cookies: ignored Secure cookie "${parsed.name}"; ${url.origin} is not HTTPS');
+        _log(
+            'cookies: ignored Secure cookie "${parsed.name}"; ${url.origin} is not HTTPS');
         continue;
       }
       // RFC 6265: Max-Age wins over Expires, and zero or less is a deletion.
       final maxAge = parsed.maxAge;
-      final expires = maxAge != null
+      var expires = maxAge != null
           ? _now().add(Duration(seconds: maxAge))
           : parsed.expires;
       if (maxAge != null && maxAge <= 0 ||
@@ -249,8 +267,14 @@ final class ValenceCookies {
         changed = _cookies.remove(parsed.name) != null || changed;
         continue;
       }
-      final next = _Jarred(
-          parsed.name, parsed.value, _defaultPath(parsed.path, url), expires);
+      DateTime? sessionStartedAt;
+      final days = jar?.sessionCookieDays;
+      if (expires == null && days != null) {
+        sessionStartedAt = _now();
+        expires = sessionStartedAt.add(Duration(days: days));
+      }
+      final next = _Jarred(parsed.name, parsed.value,
+          _defaultPath(parsed.path, url), expires, sessionStartedAt);
       if (next.size > maxCookieBytes) {
         _log('cookies: dropped "${next.name}", ${next.size} bytes over the '
             '$maxCookieBytes-byte cookie limit');
@@ -272,7 +296,7 @@ final class ValenceCookies {
     if (changed) await _persist();
   }
 
-  /// Loads the persisted cookies once. A session cookie was never written, so it is simply absent.
+  /// Loads once, revoking or shortening session grants before any request can use them.
   Future<void> _load() => _loading ??= _read();
 
   Future<void> _read() async {
@@ -285,6 +309,7 @@ final class ValenceCookies {
       final rows = stored['cookies'];
       if (rows is! List) return;
       var bytes = 0;
+      var changed = false;
       for (final row in rows) {
         if (row is! Map<String, Object?>) continue;
         final name = row['name'];
@@ -297,8 +322,24 @@ final class ValenceCookies {
             expires is! int) {
           continue;
         }
-        final cookie = _Jarred(name, value, path,
-            DateTime.fromMillisecondsSinceEpoch(expires, isUtc: true));
+        var deadline =
+            DateTime.fromMillisecondsSinceEpoch(expires, isUtc: true);
+        DateTime? started;
+        if (row.containsKey('sessionStartedAt')) {
+          final received = row['sessionStartedAt'];
+          final days = jar?.sessionCookieDays;
+          if (received is! int || days == null) {
+            changed = true;
+            continue;
+          }
+          started = DateTime.fromMillisecondsSinceEpoch(received, isUtc: true);
+          final bound = started.add(Duration(days: days));
+          if (bound.isBefore(deadline)) {
+            deadline = bound;
+            changed = true;
+          }
+        }
+        final cookie = _Jarred(name, value, path, deadline, started);
         // The same caps the write path enforces. Only this process writes this key, so an over-cap
         // envelope means a restored backup or a future shape — neither of which gets to be unbounded.
         if (cookie.size > maxCookieBytes ||
@@ -311,6 +352,8 @@ final class ValenceCookies {
         _cookies[name] = cookie;
       }
       await _expire();
+      // Never adopt a different origin while rewriting a revoked session grant.
+      if (changed && _origin == jar?.origin) await _persist(revoking: true);
     } on Object catch (e) {
       // Unreadable storage is an empty jar, never a failed request: the server will set a cookie again.
       _log('cookies: could not decode the stored jar ($e); starting empty');
@@ -318,8 +361,8 @@ final class ValenceCookies {
     }
   }
 
-  /// Persists only the cookies that have an expiry. A session cookie belongs to this process (§4.5.1).
-  Future<void> _persist() async {
+  /// Persists server expiry or the fixed deadline of an explicitly opted-in session.
+  Future<void> _persist({bool revoking = false}) async {
     final rows = [
       for (final c in _cookies.values)
         if (c.expires != null)
@@ -328,6 +371,9 @@ final class ValenceCookies {
             'value': c.value,
             'path': c.path,
             'expires': c.expires!.toUtc().millisecondsSinceEpoch,
+            if (c.sessionStartedAt != null)
+              'sessionStartedAt':
+                  c.sessionStartedAt!.toUtc().millisecondsSinceEpoch,
           },
     ];
     try {
@@ -337,6 +383,13 @@ final class ValenceCookies {
               ? null
               : jsonEncode({'origin': jar?.origin, 'cookies': rows}));
     } on Object catch (e) {
+      if (revoking) {
+        _sealed = true;
+        _cookies.clear();
+        _log('cookies: could not persist the reduced session grant ($e); '
+            'the jar is disabled for this launch');
+        return;
+      }
       // The jar still works for this process. Failing the page's request over it would be worse.
       _log('cookies: could not persist the jar ($e); it is in memory only');
     }
@@ -347,7 +400,8 @@ final class ValenceCookies {
   Future<void> _expire() async {
     final now = _now();
     final before = _cookies.length;
-    _cookies.removeWhere((_, c) => c.expires != null && !c.expires!.isAfter(now));
+    _cookies
+        .removeWhere((_, c) => c.expires != null && !c.expires!.isAfter(now));
     if (_cookies.length != before) await _persist();
   }
 
@@ -364,7 +418,6 @@ final class ValenceCookies {
   static bool _pathMatches(String requestPath, String cookiePath) {
     if (requestPath == cookiePath) return true;
     if (!requestPath.startsWith(cookiePath)) return false;
-    return cookiePath.endsWith('/') ||
-        requestPath[cookiePath.length] == '/';
+    return cookiePath.endsWith('/') || requestPath[cookiePath.length] == '/';
   }
 }

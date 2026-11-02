@@ -73,21 +73,22 @@ void main() {
     const jar = ValenceCookieJar(
         origin: 'https://api.test',
         csrfCookie: 'csrftoken',
-        csrfHeader: 'X-CSRFToken');
+        csrfHeader: 'X-CSRFToken',
+        sessionCookieDays: 7);
     final data = <String, String>{};
     final v = await open(
         config: testConfig(key, writableBuckets: {'shelf'}, cookieJar: jar),
         secure: testSecure(data));
     final url = Uri.parse('https://api.test/x');
     Future<void> seed() => v.cookies.absorb(Uri.parse('https://api.test/login'),
-        const ['sessionid=abc; Max-Age=600']);
+        const ['sessionid=abc; Max-Age=600', 'bff=xyz']);
 
     // Adoption and refresh move no row, and must move no cookie either.
     await seed();
     await v.authSetToken('jwt-a', account: 'user-a');
     expect(data[secureCookieJarKey], isNotNull);
     await v.authSetToken('jwt-a2', account: 'user-a');
-    expect(await v.cookies.header(url), 'sessionid=abc',
+    expect(await v.cookies.header(url), 'sessionid=abc; bff=xyz',
         reason: 'a refresh for the same account clears nothing');
 
     // The §5.3 switch takes the jar with the rows, inside the lease.
@@ -99,7 +100,7 @@ void main() {
     final plain = await open(
         config: testConfig(key, cookieJar: jar), secure: testSecure(data));
     await plain.cookies.absorb(
-        Uri.parse('https://api.test/login'), const ['sessionid=xyz; Max-Age=600']);
+        Uri.parse('https://api.test/login'), const ['sessionid=xyz']);
     expect(data[secureCookieJarKey], isNotNull);
     await plain.authSetToken(null);
     expect(data[secureCookieJarKey], isNull);
