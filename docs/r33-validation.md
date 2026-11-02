@@ -36,3 +36,23 @@ App-c's current renderer loss and startup ANR remain major release qualification
 recovered feature successes do not close them. This item has no new emulator
 acceptance; iOS remains experimental and untested. No test-app writes, protected
 branch changes, push or publication.
+
+## Gates
+
+- Root npm test: 113 passed, zero failures/skips, including generated Dart with
+  sessionCookieDays and generated strict/verbatim TypeScript.
+- Runtime: 609 tests passed serially; fatal-info analysis clean after fixing two
+  formatter-exposed missing-brace infos. The initial failing analysis is retained
+  separately and is not counted as passing.
+- Core pub dry run: zero warnings after committing the package. A separate initial
+  dirty-file warning is retained; it did not pass.
+- Push: 2 tests, clean fatal-info analysis, zero-warning pub dry run (one local
+  override hint).
+- Bridge: 36 tests, strict TypeScript and pack dry run passed.
+- Example: 29 tests; debug APK built in 25.7 seconds. Standalone Windows py audit:
+  PASS: core graph and 19 DEX files / manifest contain no Firebase SDK references.
+- Root pack dry run passed. Site build/SEO: 48 pages passed.
+
+No fresh device acceptance is inferred from these gates. The one-line default
+config template stays opt-out; constructor emission is exercised by the generated
+Dart gate rather than enabling session persistence in every new project.
