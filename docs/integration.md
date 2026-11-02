@@ -1,5 +1,71 @@
 # Integration with current packages - 2026-11-02
 
+## November 2: iteration-60 Settings renderer loss and retained publication evidence
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 60,
+read-only. All must-haves remain done; no original rebase-queue refresh is eligible.
+Packages bases remain code 90af361 / site 6eb2bd6. Independently checked both bases
+and all 34 exact recorded branch tips as ancestors of the current integrations.
+No feature branch or integration rebuild is needed on these unchanged bases.
+
+Current failure first: the raw Settings log records Android killing renderer 5029
+for low watermark at 14:47:34.330, Chromium in host 4952 explicitly terminating
+the application at 14:47:34.412, and ActivityManager recording host death at
+14:47:34.529. Exit-info independently matches renderer LOW_MEMORY and host
+SIGNALED/status 9 at those timestamps. The returned PID is 6015, not 4952;
+the saved outcome records no painted page and a closed CDP connection before
+recovery. Later feature successes do not establish Settings survival. This is
+a current F-36 recurrence of the Android limitation already specified in S5,
+not evidence of a framework memory leak or a trial loss in this attempt.
+
+Other independently compared saved receipts:
+
+- The artifact audit lists 62 passing consistency checks and explicitly retains
+  the F-36 failure. Its pass is not unconditional device acceptance.
+- Four resolves return four distinct URLs. Native listings grow from 1583 to
+  1587 payloads and sidecars; the exact eight added names match those URLs.
+  All four recorded hashes match the original. Native du reports 321316 KiB
+  of host publications versus 224 KiB of original media. This repeats app-path
+  republication, not an unexplained package leak or a generalized growth rate.
+- Retained startup PID 4322 logs store phase 4688 ms and open completion 4906 ms.
+  First positive sampled accessibility observation is 29426 ms before the
+  explicit link; this establishes neither exact first paint nor startup cause.
+- One registered worker was explicitly triggered after captured Ready:true and
+  elapsed earliest time. Begin 15:02:37.425, complete 15:02:38.818 and native
+  SUCCESS 15:02:38.831 share PID 7890. Exact full-log lines are absent from the
+  before capture. One forced execution proves no natural eligibility or cadence.
+- Supplied stable native SQLite receipts show outbox 2 / incoming absent before
+  the worker, then incoming origin 1470000 / usn 1470002 and outbox 0 before
+  foreground. Both outgoing objects match their exact saved write parameters.
+- Raw activation files are byte-identical, independently hashed SHA256
+  d6e32e08a9121d2cc2be11b039c5125e8b0d04cdfb52d22463a55703b4581e3f:
+  current 1793610605, pending 1793610615, trial null. The report records the final
+  commit and cleanup after this observation.
+
+Evidence: valence-test-app-c/evidence/iteration-60, especially settings-outcome.json,
+settings-return-full-logcat.txt, settings-return-exit-info.txt, evidence-audit.json,
+host-retention-{experiment.json,before.txt,after.txt,size.txt}, r29-retained-startup.json,
+release-retained-paint-observation.json, worker-completion-proof.json,
+worker-full-logcat.txt, background-full-log-before.txt, background-force-qualification.json,
+both native SQLite receipts, worker-write-{a,b}-params.json and both raw activation files.
+
+Decision: preserve security, users' data, durable URL semantics and the candidate
+freeze. Do not weaken trial crash detection to hide Android renderer termination;
+S5 already prices the native recovery change separately. Do not delete retained
+publications without a supported lifetime contract. F-36 and F-27 remain major
+release qualifications for the improver; successful recovery closes neither.
+Pending-ID and permission adoption corrections already exist in integration;
+older app captures establish no adoption. Kundalini has not yet accepted S6/S7/S8.
+S1 remains deliberately parked; S2 needs a Play account.
+
+Only matching integration ledgers change. Ancestry, mirrored notes, unchanged
+implementation trees and diff hygiene were checked. Earlier November 2 gates
+retain their scope; no fresh full-gate, emulator acceptance or runtime-review pass
+is claimed. An initial audit command incorrectly used git rev-parse --short with
+two revisions; separate full-revision output corrected it and all checks passed.
+No test-app writes, protected-branch changes, version/schema changes, push or publication.
+
+
 ## November 2: iteration-59 retained startup and controlled publication evidence
 
 Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 59,
