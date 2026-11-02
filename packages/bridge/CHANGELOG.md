@@ -3,6 +3,7 @@
 ## Unreleased: see bridge traffic in a debug panel
 
 `traceBridge(fn)` reports each finished `call()`: method, milliseconds, error code, and for `http.request` the URL without its query plus the status. It never carries params, bodies, headers or query strings, though a path can hold an identifier, so keep it to debug builds. Native HTTP does not appear in a browser network panel, so this is the only way a page can see it. See [Debugging](https://getvalence.pages.dev/docs/guides/debugging/).
+
 ## Unreleased: explicit update checks and completed-check notifications
 
 - Schema 19 adds explicit `bundle.check` and `bundle.checked` completion, including offers needing a newer store host. Regenerate and rebuild to opt in; pending-only `bundle.updateReady` is unchanged.

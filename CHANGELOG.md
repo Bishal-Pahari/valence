@@ -5,6 +5,7 @@
 - `chrome://inspect` works in debug builds.
 - `traceBridge()` in `@getvalence/bridge` lets a debug build see native requests, without params, bodies, headers or query strings.
 - New docs: [Debugging](https://getvalence.pages.dev/docs/guides/debugging/) and the [Web app checklist](https://getvalence.pages.dev/docs/guides/web-app-checklist/).
+
 ## Unreleased: explicit update checks and completed-check notifications
 
 - Schema 19 adds explicit `bundle.check` and `bundle.checked` completion, including offers needing a newer store host. Regenerate and rebuild to opt in; pending-only `bundle.updateReady` is unchanged.
