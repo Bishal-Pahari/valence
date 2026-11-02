@@ -128,6 +128,7 @@ class _ValenceAppState extends State<ValenceApp>
     _valence.attach(this);
     _valence.onUpdateReady =
         (seq) => runScript(eventScript('bundle.updateReady', {'seq': seq}));
+    _valence.onCheckForUpdate = _checkForUpdate;
   }
 
   @override

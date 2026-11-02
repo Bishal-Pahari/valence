@@ -1478,6 +1478,43 @@ and an Ed25519 verification on the UI isolate per call while a pending bundle ex
 `bundle.updateReady` event to a tight poll when the app declares `urgent`.
 
 
+#### Explicit checks and completion (revision 19, S8)
+
+`bundle.check() -> void` (since 19, no params) starts an update check through
+ValenceApp's existing coalesced UI update path. It joins any in-flight host check,
+waits for discovery and native store-policy transitions, and never applies a
+pending bundle. It does not bypass rollout, signatures, check order, data
+readiness or signed store blocks. An unattached custom host must provide the
+same transition callback or the call returns E_UNSUPPORTED. In debug dev mode it
+is a no-op, like the host's other discovery triggers. A completed RPC does not
+promise a successful offer: read bundle.status afterwards. Unexpected failures
+remain logged by the host and leave the previous completed status unchanged.
+
+`bundle.checked` (since 19) carries exactly `{reason: string, requiredBridge: int?}`
+after every completed update check, including needsStoreUpdate, offline,
+uptodate and ready. The status snapshot is published and its sync lease released
+before emission. Concurrent callers joined to one check produce one event.
+Unexpectedly thrown checks publish neither a completion event nor a new status.
+The nullable requiredBridge comes only from the authenticated incompatible offer;
+unsigned or invalid offers must not supply it. This event is emitted only for a
+compatible schema declaration compiled into the store host. Older, absent or
+app-owned pre-19 declarations receive no automatic event. Regenerate and rebuild
+the host to adopt it. Its payload is a notification to re-read bundle.status,
+not a command to apply an update. It uses the unbuffered state-event path; mount
+reads recover the latest completed state without replaying stale checks.
+
+The legacy bundle.status projection is unchanged: without nullable requiredBridge
+in its declared return type it still reports rejected. A page using the status
+re-read recipe must declare that field; the completion event independently
+reports the authenticated incompatible-offer reason and requirement.
+
+bundle.updateReady keeps its existing meaning: a verified bundle became pending.
+It never fires for an offer refused at check 5. Subscribe to bundle.checked before
+the mount read; re-read bundle.status on each completion. For a user-triggered
+retry, await bundle.check and then re-read status. Older hosts can continue using
+bundle.updateReady and mount/resume reads, but those do not reliably notify a
+refused offer that finishes after the read (K F-74).
+
 ### 4.7 Adaptive layout and accessibility (R8)
 
 `ValenceApp` uses edge-to-edge layout. It publishes `--valence-inset-top`,
@@ -2489,6 +2526,7 @@ R12 regression rows: batch reads preserve requested order, deduplicate, isolate 
 | bridge | **`traceBridge` carries no params, bodies, credentials, query or fragment and drops non-http(s) URLs;** a throwing or rejecting listener leaves the call's result unchanged; no listener means the transport's own promise |
 | host | **WebView inspection is behind `kDebugMode`** — exactly one `enableDebugging` call in `lib/`, with the guard directly on it |
 | bridge | **`has()` answers for an event as well as a method** — true below *and at exactly* the host's version, false above it, false for an unknown name rather than throwing, false for every event on the web and true there for a method the shim implements; missing or wrong nonce → `E_DENIED`; unknown method → `E_UNKNOWN`; bad params → `E_PARAMS`; a write to a read-only bucket → `E_DENIED`; **a `data.put` key of `.` or `..` → `E_PARAMS` and nothing queued, while `...`, `a.b` and `.hidden` are accepted**; `prefs.*` and `secure.*` on a `valence.` key → `E_DENIED`, so the stored token is unreadable by the page; `open.external` rejects `javascript:` and `file:`; reply escaping round-trips U+2028 and quotes; **an inbound message over `MAX_MESSAGE_BYTES` of UTF-8 is rejected by `@getvalence/bridge` before `postMessage`, with `E_TOO_LARGE`, rather than killing the webview** (a multi-byte string that is under the cap in UTF-16 code units and over it in bytes is refused); **an over-cap *reply* is replaced by `E_TOO_LARGE` rather than sent**; **`data.list` clamps `limit` to 500 and defaults it to 100**; **`after` reads a bucket past the clamp completely, in key order, with no row repeated or skipped, composes with `prefix`, resumes correctly from a cursor key that has since been deleted, and advances past an empty first key (`''` is a valid key, so an absent cursor is `null` and never `''`); `data.count` reports a size past the clamp, honours `prefix`, is scoped to the pair and omits tombstones**; **a built-in's optional *param* is passed through when the app's schema declares it, omitted from the delegation when it does not, refused at the wrong type or under another name, refused on a different built-in, **refused without a `version` above the shipped one** (a param has no `since`, so a sibling method or event at the same version is the only thing `has()` can gate on — and `app.info().bridge` is the app's own schema version, so it gates nothing here), and additive against a method a `--store` build already recorded — while an app's own shipped method may not grow a param at all, and neither `since` nor any other method-level key may change** |
+| explicit checks and completion (S8) | signed incompatible offer emits bundle.checked with authenticated requiredBridge and no updateReady/pending; invalid signatures never disclose requirements; coalesced checks produce one completion after status publication; explicit checks enforce native mid-session policy and never auto-apply or spend trial strikes; malformed modern declarations fail codegen and absent/pre-19 declarations stay silent; unloaded pages drop completion and mount reads recover state; unattached hosts refuse; debug dev mode skips discovery |
 | lifecycle, connectivity and update status (§4.6) | `hidden` then `paused` emits one `app.lifecycle` with `background`, and a repeat of the same state emits nothing; **the two state events are dropped rather than buffered when no page is loaded, while the one-shot events still buffer and flush**; `inactive` and `detached` map to themselves; `app.state()` reports the pair before any event has been emitted, and a lifecycle change during start-up updates it while the resume *work* stays suppressed; `app.online` emits only on change, with the first value derived from the current connectivity rather than waiting for one; **a connectivity report with several interfaces is online when any of them is not `none`**; `sync.done` carries the whole `SyncResult` after every completed UI-isolate run including `changed: 0`, `busy` and `unauthorized`, **including the push a `data.put` fires**, and is emitted after `sync.changed` for the same run; **the one-shot buffer is bounded and drops its oldest with a log**; `bundle.status` is `idle` before any check, `unconfigured` with no `otaBase`, and reports `uptodate`, `rollout`, `bad`, `offline`, `rejected`, `toobig`, `waitingForData`, `busy` and `ready` for the step that stopped the check, with `offered` set once the pointer decoded and `checkedAt` moving only on a completed check; **a step 7 stop caused by `dataSizeCap` is `toobig` both when the cap ran out inside a pair's pull and when a first pair spent it all before a second pair's pull began**; `serving`/`pending`/`trial` match the live state; **`bundle.updateReady` fires on every transition to `pending` — urgent and not — once for two coalesced concurrent checks, and never for a check that stopped before step 8** |
 | local notifications (dart test, `valence.test.mjs`) | a native service that refuses to start leaves `initialize()` completing, `unavailable` set to the native code, a logged reason naming `keep.xml` and the icon, `notify.schedule` reporting `blocked`, empty `pending`, no-op `cancel`/`channel`, false `badge`, no native send or prompt, and parameter validation still refusing bad input; **`pendingIds` reports the same IDs as `pending` from one native snapshot, is empty on an unavailable service, and through generated dispatch answers a 64-request queue at the maximum title/body/payload sizes while `notify.pending` on that same queue is refused with `E_TOO_LARGE`**; `doctor`'s `notification icon` row warns with no Android `res` directory, fails for a drawable that is absent, fails for a drawable `res/raw/keep.xml` does not name (including a longer name that merely starts with it), and passes once both exist |
 | dev diagnostics (widget tests) | startup names the validated upstream origin and disabled OTA behavior; ready, signed reload, update checks and apply each log a dev bypass; startup/resume/periodic checks leave activation evidence unchanged and send no OTA requests; sync remains available; signed startup has no dev warning; release AOT excludes the upstream URL, proxy and dev diagnostics |

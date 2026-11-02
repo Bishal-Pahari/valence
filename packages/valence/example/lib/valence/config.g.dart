@@ -13,6 +13,7 @@ const valenceConfig = ValenceConfig(
   keyring: {'k1': 'cmDzyiObOIA2VI5Ke2uMSRilCC5rAlw/8bMElWtzxRk='},
   bridgeVersion: hostBridgeVersion,
   notificationEventFields: hostNotificationEventFields,
+  bundleCheckedEvent: hostBundleCheckedEvent,
   notificationsEnabled: true,
   notificationIcon: 'ic_stat_valence',
   channel: valenceOtaChannel,
