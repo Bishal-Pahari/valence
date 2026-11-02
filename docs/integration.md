@@ -1,5 +1,76 @@
 # Integration with current packages - 2026-11-02
 
+## November 2: iteration-61 worker process loss and Settings recurrence
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 61,
+read-only. All must-haves remain done; no original queue refresh is eligible.
+Packages bases remain code 90af361 / site 6eb2bd6. Both bases and all 34 exact
+recorded branch tips are independently confirmed ancestors of both integrations.
+No integration rebuild is needed on these unchanged bases.
+
+Failure first: F-42 is a failed post-emulator-restart background attempt. Raw
+logcat records callback begin in PID 3115 at 16:14:35.159, lowmemorykiller killing
+that process at 16:14:37.212 and host death at 16:14:37.734. Decoded native
+exit-info independently records LOW_MEMORY at 16:14:37.736. The 340.996-second
+result-observation window is not live worker execution or evidence of a hang.
+The separate DiagnosticsWorker SUCCESS in that PID is not BackgroundWorker
+success. Supplied stable native SQLite receipts retain outbox 2/incoming absent
+before foreground; no mock transfers, callback completion or matching worker
+SUCCESS were recorded. PID 4760's later foreground sync is recovery only.
+
+Earlier post-boot PID 2150 failed startup: raw ActivityManager logs at
+16:09:26.828 match exit-info ANR/BIND APPLICATION ANR at 16:09:26.832. SystemUI
+also had a service ANR at 16:08:34.644. This records environment pressure and
+process loss, not a proven Valence leak, initialization defect or recurring cadence.
+
+F-36 also recurred. Raw Settings logs show renderer 5095 killed at
+15:53:37.406, Chromium in host 4983 explicitly terminating the application at
+15:53:37.498 and host death at 15:53:37.816. Exit-info matches renderer LOW_MEMORY
+and host SIGNALED/status 9. Replacement PID 6548 and the failed page/CDP receipt
+establish no same-process Settings survival; later successes do not erase it.
+No trial loss is established in this attempt.
+
+Other independently compared saved receipts:
+
+- The artifact audit contains 64 passing consistency checks and explicitly retains
+  F-42/F-36. Its pass is not unconditional device acceptance.
+- Raw activation files are byte-identical, independently hashed SHA256
+  793d87b0cb4570652eea5bd505c7f26e2054453dc91b893cea4b1fd949c71013:
+  current 1793614837, pending 1793614847, trial null before recovery.
+- Four resolves produce four distinct URLs and matching-original hash receipts.
+  Decoded native listings grow from 1624 to 1628 payloads; the exact eight new
+  names match those URLs and their sidecars. Native du reports 329892 KiB of
+  host publications versus 224 KiB original media. This repeats app-path
+  republication, not an unexplained package leak or generalized growth rate.
+- Retained startup PID 4270 logs store phase 4368 ms/open completion 4530 ms.
+  The initial 9550 ms accessibility positive used stale XML and is excluded.
+  The fresh-dump confirmation is after an explicit link; neither pre-link paint,
+  exact first paint nor startup cause is established.
+
+Evidence: valence-test-app-c/evidence/iteration-61, particularly
+background-observation-failure.json, background-sqlite-{before-worker,after-bounded-observation}.json,
+bounded-worker-full-log.txt, postboot-app-exit-info.txt, bounded-worker-native-files.json,
+both background-state raw files, settings-outcome.json, settings-return-full-logcat.txt,
+settings-return-exit-info.txt, evidence-audit.json, host-retention-{experiment.json,before.txt,after.txt,size.txt},
+r29-retained-startup.json and release-retained-confirmation.json. The original
+paint-observation receipt is superseded by the report's explicit stale-XML exclusion.
+
+Decision: preserve security, users' data, durable URL semantics and the candidate
+freeze. Do not weaken trial attribution or sync leases to mask process death;
+do not delete publications without a supported lifetime contract. F-42, F-36
+and F-27 remain major release qualifications for the improver. A cold-worker
+reproduction with phase/owner evidence is needed before assigning a runtime fix.
+Pending-ID and permission adoption corrections already exist in integration;
+older app captures establish no adoption. Kundalini has not accepted S6/S7/S8.
+S1 remains deliberately parked; S2 needs a Play account.
+
+Only matching integration ledgers change. Ancestry, mirrored notes, unchanged
+implementation trees and diff hygiene were checked. Earlier November 2 gates
+retain their scope; no fresh full-gate, emulator acceptance or runtime-review pass
+is claimed. No test-app writes, protected-branch changes, version/schema changes,
+push or publication.
+
+
 ## November 2: iteration-60 Settings renderer loss and retained publication evidence
 
 Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 60,
