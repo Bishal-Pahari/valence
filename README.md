@@ -289,4 +289,5 @@ Cache selected REST responses for offline reads with revision-18 `data.cache`,
 behind a compiled per-bucket grant. See [REST caching](docs/rest-cache.md) for
 pull precedence, account clearing, retention and schema lifetimes.
 
-Response size grants: compiled `http.maxBodyBytes` raises the decompressed response cap (default 65536, range 1..262144); requests remain 64 KiB and escaped replies remain capped at 256 KiB. Regenerate and ship a store build. [Limits and adoption](https://getvalence.pages.dev/docs/guides/http-response-limits/).
+
+For API sessions that may survive restart, compiled `http.cookieJar.sessionCookieDays` opts into 1–30 days from receipt; omitted keeps session cookies memory-only. Regenerate and rebuild the host. Restarts never renew the deadline; removing the opt-in revokes stored sessions. See [Persistent sessions](https://getvalence.pages.dev/docs/guides/persistent-sessions/).

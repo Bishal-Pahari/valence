@@ -196,6 +196,117 @@ void main() {
     expect(restarted.sent.single.headers['cookie'], 'p=2');
   });
 
+  test('opted-in sessions survive restart with a fixed receipt deadline',
+      () async {
+    var clock = DateTime.utc(2026, 11, 2);
+    final data = <String, String>{};
+    final url = Uri.parse('https://api.test/x');
+    ValenceCookies restart(int? days) => ValenceCookies(
+        jar: ValenceCookieJar(
+            origin: 'https://api.test', sessionCookieDays: days),
+        secure: testSecure(data),
+        now: () => clock);
+    final first = restart(2);
+    await first.absorb(url, ['sessionid=abc', 'p=2; Max-Age=864000']);
+    final original = data[secureCookieJarKey];
+    expect(original, contains('sessionStartedAt'));
+    clock = clock.add(const Duration(days: 1));
+    final second = restart(30);
+    await second.revoke();
+    expect(await second.header(url), 'sessionid=abc; p=2');
+    expect(data[secureCookieJarKey], original,
+        reason: 'a restart or larger policy never renews a stored session');
+    clock = clock.add(const Duration(days: 1));
+    expect(await restart(30).header(url), 'p=2');
+    expect(data[secureCookieJarKey], isNot(contains('sessionid')));
+  });
+
+  test('removing or shortening the opt-in revokes only the session grant',
+      () async {
+    var clock = DateTime.utc(2026, 11, 2);
+    final data = <String, String>{};
+    final url = Uri.parse('https://api.test/x');
+    ValenceCookies restart(int? days) => ValenceCookies(
+        jar: ValenceCookieJar(
+            origin: 'https://api.test', sessionCookieDays: days),
+        secure: testSecure(data),
+        now: () => clock);
+    await restart(30).absorb(url, ['s=1', 'p=2; Max-Age=864000']);
+    clock = clock.add(const Duration(days: 2));
+    final shorter = restart(3);
+    await shorter.revoke();
+    expect(await shorter.header(url), 's=1; p=2');
+    final rows =
+        (jsonDecode(data[secureCookieJarKey]!) as Map)['cookies'] as List;
+    expect(rows.first['expires'],
+        DateTime.utc(2026, 11, 5).millisecondsSinceEpoch);
+    final removed = restart(null);
+    await removed.revoke();
+    expect(await removed.header(url), 'p=2');
+    expect(data[secureCookieJarKey], isNot(contains('sessionStartedAt')));
+    // The next opt-in cannot resurrect the cookie dropped by the intervening build.
+    expect(await restart(30).header(url), 'p=2');
+  });
+
+  test(
+      'an opt-in never extends server expiry or defeats deletion and origin scope',
+      () async {
+    var clock = DateTime.utc(2026, 11, 2);
+    final data = <String, String>{};
+    const policy =
+        ValenceCookieJar(origin: 'https://api.test', sessionCookieDays: 30);
+    final cookies =
+        ValenceCookies(jar: policy, secure: testSecure(data), now: () => clock);
+    final url = Uri.parse('https://api.test/x');
+    await cookies.absorb(url, ['s=1', 'short=2; Max-Age=1']);
+    clock = clock.add(const Duration(seconds: 2));
+    expect(await cookies.header(url), 's=1');
+    expect(await cookies.header(Uri.parse('https://other.test/x')), isNull);
+    await cookies.absorb(url, ['s=gone; Max-Age=0']);
+    expect(await cookies.header(url), isNull);
+    expect(data[secureCookieJarKey], isNull);
+    await cookies.absorb(url, ['s=again']);
+    final moved = ValenceCookies(
+        jar: const ValenceCookieJar(origin: 'https://other.test'),
+        secure: testSecure(data));
+    await moved.revoke();
+    expect(data[secureCookieJarKey], isNull,
+        reason:
+            'moving the origin revokes even a session discarded by opt-out');
+  });
+
+  test('failed session revocation seals the jar without failing startup', () async {
+    final data = <String, String>{};
+    final url = Uri.parse('https://api.test/x');
+    final first = ValenceCookies(
+        jar: const ValenceCookieJar(origin: 'https://api.test', sessionCookieDays: 30),
+        secure: testSecure(data));
+    await first.absorb(url, ['s=1', 'p=2; Max-Age=600']);
+    for (final days in [null, 1]) {
+      final reduced = ValenceCookies(
+          jar: ValenceCookieJar(origin: 'https://api.test', sessionCookieDays: days),
+          secure: readOnlySecure(data));
+      await reduced.revoke();
+      expect(await reduced.header(url), isNull);
+      await reduced.absorb(url, ['new=3']);
+      expect(await reduced.header(url), isNull);
+    }
+  });
+
+  test('manual out-of-range session policies seal the jar', () async {
+    for (final days in [0, -1, 31]) {
+      final data = <String, String>{};
+      final cookies = ValenceCookies(
+          jar: ValenceCookieJar(
+              origin: 'https://api.test', sessionCookieDays: days),
+          secure: testSecure(data));
+      final url = Uri.parse('https://api.test/x');
+      await cookies.absorb(url, ['s=1']);
+      expect(await cookies.header(url), isNull);
+      expect(data, isEmpty);
+    }
+  });
+
   test('a malformed Set-Cookie is skipped and the request still succeeds',
       () async {
     final a = api(setCookie: ['=nonsense', 'good=1; Max-Age=600']);
