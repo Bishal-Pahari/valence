@@ -1545,6 +1545,14 @@ and untested; its app must opt into native state restoration as Flutter document
 
 ### 4.9 Permissions (schema 10, R3)
 
+The starter schema introduces the methods and event at 10. When adding them to
+an existing app, choose `since >= max(10, shipped store schema version + 1)` for
+each new name and an app schema `version` at least that high (§4.1). A shipped
+schema-10 app therefore introduces new permission names at 11 or higher. Preserve
+already-shipped declarations unchanged and use `has()` for older hosts. This is
+adoption guidance, not a new runtime delegation floor: permissions built-ins still
+delegate at any valid `since` (§4.3).
+
 `permissions.check({kind}) -> string`, `permissions.request({kind}) -> string`, and
 `permissions.openSettings() -> bool` are built-ins at `since: 10`. Kinds are `camera`,
 `location` (foreground only), `notifications`, `contacts`, `bluetooth`
