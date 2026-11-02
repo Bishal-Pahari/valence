@@ -1,5 +1,71 @@
 # Integration with current packages - 2026-11-02
 
+## November 2: iteration-59 retained startup and controlled publication evidence
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 59,
+read-only. Every must-have remains marked done; no original rebase-queue item is
+eligible. Packages bases remain code 90af361 / site 6eb2bd6. Independently checked
+both bases and all 34 exact recorded tips as ancestors of the integrations.
+No new feature branch or integration rebuild is needed on these unchanged bases.
+
+Independently compared the saved iteration-59 receipts:
+
+- The artifact audit lists 63 passing consistency checks. This is saved artifact
+  consistency, not another device execution or an unconditional acceptance pass.
+- Four sequential resolves return four distinct publication URLs. Decoded native
+  listings grow from 1546 payloads and sidecars to 1550 of each; the exact eight
+  added filenames match the four URLs and their sidecars. All four saved payload
+  hashes match the original. Native du reports 313620 KiB of host publications
+  versus 224 KiB of original media. The app's mediaResolve republishes every call;
+  the runtime creates a random publication id and persists its payload and type.
+  This repeats controlled app-path duplication, not an unexplained package leak
+  or a generalized growth rate. No historical publication was removed.
+- Raw retained-release logs show PID 4227 completing the store phase in 6383 ms;
+  the startup receipt reports open completion at 6478 ms. Native accessibility
+  first samples list text at 20823 ms before the explicit link. These observations
+  establish neither exact first paint nor the delayed operation's owner or cause.
+- Mixed-picker invocation exits successfully. Android reports WARM / TotalTime
+  3240 ms, and the separate settled page receipt shows Flat 2. Settings returns
+  painted in original PID 4969. These successes close no intermittent finding.
+- One registered worker was explicitly triggered after captured Ready:true and
+  elapsed earliest time. The receipt retains the forced-execution qualification;
+  it proves no natural eligibility or cadence. Callback begin 14:03:57.117,
+  completion 14:03:58.620 and native SUCCESS 14:03:58.630 share PID 7376. Each
+  exact timestamped line is in the full log and absent from the before capture.
+- Supplied stable native SQLite receipts show outbox 2 / incoming absent before
+  the worker, then incoming origin 1440000 / usn 1440002 and outbox 0 before
+  foreground. Both outgoing row values independently match their saved params.
+- Raw activation files are independently byte-identical, SHA256
+  862f4639be9780f93700f381310b02c08d0f494b5e0d4639fd9d3aa0f540e92b:
+  current 1793607051, pending 1793607061, trial null. The app report records the
+  final commit and cleanup after this observation.
+
+Evidence: valence-test-app-c/evidence/iteration-59, particularly evidence-audit.json,
+host-retention-{experiment.json,before.txt,after.txt,size.txt}, release-retained-
+logcat.txt, r29-retained-startup.json, release-retained-paint-observation.json,
+mixed-invocation.json, host4-mixed-warm-{launch.txt,ready.json}, settings-outcome.json,
+worker-completion-proof.json, worker-full-logcat.txt, background-full-log-before.txt,
+worker-execution.json, background-force-qualification.json, both native SQLite
+receipts, worker-write-{a,b}-params.json and both background-state raw files.
+
+Decision: preserve security, users' data, durable relative URL semantics and the
+candidate freeze. F-27 remains a major product-readiness qualification for the
+improver's release assessment. Cleanup or revocation needs a supported lifecycle
+contract; deleting publications can break persisted URLs. Bounded app reuse still
+needs rebuilt-host restart/rebind/removal validation and cannot reclaim historical
+publications. No speculative socket, SQLite or media-lifetime change is justified
+by this successful attempt. Historical reliability findings remain open or
+qualified. Pending-ID and permission adoption corrections already exist in the
+integration; older live app captures establish no adoption. Kundalini has not yet
+accepted S6/S7/S8. S1 remains deliberately parked; S2 needs a Play account.
+
+Only matching integration ledgers change. Ancestry, mirrored notes, unchanged
+implementation trees and diff hygiene were checked. Earlier November 2 gates
+retain their scope; no fresh full-gate, emulator acceptance or runtime-review pass
+is claimed. No test-app writes, protected-branch changes, version/schema changes,
+push or publication.
+
+
 ## November 2: iteration-58 controlled retention and mixed-picker evidence
 
 Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 58,
