@@ -1,4 +1,1658 @@
+# Integration with current packages - 2026-11-02
+
+## November 2: refresh on the debugging/checklist packages bases
+
+Fresh integration starts at code 03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 / site
+62f950ba1d52632b47fdd0e170bc41e18d467ae1. Revisited all 34 recorded tips in the
+merge-order table below, in that order. The first 31 are already ancestors of
+packages; the three remaining merges are:
+
+| Order | Branch | Code tip | Site tip | Code merge | Site merge |
+|---|---|---|---|---|---|
+| 32 | codex/s8 | 3f44455 | 05943aa | 5ebd247 | a446966 |
+| 33 | codex/pendingids-adoption | 886a9f9 | 99a8bf7 | 685e6df | d415a00 |
+| 34 | codex/permissions-adoption | 3e7231a | ee4292c | 196b333 | b8a879e |
+
+Changelog conflicts retain both features; llms.txt retains both upstream debug
+inspection/traceBridge guidance and S8 completion semantics. Restored the previous
+integration ledger intact as historical evidence. Decision: preserve security,
+data and the reserved schema numbers; no behavioral shortcut resolves a conflict.
+Schema 19 and every feature's since remain intact; package versions are unchanged.
+
+Read both findings ledgers and newest completed reports at intake: Kundalini 18 /
+app-c 63, read-only. Raw saved logs independently confirm renderer 5193 low-memory
+kill followed by Chromium terminating host 5113, and replacement 7249 BIND
+APPLICATION ANR after exact-alarm revocation. Recovered successes do not close
+F-36/F-35, establish a leak/lock cause or prove trial loss. Current doctor success
+does not erase historical F-43. No new emulator acceptance is claimed.
+
+Fresh gates on this integration:
+
+| Gate | Result |
+|---|---|
+| npm test | 114 passed, zero failures/skips; generated Dart and TS included |
+| Runtime flutter test --concurrency=1 | 610 passed |
+| Runtime dart analyze --fatal-infos . | No issues |
+| Core pub dry run | 0 warnings on committed package; initial dirty-changelog warning retained separately |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / no issues / 0 warnings, 1 local-override hint |
+| Bridge tests / strict TS / pack dry run | 36 passed / passed / passed |
+| Example flutter test | 29 passed |
+| Example debug APK | Passed, 909.3 seconds |
+| Standalone Windows py Firebase audit | PASS: core graph and all 19 DEX files / manifest contain no Firebase SDK references |
+| Root pack dry run | Passed |
+| Site build and SEO | 48 pages passed |
+
+Independent valence-reviewer pass found no confirmed defects in the combined
+S8/adoption delta and its interaction with upstream debugging tools. It traced
+canonical verification, authenticated completion, coalescing, detach, native policy
+and dev guards; independently ran bridge tests and example codegen --check.
+No protected branch writes, pushes, publication or test-app writes occurred.
+
+
+## November 2: iteration-62 doctor timeout, startup and artifact qualifications
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 62,
+read-only. No must-have or original queue refresh is eligible. Packages bases
+remain code 90af361 / site 6eb2bd6; both bases and all 34 exact tips in the current
+merge-order table are ancestors of both integrations. Compared implementation
+trees against pre-ledger merge heads 809aae1 / bdbb727: unchanged outside this
+ledger. No integration rebuild is needed on unchanged bases and branch tips.
+
+Failure first: new F-43 retains two distinct doctor attempts. Initial --tests
+execution exits 1 and reports the mapped bridge Flutter test failed. The serial
+retry is terminated at its wrapper's 300-second limit with status null, SIGTERM,
+ETIMEDOUT and a zero-byte stdout file. Plain doctor's saved result subsequently
+contains 13 PASS / 11 WARN / 0 FAIL, including "mapped but not executed; pass
+--tests". It neither replaces those failures nor proves mapped-test acceptance.
+The app reports twelve standalone Flutter tests passing separately. There is no
+phase evidence assigning the timeout to key scanning, Flutter, or assertions;
+do not bypass the signing-key scan or silently raise a timeout as a fix.
+
+Startup remains qualified: saved PID 5005 trace completes open at 39037 ms,
+store phase at 37774 ms and store.configure at 21448 ms. Named waits establish
+where time was observed, not the lock holder or cause. The initial 30-second
+splash is excluded. Retained PID 4698 open completes at 396 ms; a later retained
+paint observation cannot be treated as exact first-paint latency.
+
+Raw restore logs independently confirm system_server 5633 watchdog termination
+at 19:22:11.122 after main-thread blockage for 76 seconds, then 6203 at
+19:27:42.509 after 61 seconds. The restore hash receipt matches local and remote
+archives. This is Android system-service interruption with subsequent recovery,
+not proof that Valence caused it. The stable busy-sync receipt retains lease
+1793627227806:9334 and outbox 2; later same-PID completion is separate evidence.
+Elapsed time alone establishes no lease violation or blocked owner.
+
+Successful receipts retain their narrower scope:
+
+- The saved artifact audit lists 80 passing consistency checks, explicitly
+  excluding unconditional acceptance and retaining failed/obscured attempts.
+- Settings returned painted in PID 9334 on this attempt. It closes no historical
+  renderer-loss finding; the initial SystemUI overlay is excluded.
+- Raw logcat confirms new worker PID 13302 begin 19:48:34.203, complete
+  19:48:35.555 and matching BackgroundWorker SUCCESS at 19:48:35.566. The saved
+  stable SQLite receipt records exact outgoing objects, incoming row and outbox
+  0 before foreground. One registered execution establishes no recurring cadence.
+- Independently hashed raw activation files are byte-identical, SHA256
+  9d5fdbf805a8e3d69682ae340b7fe11c8c3132a2c2d52401a89cb85c0f2122d9:
+  current 1793628042, pending 1793628053, trial null before foreground.
+- Build/install/scan receipts survive, but the final mobile/build directory
+  disappeared for an unknown reason. Independently hashed recovered installed
+  debug APK is 168857631 bytes, SHA256
+  14579332e0b6b32343a8226f37c96b0e3ef9b90c71b120ed9fdca417123e983c,
+  matching the build receipt. No final persisted release APK is claimed.
+
+Evidence: valence-test-app-c/evidence/iteration-62, especially
+doctor-initial-{execution.json,failed.txt}, doctor-serial-timeout-{execution.json,txt},
+doctor-mechanical-summary.json, r29-startup.json, restore-os-full-log.txt,
+restore-archive-integrity.json, sync-diagnostics-result.json, settings-outcome.json,
+worker-{completion-proof.json,full-logcat.txt}, background-sqlite-before-resume.json,
+background-state-{before-raw.json,after-raw.json,comparison.json}, evidence-audit.json,
+binary-{hashes.json,delivery-state.json}; recovered APK under
+.valence/preupgrade/iteration62-installed-debug.apk.
+
+Decision: preserve security checks, users' data, durable URL semantics and the
+candidate freeze. F-43 deserves progressive phase/child-command diagnostics,
+but current evidence establishes no runtime fix or permission to weaken checks.
+F-42/F-36/F-27 and startup qualifications remain for the improver's release
+assessment. Kundalini 18 has not accepted S6/S7/S8; S1 remains deliberately parked
+and S2 needs a Play account.
+
+Only mirrored integration notes change. Exact-tip ancestry, unchanged
+implementation trees, raw activation/APK hashes and diff hygiene were checked.
+Earlier November 2 gates retain their scope; no fresh full-gate, device or
+runtime-review pass is claimed. No test-app writes, protected-branch changes,
+version/schema changes, push or publication.
+
+## November 2: iteration-61 worker process loss and Settings recurrence
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 61,
+read-only. All must-haves remain done; no original queue refresh is eligible.
+Packages bases remain code 90af361 / site 6eb2bd6. Both bases and all 34 exact
+recorded branch tips are independently confirmed ancestors of both integrations.
+No integration rebuild is needed on these unchanged bases.
+
+Failure first: F-42 is a failed post-emulator-restart background attempt. Raw
+logcat records callback begin in PID 3115 at 16:14:35.159, lowmemorykiller killing
+that process at 16:14:37.212 and host death at 16:14:37.734. Decoded native
+exit-info independently records LOW_MEMORY at 16:14:37.736. The 340.996-second
+result-observation window is not live worker execution or evidence of a hang.
+The separate DiagnosticsWorker SUCCESS in that PID is not BackgroundWorker
+success. Supplied stable native SQLite receipts retain outbox 2/incoming absent
+before foreground; no mock transfers, callback completion or matching worker
+SUCCESS were recorded. PID 4760's later foreground sync is recovery only.
+
+Earlier post-boot PID 2150 failed startup: raw ActivityManager logs at
+16:09:26.828 match exit-info ANR/BIND APPLICATION ANR at 16:09:26.832. SystemUI
+also had a service ANR at 16:08:34.644. This records environment pressure and
+process loss, not a proven Valence leak, initialization defect or recurring cadence.
+
+F-36 also recurred. Raw Settings logs show renderer 5095 killed at
+15:53:37.406, Chromium in host 4983 explicitly terminating the application at
+15:53:37.498 and host death at 15:53:37.816. Exit-info matches renderer LOW_MEMORY
+and host SIGNALED/status 9. Replacement PID 6548 and the failed page/CDP receipt
+establish no same-process Settings survival; later successes do not erase it.
+No trial loss is established in this attempt.
+
+Other independently compared saved receipts:
+
+- The artifact audit contains 64 passing consistency checks and explicitly retains
+  F-42/F-36. Its pass is not unconditional device acceptance.
+- Raw activation files are byte-identical, independently hashed SHA256
+  793d87b0cb4570652eea5bd505c7f26e2054453dc91b893cea4b1fd949c71013:
+  current 1793614837, pending 1793614847, trial null before recovery.
+- Four resolves produce four distinct URLs and matching-original hash receipts.
+  Decoded native listings grow from 1624 to 1628 payloads; the exact eight new
+  names match those URLs and their sidecars. Native du reports 329892 KiB of
+  host publications versus 224 KiB original media. This repeats app-path
+  republication, not an unexplained package leak or generalized growth rate.
+- Retained startup PID 4270 logs store phase 4368 ms/open completion 4530 ms.
+  The initial 9550 ms accessibility positive used stale XML and is excluded.
+  The fresh-dump confirmation is after an explicit link; neither pre-link paint,
+  exact first paint nor startup cause is established.
+
+Evidence: valence-test-app-c/evidence/iteration-61, particularly
+background-observation-failure.json, background-sqlite-{before-worker,after-bounded-observation}.json,
+bounded-worker-full-log.txt, postboot-app-exit-info.txt, bounded-worker-native-files.json,
+both background-state raw files, settings-outcome.json, settings-return-full-logcat.txt,
+settings-return-exit-info.txt, evidence-audit.json, host-retention-{experiment.json,before.txt,after.txt,size.txt},
+r29-retained-startup.json and release-retained-confirmation.json. The original
+paint-observation receipt is superseded by the report's explicit stale-XML exclusion.
+
+Decision: preserve security, users' data, durable URL semantics and the candidate
+freeze. Do not weaken trial attribution or sync leases to mask process death;
+do not delete publications without a supported lifetime contract. F-42, F-36
+and F-27 remain major release qualifications for the improver. A cold-worker
+reproduction with phase/owner evidence is needed before assigning a runtime fix.
+Pending-ID and permission adoption corrections already exist in integration;
+older app captures establish no adoption. Kundalini has not accepted S6/S7/S8.
+S1 remains deliberately parked; S2 needs a Play account.
+
+Only matching integration ledgers change. Ancestry, mirrored notes, unchanged
+implementation trees and diff hygiene were checked. Earlier November 2 gates
+retain their scope; no fresh full-gate, emulator acceptance or runtime-review pass
+is claimed. No test-app writes, protected-branch changes, version/schema changes,
+push or publication.
+
+
+## November 2: iteration-60 Settings renderer loss and retained publication evidence
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 60,
+read-only. All must-haves remain done; no original rebase-queue refresh is eligible.
+Packages bases remain code 90af361 / site 6eb2bd6. Independently checked both bases
+and all 34 exact recorded branch tips as ancestors of the current integrations.
+No feature branch or integration rebuild is needed on these unchanged bases.
+
+Current failure first: the raw Settings log records Android killing renderer 5029
+for low watermark at 14:47:34.330, Chromium in host 4952 explicitly terminating
+the application at 14:47:34.412, and ActivityManager recording host death at
+14:47:34.529. Exit-info independently matches renderer LOW_MEMORY and host
+SIGNALED/status 9 at those timestamps. The returned PID is 6015, not 4952;
+the saved outcome records no painted page and a closed CDP connection before
+recovery. Later feature successes do not establish Settings survival. This is
+a current F-36 recurrence of the Android limitation already specified in S5,
+not evidence of a framework memory leak or a trial loss in this attempt.
+
+Other independently compared saved receipts:
+
+- The artifact audit lists 62 passing consistency checks and explicitly retains
+  the F-36 failure. Its pass is not unconditional device acceptance.
+- Four resolves return four distinct URLs. Native listings grow from 1583 to
+  1587 payloads and sidecars; the exact eight added names match those URLs.
+  All four recorded hashes match the original. Native du reports 321316 KiB
+  of host publications versus 224 KiB of original media. This repeats app-path
+  republication, not an unexplained package leak or a generalized growth rate.
+- Retained startup PID 4322 logs store phase 4688 ms and open completion 4906 ms.
+  First positive sampled accessibility observation is 29426 ms before the
+  explicit link; this establishes neither exact first paint nor startup cause.
+- One registered worker was explicitly triggered after captured Ready:true and
+  elapsed earliest time. Begin 15:02:37.425, complete 15:02:38.818 and native
+  SUCCESS 15:02:38.831 share PID 7890. Exact full-log lines are absent from the
+  before capture. One forced execution proves no natural eligibility or cadence.
+- Supplied stable native SQLite receipts show outbox 2 / incoming absent before
+  the worker, then incoming origin 1470000 / usn 1470002 and outbox 0 before
+  foreground. Both outgoing objects match their exact saved write parameters.
+- Raw activation files are byte-identical, independently hashed SHA256
+  d6e32e08a9121d2cc2be11b039c5125e8b0d04cdfb52d22463a55703b4581e3f:
+  current 1793610605, pending 1793610615, trial null. The report records the final
+  commit and cleanup after this observation.
+
+Evidence: valence-test-app-c/evidence/iteration-60, especially settings-outcome.json,
+settings-return-full-logcat.txt, settings-return-exit-info.txt, evidence-audit.json,
+host-retention-{experiment.json,before.txt,after.txt,size.txt}, r29-retained-startup.json,
+release-retained-paint-observation.json, worker-completion-proof.json,
+worker-full-logcat.txt, background-full-log-before.txt, background-force-qualification.json,
+both native SQLite receipts, worker-write-{a,b}-params.json and both raw activation files.
+
+Decision: preserve security, users' data, durable URL semantics and the candidate
+freeze. Do not weaken trial crash detection to hide Android renderer termination;
+S5 already prices the native recovery change separately. Do not delete retained
+publications without a supported lifetime contract. F-36 and F-27 remain major
+release qualifications for the improver; successful recovery closes neither.
+Pending-ID and permission adoption corrections already exist in integration;
+older app captures establish no adoption. Kundalini has not yet accepted S6/S7/S8.
+S1 remains deliberately parked; S2 needs a Play account.
+
+Only matching integration ledgers change. Ancestry, mirrored notes, unchanged
+implementation trees and diff hygiene were checked. Earlier November 2 gates
+retain their scope; no fresh full-gate, emulator acceptance or runtime-review pass
+is claimed. An initial audit command incorrectly used git rev-parse --short with
+two revisions; separate full-revision output corrected it and all checks passed.
+No test-app writes, protected-branch changes, version/schema changes, push or publication.
+
+
+## November 2: iteration-59 retained startup and controlled publication evidence
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 59,
+read-only. Every must-have remains marked done; no original rebase-queue item is
+eligible. Packages bases remain code 90af361 / site 6eb2bd6. Independently checked
+both bases and all 34 exact recorded tips as ancestors of the integrations.
+No new feature branch or integration rebuild is needed on these unchanged bases.
+
+Independently compared the saved iteration-59 receipts:
+
+- The artifact audit lists 63 passing consistency checks. This is saved artifact
+  consistency, not another device execution or an unconditional acceptance pass.
+- Four sequential resolves return four distinct publication URLs. Decoded native
+  listings grow from 1546 payloads and sidecars to 1550 of each; the exact eight
+  added filenames match the four URLs and their sidecars. All four saved payload
+  hashes match the original. Native du reports 313620 KiB of host publications
+  versus 224 KiB of original media. The app's mediaResolve republishes every call;
+  the runtime creates a random publication id and persists its payload and type.
+  This repeats controlled app-path duplication, not an unexplained package leak
+  or a generalized growth rate. No historical publication was removed.
+- Raw retained-release logs show PID 4227 completing the store phase in 6383 ms;
+  the startup receipt reports open completion at 6478 ms. Native accessibility
+  first samples list text at 20823 ms before the explicit link. These observations
+  establish neither exact first paint nor the delayed operation's owner or cause.
+- Mixed-picker invocation exits successfully. Android reports WARM / TotalTime
+  3240 ms, and the separate settled page receipt shows Flat 2. Settings returns
+  painted in original PID 4969. These successes close no intermittent finding.
+- One registered worker was explicitly triggered after captured Ready:true and
+  elapsed earliest time. The receipt retains the forced-execution qualification;
+  it proves no natural eligibility or cadence. Callback begin 14:03:57.117,
+  completion 14:03:58.620 and native SUCCESS 14:03:58.630 share PID 7376. Each
+  exact timestamped line is in the full log and absent from the before capture.
+- Supplied stable native SQLite receipts show outbox 2 / incoming absent before
+  the worker, then incoming origin 1440000 / usn 1440002 and outbox 0 before
+  foreground. Both outgoing row values independently match their saved params.
+- Raw activation files are independently byte-identical, SHA256
+  862f4639be9780f93700f381310b02c08d0f494b5e0d4639fd9d3aa0f540e92b:
+  current 1793607051, pending 1793607061, trial null. The app report records the
+  final commit and cleanup after this observation.
+
+Evidence: valence-test-app-c/evidence/iteration-59, particularly evidence-audit.json,
+host-retention-{experiment.json,before.txt,after.txt,size.txt}, release-retained-
+logcat.txt, r29-retained-startup.json, release-retained-paint-observation.json,
+mixed-invocation.json, host4-mixed-warm-{launch.txt,ready.json}, settings-outcome.json,
+worker-completion-proof.json, worker-full-logcat.txt, background-full-log-before.txt,
+worker-execution.json, background-force-qualification.json, both native SQLite
+receipts, worker-write-{a,b}-params.json and both background-state raw files.
+
+Decision: preserve security, users' data, durable relative URL semantics and the
+candidate freeze. F-27 remains a major product-readiness qualification for the
+improver's release assessment. Cleanup or revocation needs a supported lifecycle
+contract; deleting publications can break persisted URLs. Bounded app reuse still
+needs rebuilt-host restart/rebind/removal validation and cannot reclaim historical
+publications. No speculative socket, SQLite or media-lifetime change is justified
+by this successful attempt. Historical reliability findings remain open or
+qualified. Pending-ID and permission adoption corrections already exist in the
+integration; older live app captures establish no adoption. Kundalini has not yet
+accepted S6/S7/S8. S1 remains deliberately parked; S2 needs a Play account.
+
+Only matching integration ledgers change. Ancestry, mirrored notes, unchanged
+implementation trees and diff hygiene were checked. Earlier November 2 gates
+retain their scope; no fresh full-gate, emulator acceptance or runtime-review pass
+is claimed. No test-app writes, protected-branch changes, version/schema changes,
+push or publication.
+
+
+## November 2: iteration-58 controlled retention and mixed-picker evidence
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 58,
+read-only. All must-haves remain done; no original queue refresh is eligible.
+Packages bases remain code 90af361 / site 6eb2bd6. Independently checked both
+bases and all 34 exact tips in the current merge-order table as ancestors of the
+current integrations. No feature branch or integration rebuild is needed.
+
+Independently compared the saved iteration-58 receipts:
+
+- All 59 artifact consistency checks pass. The audit explicitly retains the
+  mixed-picker invocation failure; its pass is not an unqualified device pass.
+- Four sequential resolves of one retained immutable photo return four distinct
+  publication URLs. Raw native listings grow from 1517 payloads and 1517 sidecars
+  to 1521 of each; the exact eight added filenames match the experiment receipt.
+  All four published payload hashes match the original. Native du reports
+  307728 KiB of publications versus 224 KiB of original media. App mediaResolve
+  republishes on every call; the runtime persists a random publication id and
+  type sidecar for each call. This establishes repeated-publication duplication
+  in this app workflow, not an unexplained package leak or a generalized rate.
+- Retained release PID 4435 logs store.open completion at 13467 ms and overall
+  open completion at 14013 ms. Native accessibility first observes list text at
+  40906 ms before the explicit deep link. That sampled observation is neither
+  exact first paint nor evidence of the delayed operation's owner or cause.
+- Mixed-picker am start -W exceeded the runner's 30-second deadline. Saved logs
+  show two startup completions in PID 7140, initial serving on port 29351,
+  a later bind conflict on that port and serving on 29129. The settled page
+  reports Flat 2 before recovery. Eventual routing does not erase the failed
+  invocation or establish its cause; no new ANR or host death is established.
+- Settings returned painted in original PID 5031. This successful attempt closes
+  no historical renderer/process-loss finding.
+- One registered worker was explicitly triggered, with captured Ready:true and
+  elapsed earliest time; the timing-delay constraint remains qualified in the
+  app report. Callback begin 13:03:15.101, completion 13:03:16.875 and native
+  SUCCESS 13:03:16.885 share PID 7892. These exact full-log lines are absent from
+  the before capture. One forced execution establishes no natural cadence.
+- Stable supplied native receipts show outbox 2/incoming absent before the
+  worker, then incoming origin 1410000/usn 1410002 and outbox 0 before foreground.
+  Both outgoing inspection objects independently match their saved write params.
+- Raw activation files are independently byte-identical, SHA256
+  c5f8b0abc6377b50bee2f08119d88f4a0b1b9fbde8f8289f119e6103b8e3c3e5:
+  current 1793603655, pending 1793603665, trial null. The app report records the
+  final commit and cleanup after this observation.
+
+Evidence: valence-test-app-c/evidence/iteration-58, especially evidence-audit.json,
+host-retention-{experiment.json,before.txt,after.txt,size.txt}, r29-retained-
+startup.json, release-retained-paint-observation.json, mixed-timeout.json,
+mixed-failure-logcat.txt, mixed-settled-after-timeout.json, settings-outcome.json,
+worker-completion-proof.json, worker-full-logcat.txt, background-full-log-before.txt,
+worker-execution.json, background-force-qualification.json, both native SQLite
+receipts, worker-write-{a,b}-params.json and both background-state raw files.
+
+Decision: preserve security, users' data, durable relative URLs and the candidate
+freeze. F-27 now has controlled evidence of repeated-publication duplication and
+remains a major product-readiness qualification for the improver's release
+assessment. Do not invent runtime deletion/revocation rules: persisted URLs may
+still be referenced. Bounded app reuse needs rebuilt-host restart/rebind/removal
+validation and would not reclaim historical publications. Mixed-picker ownership
+needs investigation rather than a speculative socket or SQLite change. Historical
+findings remain open or qualified. Pending-ID and permission adoption corrections
+are already in integration; the app's older guide does not establish adoption.
+Kundalini has not yet accepted S6/S7/S8. S1 stays parked; S2 needs a Play account.
+
+Only matching integration ledgers change. Ancestry, mirrored notes, unchanged
+implementation trees and diff hygiene were checked. Earlier November 2 full gates
+retain their scope; no fresh full-gate, emulator acceptance or runtime-review pass
+is claimed. No test-app writes, protected-branch changes, version/schema changes,
+push or publication.
+
+
+## November 2: iteration-57 startup and publication-retention evidence
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 57,
+read-only. All must-haves remain done. No original queue refresh is eligible:
+packages bases remain code 90af361 / site 6eb2bd6, and both integrations contain
+all 34 exact branch tips in the current merge-order table. No integration rebuild
+or new feature branch is needed.
+
+Independently checked the saved iteration-57 evidence:
+
+- The artifact audit has 57 passing consistency checks. It is an artifact audit,
+  not an additional device run or an unconditional acceptance pass.
+- Retained release PID 4505 logs store.open id 1 / isolate 4282862 waiting at
+  10002 and 20002 ms, completing at 22365 ms; Valence.open completes at 23091 ms.
+  The 35-second spinner capture is excluded by the app report. Later offline
+  original-photo rendering followed an explicit Flat1 link. Fresh release PID
+  4787 completes open at 1023 ms. Open completion is not meaningful paint;
+  these timings identify delayed work, not the owner or cause of the delay.
+- F-27's raw native listing, decoded as UTF-16LE, contains 1491 payloads and
+  1491 sidecars. The native du receipt reports 301604 KiB of host publications
+  versus 224 KiB of original media. Independently counted hashes: 28 of 32
+  sampled payloads match the original photo. An initial UTF-8 listing reader
+  counted zero; decoding the actual file encoding corrected that reader.
+  App-owned mediaResolve calls publishHostFile on every resolution; mediaRemove
+  deletes the original. The current runtime assigns a new random id per publish
+  and persists its payload and type sidecar. This supports duplicate retention
+  during cumulative use, not a measured single-call growth rate, original-file
+  loss or an isolated framework leak. No runtime-managed file was deleted.
+- Settings returned painted in original PID 5121 this attempt. That success
+  closes no historical renderer/process-loss finding.
+- One registered worker was observed without an explicit force trigger over
+  374.529 seconds. Its begin at 12:02:53.006, completion at 12:02:54.191 and native
+  SUCCESS at 12:02:54.201 share PID 7650 and occur in the saved full log.
+  One observed execution establishes no recurring cadence.
+- Supplied stable native SQLite receipts show preworker outbox 2/incoming absent,
+  then incoming origin 1380000/usn 1380002 and outbox 0 before foreground.
+  Both outgoing inspection objects independently match their saved write params.
+- Raw activation files are independently byte-identical, SHA256
+  83bc33a5424db35c35ff6d1b290d1c5688f535c192266912a7bc0a759771ae01:
+  current 1793599874, pending 1793599884, trial null. The report records final
+  commit and cleanup after this observation.
+
+Evidence lives under valence-test-app-c/evidence/iteration-57: release-retained-
+logcat.txt, r29-fresh-startup.json, host-data-size.txt, host-published-files.txt,
+host-retention-hashes.txt, worker-completion-proof.json, worker-full-logcat.txt,
+worker-execution.json, background-sqlite-before-worker.json, background-sqlite-
+before-resume.json, both background-state raw files and evidence-audit.json.
+
+Decision: security first, then users' data. Preserve the candidate freeze and
+do not invent deletion/revocation semantics for durable URLs or change SQLite
+locking from an operation timing alone. F-27 now has stronger major product-
+readiness evidence and belongs in the improver's release assessment under the
+roadmap's major-finding rule. A supported retention/revocation contract and a
+controlled publication experiment are still needed before claiming durable
+photo readiness. Historical reliability findings remain open or qualified;
+successful attempts do not close them. The pending-ID and permission adoption
+corrections are already in integration, without app adoption claimed. Kundalini
+has not yet accepted S6/S7/S8. S1 stays parked; S2 needs a Play account.
+
+Only matching integration ledgers change in this follow-up. Ancestry, exact
+recorded tips, unchanged implementation trees, mirrored notes and diff hygiene
+were checked. Earlier November 2 full gates retain their recorded scope; no
+fresh full-gate, emulator acceptance or runtime-review pass is claimed. Security
+checks, data, schemas, package versions, templates and build inputs are unchanged.
+No test-app writes, protected-branch changes, push or publication.
+
+
+## November 2: permissions adoption correction (app-c iteration 56)
+
+All must-haves remain done and no original queue refresh was eligible. Read both
+findings and newest completed reports, Kundalini 18 / app-c 56, read-only. The
+permissions guide's instruction to copy since 10 regardless of app history
+contradicted the additive-only rule for newly introduced names. Fieldnote's
+already-shipped since-10 declarations need no change.
+
+Decision: preserve shipped contracts and users' data. New permission names use
+since >= max(10, shipped store schema version + 1), with app schema version at
+least that high; shipped declarations remain unchanged. Ten is the template
+introduction version, not a new runtime delegation floor. Both permission guides,
+the general bridge guide, contract, package README and machine-readable site
+summary agree; the subscription example gates the event with has(). No runtime,
+generator, template, schema or package version change was needed. S1 stays parked
+under the candidate freeze; S2 needs a Play account. Historical intermittent
+findings remain open and Kundalini has not yet accepted S6/S7/S8.
+
+Feature branch codex/permissions-adoption: code 3e7231a / site ee4292c. Independent
+feature gates passed: 113 root tests with zero skips (both compile checks ran),
+603 core, clean fatal-info Dart, 29 bridge, strict/verbatim TS and 45-page site/SEO.
+See permissions-adoption.md. The mirrored permission guides match, and the rendered
+page contains the baseline formula, 10-to-11 example and shipped-declaration rule.
+
+### Fresh integration and merge order
+
+Started fresh from packages code 90af3619bb23c88e1a74527b06edfa3489c2c3a6 and site 6eb2bd628b278cb0582a058f2bceaca77e8549ce.
+Previous integrations are preserved at
+codex/integration-before-permissions-20261102 in both repositories. Replayed the
+fixed queue, remaining recorded branches and both adoption-docs branches in the
+order below. All 34 exact tips and both bases are ancestors. No conflicts.
+Pre-ledger merge heads: code 809aae16109665658fd3ab177511a56095b8c3dd / site bdbb727ab5ac8ae27474e3a91e4abda4713f87cc.
+All previous ledger history is retained below with its original evidence scope.
+
+| Order | Branch | Code tip | Site tip |
+| --- | --- | --- | --- |
+| 1 | codex/r8 | 91589a47cb80a4b2f2ba8cf1a6d1ce3dc5a4eb4e | 072552f08d626d2915e63e7fda2c4c183c4380e3 |
+| 2 | codex/r7 | 969b1a4fb03d76d2af85c69987c4ed5eeb0eb840 | 965b8eb83a7412a9ec601919f227c2c0005a9252 |
+| 3 | codex/r6 | 5b64e06051fab10e0a01d8b3215c17f45d81c980 | 388cd9d3c0fd6043cfa21b0a6440916232847742 |
+| 4 | codex/r3 | db669ddd75ffeb97588fd62304122a58c242f3b0 | f45ccf28d741a2c6e05c766eeb6bff059900bcc5 |
+| 5 | codex/r4 | 588f8761807b1893933303533a04fa14c9975a6f | d8e5dd775dfaf902e206bc2f195c30537f797ba4 |
+| 6 | codex/r5 | 3cc1c0f4d062d13919adcfe5343434e00098fdea | 57a44b50dfd82800f151823ff1563d8a73340678 |
+| 7 | codex/r9 | 0c1b0fb01a48494991cdae4ab32369fb6a2af7b2 | 2913b4d0a743188808a66bd5b7db416ca870c52f |
+| 8 | codex/r10 | f3fcd0dac875fc30af226c7f1bf70750942c0550 | b905b742ab9d90984d513cdf7b99977eabd929f2 |
+| 9 | codex/r14 | fa6e16c55d84bb9a3162514a9c09b65cb634fd54 | fa5e8164a968bd74d943b8a50590dfbd010e08ca |
+| 10 | codex/r11 | 4347872fd95b0a213b99774c3e758c7d60f047d5 | 797224cf3cab016866ecbb56213210ca4fe6556f |
+| 11 | codex/r12 | de783ae9a9f04052cfc2eb7c07ae992c980ccc42 | a57ca8f05358b0bd6cd050c3a475e2aa51b1ecce |
+| 12 | codex/r15 | 2951ac8b84ff2e0935dbb719b749ebbd8839f51f | 87695bbf61a1a647bec692416cacdb3a611a07ac |
+| 13 | codex/r16 | dba50d483f95b724bc10869b460e7774e63cc8de | bb1775d3801e9bc6032523327ce502eb7c7383eb |
+| 14 | codex/r17 | a9922853bb751ac75590cb262d2d732cbed967d1 | 971e5a93d6ff7e910c1c5640fc856940ea0861a4 |
+| 15 | codex/r19 | ebbd5e051f08661adbdc0e485cc5cf1bba32b352 | 7c31ed431453f1df73a494bb2b24d0a7a5603fb4 |
+| 16 | codex/r20 | f8f3f1f9b79117e73d30917f65ed2a281b57a070 | 98cbad0d516db52225dd593fe72dea76b4800df0 |
+| 17 | codex/r21 | 92221ea7682259d7fea49b4f8afbb98d5d735610 | d3d0e2b226196d871d53c47224bcf491bc44a444 |
+| 18 | codex/r22 | b2e5a4009b44ea8729eafb208ee0be4a5aad876a | e84efa7a38d0858491632e429bc659b8252ffb55 |
+| 19 | codex/r23 | 373d29fca370bb03e2f49f148606bda8283950fa | 0bcc4407a44cc260677dce499efad0cbfe4a6690 |
+| 20 | codex/r24 | 23a2783f5c1bb8e68db2f6712a66b6caee542617 | fcb04f2a5690a22dbf75cbdf1de2f06982aa1440 |
+| 21 | codex/r25 | 52fd6e5c382df6582d5955b02586f77c80383c4c | 9f614ee0a44a9a4c98e5d07d16cba243151df60c |
+| 22 | codex/r26 | 7c43658637da1f97a6fe3e80c2669ab83ec347ad | 14376728046b8ba6f6c062154d41fa1b41399176 |
+| 23 | codex/r27 | 8296d4e68753185c132c39da3c94369989818f27 | c4a8fad9bc2dc04f9b8033080608e1250785e08e |
+| 24 | codex/r28 | 8d42a82d96ad124c3cbe122280b64a00f43371bb | 0cbadc71c2f2d40aa11b5aa6b21cf114ab8ece65 |
+| 25 | codex/r29 | 6e250677b3bc6510f7ef2ea3e7c2ddb4ab1a509f | d5a98a85ea9e9c41aa3c2cde461e0e92de1aa555 |
+| 26 | codex/r31 | 44de344c92e0122f3361dacef1acc0788ff312c2 | 1dfdc0a50ed78b2103dfe3ce15b8461c588332cb |
+| 27 | codex/link-compat | 48d1a8a0a71a5e0d06f3d1ecac2057514598e45c | f494813c716882cfab8161c1edfdbddaaaef85d9 |
+| 28 | codex/notify-event-compat | 8a69b5da422eb403014d907f66154aea17469af9 | 094697cfb948d466c6d25dabfd7351ddac6664e2 |
+| 29 | codex/sync-fixes | aa025cfdf795e6c3caa941d4dda2701e12d2c381 | dc223e8ec5d3e85e8d02cf9a99bfe547fc3e3e64 |
+| 30 | codex/renderer-diagnostics | dc53ba05fcfc5108e88896ab9cd6218bdbcb0f25 | d3fd0d95cc232e26ae8e3e739da2e96d0db05887 |
+| 31 | codex/s7 | f28a562c9f61b205b650de7dc11919ed13110667 | 5f774d8805a10251947435d3f1a58e5368d1876a |
+| 32 | codex/s8 | 3f444554f0482046b4e09dbddf4da9d581e5ad87 | 05943aaf49d460554dd70105579bc3ee8f9f7d67 |
+| 33 | codex/pendingids-adoption | 886a9f92a21228c14e33c290796f522accb5f6c3 | 99a8bf76b3d1d32f4080782b0fd8b58f696cd90e |
+| 34 | codex/permissions-adoption | 3e7231a3e8d6d842f61ce876ceede20fd69e4d66 | ee4292ce5d60a907457d696abbf318f1c81738cf |
+
+### Fresh gates on the combined tree
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 114 passed, zero skips; generated Dart and strict/verbatim TS ran |
+| Core Flutter / fatal-info analysis | 609 passed / no issues |
+| Core pub publish dry run | Zero warnings |
+| Push Flutter / fatal-info analysis | 2 passed / no issues |
+| Push pub publish dry run | Zero warnings, existing local-override hint |
+| Bridge tests / strict-verbatim TypeScript | 29 passed / passed |
+| Root and bridge pack dry runs | Passed |
+| Example codegen check / signed builtin verification | No generated changes / seq 1793567181, 2 files verified |
+| Example Flutter / fatal-info analysis | 29 passed / no issues |
+| Separate compile-time dev-mode regression | 1 passed |
+| Example debug APK | Passed; assembleDebug 147.6s, existing app_badge_plus Kotlin migration warning |
+| Standalone Windows py Firebase audit | PASS: core graph, manifest and all 19 DEX files contain no Firebase SDK references |
+| Site build / SEO | 46 pages passed |
+| Diff hygiene and exact-tip ancestry | Passed in both repositories |
+
+Logs: %TEMP%/valence-permissions-integration-*.log. The initial pack wrapper treated
+npm notice stderr as a PowerShell error; corrected invocations checked native exit
+codes and passed. The first extra verify invocation used the wrong files directory;
+the corrected explicit builtin/files path passed. Original logs are retained; no
+product failure was hidden. The APK used process-scoped Gradle settings: 2 GiB heap,
+1 GiB metaspace, two workers and ActiveProcessorCount=2.
+
+### Saved app evidence and limits
+
+Independently compared iteration-56 receipts: all 57 artifact consistency checks
+pass; Settings returned painted in original PID 4635; exact outgoing objects match
+their saved write params and stable pre-foreground native receipts report outbox 0.
+New worker begin 10:59:37.024, complete 10:59:38.524 and native SUCCESS 10:59:38.533
+share PID 7741; those exact full-log lines are absent from the before capture.
+The worker was explicitly forced after eligibility; one execution proves no
+recurring cadence. Independently hashed raw activation files are byte-identical,
+SHA256 7f2577a5b6336371234aa184d09c24878a8c1ef08ae259f92c88191b4454ff29,
+current 1793595991 / pending 1793596002 / trial null. Successful Settings/media
+attempts close no intermittent finding. App-owned runner corrections establish no
+new runtime defect. The existing pending-ID documentation correction remains in
+integration; the report's old guide is not evidence of app adoption of that fix.
+
+Security-path checklist: verification order, signatures, nonce and strict decoding,
+navigation/subframe lock, atomic writes, keys, permission allowlist/foreground
+checks, account isolation, cookie clearing and release-mode dev exclusion are
+unchanged. Compared with the previous integration, only documentation differs;
+runtime, templates, schemas and signed assets are byte-identical. No fresh emulator
+acceptance or runtime security-review pass is claimed. No test-app writes,
+protected-branch changes, push or publication.
+
+## November 2: iteration-55 acceptance follow-up
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 55,
+read-only. All must-haves remain done; no original rebase-queue refresh is eligible.
+Packages bases remain code 90af361 / site 6eb2bd6. Both bases and all 33 exact
+feature/compatibility tips in the current merge-order table are ancestors of the
+current integrations. No integration rebuild or feature branch is needed.
+
+Independently compared app-c's saved iteration-55 receipts:
+
+- The artifact audit contains 57 passing consistency checks and no current observed
+  failures. This is artifact consistency, not another device run.
+- Settings returned painted in original PID 5116. Successful Settings and media
+  attempts do not close historical F-36/F-40 or establish renderer-loss recovery.
+- One registered worker was explicitly triggered after captured Ready:true and
+  elapsed earliest time; observation lasted 561.913 seconds. Callback begin at
+  10:28:30.214, completion at 10:28:31.482 and native SUCCESS at 10:28:31.494
+  share PID 5321. The exact full-log lines are absent from the before capture.
+  One forced execution proves no recurring cadence.
+- Stable supplied native receipts show outbox 2/incoming absent before the worker,
+  then incoming origin 1320000/usn 1320002 and outbox 0 before foreground. Both
+  outgoing inspection objects independently match their saved write params.
+- Independently hashed raw activation files are byte-identical, SHA256
+  0d37fe251fd3b4d932c481acb6ba45b34850f25adb548911a5c9dc305c31e7e8:
+  current 1793594039, pending 1793594051, trial null. Final commit and cleanup
+  are recorded after observation; cleanup reports app/mocks stopped, airplane off
+  and no forwards.
+- App-owned runner errors, stale mock ownership and the iteration-54 fixture label
+  remain separately qualified in runner-notes.md. F-41's previously empty heading
+  was restored from iteration-54 evidence. The report still sees the old guide;
+  the existing pendingids-adoption branch and this integration already contain
+  the additive-baseline correction. This is not evidence of adoption by the app.
+
+Decision: preserve security, users' data and the candidate freeze. These receipts
+justify no speculative change to rollback strikes, sync leases, account isolation
+or notification contracts. Historical findings remain open or qualified;
+Kundalini has not yet accepted S6/S7/S8. S1 stays parked; S2 needs a Play account.
+
+This follow-up changes matching integration ledgers only. Ancestry, matching
+sections, unchanged implementation trees and diff hygiene were checked. Earlier
+November 2 full gates retain their recorded scope; no fresh full-gate, device or
+runtime-review pass is claimed. No test-app writes, protected-branch changes,
+version/schema changes, push or publication. The initial ancestry reader included
+historical merge tables and counted 44 rows instead of 33; narrowing it to the
+current table passed. No application or runtime gate failed.
+
+## November 2: pending-ID adoption correction (app-c F-41)
+
+All must-haves remain done; no original rebase-queue refresh was eligible. Read
+both findings and newest completed reports, Kundalini 18 / app-c 54, read-only.
+App-c identifies a documentation contradiction, without reproducing a generator
+or runtime failure: a new pendingIds declaration cannot universally use since 16
+once the app has shipped schema 16 or higher. Fieldnote already shipped its
+since-16 declaration and needs no change. Historical intermittent findings remain
+open; successful isolated attempts do not close them.
+
+Decision: preserve shipped contracts and users' data before convenience. Document
+since >= max(16, shipped store schema version + 1), app schema version at least
+that value, and preserve existing declarations. The guide explicitly covers an
+app at 16 adding the method at 17 or higher. Package README copies, the unreleased
+bridge changelog, the site README and llms.txt agree. The repository's stale
+app.openStore guide now matches the site's existing additive-rule correction.
+No implementation, generator, template, signed asset, package version or schema
+value changed for this repair. No speculative runtime fix was introduced.
+
+### Fresh assembly and merge order
+
+Started fresh from packages code 90af3619bb23c88e1a74527b06edfa3489c2c3a6 and
+site 6eb2bd628b278cb0582a058f2bceaca77e8549ce. The previous integration is preserved
+as codex/integration-before-f41-20261102 in both repositories. Replayed the fixed
+queue first, then the remaining recorded tips, S8 and this documentation branch.
+The first 31 tips were already ancestors of packages; S8 and the docs branch
+merged without conflicts. All 33 exact tips below were checked as ancestors.
+Pre-ledger merge heads: code 3fd594c93c8eb444e4efad916fe893823bf55030 /
+site 138a3649039a2cb56c99b2993f958f4b91cc9cd8. Previous evidence-ledger sections
+are retained below; historical gates keep their original scope.
+
+| Order | Branch | Code tip | Site tip |
+| --- | --- | --- | --- |
+| 1 | codex/r8 | 91589a47cb80a4b2f2ba8cf1a6d1ce3dc5a4eb4e | 072552f08d626d2915e63e7fda2c4c183c4380e3 |
+| 2 | codex/r7 | 969b1a4fb03d76d2af85c69987c4ed5eeb0eb840 | 965b8eb83a7412a9ec601919f227c2c0005a9252 |
+| 3 | codex/r6 | 5b64e06051fab10e0a01d8b3215c17f45d81c980 | 388cd9d3c0fd6043cfa21b0a6440916232847742 |
+| 4 | codex/r3 | db669ddd75ffeb97588fd62304122a58c242f3b0 | f45ccf28d741a2c6e05c766eeb6bff059900bcc5 |
+| 5 | codex/r4 | 588f8761807b1893933303533a04fa14c9975a6f | d8e5dd775dfaf902e206bc2f195c30537f797ba4 |
+| 6 | codex/r5 | 3cc1c0f4d062d13919adcfe5343434e00098fdea | 57a44b50dfd82800f151823ff1563d8a73340678 |
+| 7 | codex/r9 | 0c1b0fb01a48494991cdae4ab32369fb6a2af7b2 | 2913b4d0a743188808a66bd5b7db416ca870c52f |
+| 8 | codex/r10 | f3fcd0dac875fc30af226c7f1bf70750942c0550 | b905b742ab9d90984d513cdf7b99977eabd929f2 |
+| 9 | codex/r14 | fa6e16c55d84bb9a3162514a9c09b65cb634fd54 | fa5e8164a968bd74d943b8a50590dfbd010e08ca |
+| 10 | codex/r11 | 4347872fd95b0a213b99774c3e758c7d60f047d5 | 797224cf3cab016866ecbb56213210ca4fe6556f |
+| 11 | codex/r12 | de783ae9a9f04052cfc2eb7c07ae992c980ccc42 | a57ca8f05358b0bd6cd050c3a475e2aa51b1ecce |
+| 12 | codex/r15 | 2951ac8b84ff2e0935dbb719b749ebbd8839f51f | 87695bbf61a1a647bec692416cacdb3a611a07ac |
+| 13 | codex/r16 | dba50d483f95b724bc10869b460e7774e63cc8de | bb1775d3801e9bc6032523327ce502eb7c7383eb |
+| 14 | codex/r17 | a9922853bb751ac75590cb262d2d732cbed967d1 | 971e5a93d6ff7e910c1c5640fc856940ea0861a4 |
+| 15 | codex/r19 | ebbd5e051f08661adbdc0e485cc5cf1bba32b352 | 7c31ed431453f1df73a494bb2b24d0a7a5603fb4 |
+| 16 | codex/r20 | f8f3f1f9b79117e73d30917f65ed2a281b57a070 | 98cbad0d516db52225dd593fe72dea76b4800df0 |
+| 17 | codex/r21 | 92221ea7682259d7fea49b4f8afbb98d5d735610 | d3d0e2b226196d871d53c47224bcf491bc44a444 |
+| 18 | codex/r22 | b2e5a4009b44ea8729eafb208ee0be4a5aad876a | e84efa7a38d0858491632e429bc659b8252ffb55 |
+| 19 | codex/r23 | 373d29fca370bb03e2f49f148606bda8283950fa | 0bcc4407a44cc260677dce499efad0cbfe4a6690 |
+| 20 | codex/r24 | 23a2783f5c1bb8e68db2f6712a66b6caee542617 | fcb04f2a5690a22dbf75cbdf1de2f06982aa1440 |
+| 21 | codex/r25 | 52fd6e5c382df6582d5955b02586f77c80383c4c | 9f614ee0a44a9a4c98e5d07d16cba243151df60c |
+| 22 | codex/r26 | 7c43658637da1f97a6fe3e80c2669ab83ec347ad | 14376728046b8ba6f6c062154d41fa1b41399176 |
+| 23 | codex/r27 | 8296d4e68753185c132c39da3c94369989818f27 | c4a8fad9bc2dc04f9b8033080608e1250785e08e |
+| 24 | codex/r28 | 8d42a82d96ad124c3cbe122280b64a00f43371bb | 0cbadc71c2f2d40aa11b5aa6b21cf114ab8ece65 |
+| 25 | codex/r29 | 6e250677b3bc6510f7ef2ea3e7c2ddb4ab1a509f | d5a98a85ea9e9c41aa3c2cde461e0e92de1aa555 |
+| 26 | codex/r31 | 44de344c92e0122f3361dacef1acc0788ff312c2 | 1dfdc0a50ed78b2103dfe3ce15b8461c588332cb |
+| 27 | codex/link-compat | 48d1a8a0a71a5e0d06f3d1ecac2057514598e45c | f494813c716882cfab8161c1edfdbddaaaef85d9 |
+| 28 | codex/notify-event-compat | 8a69b5da422eb403014d907f66154aea17469af9 | 094697cfb948d466c6d25dabfd7351ddac6664e2 |
+| 29 | codex/sync-fixes | aa025cfdf795e6c3caa941d4dda2701e12d2c381 | dc223e8ec5d3e85e8d02cf9a99bfe547fc3e3e64 |
+| 30 | codex/renderer-diagnostics | dc53ba05fcfc5108e88896ab9cd6218bdbcb0f25 | d3fd0d95cc232e26ae8e3e739da2e96d0db05887 |
+| 31 | codex/s7 | f28a562c9f61b205b650de7dc11919ed13110667 | 5f774d8805a10251947435d3f1a58e5368d1876a |
+| 32 | codex/s8 | 3f444554f0482046b4e09dbddf4da9d581e5ad87 | 05943aaf49d460554dd70105579bc3ee8f9f7d67 |
+| 33 | codex/pendingids-adoption | 886a9f92a21228c14e33c290796f522accb5f6c3 | 99a8bf76b3d1d32f4080782b0fd8b58f696cd90e |
+
+### Fresh gates on the combined tree
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 114 passed, zero skips; generated Dart and strict/verbatim TS ran |
+| Core flutter test / fatal-info analysis | 609 passed / no issues |
+| Core pub publish dry run | Zero warnings |
+| Push flutter test / fatal-info analysis | 2 passed / no issues |
+| Push pub publish dry run | Zero warnings, existing local-override hint |
+| Bridge tests / strict-verbatim TypeScript | 29 passed / passed |
+| Root and bridge pack dry runs | Passed |
+| Example codegen check / signed builtin verification | Passed / seq 1793567181, 2 files |
+| Example Flutter tests / fatal-info analysis | 29 passed / no issues |
+| Separate compile-time dev-mode regression | 1 passed |
+| Example debug APK | Passed; assembleDebug 104.1s |
+| Standalone Windows py Firebase audit | PASS: core graph, manifest and all 19 DEX files contain no Firebase SDK references |
+| Site build / SEO | 46 pages passed |
+| Both diff checks and 33-tip ancestry checks | Passed |
+
+Logs: %TEMP%/valence-f41-integration-*.log. Required feature-branch gates also
+passed independently: 113 root tests, zero skips; 603 core; 29 bridge; strict TS,
+clean fatal-info Dart, zero-warning core pub dry run and 45-page site/SEO build.
+The rendered final notification guide was checked for the formula, the 16-to-17
+example and preservation of already-shipped declarations. No mirror test was
+added for a prose-only correction.
+
+One extra verify invocation omitted --manifest and --files and exited before
+checking an artifact. Its original failure log is retained; verify-corrected.log
+records the successful explicit manifest/content-addressed-files invocation.
+No product failure or assertion was hidden. The APK retains the existing
+app_badge_plus Kotlin migration warning. Gradle settings were process-scoped:
+2 GiB heap, 1 GiB metaspace, two workers and ActiveProcessorCount=2.
+
+### Review and acceptance limits
+
+Compared with the previous integration, implementation, templates, codegen and
+signed assets are byte-identical; only documentation and validation ledgers differ.
+Security-path checklist: signature/check ordering, nonce/strict decoding, navigation
+lock, atomic writes, keys, account isolation, cookie-clearing order and release
+exclusion of dev mode remain unchanged. Inherited feature/security reviews retain
+their recorded scope; no new independent runtime review is claimed for prose.
+The improver still owns review and merging into packages.
+
+No emulator was used; no new device acceptance is claimed. App-c's saved artifact
+audit and single forced worker remain scoped app evidence, not recurring cadence
+or a runtime repair. Kundalini has not accepted S6/S7/S8. S1 stays parked under
+the candidate freeze and S2 needs a Play account. iOS remains experimental and
+untested. No test-app writes, protected-branch changes, version/schema changes,
+push or publication. See pendingids-adoption.md for the focused repair note.
+
+## November 2: iteration-53 acceptance follow-up
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 53,
+read-only. All must-haves are done; no rebase-queue item is eligible. Packages
+bases remain code 90af361 / site 6eb2bd6. Both bases and all 32 recorded feature
+tips in the current merge-order table are ancestors of both integrations.
+
+Independently compared app-c's saved iteration-53 receipts:
+
+- Settings returned painted in original PID 4887. Camera/gallery completed
+  directly this attempt; neither success closes historical F-36 or F-40.
+- The artifact audit records 54 passing consistency checks and no current
+  observed failures. These are saved artifact checks, not another device run.
+- One registered worker was explicitly triggered; observation lasted 469.791
+  seconds. Full-log callback begin 06:59:31.392, completion 06:59:32.860 and
+  SUCCESS 06:59:32.869 share PID 7250. Those exact lines are absent from the
+  before capture. One forced execution proves no recurring cadence.
+- Stable supplied native receipts show outbox 2/incoming absent before the worker,
+  then incoming origin 1260000/usn 1260002 and outbox 0 before foreground.
+  Both outgoing inspection objects independently match their saved write params.
+- Independently hashed raw activation files are byte-identical, SHA256
+  18f05ffec07404178cc9a2c3c619a972361673f96a7cfe857414130f5dccd8d8:
+  current 1793581590, pending 1793581600, trial null. The report records final
+  commit and cleanup after observation.
+- The app's review found unexecuted copied report generators containing historical
+  destinations and failure narratives. They were removed/excluded in favor of an
+  explicit operational-script list and guarded current-receipt writer. These are
+  app-owned evidence-integrity problems, not established Valence defects. The
+  iteration-52 share-text fixture label remains explicitly disclosed.
+
+Decision: preserve security, user data and the candidate freeze. Successful
+isolated attempts and corrected reporting scripts do not justify speculative
+changes to rollback strikes, account isolation or sync leases. Historical
+reliability findings remain open or qualified; Kundalini has not yet accepted
+S6/S7/S8. S1 stays parked; S2 needs a Play account.
+
+This follow-up changes integration ledgers only. Ancestry, matching sections,
+unchanged implementation trees and diff hygiene were checked. Earlier November 2
+full gates retain their recorded scope; no fresh full-gate, device or runtime-review
+pass is claimed. No test-app writes, protected-branch changes, version/schema
+changes, push or publication. The first receipt-check command used a nonexistent
+before-log filename and stopped; the corrected read of background-full-log-before.txt
+passed. This was a reader error, not an application or runtime gate failure.
+
+## November 2: iteration-52 acceptance follow-up
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 52,
+read-only. All must-haves are done; no rebase-queue item is eligible. Packages
+bases remain code 90af361 / site 6eb2bd6. Both bases and all 32 exact current
+feature tips in the merge-order table are ancestors of both integrations.
+
+Independently compared app-c's saved iteration-52 receipts:
+
+- F-40 recurred. The earlier Camera diagnostic says no ANR since boot; after the
+  bounded shutter retry, Android identifies an input-dispatch ANR at 06:17:36 in
+  com.android.camera2/com.android.camera.CaptureActivity. Later media success is
+  a separate retry, not a repair of that failed attempt or proof of Valence causation.
+- Settings returned painted in original PID 4814. This successful attempt does
+  not close historical F-36 or establish renderer-loss recovery.
+- The artifact audit records 54 passing consistency checks and explicitly retains
+  F-40 as an observed failure. These are saved artifact checks, not another device
+  run or unconditional acceptance.
+- The app added DartPluginRegistrant.ensureInitialized() before backgroundSync,
+  matching the current host recipe. Earlier successful workers do not establish
+  a defect caused by its prior omission; this is app-owned wiring.
+- One registered worker was explicitly triggered after captured readiness and
+  earliest-time eligibility; observation lasted 376.668 seconds. Full-log callback
+  begin 06:30:19.570, completion 06:30:20.828 and SUCCESS 06:30:20.843 share PID
+  7530; those exact lines are absent from the before capture. One forced execution
+  proves no recurring cadence.
+- Stable supplied native receipts show outbox 2/incoming absent before the worker,
+  then incoming origin 1230000/usn 1230002 and outbox 0 before foreground.
+  Both outgoing inspection objects independently match their saved write params.
+- Independently hashed raw activation files are byte-identical, SHA256
+  5cdbdda7fc2bd2075e5ecf338f9161bb0809de24fc1ffa7c6f3642a61eab8fa4:
+  current 1793579930, pending 1793579940, trial null. The report records final
+  commit and cleanup after observation.
+
+Decision: preserve security, user data and the candidate freeze. An external
+Camera ANR and successful isolated retries do not justify speculative changes
+to rollback strikes, account isolation or sync leases. Historical reliability
+findings remain open or qualified; Kundalini has not yet accepted S6/S7/S8.
+S1 stays parked; S2 needs a Play account.
+
+This follow-up changes integration ledgers only. Ancestry, matching sections,
+unchanged implementation trees and diff hygiene were checked. Earlier November 2
+full gates retain their recorded scope; no fresh full-gate, device or runtime-review
+pass is claimed. No test-app writes, protected-branch changes, version/schema
+changes, push or publication. The first independent receipt-check attempt read
+a UTF-16LE PowerShell diagnostic as UTF-8 and failed its no-ANR assertion; the
+unchanged receipt passed after BOM-aware decoding. This was a reader error,
+not an application or runtime gate failure.
+
+## November 2: iteration-51 acceptance follow-up
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 51,
+read-only. All must-haves are marked done; no rebase-queue item is eligible.
+Packages bases remain code 90af361 / site 6eb2bd6. Both bases and all 32 exact
+feature tips in the current merge-order table are ancestors of both integrations.
+
+Independently compared app-c's saved iteration-51 receipts:
+
+- Settings returned painted in original PID 4734. This successful attempt does
+  not close historical F-36 or establish renderer-loss recovery.
+- The artifact audit records 54 passing consistency checks. These are saved
+  artifact checks, not an additional device run or unconditional acceptance.
+- One registered worker was explicitly triggered after captured readiness and
+  earliest-time eligibility; observation lasted 499.286 seconds. Full-log callback
+  begin 05:58:39.003, completion 05:58:40.316 and SUCCESS 05:58:40.335 share
+  PID 7443, and those exact lines are absent from the before capture. One forced
+  execution proves no recurring cadence.
+- Stable supplied native receipts show outbox 2/incoming absent before the worker,
+  then incoming origin 1200000/usn 1200002 and outbox 0 before foreground.
+  Both outgoing inspection objects independently match their saved write params.
+- Independently hashed raw activation files are byte-identical, SHA256
+  0bca80c274e84de6ae5fb34999fcb2ef95059aed698bb8d10661482455eb1422:
+  current 1793577891, pending 1793577901, trial null. The app report records
+  final commit and cleanup after observation.
+
+Decision: preserve security, user data and the candidate freeze. Successful
+isolated attempts do not justify changing rollback strikes, account isolation or
+sync leases. Historical reliability findings remain open or qualified; Kundalini
+has not yet accepted S6/S7/S8. S1 stays parked; S2 needs a Play account.
+
+This follow-up changes integration ledgers only. Ancestry, matching sections,
+unchanged implementation trees and diff hygiene were checked. Earlier November 2
+full gates retain their recorded scope; no fresh full-gate, device or runtime-review
+pass is claimed. No test-app writes, protected-branch changes, version/schema
+changes, push or publication.
+
+## November 2: iteration-50 acceptance follow-up
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 50,
+read-only. No eligible must-have or rebase item remains. Current packages bases
+remain code 90af361 / site 6eb2bd6; ancestry checks confirm both bases and all
+32 feature tips in the merge-order table are included in both integrations.
+
+App-c's saved receipts were compared independently:
+
+- Settings returned painted in the original PID 4793. This successful attempt
+  does not close historical F-36 or establish renderer-loss recovery.
+- The artifact audit contains 56 passing consistency checks, not 56 independent
+  device reruns. The strengthened R29 fixture is app-side validation, not a
+  shipped runtime change or exhaustive privacy/concurrency proof.
+- An early forced registered job was refused before schedule and is excluded.
+  The later observed execution has forced=false, after 364.945 seconds of
+  observation. Full-log callback begin 05:29:03.588, completion 05:29:04.845 and
+  SUCCESS 05:29:04.855 share PID 7535. One execution proves no recurring cadence.
+- Stable native receipts show outbox 2/incoming absent before the worker, then
+  incoming origin 1170000/usn 1170002, exact outgoing inspection objects and
+  outbox 0 before foreground. Both outgoing objects match the saved write params.
+- Independently hashed raw activation files are byte-identical, SHA256
+  f32e1a9c8cfcb82567c318939776aa905ada97591032a1dd5bb86095803db04c:
+  current 1793576113, pending 1793576122, trial null. The report records the
+  final commit after observation. The excluded notification-receiver start
+  is preserved separately from the accepted post-delivery cold-tap attempt.
+
+Decision: preserve security, user data and the candidate freeze. Successful
+retries do not justify weakening rollback strikes, account isolation or leases.
+S1 remains deliberately parked; S2 needs a Play account. Historical findings
+remain open or qualified; Kundalini has not yet accepted S6/S7/S8.
+
+This is an evidence-ledger change only. Ancestry and diff hygiene were checked;
+implementation trees are unchanged. Earlier November 2 full gates retain their
+recorded scope; no fresh full-gate, device or runtime-review pass is claimed.
+No test-app writes, protected-branch changes, version/schema changes, push or
+publication.
+
+## November 2: iteration-49 acceptance follow-up
+
+Read both apps' VALENCE_FINDINGS.md and newest completed reports, Kundalini 18 /
+app-c 49, read-only. No eligible must-have or queue refresh remains. Current packages
+bases are still code 90af361 / site 6eb2bd6; all 32 recorded branch tips and both
+packages bases are ancestors of the existing integration heads.
+
+Independently compared app-c's saved iteration-49 receipts:
+
+- The full Settings-return log records lmkd killing renderer 4684 at 04:44:25.351
+  and host 4589 at 04:44:25.373. Saved return PID is 5444 and pagePainted is false.
+  This is a failed survival attempt; later recovery does not repair it. This attempt
+  does not establish Chromium explicitly terminating the host or a memory leak.
+- The saved artifact audit has 53 passing consistency checks and explicitly records
+  the Settings failure. These checks are not unconditional reliability acceptance.
+- Worker execution is explicitly forced. Full-log callback begin 04:59:08.732,
+  completion 04:59:10.093 and SUCCESS 04:59:10.106 share PID 7371.
+- Stable pre-worker native receipt has outbox 2 and incoming absent. Before-resume
+  receipt has incoming origin 1140000/usn 1140002, outbox 0 and both outgoing
+  inspection objects matching their saved write parameters exactly.
+- Independently hashed raw activation files are byte-identical, SHA256
+  d9b9a4a942ffc8332078b9c6d13af03f767d955e004b3516024ee57485b93bb7:
+  current 1793574349, pending 1793574358, trial null. The app reports final commit
+  to 1793574358 after the observation. One forced execution proves no cadence.
+
+Decision: preserve security, user data and the candidate freeze. A direct OS eviction
+is not evidence that changing the renderer callback or rollback strikes would repair
+this attempt; a successful isolated worker does not resolve historical concurrency.
+No runtime, lease, retry, schema or package-version change is justified by these
+receipts. F-27/F-29/F-33/F-34/F-35/F-36/F-37/F-40 remain open or qualified.
+Kundalini has not yet accepted S6/S7/S8; F-72/F-73 remain recorded adoption/DX issues.
+S1 stays parked and S2 needs a Play account.
+
+This follow-up changes the integration ledgers only. Ancestry, matching new sections,
+unchanged implementation trees and diff hygiene were checked. The full gates below
+retain their original November 2 scope; no fresh gate, device or independent runtime
+review pass is claimed. No test-app writes, protected-branch changes, push or publication.
+
+## In plain terms
+
+The previous integration omitted the final cookie-jar device-validation and review fixes.
+This fresh codex/integration starts from packages code 90af3619bb23c88e1a74527b06edfa3489c2c3a6
+and site 6eb2bd628b278cb0582a058f2bceaca77e8549ce. It retains those fixes and S8.
+Pre-ledger merge heads: code e292535f3f339abadd6c9758f681d33612512f1e,
+site a02bd8e192ab201cda724dc90edb981840eac0ea. All gates below ran on this combined tree.
+
+Decision: preserve security and stored data before convenience or additional features.
+The reviewed cookie-clearing order remains before token writes, runtime jar configuration
+is validated, and explicit update checks still use the attached native policy path.
+No must-have remains. S1 stays parked under the recorded candidate freeze; S2 needs
+a Play account. No package version changed. Schema 19 and earlier reservations remain.
+
+## Merge order and exact tips
+
+The required queue order was replayed first, followed by the remaining numbered tips
+in ascending order, compatibility/cache tips and S8. The first 31 merges were already
+included in packages; S8 merged last in both repositories, without conflicts.
+All 32 exact tips below are ancestors of both resulting integration heads.
+
+| Branch | Code tip | Site tip |
+| --- | --- | --- |
+| codex/r8 | 91589a47cb80a4b2f2ba8cf1a6d1ce3dc5a4eb4e | 072552f08d626d2915e63e7fda2c4c183c4380e3 |
+| codex/r7 | 969b1a4fb03d76d2af85c69987c4ed5eeb0eb840 | 965b8eb83a7412a9ec601919f227c2c0005a9252 |
+| codex/r6 | 5b64e06051fab10e0a01d8b3215c17f45d81c980 | 388cd9d3c0fd6043cfa21b0a6440916232847742 |
+| codex/r3 | db669ddd75ffeb97588fd62304122a58c242f3b0 | f45ccf28d741a2c6e05c766eeb6bff059900bcc5 |
+| codex/r4 | 588f8761807b1893933303533a04fa14c9975a6f | d8e5dd775dfaf902e206bc2f195c30537f797ba4 |
+| codex/r5 | 3cc1c0f4d062d13919adcfe5343434e00098fdea | 57a44b50dfd82800f151823ff1563d8a73340678 |
+| codex/r9 | 0c1b0fb01a48494991cdae4ab32369fb6a2af7b2 | 2913b4d0a743188808a66bd5b7db416ca870c52f |
+| codex/r10 | f3fcd0dac875fc30af226c7f1bf70750942c0550 | b905b742ab9d90984d513cdf7b99977eabd929f2 |
+| codex/r14 | fa6e16c55d84bb9a3162514a9c09b65cb634fd54 | fa5e8164a968bd74d943b8a50590dfbd010e08ca |
+| codex/r11 | 4347872fd95b0a213b99774c3e758c7d60f047d5 | 797224cf3cab016866ecbb56213210ca4fe6556f |
+| codex/r12 | de783ae9a9f04052cfc2eb7c07ae992c980ccc42 | a57ca8f05358b0bd6cd050c3a475e2aa51b1ecce |
+| codex/r15 | 2951ac8b84ff2e0935dbb719b749ebbd8839f51f | 87695bbf61a1a647bec692416cacdb3a611a07ac |
+| codex/r16 | dba50d483f95b724bc10869b460e7774e63cc8de | bb1775d3801e9bc6032523327ce502eb7c7383eb |
+| codex/r17 | a9922853bb751ac75590cb262d2d732cbed967d1 | 971e5a93d6ff7e910c1c5640fc856940ea0861a4 |
+| codex/r19 | ebbd5e051f08661adbdc0e485cc5cf1bba32b352 | 7c31ed431453f1df73a494bb2b24d0a7a5603fb4 |
+| codex/r20 | f8f3f1f9b79117e73d30917f65ed2a281b57a070 | 98cbad0d516db52225dd593fe72dea76b4800df0 |
+| codex/r21 | 92221ea7682259d7fea49b4f8afbb98d5d735610 | d3d0e2b226196d871d53c47224bcf491bc44a444 |
+| codex/r22 | b2e5a4009b44ea8729eafb208ee0be4a5aad876a | e84efa7a38d0858491632e429bc659b8252ffb55 |
+| codex/r23 | 373d29fca370bb03e2f49f148606bda8283950fa | 0bcc4407a44cc260677dce499efad0cbfe4a6690 |
+| codex/r24 | 23a2783f5c1bb8e68db2f6712a66b6caee542617 | fcb04f2a5690a22dbf75cbdf1de2f06982aa1440 |
+| codex/r25 | 52fd6e5c382df6582d5955b02586f77c80383c4c | 9f614ee0a44a9a4c98e5d07d16cba243151df60c |
+| codex/r26 | 7c43658637da1f97a6fe3e80c2669ab83ec347ad | 14376728046b8ba6f6c062154d41fa1b41399176 |
+| codex/r27 | 8296d4e68753185c132c39da3c94369989818f27 | c4a8fad9bc2dc04f9b8033080608e1250785e08e |
+| codex/r28 | 8d42a82d96ad124c3cbe122280b64a00f43371bb | 0cbadc71c2f2d40aa11b5aa6b21cf114ab8ece65 |
+| codex/r29 | 6e250677b3bc6510f7ef2ea3e7c2ddb4ab1a509f | d5a98a85ea9e9c41aa3c2cde461e0e92de1aa555 |
+| codex/r31 | 44de344c92e0122f3361dacef1acc0788ff312c2 | 1dfdc0a50ed78b2103dfe3ce15b8461c588332cb |
+| codex/link-compat | 48d1a8a0a71a5e0d06f3d1ecac2057514598e45c | f494813c716882cfab8161c1edfdbddaaaef85d9 |
+| codex/notify-event-compat | 8a69b5da422eb403014d907f66154aea17469af9 | 094697cfb948d466c6d25dabfd7351ddac6664e2 |
+| codex/sync-fixes | aa025cfdf795e6c3caa941d4dda2701e12d2c381 | dc223e8ec5d3e85e8d02cf9a99bfe547fc3e3e64 |
+| codex/renderer-diagnostics | dc53ba05fcfc5108e88896ab9cd6218bdbcb0f25 | d3fd0d95cc232e26ae8e3e739da2e96d0db05887 |
+| codex/s7 | f28a562c9f61b205b650de7dc11919ed13110667 | 5f774d8805a10251947435d3f1a58e5368d1876a |
+| codex/s8 | 3f444554f0482046b4e09dbddf4da9d581e5ad87 | 05943aaf49d460554dd70105579bc3ee8f9f7d67 |
+
+## Gates on this combined tree
+
+Logs: %TEMP%/valence-integration-s6review-{root,core,push,example,dev,bridge,pack,site}.log.
+Every command completed with exit 0; Flutter tests were not counted as skips.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 114 passed, zero failures/skips; generated Dart and strict/verbatim TS ran |
+| Core flutter test / dart analyze --fatal-infos . | 609 passed / no issues |
+| Core flutter pub publish --dry-run | 0 warnings |
+| Push flutter test / dart analyze --fatal-infos . | 2 passed / no issues |
+| Push flutter pub publish --dry-run | 0 warnings, existing local-override hint |
+| Bridge node tests / strict-verbatim TypeScript | 29 passed / passed |
+| Root and bridge npm pack --dry-run | passed; bridge prepack rebuilt dist |
+| Example codegen --check / flutter test / fatal-info analysis | passed / 29 passed / no issues |
+| Separately defined debug dev-mode regression | 1 passed; explicit checks leave OTA evidence unchanged |
+| Example flutter build apk --debug | passed; assembleDebug 32.2s |
+| Standalone Windows py tool/check_no_firebase.py | PASS: core graph, manifest and all 19 DEX files exclude Firebase |
+| Site npm run build and check-seo | 46 pages passed |
+
+The APK build retains the existing app_badge_plus Kotlin migration warning.
+After these gates, only this validation ledger was edited in either repository.
+
+## Test-app evidence, read-only
+
+Read both VALENCE_FINDINGS.md files and newest completed reports: Kundalini 18 /
+app-c 47. Kundalini has not yet accepted S6/S7/S8; its iteration 18 snapshot predates
+those features. F-72/F-73 remain recorded adoption/DX issues rather than closed findings.
+
+Independently checked saved app-c iteration-47 receipts:
+
+- All 51 saved artifact checks pass. Settings before/return PID is 4830 and the
+  saved page-painted result is true; this does not close historical renderer loss.
+- Worker callback begin 03:29:20.981, complete 03:29:22.327 and WorkManager SUCCESS
+  03:29:22.336 share PID 7224, occur in the full log and are absent from the
+  pre-worker full log. worker-execution.json records forced=false and 443.718s.
+- The stable pre-worker native receipt has outbox 2/incoming absent. The before-resume
+  receipt has incoming origin 1080000/usn 1080002, outbox 0 and both exact outgoing
+  inspection objects, independently compared with the saved write parameters.
+- Raw before/after activation bytes match SHA256
+  c8da743593919be7367fad744af15fef1f7ef9a7db780b3f8fd3bcf3604eda32:
+  current 1793569002, pending 1793569013, trial null. The app report records final
+  commit to 1793569013.
+
+This supports one execution without an explicit trigger, not recurring cadence.
+The report and current runner/review notes say camera/gallery completed directly;
+an older checkpoint in VALENCE_FINDINGS.md says it followed an ANR. That stale
+checkpoint is not used to infer a new recurrence or close historical F-40.
+F-27/F-29/F-33/F-34/F-35/F-36/F-37/F-40 remain open or qualified.
+These are saved-receipt comparisons, not a new device run, screenshot inspection
+or database extraction. No emulator acceptance or unconditional beta acceptance.
+
+## Security-path checklist
+
+Reviewed the combined delta against packages and the reviewer checklist. S8 changes
+no signature ordering, nonce/strict decoding, navigation lock, atomic state writes,
+key storage or account isolation. Its check delegates to the attached coalesced
+host path and retains signed minHost enforcement; updateReady remains pending-only.
+Missing/pre-19 event declarations remain silent and legacy status projection stays.
+The merged S6 clearing-before-token fix and runtime jar validation remain present.
+The combined root/core regressions and separate dev-mode regression passed.
+This refresh adds no executable changes beyond the merged branch; no new independent
+reviewer pass is claimed.
+
+No test-app writes, protected-branch changes, pushes or publication. iOS remains
+experimental and untested. The historical receipts below retain their original scope.
+
+## Superseded integration receipts
+
+## In plain terms
+
+Fresh codex/integration starts on newest packages code 81e55b933e6a1429462f8c0c75c2f10c09c65ce6
+and site 42bde4188c4ceb74b5f9d84807165ef4690419a4, includes all 31 prior feature/compatibility tips,
+and merges S8 last. All prior tips were already included in packages; their
+ordered merges would be no-ops. Actual new merges are S8, followed by its
+legacy-status adoption clarification. Pre-ledger merge heads: code 9d358419b501979742f86c8f9732e0aedeef9468,
+site 60c10c10afb90f56f2b4235bee23716c05ac8c05. No conflicts. Combined schema is 19; earlier reservations
+retain their numbers. The initial November 2 integration below was superseded
+when S6 landed; its gate claims retain their original scope.
+
+S8 is ready on code 3f44455 / site 05943aa. It adds bundle.check and
+bundle.checked while preserving pending-only bundle.updateReady. Explicit checks
+use the attached host's coalesced discovery and native policy transitions, never
+apply a bundle automatically, and cannot bypass signed minHost enforcement.
+Completion is schema-opted and unbuffered; mount reads recover current state.
+For a completion-driven status read, declare nullable requiredBridge in the
+bundle.status return type; the legacy rejected projection is preserved otherwise.
+The event independently reports the authenticated incompatible-offer reason.
+
+Decision: preserve security, stored data and shipped meanings before developer
+convenience. S6's cookie jar and the improver's prior fixes remain intact. No
+package version changed. No must-have item remains; S1 stays deliberately parked
+and S2 needs a Play account. The stale 17+ allocation row was not edited; S8's
+own Status cell records 19, following R31 at 17 and S7 at 18.
+
+Read both findings and newest completed reports read-only: Kundalini 18 / app-c
+46. App-c's F-37 busy/pending-1 failed assertion and later same-PID recovery do
+not identify a lock owner or close the finding. F-40 names external Camera;
+a separate successful retry does not repair it. Earlier renderer-loss failures
+remain open. Saved worker evidence supports one explicitly triggered execution,
+not natural cadence. The immediately preceding refresh below records the exact
+saved-receipt comparisons. No new screenshot inspection or database extraction.
+
+## Merge order and exact tips
+
+Fixed queue first, remaining numbered tips next, compatibility and cache tips
+last, then S8. Each of these 32 current exact tips is an ancestor in both repos.
+
+| Branch | Code tip | Site tip |
+| --- | --- | --- |
+| codex/r8 | 91589a47cb80a4b2f2ba8cf1a6d1ce3dc5a4eb4e | 072552f08d626d2915e63e7fda2c4c183c4380e3 |
+| codex/r7 | 969b1a4fb03d76d2af85c69987c4ed5eeb0eb840 | 965b8eb83a7412a9ec601919f227c2c0005a9252 |
+| codex/r6 | 5b64e06051fab10e0a01d8b3215c17f45d81c980 | 388cd9d3c0fd6043cfa21b0a6440916232847742 |
+| codex/r3 | db669ddd75ffeb97588fd62304122a58c242f3b0 | f45ccf28d741a2c6e05c766eeb6bff059900bcc5 |
+| codex/r4 | 588f8761807b1893933303533a04fa14c9975a6f | d8e5dd775dfaf902e206bc2f195c30537f797ba4 |
+| codex/r5 | 3cc1c0f4d062d13919adcfe5343434e00098fdea | 57a44b50dfd82800f151823ff1563d8a73340678 |
+| codex/r9 | 0c1b0fb01a48494991cdae4ab32369fb6a2af7b2 | 2913b4d0a743188808a66bd5b7db416ca870c52f |
+| codex/r10 | f3fcd0dac875fc30af226c7f1bf70750942c0550 | b905b742ab9d90984d513cdf7b99977eabd929f2 |
+| codex/r14 | fa6e16c55d84bb9a3162514a9c09b65cb634fd54 | fa5e8164a968bd74d943b8a50590dfbd010e08ca |
+| codex/r11 | 4347872fd95b0a213b99774c3e758c7d60f047d5 | 797224cf3cab016866ecbb56213210ca4fe6556f |
+| codex/r12 | de783ae9a9f04052cfc2eb7c07ae992c980ccc42 | a57ca8f05358b0bd6cd050c3a475e2aa51b1ecce |
+| codex/r15 | 2951ac8b84ff2e0935dbb719b749ebbd8839f51f | 87695bbf61a1a647bec692416cacdb3a611a07ac |
+| codex/r16 | dba50d483f95b724bc10869b460e7774e63cc8de | bb1775d3801e9bc6032523327ce502eb7c7383eb |
+| codex/r17 | a9922853bb751ac75590cb262d2d732cbed967d1 | 971e5a93d6ff7e910c1c5640fc856940ea0861a4 |
+| codex/r19 | ebbd5e051f08661adbdc0e485cc5cf1bba32b352 | 7c31ed431453f1df73a494bb2b24d0a7a5603fb4 |
+| codex/r20 | f8f3f1f9b79117e73d30917f65ed2a281b57a070 | 98cbad0d516db52225dd593fe72dea76b4800df0 |
+| codex/r21 | 92221ea7682259d7fea49b4f8afbb98d5d735610 | d3d0e2b226196d871d53c47224bcf491bc44a444 |
+| codex/r22 | b2e5a4009b44ea8729eafb208ee0be4a5aad876a | e84efa7a38d0858491632e429bc659b8252ffb55 |
+| codex/r23 | 373d29fca370bb03e2f49f148606bda8283950fa | 0bcc4407a44cc260677dce499efad0cbfe4a6690 |
+| codex/r24 | 23a2783f5c1bb8e68db2f6712a66b6caee542617 | fcb04f2a5690a22dbf75cbdf1de2f06982aa1440 |
+| codex/r25 | 52fd6e5c382df6582d5955b02586f77c80383c4c | 9f614ee0a44a9a4c98e5d07d16cba243151df60c |
+| codex/r26 | 7c43658637da1f97a6fe3e80c2669ab83ec347ad | 14376728046b8ba6f6c062154d41fa1b41399176 |
+| codex/r27 | 8296d4e68753185c132c39da3c94369989818f27 | c4a8fad9bc2dc04f9b8033080608e1250785e08e |
+| codex/r28 | 8d42a82d96ad124c3cbe122280b64a00f43371bb | 0cbadc71c2f2d40aa11b5aa6b21cf114ab8ece65 |
+| codex/r29 | 6e250677b3bc6510f7ef2ea3e7c2ddb4ab1a509f | d5a98a85ea9e9c41aa3c2cde461e0e92de1aa555 |
+| codex/r31 | 44de344c92e0122f3361dacef1acc0788ff312c2 | 1dfdc0a50ed78b2103dfe3ce15b8461c588332cb |
+| codex/link-compat | 48d1a8a0a71a5e0d06f3d1ecac2057514598e45c | f494813c716882cfab8161c1edfdbddaaaef85d9 |
+| codex/notify-event-compat | 8a69b5da422eb403014d907f66154aea17469af9 | 094697cfb948d466c6d25dabfd7351ddac6664e2 |
+| codex/sync-fixes | aa025cfdf795e6c3caa941d4dda2701e12d2c381 | dc223e8ec5d3e85e8d02cf9a99bfe547fc3e3e64 |
+| codex/renderer-diagnostics | dc53ba05fcfc5108e88896ab9cd6218bdbcb0f25 | d3fd0d95cc232e26ae8e3e739da2e96d0db05887 |
+| codex/s7 | f28a562c9f61b205b650de7dc11919ed13110667 | 5f774d8805a10251947435d3f1a58e5368d1876a |
+| codex/s8 | 3f444554f0482046b4e09dbddf4da9d581e5ad87 | 05943aaf49d460554dd70105579bc3ee8f9f7d67 |
+
+## Gates and review
+
+Fresh combined required gates rerun on this integration. Logs:
+%TEMP%/valence-integration-s8-*.log. Executable/package inputs equal the fully
+gated S8 branch; after this ledger edit only docs/integration.md differs.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 112 passed, zero failures/skips; generated Dart and strict/verbatim TS ran |
+| Core flutter test / fatal-info analysis | 599 passed / no issues |
+| Bridge tests / strict-verbatim TypeScript | 29 passed / passed |
+| Site build and SEO | 46 pages passed, including the adoption clarification |
+
+The same-day S8 gates additionally passed: 1 separately defined debug dev-mode
+regression, 2 push and 29 example tests; clean push analysis; warning-free core
+and push pub dry runs (push retains its existing local-override hint); root and
+bridge pack dry runs; example codegen --check; debug APK (71.4s) and standalone
+Windows py audit of the core graph, manifest and all 19 DEX files. These artifact
+claims apply to identical executable inputs, not a second APK build. Existing
+app_badge_plus Kotlin compatibility warning retained. Full details and excluded
+initial failures: docs/s8-validation.md in both repositories.
+
+Independent read-only security review found no confirmed S8 defects before or
+after merging S6, and confirmed the final docs and legacy-status clarification.
+Six schema probes and diff checks passed. The new regressions verify signed and
+invalid incompatible offers, one completion per coalesced check, native mid-session
+blocking without trial strikes, schema qualification and old custom shapes,
+unloaded event drops, detached/custom host refusals, and dev-mode suppression.
+No signature-order, nonce, navigation, credential, atomic-write, account-isolation
+or release-dev-guard simplification. The integration adds no new executable delta
+beyond the reviewed S8 branch.
+
+No emulator/device acceptance, test-app writes, protected-branch changes, package
+version changes, push or publication. iOS remains experimental and untested.
+Gates and saved-receipt checks do not establish unconditional beta acceptance.
+
+---
+
+# Integration refresh - 2026-11-02
+
+## In plain terms
+
+Fresh integration starts at packages code ce46b0e387bd2f0c46754466347675e94cf6b2ad
+and site 0978e5ecdb86fecae01f4a933f7469286eefb4ca. All 31 current feature and
+compatibility tips below are already ancestors of these bases. Their ordered
+merges would all say already up to date; no new merge, conflict resolution or
+runtime change is needed. The previous integrations are preserved as
+codex/integration-before-20261102-refresh in both repositories. Their six
+unmerged evidence-only commits remain reachable there; their ledger follows.
+
+Decision: preserve signed verification, store-block enforcement, shipped schema
+meanings and users' data. Validate the improver's combined fixes rather than
+reimplement them. The new base includes blocked-resume/check coalescing,
+notification field-type qualification, app.openStore since guidance, failed-trial
+cache disposal and floor-aware retirement diagnostics. Combined schema stays 18;
+R8/R7/R6/R3/R4/R5 stay 7/8/9/10/11/12, share.image 14, pendingIds 16,
+app.openStore 17 and data.cache 18. The roadmap's stale 17+ free row is not an
+allocation source for a new capability. No must-have todo or rebase queue item
+remains. S8 is the next available feature; S6 remains named by the other builder.
+
+## App evidence and limits
+
+Read both VALENCE_FINDINGS.md files and newest completed reports read-only:
+Kundalini 18 and app-c 46. Kundalini reports adoption of HTTP error distinctions,
+retirement diagnostics and signed store policy; F-72/F-73 have subsequent upstream
+fixes but app adoption of those fixes is not established. F-74's missing status
+notification remains S8. S7's REST cache has not been accepted by Kundalini.
+
+App-c's failed bounded offline probe reports busy/pending 1, with saved native
+lease 1793565023565:4956. Eight bounded retries later it drains in the same PID
+4956. This does not identify the owner or close F-37. External Camera ANR at
+02:20:15 names com.android.camera2/CaptureActivity; the later successful media
+retry does not close F-40. Settings retained PID 4956 in this attempt; that does
+not repair the earlier renderer-loss failure or close F-36.
+
+Independently checked the saved 51-check audit (all passed with F-37/F-40 kept
+explicit), same-PID recovery and Settings receipts, external Camera ANR text,
+pre-worker outbox 2/incoming absent and before-resume outbox 0 receipts. Both
+outgoing row values equal the exact request objects. Raw before/after activation
+bytes match SHA256 977f07a98cf6ec49e184a920f1b30abe0208cb33cb6f5360adcd9f6fd2f79bcf:
+current 1793565677, pending 1793565686, trial null; final current 1793565686.
+Callback begin 02:31:19.262, complete 02:31:20.399 and WorkManager SUCCESS
+02:31:20.408 share PID 8327, appear in the full log and are absent from the
+pre-worker full log. Worker forced=true, observed 253.381 seconds. One explicitly
+triggered execution proves neither natural cadence nor recurrence. These are
+saved-receipt checks, not a fresh device run, database extraction or screenshot
+inspection. Historical intermittent findings remain open.
+
+## Ordered ancestry check
+
+Fixed queue order first, remaining numbered tips next, compatibility and cache
+tips last. Every exact tip is included in both packages bases and fresh integration.
+
+| Branch | Code tip | Site tip |
+| --- | --- | --- |
+| codex/r8 | 91589a47cb80a4b2f2ba8cf1a6d1ce3dc5a4eb4e | 072552f08d626d2915e63e7fda2c4c183c4380e3 |
+| codex/r7 | 969b1a4fb03d76d2af85c69987c4ed5eeb0eb840 | 965b8eb83a7412a9ec601919f227c2c0005a9252 |
+| codex/r6 | 5b64e06051fab10e0a01d8b3215c17f45d81c980 | 388cd9d3c0fd6043cfa21b0a6440916232847742 |
+| codex/r3 | db669ddd75ffeb97588fd62304122a58c242f3b0 | f45ccf28d741a2c6e05c766eeb6bff059900bcc5 |
+| codex/r4 | 588f8761807b1893933303533a04fa14c9975a6f | d8e5dd775dfaf902e206bc2f195c30537f797ba4 |
+| codex/r5 | 3cc1c0f4d062d13919adcfe5343434e00098fdea | 57a44b50dfd82800f151823ff1563d8a73340678 |
+| codex/r9 | 0c1b0fb01a48494991cdae4ab32369fb6a2af7b2 | 2913b4d0a743188808a66bd5b7db416ca870c52f |
+| codex/r10 | f3fcd0dac875fc30af226c7f1bf70750942c0550 | b905b742ab9d90984d513cdf7b99977eabd929f2 |
+| codex/r14 | fa6e16c55d84bb9a3162514a9c09b65cb634fd54 | fa5e8164a968bd74d943b8a50590dfbd010e08ca |
+| codex/r11 | 4347872fd95b0a213b99774c3e758c7d60f047d5 | 797224cf3cab016866ecbb56213210ca4fe6556f |
+| codex/r12 | de783ae9a9f04052cfc2eb7c07ae992c980ccc42 | a57ca8f05358b0bd6cd050c3a475e2aa51b1ecce |
+| codex/r15 | 2951ac8b84ff2e0935dbb719b749ebbd8839f51f | 87695bbf61a1a647bec692416cacdb3a611a07ac |
+| codex/r16 | dba50d483f95b724bc10869b460e7774e63cc8de | bb1775d3801e9bc6032523327ce502eb7c7383eb |
+| codex/r17 | a9922853bb751ac75590cb262d2d732cbed967d1 | 971e5a93d6ff7e910c1c5640fc856940ea0861a4 |
+| codex/r19 | ebbd5e051f08661adbdc0e485cc5cf1bba32b352 | 7c31ed431453f1df73a494bb2b24d0a7a5603fb4 |
+| codex/r20 | f8f3f1f9b79117e73d30917f65ed2a281b57a070 | 98cbad0d516db52225dd593fe72dea76b4800df0 |
+| codex/r21 | 92221ea7682259d7fea49b4f8afbb98d5d735610 | d3d0e2b226196d871d53c47224bcf491bc44a444 |
+| codex/r22 | b2e5a4009b44ea8729eafb208ee0be4a5aad876a | e84efa7a38d0858491632e429bc659b8252ffb55 |
+| codex/r23 | 373d29fca370bb03e2f49f148606bda8283950fa | 0bcc4407a44cc260677dce499efad0cbfe4a6690 |
+| codex/r24 | 23a2783f5c1bb8e68db2f6712a66b6caee542617 | fcb04f2a5690a22dbf75cbdf1de2f06982aa1440 |
+| codex/r25 | 52fd6e5c382df6582d5955b02586f77c80383c4c | 9f614ee0a44a9a4c98e5d07d16cba243151df60c |
+| codex/r26 | 7c43658637da1f97a6fe3e80c2669ab83ec347ad | 14376728046b8ba6f6c062154d41fa1b41399176 |
+| codex/r27 | 8296d4e68753185c132c39da3c94369989818f27 | c4a8fad9bc2dc04f9b8033080608e1250785e08e |
+| codex/r28 | 8d42a82d96ad124c3cbe122280b64a00f43371bb | 0cbadc71c2f2d40aa11b5aa6b21cf114ab8ece65 |
+| codex/r29 | 6e250677b3bc6510f7ef2ea3e7c2ddb4ab1a509f | d5a98a85ea9e9c41aa3c2cde461e0e92de1aa555 |
+| codex/r31 | 44de344c92e0122f3361dacef1acc0788ff312c2 | 1dfdc0a50ed78b2103dfe3ce15b8461c588332cb |
+| codex/link-compat | 48d1a8a0a71a5e0d06f3d1ecac2057514598e45c | f494813c716882cfab8161c1edfdbddaaaef85d9 |
+| codex/notify-event-compat | 8a69b5da422eb403014d907f66154aea17469af9 | 094697cfb948d466c6d25dabfd7351ddac6664e2 |
+| codex/sync-fixes | aa025cfdf795e6c3caa941d4dda2701e12d2c381 | dc223e8ec5d3e85e8d02cf9a99bfe547fc3e3e64 |
+| codex/renderer-diagnostics | dc53ba05fcfc5108e88896ab9cd6218bdbcb0f25 | d3fd0d95cc232e26ae8e3e739da2e96d0db05887 |
+| codex/s7 | f28a562c9f61b205b650de7dc11919ed13110667 | 5f774d8805a10251947435d3f1a58e5368d1876a |
+
+## Fresh gates
+
+Validation logs: %TEMP%/valence-integration-nov2-*.log.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 110 passed; zero failures/skips; generated Dart and strict/verbatim TS ran |
+| Core flutter test / fatal-info Dart | 576 passed / no issues |
+| Core pub dry run | 0 warnings |
+| Push flutter test / fatal-info Dart | 2 passed / no issues |
+| Push pub dry run | 0 warnings; existing local-override hint; override excluded from upload |
+| Bridge tests / strict-verbatim TS / pack dry run | 29 passed / passed / passed |
+| Root pack dry run | Passed |
+| Example flutter test / codegen --check | 29 passed / written: [] |
+| Site build and SEO | 45 pages passed |
+| Example debug APK / standalone Windows py Firebase audit | Passed (142.1s) / PASS: core graph, manifest and all 19 DEX files contain no Firebase SDK references |
+
+APK build used a 2 GiB Gradle heap, two workers and ActiveProcessorCount=2.
+The existing app_badge_plus Kotlin compatibility warning remains.
+
+Security review scope: no local executable/spec/schema change. All runtime,
+codegen and website inputs equal the recorded packages bases. The full gates
+exercise the upstream regressions; no independent runtime-security review is
+claimed in this refresh. No emulator lock/device run, test-app writes, protected
+branch change, version change, push or publication. iOS remains experimental and
+untested. Gates are build/test evidence, not unconditional beta acceptance.
+
+---
+
 # Integration acceptance refresh ? 2026-11-01
+
+## App-c iteration 44 completed evidence - 2026-11-02
+
+### In plain terms
+
+Read both findings and newest completed reports: Kundalini 17 and app-c 44.
+App-c began November 1 and completed after Kathmandu midnight on November 2;
+its UTC and device receipt timestamps remain unchanged. No eligible must-have
+or missing integration merge remains. All 31 recorded exact branch tips and
+packages bases 778b20c / 9ed2ee9 are included in both integrations. Pre-refresh
+heads are code 61d8206 / site 74ba739.
+
+Decision: preserve security and users' data. Successful scoped probes supply
+no cause for changing leases, rollback or navigation policy. S1 remains parked,
+S2 needs a Play account, and the other builder's explicit next-item note
+reserves S6. Kundalini has not yet accepted S7. Avoid overlapping the credential
+store or treating successful retries as historical repairs.
+
+### Independently checked saved evidence
+
+- Supplied artifact audit records 51 passing consistency checks and four
+  harness exclusions. Runner notes also disclose the inherited text-share
+  payload label. These receipts are not another device execution or beta
+  acceptance; no historical reliability finding is closed.
+- Full-log subtraction against the complete pre-worker baseline confirms one
+  new begin at 23:59:36.196, completion at 23:59:37.246 and WorkManager SUCCESS
+  at 23:59:37.257, all PID 7586. The supplied execution receipt records
+  forced=true and 498.696 seconds observed: one explicitly triggered eligible
+  execution, not natural cadence or production durability.
+- Supplied stable native baseline records outbox 2/incoming absent. Before-
+  resume SQLite receipt records incoming origin 990000 at USN 990002 and
+  outbox 0. Independently compared both outgoing inspection values with their
+  saved write parameters: both match exactly. This does not independently
+  extract SQLite or establish server operation-ID deduplication. Paired
+  snapshot stability is reported by the supplied capture receipt.
+- Raw activation files independently compare byte-for-byte equal, SHA256
+  f7591efe191ad7df8c983aef10646829fc81c7d86ae38a00f280db84def5d9b3:
+  current 1793556335, pending 1793556344, trial null. Final saved state commits
+  1793556344 after cleanup.
+- Settings PID receipts both name 4509. Native widget preferences read left
+  6-to-7-to-6; the proof records capture before HOME. Cleanup records stopped
+  app/mocks, airplane off and no forwards at 18:15:29.160 UTC. No independent
+  screenshot inspection is claimed here.
+- Report and receipt review limit release-binary evidence to retained/fresh
+  airplane startup; native SQLite/bridge/worker probes used restored debug.
+  Archive identity with iteration 43 is reported, not a complete Flutter
+  source fingerprint. Historical findings remain open or qualified.
+
+### Integration and validation scope
+
+Fresh ancestry, saved-artifact assertions, unchanged-input and diff checks pass.
+Only matching integration ledgers change. Implementation and site build inputs
+remain identical to fully gated code 27b4cd8 / site 16e3fd6. Full package/build
+gates were not rerun; the earlier November 1 gate results retain their original
+scope. No roadmap status changes: no item or integration assembly was needed.
+
+No emulator run, test-app write, runtime fix, version change, protected-branch
+change, push or publication. iOS remains experimental and untested. This update
+closes no historical reliability finding.
+
+## App-c iteration 43 completed evidence - 2026-11-01
+
+### In plain terms
+
+Read both findings and newest completed reports: Kundalini 17 and app-c 43.
+No eligible must-have or missing integration merge remains. All 31 recorded
+exact branch tips are included in both integrations; packages bases remain
+778b20c / 9ed2ee9. Pre-refresh heads are code 64989cf / site 9220495.
+
+Decision: preserve security and users' data. A successful retry supplies no
+cause for changing leases, rollback or navigation policy. S1 remains parked,
+S2 needs a Play account, and the other builder's explicit next-item note
+reserves S6. Kundalini has not yet accepted S7. Avoid overlapping that
+credential store or treating a passing regression as a historical repair.
+
+### Independently checked saved evidence
+
+- Supplied artifact audit records 51 passing consistency checks and five
+  harness exclusions. Failed idle/coordinate/cold-absence attempts remain
+  excluded; the audit is not another device execution or beta acceptance.
+- Full-log subtraction against the complete pre-worker baseline confirms one
+  new begin at 23:28:11.282, completion at 23:28:12.567 and WorkManager SUCCESS
+  at 23:28:12.576, all PID 7989. The supplied execution receipt records
+  forced=false and 338.301 seconds observed: one unforced execution, not
+  recurring cadence or production durability.
+- Supplied stable native baseline records outbox 2/incoming absent. Before-
+  resume SQLite receipt records incoming origin 960000 at USN 960002 and
+  outbox 0. Independently compared both outgoing inspection values with
+  their saved write parameters: both match exactly. This does not independently
+  extract SQLite or establish server operation-ID deduplication.
+- Raw activation files independently compare byte-for-byte equal, SHA256
+  ab6e714b3db8b76e21c9ca55084f80e3a61904d75d8432a5511850aa34b6867a:
+  current 1793554631, pending 1793554640, trial null. Final saved state commits
+  1793554640 after cleanup.
+- Settings PID receipts both name 4658. Native widget preferences read left
+  6-to-7-to-6; the proof records capture before HOME. Cleanup records stopped
+  app/mocks, airplane off and no forwards at 17:44:40.115 UTC. No independent
+  screenshot inspection is claimed here.
+- Report and receipt review limit release-binary evidence to retained/fresh
+  airplane startup; native SQLite/bridge/worker probes used restored debug.
+  Archive identity with iteration 42 is reported, not a complete Flutter
+  source fingerprint. Historical findings remain open or qualified.
+
+### Integration and validation scope
+
+Fresh ancestry, saved-artifact assertions, unchanged-input and diff checks pass.
+Only matching integration ledgers change. Implementation and site build inputs
+remain identical to fully gated code 27b4cd8 / site 16e3fd6. Full package/build
+gates were not rerun; the earlier November 1 gate results retain their original
+scope. No roadmap status changes: no item or integration assembly was needed.
+
+No emulator run, test-app write, runtime fix, version change, protected-branch
+change, push or publication. iOS remains experimental and untested. This update
+closes no historical reliability finding.
+
+## App-c iteration 41 completed evidence - 2026-11-01
+
+### In plain terms
+
+Read both findings and newest completed reports: Kundalini 17 and app-c 41.
+App-c reports no new framework defect in this scoped pass. Offline/reconnect,
+original-PID Settings return and camera retry probes pass without closing the
+historical reliability findings. Kundalini has not yet accepted S7.
+
+Decision: preserve security and users' data. A passing retry supplies no cause
+for changing leases, rollback or navigation policy. No eligible must-have or
+missing queue/integration merge remains. S1 stays deliberately parked, S2 needs
+a Play account, and the existing coordination note reserves S6 as the other
+builder's next item. Do not overlap that credential store.
+
+### Independently checked saved evidence
+
+- All 50 entries in the supplied artifact audit report passed. This is receipt
+  consistency, not another device run or unconditional acceptance. The initial
+  unsupported positional verify invocation remains excluded; the report records
+  a corrected invocation. Historical findings remain open or qualified.
+- Exact full-log subtraction confirms one new callback begin at 22:28:34.155,
+  complete at 22:28:35.318 and WorkManager SUCCESS at 22:28:35.328, all PID 7561.
+  None of those exact lines occurs in the full pre-worker baseline. Execution
+  was explicitly triggered; 498.703 seconds observed proves neither natural
+  scheduling cadence nor production durability.
+- Supplied stable native baseline records outbox 2/incoming absent. Before-resume
+  SQLite receipt records incoming origin 900000 at USN 900002, both outgoing
+  inspection objects at 900001/900002 and outbox 0. This review does not extract
+  the database independently or establish server op-ID deduplication.
+- Independently compared and hashed raw activation files are byte-identical,
+  SHA256 `b1c4d91a91485b5491915787774f408483e512f8894d7a498f7ccde392416c66`:
+  current 1793550903, pending 1793550912, trial null. The report records final
+  commitment of 1793550912 after cleanup.
+- Settings PID receipts both name 4848. Native widget preferences read left
+  6-to-7-to-6; the supplied proof records capture before HOME and mock base
+  890200. Cleanup records stopped app/mocks, airplane off and no forwards at
+  16:45:06.006 UTC. No independent screenshot inspection is claimed here.
+- Archive identity with iteration 40 is reported, not an entire Flutter source
+  fingerprint. Release-binary acceptance remains limited to retained/fresh
+  airplane startup; native SQLite, bridge and worker probes used debug.
+
+### Integration and validation scope
+
+Independently verified all 31 recorded exact feature tips against current
+branches and ancestry in both integrations, plus unchanged packages bases
+778b20c / 9ed2ee9. Pre-refresh heads are code ce03173 / site 2f194c3. No branch
+needs refreshing or another merge.
+
+Only matching integration ledgers change. Fresh saved-artifact assertions,
+ancestry, unchanged-input and diff checks pass. Implementation and site build
+inputs remain identical to fully gated code 27b4cd8 / site 16e3fd6. Full package
+and build gates were not rerun; earlier November 1 results retain their original
+scope. No roadmap status changed because no item or integration assembly was
+undertaken.
+
+No emulator run, test-app write, runtime fix, version change, protected-branch
+change, push or publication. iOS remains experimental and untested. This update
+does not establish beta acceptance or close historical reliability gaps.
+
+## App-c iteration 40 completed evidence - 2026-11-01
+
+### In plain terms
+
+Read both findings and the newest completed reports: Kundalini 17 and app-c 40.
+App-c's scoped offline/reconnect and original-PID Settings return pass this time;
+neither observation repairs the historical sync, ANR, renderer or task-restoration
+findings. Failed UIAutomator, warm-coordinate and grouped-summary attempts remain
+excluded rather than counted as acceptance.
+
+Decision: preserve security and users' data. Do not change leases, rollback or
+navigation rules on a passing retry without an established cause. No eligible
+must-have or missing integration merge remains. S1 stays deliberately parked,
+S2 needs a Play account, and the other builder explicitly names S6 next. Avoid
+overlapping that credential store. Kundalini has not yet accepted S7.
+
+### Independently checked saved evidence
+
+- The supplied artifact audit records 50/50 passing checks and four explicit
+  harness exclusions. Its empty observedFailures array does not erase those
+  attempts or the historical findings. This is saved-evidence review, not
+  another device run.
+- Full-log subtraction confirms one new callback begin at 21:59:05.374,
+  complete at 21:59:06.413 and WorkManager SUCCESS at 21:59:06.427, all PID 7631.
+  These exact lines are absent from the full pre-worker baseline. The execution
+  receipt reports forced=false after 384.278 seconds observed. This supports one
+  observed unforced execution, not periodic cadence or production durability.
+- The supplied stable native baseline records outbox 2/incoming absent.
+  Before-foreground receipts record incoming origin 870000 at USN 870002,
+  both outgoing inspection objects at 870001/870002 and outbox 0.
+  No independent database extraction or server op-ID deduplication check
+  is claimed here.
+- Independently hashed raw activation files are byte-identical, SHA256
+  `2e11895b1fe9cb083759459f66f663c6905dc2d72ab070ee85e4c9b34ff2eff3`:
+  current 1793549214, pending 1793549223, trial null. The later final-state
+  receipt commits 1793549223.
+- Saved Settings PID receipts both name 4888. Native widget preferences record
+  left 6-to-7-to-6; the proof receipt records capture before HOME and mock base
+  860200. Cleanup records stopped app/mocks, airplane off and no forwards at
+  16:14:58.196 UTC. No independent screenshot inspection is claimed here.
+- Both archive hashes match iteration 39. Archive identity does not fingerprint
+  the Flutter source tree. The report limits release-binary evidence to retained
+  and fresh airplane startup; bridge/native SQLite/worker probes used debug.
+
+### Integration and validation scope
+
+Verified all 31 recorded exact feature tips against current branches and ancestry
+in both integrations, plus unchanged packages bases 778b20c / 9ed2ee9.
+Pre-refresh heads are code 9b35d0b / site a514aa4. No branch needs refreshing or
+another merge.
+
+Only matching integration ledgers change. Fresh artifact assertions, ancestry,
+unchanged-input and diff checks pass. Implementation and site build inputs remain
+identical to fully gated code 27b4cd8 / site 16e3fd6. Full package/build gates were
+not rerun; the earlier November 1 results retain their original scope. No roadmap
+status changed because no item was taken and no integration assembly was needed.
+
+No emulator run, test-app write, runtime fix, version change, protected-branch
+change, push or publication. iOS remains experimental and untested. This evidence
+refresh does not establish beta acceptance or close historical reliability gaps.
+
+## App-c iteration 39 completed evidence - 2026-11-01
+
+### In plain terms
+
+Reviewed both findings and the newest completed reports: Kundalini 17 and app-c
+39. This supersedes the unfinished checkpoint below for completion scope only.
+App-c still records the busy-sync failure and direct renderer/host LOW_MEMORY
+eviction before recovery. Completing the later probes does not repair those
+failures or establish uninterrupted Settings return.
+
+Decision: preserve security and users' data; do not change leases, rollback or
+navigation rules without an established cause. No eligible must-have or missing
+integration merge remains. S1 stays deliberately parked, S2 needs a Play account,
+and the other builder explicitly names S6 next. Avoid overlapping that credential
+store. Kundalini has not yet accepted S7.
+
+### Independently checked saved evidence
+
+- All 51 entries in the supplied artifact audit report passed; its two observed
+  failures remain explicit. This checks saved receipts, not another device run.
+- Full-log subtraction finds exactly one new callback begin at 21:24:21.316,
+  complete at 21:24:22.441 and native WorkManager SUCCESS at 21:24:22.451, all
+  PID 3875. These exact lines are absent from the full pre-worker baseline.
+  The execution receipt records forced=true after 803.585 seconds observed;
+  this proves one explicitly triggered execution, not natural periodic cadence.
+- The supplied stable native baseline records outbox 2/incoming absent. The
+  before-foreground receipt records incoming origin 840000 at USN 840002, both
+  outgoing inspection objects at 840001/840002 and outbox 0. No independent
+  database extraction or server op-ID deduplication check is claimed here.
+- Independently hashed raw activation files are byte-identical, SHA256
+  `0e1feead208cf49a6ba022ec878f6699646359a238839729f93763ec6e662276`:
+  current 1793546738, pending 1793546747, trial null. Final saved state commits
+  1793546747 and clears pending/trial.
+- Native widget preferences record left 6-to-7-to-6. The proof receipt names
+  corrected mock base 830200 and capture before HOME. Saved cleanup records
+  stopped app/mocks, airplane off and no forwards at 15:40:59.769 UTC.
+  No independent screenshot inspection is claimed here.
+- Both archive hashes still match iteration 38. This does not fingerprint the
+  Flutter source tree. The report limits release-binary evidence to retained
+  and fresh airplane startup; bridge/native SQLite/worker probes used debug.
+
+### Integration and validation scope
+
+Verified all 31 recorded exact feature tips against current branches and ancestry
+in both integrations, plus packages bases 778b20c / 9ed2ee9. Pre-refresh heads are
+code 12e8ba8 / site dd64d7f. No branch needs refreshing or another merge.
+
+Only matching integration ledgers change. Fresh artifact assertions, ancestry,
+unchanged-input and diff checks pass. Implementation and site build inputs remain
+identical to fully gated code 27b4cd8 / site 16e3fd6. Full package/build gates were
+not rerun; the earlier November 1 results retain their original scope. No roadmap
+status changed because no item was taken and no integration assembly was needed.
+
+No emulator run, test-app write, runtime fix, version change, protected-branch
+change, push or publication. iOS remains experimental and untested. This evidence
+refresh does not establish beta acceptance or close historical reliability gaps.
+
+## App-c iteration 39 in-progress checkpoint - 2026-11-01
+
+### In plain terms
+
+Reviewed both apps' findings, Kundalini's completed iteration 17, app-c's completed
+iteration 38 and its newest, explicitly unfinished iteration 39 report. Iteration
+39's later findings record busy-sync and Settings-return failures; the short
+report has not yet incorporated those checkpoints. Neither recovery nor later
+successful feature probes closes the historical reliability findings.
+
+Decision: preserve security and users' data. Do not weaken lease ownership,
+rollback or navigation rules on these observations. No eligible must-have or
+missing integration merge remains. S1 stays deliberately parked, S2 needs a Play
+account, and the other builder's roadmap note explicitly names S6 next. Avoid
+overlapping that credential-store work. Kundalini has not yet accepted S7.
+
+### Independently checked saved evidence
+
+- `settings-return-full-logcat.txt` explicitly names lowmemorykiller targets:
+  renderer 5329 at 20:46:34.291 and host 5225 at 20:46:34.376, 85 ms apart.
+  Exit-info records LOW_MEMORY for both at .406 and .458 respectively. This
+  supports direct host eviction; a renderer callback cannot prevent that kill.
+- Saved Settings PID receipts change from 5225 to 6495. The pre-relaunch page
+  inspection fails with a closed socket. A new process is not an uninterrupted
+  return of the original host. No independent screenshot inspection claimed.
+- The supplied stable native receipt records lease `1793545128518:5225` and
+  outbox 1. Paired-clock bounds put the device 37,318-37,369 ms behind the host
+  at capture. Host-minus-lease arithmetic does not establish an expired lease,
+  blocked owner, deadlock or COMMIT failure.
+- Recovery attempts record three busy/pending-1 replies followed by ok/pending-0
+  at host 15:01:29.121 UTC. The restoration sync also records ok/pending-0.
+  These saved receipts establish recovery, not a causal fix or owner timeline;
+  no independent database extraction was performed here.
+- Iteration 39's two archive hashes match iteration 38. Archive identity does
+  not fingerprint the Flutter source tree. OTA, isolated-worker and final
+  cleanup acceptance are not claimed for the unfinished iteration.
+
+### Integration and validation scope
+
+All 31 recorded exact feature tips and both packages bases are ancestors of the
+current integrations: code `f82a4f6`, site `5f61842`, based on packages `778b20c`
+and `9ed2ee9`. No queue branch needs refreshing on these unchanged bases.
+
+Only matching integration ledgers change. Fresh ancestry, unchanged-input and
+diff checks pass; implementation and site build inputs remain identical to fully
+gated code `27b4cd8` / site `16e3fd6`. Full package/build gates were not rerun;
+their earlier November 1 results retain their original scope. No roadmap status
+changed because no item was taken and no new integration assembly was required.
+
+No emulator run, test-app write, runtime fix, version change, protected-branch
+change, push or publication. iOS remains experimental and untested. This
+checkpoint does not establish beta acceptance.
 
 ## App-c iteration 38 evidence refresh - 2026-11-01
 
