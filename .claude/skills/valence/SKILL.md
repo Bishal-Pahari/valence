@@ -380,6 +380,8 @@ For batch reads, use `data.getMany` (since 3, max 500 keys). Read outbox depth f
 
 ## Gotchas (each has cost someone a day)
 
+- **Native requests are invisible to browser network panels.** `http.request` runs in the host, so use `traceBridge` from `@getvalence/bridge`, or `adb logcat -s flutter`. Debug builds also work with `chrome://inspect`. Check a web app against the [web app checklist](https://getvalence.pages.dev/docs/guides/web-app-checklist/) during init. See [Debugging](https://getvalence.pages.dev/docs/guides/debugging/).
+
 - **Image sharing (§4.11, schema 14).** `share.image` accepts exactly one of padded
   standard base64 `bytes` (128 KiB decoded maximum) or active signed bundle `path`
   (5 MiB), optional plain `fileName` and a caption up to 4096 UTF-8 bytes. PNG/JPEG

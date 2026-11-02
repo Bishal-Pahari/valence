@@ -193,6 +193,11 @@ class _ValenceAppState extends State<ValenceApp>
       }
 
       final controller = WebViewController();
+      // chrome://inspect for debug builds only (§3.1). Release and profile never expose the page, its bridge
+      // or its data to a USB-attached browser.
+      if (kDebugMode && controller.platform is AndroidWebViewController) {
+        await AndroidWebViewController.enableDebugging(true);
+      }
       await _setTextZoom(controller);
       await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
       await controller.addJavaScriptChannel('Valence',

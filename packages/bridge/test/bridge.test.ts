@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   inHost,
   BridgeError,
+  traceBridge,
   createBridge,
   __resetForTests,
   MAX_MESSAGE_BYTES,
@@ -341,4 +342,90 @@ test('schema-11 notifications guard older hosts and deliver action payloads as d
   off();
   emit('notify.action', { id: 43 });
   assert.deepEqual(actions, [{ id: 42, action: 'done', payload: '<script>never evaluate</script>' }]);
+});
+
+test('traceBridge reports a shim call without its params', async () => {
+  const { call, installShim } = createBridge<Methods, Events>(SINCE, {} as never);
+  installShim({ 'prefs.set': async () => undefined });
+  const traces: unknown[] = [];
+  traceBridge((trace) => traces.push(trace));
+  await call('prefs.set', { key: 'secret-key', value: 'secret-value' });
+  assert.equal(traces.length, 1);
+  assert.equal((traces[0] as { method: string }).method, 'prefs.set');
+  assert.ok(!JSON.stringify(traces[0]).includes('secret'));
+});
+
+test('traceBridge reports the error code and still rejects', async () => {
+  const { call } = createBridge<Methods, Events>(SINCE, {} as never);
+  const codes: Array<string | undefined> = [];
+  traceBridge((trace) => codes.push(trace.code));
+  await assert.rejects(call('media.pick'), BridgeError);
+  assert.deepEqual(codes, ['E_UNSUPPORTED']);
+});
+
+test('traceBridge strips the query from http.request and keeps the status', async () => {
+  type Http = { 'http.request': { params: { url: string }; returns: { status: number; body: string } } };
+  const { call, installShim } = createBridge<Http, Record<string, never>>({ 'http.request': 4 }, {});
+  installShim({ 'http.request': async () => ({ status: 404, body: 'private' }) });
+  const traces: Array<{ url?: string; status?: number }> = [];
+  traceBridge((trace) => traces.push(trace));
+  await call('http.request', { url: 'https://api.example.com/users/1?token=secret#x' });
+  assert.equal(traces[0]!.url, 'https://api.example.com/users/1');
+  assert.equal(traces[0]!.status, 404);
+  assert.ok(!JSON.stringify(traces[0]).includes('secret'));
+  assert.ok(!JSON.stringify(traces[0]).includes('private'));
+});
+
+test('a throwing tracer changes nothing, and the unsubscribe stops reports', async () => {
+  const { call, installShim } = createBridge<Methods, Events>(SINCE, {} as never);
+  installShim({ 'prefs.set': async () => undefined });
+  let seen = 0;
+  const stop = traceBridge(() => {
+    seen += 1;
+    throw new Error('broken panel');
+  });
+  assert.equal(await call('prefs.set', { key: 'a' }), undefined);
+  assert.equal(seen, 1);
+  stop();
+  await call('prefs.set', { key: 'b' });
+  assert.equal(seen, 1);
+});
+
+test('traceBridge drops credentials and every non-http URL', async () => {
+  type Http = { 'http.request': { params: { url: string }; returns: { status: number } } };
+  const { call, installShim } = createBridge<Http, Record<string, never>>({ 'http.request': 4 }, {});
+  installShim({ 'http.request': async () => ({ status: 200 }) });
+  const urls: Array<string | undefined> = [];
+  traceBridge((trace) => urls.push(trace.url));
+  await call('http.request', { url: 'https://user:secret@api.example.com/a' });
+  await call('http.request', { url: 'data:text/plain;base64,c2VjcmV0' });
+  await call('http.request', { url: 'mailto:alice@example.com' });
+  assert.deepEqual(urls, ['https://api.example.com/a', undefined, undefined]);
+});
+
+test('a listener leaves a rejection and a shim value unchanged, sync or async', async () => {
+  const { call, installShim } = createBridge<Methods, Events>(SINCE, {} as never);
+  const failure = new BridgeError('E_DENIED', 'no');
+  installShim({
+    'prefs.set': async () => {
+      throw failure;
+    },
+    'data.get': (() => 7) as never,
+  });
+  traceBridge(() => {
+    throw new Error('sync');
+  });
+  traceBridge(async () => {
+    throw new Error('async');
+  });
+  await assert.rejects(call('prefs.set', { key: 'a' }), (error) => error === failure);
+  assert.equal(await call('data.get', { bucket: 'b', key: 'k' }), 7);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
+
+test('with no listener a call returns the transport promise itself', async () => {
+  const { call, installShim } = createBridge<Methods, Events>(SINCE, {} as never);
+  const promise = Promise.resolve(undefined);
+  installShim({ 'prefs.set': () => promise });
+  assert.equal(call('prefs.set', { key: 'a' }), promise);
 });

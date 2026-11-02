@@ -187,6 +187,71 @@ function rawCall(m: string, params: object, since: number | undefined): Promise<
   });
 }
 
+/**
+ * One finished `call()`, for a debug panel (§4.3). Params, bodies, headers, credentials, query strings and
+ * fragments never reach it. A URL path does, and a path can hold an identifier, so treat a trace as debug data.
+ */
+export interface BridgeTrace {
+  method: string;
+  ms: number;
+  /** The `BridgeError` code when the call rejected; absent when it resolved. */
+  code?: string;
+  /** `http.request` to an http(s) URL only: origin and path, without credentials, query or fragment. */
+  url?: string;
+  /** `http.request` only: the HTTP status, which may be a 4xx or 5xx on a call that resolved. */
+  status?: number;
+}
+
+const tracers = new Set<(trace: BridgeTrace) => void>();
+
+/**
+ * Observe every generated `call()`. Native HTTP never appears in a browser network panel, because it does
+ * not leave through the page, so this is the only view of it a page has. The unsubscribe returns void.
+ */
+export function traceBridge(fn: (trace: BridgeTrace) => void): () => void {
+  tracers.add(fn);
+  return () => {
+    tracers.delete(fn);
+  };
+}
+
+function urlWithoutQuery(value: unknown): string | undefined {
+  try {
+    const url = new URL(String(value));
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
+    return url.origin + url.pathname;
+  } catch {
+    return undefined;
+  }
+}
+
+function traced(m: string, params: object, run: () => Promise<unknown>): Promise<unknown> {
+  if (tracers.size === 0) return run();
+  const started = Date.now();
+  const url = m === 'http.request' ? urlWithoutQuery((params as { url?: unknown } | null)?.url) : undefined;
+  const report = (extra: Pick<BridgeTrace, 'code' | 'status'>) => {
+    const trace: BridgeTrace = { method: m, ms: Date.now() - started, ...(url && { url }), ...extra };
+    for (const fn of tracers) {
+      // A broken debug panel, sync or async, must not change what the app's own call returns.
+      try {
+        const result: unknown = fn(trace);
+        if (result instanceof Promise) result.catch(() => {});
+      } catch {}
+    }
+  };
+  return Promise.resolve(run()).then(
+    (value) => {
+      const status = m === 'http.request' ? (value as { status?: number } | null)?.status : undefined;
+      report(status === undefined ? {} : { status });
+      return value;
+    },
+    (error: unknown) => {
+      report({ code: error instanceof BridgeError ? error.code : 'E_INTERNAL' });
+      throw error;
+    },
+  );
+}
+
 /** The typed surface `valence codegen` re-exports from bridge.g.ts. */
 export interface Bridge<M, E> {
   /** Subscribe to deep links after connect(). Unsupported schemas/hosts are a no-op. */
@@ -236,7 +301,8 @@ export function createBridge<M, E>(
   installTransport();
   return {
     onLink: (handler, onError) => subscribeLink(handler, onError, (methodSince as Record<string, number>)['link.initial']),
-    call: ((m: string, params: object = {}) => rawCall(m, params, methodSince[m as keyof M])) as Bridge<
+    call: ((m: string, params: object = {}) =>
+      traced(m, params, () => rawCall(m, params, methodSince[m as keyof M]))) as Bridge<
       M,
       E
     >['call'],
@@ -279,6 +345,7 @@ export function __resetForTests(): void {
   nextId = 1;
   hostBridge = undefined;
   shim = {};
+  tracers.clear();
   installed = false;
   if (typeof window !== 'undefined') delete window.__valence;
 }

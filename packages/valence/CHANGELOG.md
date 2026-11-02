@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased: inspect the WebView in debug builds
+
+A debug build now enables Android WebView inspection, so `chrome://inspect` shows the page with full DevTools. Profile and release never do (contracts §3.1).
+
 ## Unreleased: an optional host-held cookie jar for one compiled origin
 
 - **`ValenceConfig.cookieJar` (`ValenceCookieJar`) opts one origin into a host-held jar (contracts
