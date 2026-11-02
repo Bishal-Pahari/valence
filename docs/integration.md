@@ -1,5 +1,51 @@
 # Integration with current packages - 2026-11-02
 
+## November 2: iteration-55 acceptance follow-up
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 55,
+read-only. All must-haves remain done; no original rebase-queue refresh is eligible.
+Packages bases remain code 90af361 / site 6eb2bd6. Both bases and all 33 exact
+feature/compatibility tips in the current merge-order table are ancestors of the
+current integrations. No integration rebuild or feature branch is needed.
+
+Independently compared app-c's saved iteration-55 receipts:
+
+- The artifact audit contains 57 passing consistency checks and no current observed
+  failures. This is artifact consistency, not another device run.
+- Settings returned painted in original PID 5116. Successful Settings and media
+  attempts do not close historical F-36/F-40 or establish renderer-loss recovery.
+- One registered worker was explicitly triggered after captured Ready:true and
+  elapsed earliest time; observation lasted 561.913 seconds. Callback begin at
+  10:28:30.214, completion at 10:28:31.482 and native SUCCESS at 10:28:31.494
+  share PID 5321. The exact full-log lines are absent from the before capture.
+  One forced execution proves no recurring cadence.
+- Stable supplied native receipts show outbox 2/incoming absent before the worker,
+  then incoming origin 1320000/usn 1320002 and outbox 0 before foreground. Both
+  outgoing inspection objects independently match their saved write params.
+- Independently hashed raw activation files are byte-identical, SHA256
+  0d37fe251fd3b4d932c481acb6ba45b34850f25adb548911a5c9dc305c31e7e8:
+  current 1793594039, pending 1793594051, trial null. Final commit and cleanup
+  are recorded after observation; cleanup reports app/mocks stopped, airplane off
+  and no forwards.
+- App-owned runner errors, stale mock ownership and the iteration-54 fixture label
+  remain separately qualified in runner-notes.md. F-41's previously empty heading
+  was restored from iteration-54 evidence. The report still sees the old guide;
+  the existing pendingids-adoption branch and this integration already contain
+  the additive-baseline correction. This is not evidence of adoption by the app.
+
+Decision: preserve security, users' data and the candidate freeze. These receipts
+justify no speculative change to rollback strikes, sync leases, account isolation
+or notification contracts. Historical findings remain open or qualified;
+Kundalini has not yet accepted S6/S7/S8. S1 stays parked; S2 needs a Play account.
+
+This follow-up changes matching integration ledgers only. Ancestry, matching
+sections, unchanged implementation trees and diff hygiene were checked. Earlier
+November 2 full gates retain their recorded scope; no fresh full-gate, device or
+runtime-review pass is claimed. No test-app writes, protected-branch changes,
+version/schema changes, push or publication. The initial ancestry reader included
+historical merge tables and counted 44 rows instead of 33; narrowing it to the
+current table passed. No application or runtime gate failed.
+
 ## November 2: pending-ID adoption correction (app-c F-41)
 
 All must-haves remain done; no original rebase-queue refresh was eligible. Read
