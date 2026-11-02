@@ -1,5 +1,58 @@
 # Integration with current packages - 2026-11-03
 
+## November 3: iteration 65 evidence intake; implementation unchanged
+
+Read both apps' VALENCE_FINDINGS.md, including the historical finding inventories,
+and newest completed reports: Kundalini 18 and app-c 65. No eligible must-have,
+changes-requested item or queue refresh remains. Both packages refs are still
+03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 (code) and
+62f950ba1d52632b47fdd0e170bc41e18d467ae1 (site). Verified all 36 exact tips in
+the inclusion table, and each current packages ref, are ancestors of the respective
+integration HEAD. The tested implementation candidate remains 7385f4e / 1539b66.
+
+Decision: preserve security boundaries, users' data and the candidate while the apps
+exercise it. Keep S1 parked and S2 blocked on a Play account. Do not weaken trial
+accounting, delete runtime publications, reset an account or infer a lock owner from
+a successful retry. No feature or schema number is newly claimed in this intake.
+
+App-c 65 adds another confirmed F-36 Settings failure. Independently matched raw
+settings-return-full-logcat.txt: renderer 5577 killed for minimum watermark at
+00:24:20.634, host 5499 reports unhandled renderer loss/killing application at
+00:24:20.726, and host death at 00:24:20.847. Exit-info identifies renderer LOW_MEMORY
+and host SIGNALED/status 9. Inspected settings-return-before-recovery.png: blank
+content. The recorded replacement is PID 6443. Later native successes are recovery
+evidence; no framework leak, blocked owner or trial-loss cause is established.
+
+Replayed the app's saved artifact audit in an isolated context with every write
+intercepted in memory: 40 checks pass, explicitly including preservation of the
+failed Settings result. This verifies saved artifact consistency, not new device
+execution. The first replay stopped before checks because of a UTF-8 BOM in the
+script; stripping the BOM in memory allowed the replay. No app file was changed.
+The replay independently rehashed the archived APKs against their saved receipts.
+
+Compared native worker baseline (outbox 2, incoming absent) with pre-foreground
+effects (outbox 0, incoming row and matching outgoing objects). Saved worker logs
+record PID 8551 begin 00:38:27.498, complete 00:38:28.892 and BackgroundWorker
+SUCCESS 00:38:28.904. Independently compared raw activation bytes: identical,
+SHA256 cd94971284383ded4f286a5e54705f22ce6eb4f151153a2c515d8c784d6941c7,
+pending 1793645361, no trial. One explicitly triggered worker establishes no cadence.
+
+Accepted current offline probes report offline/pending 1 and reconnect drains to 0;
+they do not close iteration 64's busy-sync finding or reproduce the original COMMIT
+exception. Serial doctor reports 14 PASS / 10 WARN / 0 FAIL; its initial concurrent
+mapped-test failure remains separate. Fresh release open completed in 1922 ms;
+retained positive accessibility sampling at 47350 ms includes dump overhead and
+does not establish exact first paint. Preserve historical startup, background and
+doctor qualifications. Reminder retry listener duplication establishes no event
+cardinality. Kundalini's F-72/F-73/F-74 remain app-reported evidence; existing
+integration work must be adopted before claiming those app observations resolved.
+
+Sources are read-only valence-test-app-c/evidence/iteration-65/ and the two apps'
+findings/reports. This intake changes only mirrored integration notes. Earlier
+November 3 gates below retain their original scope; no fresh full-gate, emulator
+acceptance or runtime security-review pass is claimed. No test-app write, protected
+branch change, package-version change, push, publication or deployment.
+
 ## R32: larger compiled HTTP responses, with the bridge cap preserved
 
 This supersedes the previous ready candidate. Implementation bases are packages
