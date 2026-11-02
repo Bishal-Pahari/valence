@@ -1,5 +1,42 @@
 # Integration with current packages - 2026-11-02
 
+## November 2: iteration-51 acceptance follow-up
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 51,
+read-only. All must-haves are marked done; no rebase-queue item is eligible.
+Packages bases remain code 90af361 / site 6eb2bd6. Both bases and all 32 exact
+feature tips in the current merge-order table are ancestors of both integrations.
+
+Independently compared app-c's saved iteration-51 receipts:
+
+- Settings returned painted in original PID 4734. This successful attempt does
+  not close historical F-36 or establish renderer-loss recovery.
+- The artifact audit records 54 passing consistency checks. These are saved
+  artifact checks, not an additional device run or unconditional acceptance.
+- One registered worker was explicitly triggered after captured readiness and
+  earliest-time eligibility; observation lasted 499.286 seconds. Full-log callback
+  begin 05:58:39.003, completion 05:58:40.316 and SUCCESS 05:58:40.335 share
+  PID 7443, and those exact lines are absent from the before capture. One forced
+  execution proves no recurring cadence.
+- Stable supplied native receipts show outbox 2/incoming absent before the worker,
+  then incoming origin 1200000/usn 1200002 and outbox 0 before foreground.
+  Both outgoing inspection objects independently match their saved write params.
+- Independently hashed raw activation files are byte-identical, SHA256
+  0bca80c274e84de6ae5fb34999fcb2ef95059aed698bb8d10661482455eb1422:
+  current 1793577891, pending 1793577901, trial null. The app report records
+  final commit and cleanup after observation.
+
+Decision: preserve security, user data and the candidate freeze. Successful
+isolated attempts do not justify changing rollback strikes, account isolation or
+sync leases. Historical reliability findings remain open or qualified; Kundalini
+has not yet accepted S6/S7/S8. S1 stays parked; S2 needs a Play account.
+
+This follow-up changes integration ledgers only. Ancestry, matching sections,
+unchanged implementation trees and diff hygiene were checked. Earlier November 2
+full gates retain their recorded scope; no fresh full-gate, device or runtime-review
+pass is claimed. No test-app writes, protected-branch changes, version/schema
+changes, push or publication.
+
 ## November 2: iteration-50 acceptance follow-up
 
 Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 50,
