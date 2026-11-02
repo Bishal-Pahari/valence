@@ -14,10 +14,15 @@ Add a store-compiled allowlist to `valence/valence.config.json`:
 Run `valence codegen`, add the matching native declarations below, and ship a new
 store build. Older hosts need the schema additions too; `codegen` does not overwrite
 an existing schema. Copy the three methods, event and `PermissionState` type from
-the starter schema, assigning the next reserved version for your app. The template retains upstream schema 13; these
-permissions additions are since 10; your app's version history is independent. Keep older
-methods unchanged. An empty or absent allowlist denies all kinds. An OTA cannot
-expand it, even when Android already declares a permission for another native feature.
+the starter schema. For each newly added method or event, use `since` at least
+`max(10, shipped store schema version + 1)` and raise the app schema `version` to
+at least that value. For example, an app that already shipped schema 10 introduces
+these names at 11 or higher. The template's 10 records when permissions arrived;
+it does not override the additive-only rule for your app's shipped baseline.
+Preserve every already-shipped declaration, including its `since`, and guard new
+calls and event subscriptions with `has()` when serving older hosts. An empty or
+absent allowlist denies all kinds. An OTA cannot expand it, even when Android
+already declares a permission for another native feature.
 
 ```ts
 import { call, has, on } from './valence/bridge.g';
@@ -36,9 +41,11 @@ async function enableCamera() {
   // Offer a separate settings button for permanentlyDenied; never reopen automatically.
 }
 
-const stop = on('permissions.changed', ({ permissions }) => {
-  for (const { kind, status } of permissions) renderPermissionFor(kind, status);
-});
+const stop = has('permissions.changed')
+  ? on('permissions.changed', ({ permissions }) => {
+      for (const { kind, status } of permissions) renderPermissionFor(kind, status);
+    })
+  : () => {};
 // Call stop() on component disposal.
 // A separate user action may call permissions.openSettings (no params).
 ```
