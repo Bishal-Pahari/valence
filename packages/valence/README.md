@@ -275,7 +275,7 @@ OTA transition. Restart without `VALENCE_DEV_URL` for signed offline and rollbac
 
 Sync outcomes are an open string set: `ok`, `busy`, `offline`, `unauthorized`, `failed`. A non-200 or invalid protocol response reports `failed`, including a 401 sent to a request without a bearer token. Only a bearer-bearing 401 expires authentication. Partial changes remain applied, queued writes remain available for retry, and incomplete runs never advance the last successful unscoped timestamp. Treat every non-`ok` outcome as incomplete, even when `changed` is positive. See contracts section 5.6.
 
-Schema 16 adds `notify.pendingIds()` for cancellation by difference even when full notification content exceeds the bridge reply cap. Keep `notify.pending()` unchanged; declare the new method at `since: 16`, regenerate, ship a store build and guard it with `has()`. Disabled hosts still deny the group. No delivery guarantee is added; iOS remains experimental and untested.
+Schema 16 adds `notify.pendingIds()` for cancellation by difference even when full notification content exceeds the bridge reply cap. Keep `notify.pending()` unchanged. A new declaration needs `since` at least `max(16, shipped store schema version + 1)` and app schema `version` at least that value; preserve an already-shipped declaration unchanged. Update the tooling, regenerate, ship a store build and guard calls with `has()`. Disabled hosts still deny the group. No delivery guarantee is added; iOS remains experimental and untested.
 
 Store-host update prompts and signed mandatory policies are documented in
 [Forcing an update](../../docs/forcing-an-update.md). Revision 17 adds fixed-destination `app.openStore`,
