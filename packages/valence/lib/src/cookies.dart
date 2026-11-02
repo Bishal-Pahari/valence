@@ -141,8 +141,9 @@ final class ValenceCookies {
     // `Uri.origin` throws for a non-HTTP(S) scheme or an empty host. `ValenceHttp` rejects both before
     // it gets here, but this is public on the runtime, and "the jar refused" is the only safe answer to
     // a URL that has no origin to compare.
-    if (!{'http', 'https'}.contains(url.scheme) || url.host.isEmpty)
+    if (!{'http', 'https'}.contains(url.scheme) || url.host.isEmpty) {
       return false;
+    }
     return url.origin == policy.origin;
   }
 
@@ -222,8 +223,9 @@ final class ValenceCookies {
     await _load();
     await _expire();
     final cookie = _cookies[name];
-    if (cookie == null || !_pathMatches(_requestPath(url), cookie.path))
+    if (cookie == null || !_pathMatches(_requestPath(url), cookie.path)) {
       return null;
+    }
     return cookie.value;
   }
 
