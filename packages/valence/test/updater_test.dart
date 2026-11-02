@@ -800,6 +800,41 @@ void main() {
   });
 
   group('§2.3 step 8, pending', () {
+    test('completion sees published authenticated refusal, never a ready event', () async {
+      final b = await signBundle(key, seq: 20, requiresBridge: 20);
+      final ready = <int>[];
+      final u = makeUpdater(state: ValenceState(installId: 'i', current: 10),
+          client: otaHost(bundles: {20: b}, pointerSeq: 20), onUpdateReady: ready.add);
+      var completed = 0;
+      u.onChecked = () {
+        completed++;
+        expect(u.lastReason, ValenceBundleReason.needsStoreUpdate);
+        expect(u.lastRequiredBridge, 20);
+        expect(u.lastCheckedAt, isNotNull);
+        expect(u.state.pending, isNull);
+      };
+      await Future.wait([u.checkForUpdate(), u.checkForUpdate()]);
+      expect(completed, 1);
+      expect(ready, isEmpty);
+    });
+
+    test('invalid signatures never disclose an offer requirement on completion', () async {
+      final b = await signBundle(key, seq: 20, requiresBridge: 20);
+      final u = makeUpdater(state: ValenceState(installId: 'i', current: 10),
+          client: MockClient((r) async {
+            if (r.url.path.endsWith('/channels/production.json')) { return http.Response('{"seq":20,"rollout":100}', 200); }
+            if (r.url.path.endsWith('.sig')) { return http.Response(base64Encode(List.filled(64, 0)), 200); }
+            return http.Response.bytes(b.bytes, 200);
+          }));
+      var completed = 0;
+      u.onChecked = () { completed++; expect(u.lastRequiredBridge, isNull); };
+      await u.checkForUpdate();
+      expect(completed, 1);
+      expect(u.lastReason, ValenceBundleReason.rejected);
+    });
+
+
+
     test('updateReady observes the completed status for its pending bundle', () async {
       final b = await signBundle(key, seq: 20);
       var notifications = 0;

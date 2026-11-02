@@ -290,3 +290,5 @@ behind a compiled per-bucket grant. See [REST caching](docs/rest-cache.md) for
 pull precedence, account clearing, retention and schema lifetimes.
 
 For API sessions that may survive restart, compiled `http.cookieJar.sessionCookieDays` opts into 1–30 days from receipt; omitted keeps session cookies memory-only. Regenerate and rebuild the host. Restarts never renew the deadline; removing the opt-in revokes stored sessions. See [Persistent sessions](https://getvalence.pages.dev/docs/guides/persistent-sessions/).
+
+Revision 19 adds `bundle.check()` and `bundle.checked` so a page can request a check and learn when an offer needs a newer store host, even when no bundle becomes pending. [Explicit checks and completion](docs/bundle-checks.md).

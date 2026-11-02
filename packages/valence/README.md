@@ -286,3 +286,5 @@ read-only buckets granted by `ValenceConfig.cacheBuckets`. Read APIs merge these
 with synced rows (`usn: -2` for cache); pulls remove matching overlays. Cache
 never queues a write or advances sync freshness. Recorded account changes clear
 it. See the [REST cache guide](https://getvalence.pages.dev/docs/guides/rest-cache/).
+
+Revision 19 adds explicit `bundle.check` through the attached host policy path and schema-opted `bundle.checked` for completed checks, including `needsStoreUpdate`. It never auto-applies. [Usage and host migration](https://getvalence.pages.dev/docs/guides/bundle-checks/).

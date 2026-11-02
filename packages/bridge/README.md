@@ -152,3 +152,5 @@ nullable status fields and a native blocker; older runtimes cannot be forced.
 Revision 18 adds the generated `data.cache` method. Guard it with `has()` and
 import `call` from your app's generated bridge. The native host must grant each
 read-only cache bucket in its store config. [REST cache guide](https://getvalence.pages.dev/docs/guides/rest-cache/).
+
+Generated schema revision 19 can expose `bundle.check` (void) and `bundle.checked` (`reason`, nullable `requiredBridge`). Gate each with `has()`, subscribe before reading `bundle.status`, and re-read after completion. `bundle.updateReady` remains pending-only. [Explicit checks](https://getvalence.pages.dev/docs/guides/bundle-checks/). The generic bridge client needs no new transport API.

@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 18;
+const hostBridgeVersion = 19;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale, this.fontScale, this.builtins});
@@ -645,6 +645,7 @@ abstract interface class BridgeHandlers {
   Future<String> shareImage(ShareImageParams p);
   Future<void> appOpenStore();
   Future<void> dataCache(DataCacheParams p);
+  Future<void> bundleCheck();
   Future<void> hapticsTap();
 }
 
@@ -736,6 +737,8 @@ mixin BridgeHandlersDefaults implements BridgeHandlers {
   Future<void> appOpenStore() async => throw const BridgeError('E_UNSUPPORTED', 'app.openStore is not implemented');
   @override
   Future<void> dataCache(DataCacheParams p) async => throw const BridgeError('E_UNSUPPORTED', 'data.cache is not implemented');
+  @override
+  Future<void> bundleCheck() async => throw const BridgeError('E_UNSUPPORTED', 'bundle.check is not implemented');
   @override
   Future<void> hapticsTap() async => throw const BridgeError('E_UNSUPPORTED', 'haptics.tap is not implemented');
 }
@@ -903,6 +906,10 @@ Future<String> bridgeDispatch(BridgeHandlers h, String raw, {required String non
       case 'data.cache':
         await h.dataCache(DataCacheParams.fromJson(p, 'p'));
         return replyOk(id, null);
+      case 'bundle.check':
+        decodeKeys(decodeObject(p, 'p'), const {}, 'p');
+        await h.bundleCheck();
+        return replyOk(id, null);
       case 'haptics.tap':
         decodeKeys(decodeObject(p, 'p'), const {}, 'p');
         await h.hapticsTap();
@@ -934,9 +941,11 @@ abstract final class BridgeEvents {
   static String pushReceived({required PushMessage message}) => eventScript('push.received', {'message': message.toJson()});
   static String pushTapped({required PushMessage message}) => eventScript('push.tapped', {'message': message.toJson()});
   static String pushTokenChanged({required String token}) => eventScript('push.tokenChanged', {'token': token});
+  static String bundleChecked({required String reason, required int? requiredBridge}) => eventScript('bundle.checked', {'reason': reason, 'requiredBridge': requiredBridge});
 }
 
 /// Automatic notification events; pre-11 declarations remain app-owned.
+const hostBundleCheckedEvent = true;
 const hostNotificationEventFields = <String, Set<String>>{
   'notify.tapped': {'id', 'payload', 'action'},
   'notify.action': {'id', 'payload', 'action'},
@@ -1195,6 +1204,11 @@ abstract class ValenceBuiltins {
   /// `data.cache`, from the package.
   Future<void> dataCache(DataCacheParams p) async {
     await valence.dataCache(p.bucket, p.key, p.value);
+  }
+
+  /// `bundle.check`, from the package.
+  Future<void> bundleCheck() async {
+    await valence.checkBundleUpdate();
   }
 
   /// `haptics.tap`, from the package.
