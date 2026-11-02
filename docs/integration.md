@@ -1,5 +1,49 @@
 # Integration with current packages - 2026-11-02
 
+## November 2: iteration-53 acceptance follow-up
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 53,
+read-only. All must-haves are done; no rebase-queue item is eligible. Packages
+bases remain code 90af361 / site 6eb2bd6. Both bases and all 32 recorded feature
+tips in the current merge-order table are ancestors of both integrations.
+
+Independently compared app-c's saved iteration-53 receipts:
+
+- Settings returned painted in original PID 4887. Camera/gallery completed
+  directly this attempt; neither success closes historical F-36 or F-40.
+- The artifact audit records 54 passing consistency checks and no current
+  observed failures. These are saved artifact checks, not another device run.
+- One registered worker was explicitly triggered; observation lasted 469.791
+  seconds. Full-log callback begin 06:59:31.392, completion 06:59:32.860 and
+  SUCCESS 06:59:32.869 share PID 7250. Those exact lines are absent from the
+  before capture. One forced execution proves no recurring cadence.
+- Stable supplied native receipts show outbox 2/incoming absent before the worker,
+  then incoming origin 1260000/usn 1260002 and outbox 0 before foreground.
+  Both outgoing inspection objects independently match their saved write params.
+- Independently hashed raw activation files are byte-identical, SHA256
+  18f05ffec07404178cc9a2c3c619a972361673f96a7cfe857414130f5dccd8d8:
+  current 1793581590, pending 1793581600, trial null. The report records final
+  commit and cleanup after observation.
+- The app's review found unexecuted copied report generators containing historical
+  destinations and failure narratives. They were removed/excluded in favor of an
+  explicit operational-script list and guarded current-receipt writer. These are
+  app-owned evidence-integrity problems, not established Valence defects. The
+  iteration-52 share-text fixture label remains explicitly disclosed.
+
+Decision: preserve security, user data and the candidate freeze. Successful
+isolated attempts and corrected reporting scripts do not justify speculative
+changes to rollback strikes, account isolation or sync leases. Historical
+reliability findings remain open or qualified; Kundalini has not yet accepted
+S6/S7/S8. S1 stays parked; S2 needs a Play account.
+
+This follow-up changes integration ledgers only. Ancestry, matching sections,
+unchanged implementation trees and diff hygiene were checked. Earlier November 2
+full gates retain their recorded scope; no fresh full-gate, device or runtime-review
+pass is claimed. No test-app writes, protected-branch changes, version/schema
+changes, push or publication. The first receipt-check command used a nonexistent
+before-log filename and stopped; the corrected read of background-full-log-before.txt
+passed. This was a reader error, not an application or runtime gate failure.
+
 ## November 2: iteration-52 acceptance follow-up
 
 Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 52,
