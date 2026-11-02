@@ -1,5 +1,72 @@
 # Integration with current packages - 2026-11-02
 
+## November 2: iteration-57 startup and publication-retention evidence
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 57,
+read-only. All must-haves remain done. No original queue refresh is eligible:
+packages bases remain code 90af361 / site 6eb2bd6, and both integrations contain
+all 34 exact branch tips in the current merge-order table. No integration rebuild
+or new feature branch is needed.
+
+Independently checked the saved iteration-57 evidence:
+
+- The artifact audit has 57 passing consistency checks. It is an artifact audit,
+  not an additional device run or an unconditional acceptance pass.
+- Retained release PID 4505 logs store.open id 1 / isolate 4282862 waiting at
+  10002 and 20002 ms, completing at 22365 ms; Valence.open completes at 23091 ms.
+  The 35-second spinner capture is excluded by the app report. Later offline
+  original-photo rendering followed an explicit Flat1 link. Fresh release PID
+  4787 completes open at 1023 ms. Open completion is not meaningful paint;
+  these timings identify delayed work, not the owner or cause of the delay.
+- F-27's raw native listing, decoded as UTF-16LE, contains 1491 payloads and
+  1491 sidecars. The native du receipt reports 301604 KiB of host publications
+  versus 224 KiB of original media. Independently counted hashes: 28 of 32
+  sampled payloads match the original photo. An initial UTF-8 listing reader
+  counted zero; decoding the actual file encoding corrected that reader.
+  App-owned mediaResolve calls publishHostFile on every resolution; mediaRemove
+  deletes the original. The current runtime assigns a new random id per publish
+  and persists its payload and type sidecar. This supports duplicate retention
+  during cumulative use, not a measured single-call growth rate, original-file
+  loss or an isolated framework leak. No runtime-managed file was deleted.
+- Settings returned painted in original PID 5121 this attempt. That success
+  closes no historical renderer/process-loss finding.
+- One registered worker was observed without an explicit force trigger over
+  374.529 seconds. Its begin at 12:02:53.006, completion at 12:02:54.191 and native
+  SUCCESS at 12:02:54.201 share PID 7650 and occur in the saved full log.
+  One observed execution establishes no recurring cadence.
+- Supplied stable native SQLite receipts show preworker outbox 2/incoming absent,
+  then incoming origin 1380000/usn 1380002 and outbox 0 before foreground.
+  Both outgoing inspection objects independently match their saved write params.
+- Raw activation files are independently byte-identical, SHA256
+  83bc33a5424db35c35ff6d1b290d1c5688f535c192266912a7bc0a759771ae01:
+  current 1793599874, pending 1793599884, trial null. The report records final
+  commit and cleanup after this observation.
+
+Evidence lives under valence-test-app-c/evidence/iteration-57: release-retained-
+logcat.txt, r29-fresh-startup.json, host-data-size.txt, host-published-files.txt,
+host-retention-hashes.txt, worker-completion-proof.json, worker-full-logcat.txt,
+worker-execution.json, background-sqlite-before-worker.json, background-sqlite-
+before-resume.json, both background-state raw files and evidence-audit.json.
+
+Decision: security first, then users' data. Preserve the candidate freeze and
+do not invent deletion/revocation semantics for durable URLs or change SQLite
+locking from an operation timing alone. F-27 now has stronger major product-
+readiness evidence and belongs in the improver's release assessment under the
+roadmap's major-finding rule. A supported retention/revocation contract and a
+controlled publication experiment are still needed before claiming durable
+photo readiness. Historical reliability findings remain open or qualified;
+successful attempts do not close them. The pending-ID and permission adoption
+corrections are already in integration, without app adoption claimed. Kundalini
+has not yet accepted S6/S7/S8. S1 stays parked; S2 needs a Play account.
+
+Only matching integration ledgers change in this follow-up. Ancestry, exact
+recorded tips, unchanged implementation trees, mirrored notes and diff hygiene
+were checked. Earlier November 2 full gates retain their recorded scope; no
+fresh full-gate, emulator acceptance or runtime-review pass is claimed. Security
+checks, data, schemas, package versions, templates and build inputs are unchanged.
+No test-app writes, protected-branch changes, push or publication.
+
+
 ## November 2: permissions adoption correction (app-c iteration 56)
 
 All must-haves remain done and no original queue refresh was eligible. Read both
