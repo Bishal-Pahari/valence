@@ -1,23 +1,22 @@
 # Changelog
 
-## Unreleased: bounded session-cookie persistence
-
-- Native `http.cookieJar.sessionCookieDays` opts into 1–30 days for session cookies across restarts. Off by default; run codegen and rebuild the host. Deadlines never renew on reload; sign-out and account-switch clearing still apply. [Guide](https://getvalence.pages.dev/docs/guides/persistent-sessions/).
-
-## Unreleased: explicit update checks and completed-check notifications
-
-- Schema 19 adds explicit `bundle.check` and `bundle.checked` completion, including offers needing a newer store host. Regenerate and rebuild to opt in; pending-only `bundle.updateReady` is unchanged.
-
-
 ## Unreleased: response size grants
 
 Optional compiled `http.maxBodyBytes` accepts 1..262144 decompressed response bytes (default 65536). Regenerate and ship a host for larger REST responses. Request and escaped reply limits stay unchanged; doctor reports both limits.
+
+## Unreleased: bounded session-cookie persistence
+
+- Native `http.cookieJar.sessionCookieDays` opts into 1–30 days for session cookies across restarts. Off by default; run codegen and rebuild the host. Deadlines never renew on reload; sign-out and account-switch clearing still apply. [Guide](https://getvalence.pages.dev/docs/guides/persistent-sessions/).
 
 ## Unreleased: debugging tools and a web app checklist
 
 - `chrome://inspect` works in debug builds.
 - `traceBridge()` in `@getvalence/bridge` lets a debug build see native requests, without params, bodies, headers or query strings.
 - New docs: [Debugging](https://getvalence.pages.dev/docs/guides/debugging/) and the [Web app checklist](https://getvalence.pages.dev/docs/guides/web-app-checklist/).
+
+## Unreleased: explicit update checks and completed-check notifications
+
+- Schema 19 adds explicit `bundle.check` and `bundle.checked` completion, including offers needing a newer store host. Regenerate and rebuild to opt in; pending-only `bundle.updateReady` is unchanged.
 
 ## Unreleased: a cookie jar for one origin, so a CSRF-protected API is reachable
 

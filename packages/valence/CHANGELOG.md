@@ -1,21 +1,20 @@
 # Changelog
 
-## Unreleased: bounded session-cookie persistence
-
-- Native `http.cookieJar.sessionCookieDays` opts into 1–30 days for session cookies across restarts. Off by default; run codegen and rebuild the host. Deadlines never renew on reload; sign-out and account-switch clearing still apply. [Guide](https://getvalence.pages.dev/docs/guides/persistent-sessions/).
-
-## Unreleased: explicit update checks and completed-check notifications
-
-- Schema 19 adds explicit `bundle.check` and `bundle.checked` completion, including offers needing a newer store host. Regenerate and rebuild to opt in; pending-only `bundle.updateReady` is unchanged.
-
-
 ## Unreleased: response size grants
 
 Optional compiled `http.maxBodyBytes` accepts 1..262144 decompressed response bytes (default 65536). Regenerate and ship a host for larger REST responses. Request and escaped reply limits stay unchanged; doctor reports both limits.
 
+## Unreleased: bounded session-cookie persistence
+
+- Native `http.cookieJar.sessionCookieDays` opts into 1–30 days for session cookies across restarts. Off by default; run codegen and rebuild the host. Deadlines never renew on reload; sign-out and account-switch clearing still apply. [Guide](https://getvalence.pages.dev/docs/guides/persistent-sessions/).
+
 ## Unreleased: inspect the WebView in debug builds
 
 A debug build now enables Android WebView inspection, so `chrome://inspect` shows the page with full DevTools. Profile and release never do (contracts §3.1).
+
+## Unreleased: explicit update checks and completed-check notifications
+
+- Schema 19 adds explicit `bundle.check` and `bundle.checked` completion, including offers needing a newer store host. Regenerate and rebuild to opt in; pending-only `bundle.updateReady` is unchanged.
 
 ## Unreleased: an optional host-held cookie jar for one compiled origin
 

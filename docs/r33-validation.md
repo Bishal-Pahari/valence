@@ -53,6 +53,6 @@ branch changes, push or publication.
   PASS: core graph and 19 DEX files / manifest contain no Firebase SDK references.
 - Root pack dry run passed. Site build/SEO: 48 pages passed.
 
-No fresh device acceptance is inferred from these gates. The one-line default
+No fresh device acceptance is inferred from these gates. The default
 config template stays opt-out; constructor emission is exercised by the generated
 Dart gate rather than enabling session persistence in every new project.

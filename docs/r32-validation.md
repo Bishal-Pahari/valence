@@ -1,4 +1,4 @@
-# R32 validation ? 2026-11-02
+# R32 validation - 2026-11-02
 
 ## Decision
 
