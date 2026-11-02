@@ -12,10 +12,12 @@ The existing signed UI keeps working. Signature, identity, sequence, floor, meta
 and file failures continue to mean `rejected`.
 
 To opt in, add nullable `requiredBridge: "int?"` and `minHost: "int?"` to your
-BundleStatus type; declare `app.openStore` with `since: 17`, no params, `returns:
-"void"`; increase your own schema above its last store baseline (at least 17),
-regenerate and ship a store build. Do not change existing method shapes or since
-values. `app.info().builtins >= 17` identifies the new runtime revision; older
+BundleStatus type; for a new `app.openStore` declaration use `since` at least
+`max(17, shipped store schema version + 1)`, no params, `returns: "void"`, and app
+schema `version` at least that value. An app already at schema 18 without this
+method needs 19 or higher; 17 is the reserved minimum, not a universal introduction
+version. Update the tooling, regenerate and ship a store build. Preserve existing
+method shapes and `since` values. `app.info().builtins >= 17` identifies the new runtime revision; older
 schemas without requiredBridge keep the legacy rejected reason. A new declaration
 does not upgrade a previously installed runtime.
 
