@@ -149,7 +149,12 @@ for (const id of ids) if (!wanted.has(id)) await call('notify.cancel', { id });
 Actions are the compiled `open`, `done`, `snooze` IDs, with English labels; every action opens the UI.
 The app decides what Done and Snooze mean. Reply inputs and custom layouts are deferred.
 
-Declare `notify.pendingIds` with `since: 16`, regenerate and ship a store build.
+For a new `notify.pendingIds` declaration, use `since` at least
+`max(16, shipped store schema version + 1)` and raise the app's schema `version` to
+at least that value. The reserved revision 16 is a minimum: an app that already
+shipped schema 16 without this method must introduce it at 17 or higher. Preserve
+an already-shipped declaration's `since` unchanged. Update the vendored tooling,
+regenerate and ship a store build; guard calls with `has('notify.pendingIds')`.
 A host with notifications disabled returns `E_UNSUPPORTED`. Each call reads one native queue
 snapshot; two calls can observe different snapshots. Reading IDs never cancels or re-arms requests.
 

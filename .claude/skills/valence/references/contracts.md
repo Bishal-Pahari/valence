@@ -2279,8 +2279,11 @@ it and the first thing to fail would be the store build, on a device.
   `notify.pending` answers `E_TOO_LARGE` on precisely the apps that schedule the most. Gate it with
   `has('notify.pendingIds')`, and read `notify.pending` only when the titles or payloads are wanted and
   the queue is known to be small. The new built-in delegates only at `since >= 16`, its reserved
-  capability revision. Each call reads one native queue snapshot; two calls may observe different
-  snapshots. It never mutates the queue, and returns an empty list on an unavailable service; a
+  capability revision. For a new declaration, §4.1 also requires `since` above the shipped store
+  schema: use at least `max(16, baseline + 1)` and raise the app schema `version` to at least that
+  value. A store schema already at 16 without this method therefore needs 17 or higher; preserve
+  an already-shipped declaration unchanged. Each call reads one native queue snapshot; two calls
+  may observe different snapshots. It never mutates the queue, and returns an empty list on an unavailable service; a
   disabled host returns `E_UNSUPPORTED`.
 - `notify.channels.set({id, name, importance?: string, sound?: string, group?: string,
   groupName?: string}) -> void` creates Android channels and optional channel groups. Importance is
