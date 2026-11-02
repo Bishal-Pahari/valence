@@ -1,5 +1,59 @@
 # Integration with current packages - 2026-11-03
 
+## November 3: iteration 70 evidence intake; implementation unchanged
+
+Read both apps' VALENCE_FINDINGS.md inventories and newest completed reports:
+Kundalini 18 and app-c 70. No eligible must-have, changes-requested item or queue
+refresh remains. Packages bases remain 0302556 (code) and 62f950b (site).
+Verified both bases and all 36 exact tips in the current inclusion table are
+ancestors of their integrations. Only docs/integration.md differs from the
+previously gated implementation candidate 7385f4e / 1539b66.
+
+Decision: preserve security, users' data and the candidate. S1 stays deliberately
+parked; S2 needs a Play account. App-c 70 establishes no new runtime defect.
+Successful retries do not justify weakening trial accounting, resetting accounts,
+deleting durable publications or closing historical reliability findings.
+
+Independently hashed both archived APKs against iteration-70 receipts:
+release 54711084 bytes, SHA256
+d94ceb528a4f4747623f4d8184eb0e652eaa94de7a3e126f1e41c965522dab79;
+debug 168851587 bytes, SHA256
+96cca21feaa10f712b56a35333bb0f2090e42731aa83c20b2067a90fe7432003.
+The saved artifact audit records 56 passing consistency checks; it was read,
+not re-executed. No test-app file changed.
+
+Settings receipt records painted return in the same PID 5235. Fresh release
+Valence.open completed in 1655 ms, separately from paint. Initial unsettled
+widget and early denial captures remain excluded. Retention receipts report
+preserved inspection fields and photo identity, and matching original-photo
+archive/native hashes; strict cleanup receipt records absent PID with exit 1,
+empty stdout/stderr and no execution error.
+
+Compared saved native baseline (outbox 2, incoming absent) with pre-foreground
+effects (outbox 0, incoming row and outgoing objects reported matching).
+Independently matched raw worker-full-logcat.txt: PID 8371 begins 05:39:10.504,
+completes 05:39:11.870 and reports native BackgroundWorker SUCCESS at
+05:39:11.879. Raw activation files are byte-identical, SHA256
+45b12583b57448ae7623dcadd15751086c7af7710836e1c3976e85af3a709156,
+pending 1793663146, no trial. One explicitly triggered registered execution
+proves no natural cadence; the 463.841-second observation wait is not callback
+duration. Final foreground commitment is later evidence.
+
+Preserve F-43's initial doctor --tests result: 13 PASS / 10 WARN / 1 FAIL,
+child exit 1, with overlapping Flutter commands but no established cause.
+The sequential retry reports 14 PASS / 10 WARN / 0 FAIL, child exit 0.
+The retry does not erase the failure or close F-43. Historical renderer,
+startup, background, busy-sync and media findings remain open or qualified.
+Kundalini F-72/F-73/F-74 remain app-reported pending adoption and verification.
+iOS remains experimental and untested.
+
+Sources: read-only valence-test-app-c/evidence/iteration-70/ and both apps'
+findings/reports. Only mirrored integration notes change. Earlier November 3
+gates retain their scope; no fresh full-gate run, emulator acceptance or runtime
+security review is claimed. Ancestry, unchanged implementation trees, mirrored
+notes and diff hygiene checked. No protected-branch changes, schema/version
+changes, push or publication.
+
 ## November 3: iteration 69 evidence intake; implementation unchanged
 
 Read both apps' VALENCE_FINDINGS.md inventories and newest completed reports:
