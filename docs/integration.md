@@ -1,5 +1,59 @@
 # Integration with current packages - 2026-11-03
 
+## November 3: iteration 67 evidence intake; implementation unchanged
+
+Reviewed both apps' VALENCE_FINDINGS.md and newest completed reports: Kundalini 18
+and app-c 67. No eligible must-have, changes-requested item or queue refresh
+remains. Packages refs remain 03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 (code)
+and 62f950ba1d52632b47fdd0e170bc41e18d467ae1 (site). Verified all 36 exact
+recorded tips and both newest packages refs are ancestors of the integrations.
+The tested implementation candidate remains 7385f4e / 1539b66.
+
+Decision: preserve security, users' data and the candidate while the apps exercise
+it. S1 stays deliberately parked; S2 needs a Play account. Do not weaken trial
+accounting, delete runtime publications, reset accounts or infer a lock owner from
+successful retries. No new feature, schema or package version is claimed here.
+
+Replayed app-c 67's saved artifact audit in an isolated context, intercepting its
+only write in memory: all 38 checks pass. Independently rehashed both archived
+APKs: release 54711088 bytes, SHA256
+1ede080888847bb2d18b4172da3c0b0c53ae307baa8dd0532c9e29fc9b24f874;
+debug 168851587 bytes, SHA256
+7e3317ab7c0ef706655e2963df81cb34e5eff2e3241484d5aaa46c9caa1c9344.
+No app file was changed. Artifact consistency is separate from device execution.
+
+Settings receipt records return in the same PID 5008. Inspected its saved return
+screenshot: painted list, completed inspection, one photo and one installed widget
+are visible. Other processes killed under memory pressure in the saved inventory
+are not this host. This success closes no historical F-36 renderer-loss finding.
+
+Compared native worker baseline (outbox 2, incoming absent) with pre-foreground
+effects (outbox 0, incoming row and matching outgoing objects). Independently
+matched raw worker-full-logcat.txt: PID 7682 begins 02:35:41.500, completes
+02:35:42.797 and reports native BackgroundWorker SUCCESS at 02:35:42.810.
+Raw activation files are byte-identical, SHA256
+e87ab43984e79b8e88801cc41eaaf43c586c7e411285e8f70c6f9bde57893c78,
+pending 1793652234, no trial. One explicitly triggered registered execution proves
+no natural cadence. The 397.292-second observer wait is separate from callback
+execution and cross-clock timing; final foreground commitment is later evidence.
+
+Fresh release open completes in 1648 ms. Retained positive accessibility sampling
+at 22223 ms includes polling/dump overhead; fresh accessibility yielded no app text
+and was excluded in favor of inspected image evidence in the app's report. Neither
+establishes exact first paint. Serial doctor reports 14 PASS / 10 WARN / 0 FAIL.
+Preserve copied-input, quoting and unsupported Flutter invocation corrections,
+raw native stderr/build warnings and failed attempts as qualified by runner notes.
+Captured preview-doc F-34/F-41 observations remain distinct from adoption docs
+already included here. Kundalini F-72/F-73/F-74 remain app-reported observations
+pending adoption and verification. Historical startup, background, busy-sync,
+media lifetime and doctor findings stay open.
+
+Sources are read-only valence-test-app-c/evidence/iteration-67/ and both apps'
+findings/reports. Only mirrored integration notes change. Earlier November 3 gates
+retain their original scope; no fresh full-gate run, emulator acceptance or runtime
+security-review pass is claimed. No test-app writes, protected-branch changes,
+version/schema changes, push, publication or deployment.
+
 ## November 3: iteration 66 evidence intake; implementation unchanged
 
 Read both apps' VALENCE_FINDINGS.md and newest completed reports: Kundalini 18
