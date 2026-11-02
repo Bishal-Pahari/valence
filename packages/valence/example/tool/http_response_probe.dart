@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:valence/src/wire.dart' show replyOk;
 import 'package:valence/valence.dart';
 
-import '../lib/valence/config.g.dart';
+import 'package:valence_example/valence/config.g.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

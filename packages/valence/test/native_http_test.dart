@@ -186,7 +186,7 @@ void main() {
       () async {
     const size = 133712;
     final body = 'a' * size;
-    final factory = () => MockClient((_) async => http.Response(body, 200));
+    MockClient factory() => MockClient((_) async => http.Response(body, 200));
     await expectLater(api(factory: factory).request(url: 'https://api.test'),
         error(BridgeErrorCode.tooLarge));
     final a = api(maxBodyBytes: size, factory: factory);
