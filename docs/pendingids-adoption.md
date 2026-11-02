@@ -35,4 +35,3 @@ decoding, navigation, atomic writes, key storage, account isolation and release
 dev-mode exclusion remain unchanged. No emulator was used. Android device
 acceptance remains separate; iOS is experimental and untested. No protected
 branch changes, test-app writes, push or publication.
-
