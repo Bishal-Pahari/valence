@@ -288,3 +288,5 @@ nullable status fields and a native blocker; older runtimes cannot be forced.
 Cache selected REST responses for offline reads with revision-18 `data.cache`,
 behind a compiled per-bucket grant. See [REST caching](docs/rest-cache.md) for
 pull precedence, account clearing, retention and schema lifetimes.
+
+For API sessions that may survive restart, compiled `http.cookieJar.sessionCookieDays` opts into 1–30 days from receipt; omitted keeps session cookies memory-only. Regenerate and rebuild the host. Restarts never renew the deadline; removing the opt-in revokes stored sessions. See [Persistent sessions](https://getvalence.pages.dev/docs/guides/persistent-sessions/).
