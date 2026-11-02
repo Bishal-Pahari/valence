@@ -1,5 +1,54 @@
 # Integration with current packages - 2026-11-02
 
+## November 2: iteration-52 acceptance follow-up
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 52,
+read-only. All must-haves are done; no rebase-queue item is eligible. Packages
+bases remain code 90af361 / site 6eb2bd6. Both bases and all 32 exact current
+feature tips in the merge-order table are ancestors of both integrations.
+
+Independently compared app-c's saved iteration-52 receipts:
+
+- F-40 recurred. The earlier Camera diagnostic says no ANR since boot; after the
+  bounded shutter retry, Android identifies an input-dispatch ANR at 06:17:36 in
+  com.android.camera2/com.android.camera.CaptureActivity. Later media success is
+  a separate retry, not a repair of that failed attempt or proof of Valence causation.
+- Settings returned painted in original PID 4814. This successful attempt does
+  not close historical F-36 or establish renderer-loss recovery.
+- The artifact audit records 54 passing consistency checks and explicitly retains
+  F-40 as an observed failure. These are saved artifact checks, not another device
+  run or unconditional acceptance.
+- The app added DartPluginRegistrant.ensureInitialized() before backgroundSync,
+  matching the current host recipe. Earlier successful workers do not establish
+  a defect caused by its prior omission; this is app-owned wiring.
+- One registered worker was explicitly triggered after captured readiness and
+  earliest-time eligibility; observation lasted 376.668 seconds. Full-log callback
+  begin 06:30:19.570, completion 06:30:20.828 and SUCCESS 06:30:20.843 share PID
+  7530; those exact lines are absent from the before capture. One forced execution
+  proves no recurring cadence.
+- Stable supplied native receipts show outbox 2/incoming absent before the worker,
+  then incoming origin 1230000/usn 1230002 and outbox 0 before foreground.
+  Both outgoing inspection objects independently match their saved write params.
+- Independently hashed raw activation files are byte-identical, SHA256
+  5cdbdda7fc2bd2075e5ecf338f9161bb0809de24fc1ffa7c6f3642a61eab8fa4:
+  current 1793579930, pending 1793579940, trial null. The report records final
+  commit and cleanup after observation.
+
+Decision: preserve security, user data and the candidate freeze. An external
+Camera ANR and successful isolated retries do not justify speculative changes
+to rollback strikes, account isolation or sync leases. Historical reliability
+findings remain open or qualified; Kundalini has not yet accepted S6/S7/S8.
+S1 stays parked; S2 needs a Play account.
+
+This follow-up changes integration ledgers only. Ancestry, matching sections,
+unchanged implementation trees and diff hygiene were checked. Earlier November 2
+full gates retain their recorded scope; no fresh full-gate, device or runtime-review
+pass is claimed. No test-app writes, protected-branch changes, version/schema
+changes, push or publication. The first independent receipt-check attempt read
+a UTF-16LE PowerShell diagnostic as UTF-8 and failed its no-ANR assertion; the
+unchanged receipt passed after BOM-aware decoding. This was a reader error,
+not an application or runtime gate failure.
+
 ## November 2: iteration-51 acceptance follow-up
 
 Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 51,
