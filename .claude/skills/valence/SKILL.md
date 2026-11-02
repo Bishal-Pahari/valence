@@ -473,3 +473,5 @@ Revision 18 `data.cache` requires a compiled `cache` bucket grant; regenerate
 and ship a store host. Keep user edits in writable buckets, prune stale cache
 keys and discard in-flight API results when accounts change. Cache-only data
 does not satisfy OTA synced-pair readiness.
+
+Revision 19 reserves `bundle.check` (no params, void) and `bundle.checked` (`reason: string`, `requiredBridge: int?`). Declare new names at since >= 19 and above the recorded store schema, then regenerate and rebuild. Subscribe to completion before the mount read of bundle.status; await bundle.check for a Retry action. Never auto-apply or loop checks from completion. The completion event is opt-in, unbuffered state; updateReady retains pending-only meaning. Use the attached host coalesced policy path, never the updater alone, for explicit discovery. See contracts 4.6 and docs/bundle-checks.md.

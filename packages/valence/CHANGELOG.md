@@ -3,6 +3,9 @@
 ## Unreleased: inspect the WebView in debug builds
 
 A debug build now enables Android WebView inspection, so `chrome://inspect` shows the page with full DevTools. Profile and release never do (contracts §3.1).
+## Unreleased: explicit update checks and completed-check notifications
+
+- Schema 19 adds explicit `bundle.check` and `bundle.checked` completion, including offers needing a newer store host. Regenerate and rebuild to opt in; pending-only `bundle.updateReady` is unchanged.
 
 ## Unreleased: an optional host-held cookie jar for one compiled origin
 
