@@ -1,5 +1,79 @@
 # Integration with current packages - 2026-11-02
 
+## November 2: iteration-62 doctor timeout, startup and artifact qualifications
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 62,
+read-only. No must-have or original queue refresh is eligible. Packages bases
+remain code 90af361 / site 6eb2bd6; both bases and all 34 exact tips in the current
+merge-order table are ancestors of both integrations. Compared implementation
+trees against pre-ledger merge heads 809aae1 / bdbb727: unchanged outside this
+ledger. No integration rebuild is needed on unchanged bases and branch tips.
+
+Failure first: new F-43 retains two distinct doctor attempts. Initial --tests
+execution exits 1 and reports the mapped bridge Flutter test failed. The serial
+retry is terminated at its wrapper's 300-second limit with status null, SIGTERM,
+ETIMEDOUT and a zero-byte stdout file. Plain doctor's saved result subsequently
+contains 13 PASS / 11 WARN / 0 FAIL, including "mapped but not executed; pass
+--tests". It neither replaces those failures nor proves mapped-test acceptance.
+The app reports twelve standalone Flutter tests passing separately. There is no
+phase evidence assigning the timeout to key scanning, Flutter, or assertions;
+do not bypass the signing-key scan or silently raise a timeout as a fix.
+
+Startup remains qualified: saved PID 5005 trace completes open at 39037 ms,
+store phase at 37774 ms and store.configure at 21448 ms. Named waits establish
+where time was observed, not the lock holder or cause. The initial 30-second
+splash is excluded. Retained PID 4698 open completes at 396 ms; a later retained
+paint observation cannot be treated as exact first-paint latency.
+
+Raw restore logs independently confirm system_server 5633 watchdog termination
+at 19:22:11.122 after main-thread blockage for 76 seconds, then 6203 at
+19:27:42.509 after 61 seconds. The restore hash receipt matches local and remote
+archives. This is Android system-service interruption with subsequent recovery,
+not proof that Valence caused it. The stable busy-sync receipt retains lease
+1793627227806:9334 and outbox 2; later same-PID completion is separate evidence.
+Elapsed time alone establishes no lease violation or blocked owner.
+
+Successful receipts retain their narrower scope:
+
+- The saved artifact audit lists 80 passing consistency checks, explicitly
+  excluding unconditional acceptance and retaining failed/obscured attempts.
+- Settings returned painted in PID 9334 on this attempt. It closes no historical
+  renderer-loss finding; the initial SystemUI overlay is excluded.
+- Raw logcat confirms new worker PID 13302 begin 19:48:34.203, complete
+  19:48:35.555 and matching BackgroundWorker SUCCESS at 19:48:35.566. The saved
+  stable SQLite receipt records exact outgoing objects, incoming row and outbox
+  0 before foreground. One registered execution establishes no recurring cadence.
+- Independently hashed raw activation files are byte-identical, SHA256
+  9d5fdbf805a8e3d69682ae340b7fe11c8c3132a2c2d52401a89cb85c0f2122d9:
+  current 1793628042, pending 1793628053, trial null before foreground.
+- Build/install/scan receipts survive, but the final mobile/build directory
+  disappeared for an unknown reason. Independently hashed recovered installed
+  debug APK is 168857631 bytes, SHA256
+  14579332e0b6b32343a8226f37c96b0e3ef9b90c71b120ed9fdca417123e983c,
+  matching the build receipt. No final persisted release APK is claimed.
+
+Evidence: valence-test-app-c/evidence/iteration-62, especially
+doctor-initial-{execution.json,failed.txt}, doctor-serial-timeout-{execution.json,txt},
+doctor-mechanical-summary.json, r29-startup.json, restore-os-full-log.txt,
+restore-archive-integrity.json, sync-diagnostics-result.json, settings-outcome.json,
+worker-{completion-proof.json,full-logcat.txt}, background-sqlite-before-resume.json,
+background-state-{before-raw.json,after-raw.json,comparison.json}, evidence-audit.json,
+binary-{hashes.json,delivery-state.json}; recovered APK under
+.valence/preupgrade/iteration62-installed-debug.apk.
+
+Decision: preserve security checks, users' data, durable URL semantics and the
+candidate freeze. F-43 deserves progressive phase/child-command diagnostics,
+but current evidence establishes no runtime fix or permission to weaken checks.
+F-42/F-36/F-27 and startup qualifications remain for the improver's release
+assessment. Kundalini 18 has not accepted S6/S7/S8; S1 remains deliberately parked
+and S2 needs a Play account.
+
+Only mirrored integration notes change. Exact-tip ancestry, unchanged
+implementation trees, raw activation/APK hashes and diff hygiene were checked.
+Earlier November 2 gates retain their scope; no fresh full-gate, device or
+runtime-review pass is claimed. No test-app writes, protected-branch changes,
+version/schema changes, push or publication.
+
 ## November 2: iteration-61 worker process loss and Settings recurrence
 
 Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 61,
