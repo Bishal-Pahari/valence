@@ -1,5 +1,75 @@
 # Integration with current packages - 2026-11-02
 
+## November 2: iteration-58 controlled retention and mixed-picker evidence
+
+Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 58,
+read-only. All must-haves remain done; no original queue refresh is eligible.
+Packages bases remain code 90af361 / site 6eb2bd6. Independently checked both
+bases and all 34 exact tips in the current merge-order table as ancestors of the
+current integrations. No feature branch or integration rebuild is needed.
+
+Independently compared the saved iteration-58 receipts:
+
+- All 59 artifact consistency checks pass. The audit explicitly retains the
+  mixed-picker invocation failure; its pass is not an unqualified device pass.
+- Four sequential resolves of one retained immutable photo return four distinct
+  publication URLs. Raw native listings grow from 1517 payloads and 1517 sidecars
+  to 1521 of each; the exact eight added filenames match the experiment receipt.
+  All four published payload hashes match the original. Native du reports
+  307728 KiB of publications versus 224 KiB of original media. App mediaResolve
+  republishes on every call; the runtime persists a random publication id and
+  type sidecar for each call. This establishes repeated-publication duplication
+  in this app workflow, not an unexplained package leak or a generalized rate.
+- Retained release PID 4435 logs store.open completion at 13467 ms and overall
+  open completion at 14013 ms. Native accessibility first observes list text at
+  40906 ms before the explicit deep link. That sampled observation is neither
+  exact first paint nor evidence of the delayed operation's owner or cause.
+- Mixed-picker am start -W exceeded the runner's 30-second deadline. Saved logs
+  show two startup completions in PID 7140, initial serving on port 29351,
+  a later bind conflict on that port and serving on 29129. The settled page
+  reports Flat 2 before recovery. Eventual routing does not erase the failed
+  invocation or establish its cause; no new ANR or host death is established.
+- Settings returned painted in original PID 5031. This successful attempt closes
+  no historical renderer/process-loss finding.
+- One registered worker was explicitly triggered, with captured Ready:true and
+  elapsed earliest time; the timing-delay constraint remains qualified in the
+  app report. Callback begin 13:03:15.101, completion 13:03:16.875 and native
+  SUCCESS 13:03:16.885 share PID 7892. These exact full-log lines are absent from
+  the before capture. One forced execution establishes no natural cadence.
+- Stable supplied native receipts show outbox 2/incoming absent before the
+  worker, then incoming origin 1410000/usn 1410002 and outbox 0 before foreground.
+  Both outgoing inspection objects independently match their saved write params.
+- Raw activation files are independently byte-identical, SHA256
+  c5f8b0abc6377b50bee2f08119d88f4a0b1b9fbde8f8289f119e6103b8e3c3e5:
+  current 1793603655, pending 1793603665, trial null. The app report records the
+  final commit and cleanup after this observation.
+
+Evidence: valence-test-app-c/evidence/iteration-58, especially evidence-audit.json,
+host-retention-{experiment.json,before.txt,after.txt,size.txt}, r29-retained-
+startup.json, release-retained-paint-observation.json, mixed-timeout.json,
+mixed-failure-logcat.txt, mixed-settled-after-timeout.json, settings-outcome.json,
+worker-completion-proof.json, worker-full-logcat.txt, background-full-log-before.txt,
+worker-execution.json, background-force-qualification.json, both native SQLite
+receipts, worker-write-{a,b}-params.json and both background-state raw files.
+
+Decision: preserve security, users' data, durable relative URLs and the candidate
+freeze. F-27 now has controlled evidence of repeated-publication duplication and
+remains a major product-readiness qualification for the improver's release
+assessment. Do not invent runtime deletion/revocation rules: persisted URLs may
+still be referenced. Bounded app reuse needs rebuilt-host restart/rebind/removal
+validation and would not reclaim historical publications. Mixed-picker ownership
+needs investigation rather than a speculative socket or SQLite change. Historical
+findings remain open or qualified. Pending-ID and permission adoption corrections
+are already in integration; the app's older guide does not establish adoption.
+Kundalini has not yet accepted S6/S7/S8. S1 stays parked; S2 needs a Play account.
+
+Only matching integration ledgers change. Ancestry, mirrored notes, unchanged
+implementation trees and diff hygiene were checked. Earlier November 2 full gates
+retain their scope; no fresh full-gate, emulator acceptance or runtime-review pass
+is claimed. No test-app writes, protected-branch changes, version/schema changes,
+push or publication.
+
+
 ## November 2: iteration-57 startup and publication-retention evidence
 
 Read both findings ledgers and newest completed reports, Kundalini 18 / app-c 57,
