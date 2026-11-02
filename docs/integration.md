@@ -1,5 +1,101 @@
 # Integration with current packages - 2026-11-02
 
+## November 2: R33 integrated on the current packages bases
+
+Current candidate: implementation code aecd17d / site 91ca9ef, based on packages
+03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 /
+62f950ba1d52632b47fdd0e170bc41e18d467ae1. Bases remained unchanged through the gates.
+This supersedes the earlier ready candidate; older sections below are historical.
+
+All original queue items are done. Fresh integration revisited the first 31 exact
+recorded tips below (already upstream), then R33, S8 and the two adoption-doc
+branches. R33 fast-forwarded to ea9e63c / 0e23509. Actual later merge commits:
+
+| Branch | Code merge | Site merge |
+|---|---|---|
+| codex/s8 | 947c5c2 | c007df6 |
+| codex/pendingids-adoption | 0680cce | 0afe3d8 |
+| codex/permissions-adoption | 2222e75 | b0edea5 |
+
+Changelog, README and llms conflicts preserve every addition; no runtime conflict
+required a behavior choice. Decision: security first, bounded native session grants,
+fixed receipt deadlines and revocation, preserving users' data, schema 19 and all
+reserved since values. Package versions are unchanged. The R33 runtime and tests
+remain identical to the independently reviewed feature branch. Both CLI copies
+match. All 35 exact tips below are independently verified ancestors in both repos.
+
+Read both findings and newest completed reports at intake, Kundalini 18 / app-c 63,
+read-only. Raw saved evidence confirms app-c renderer 5193 low-memory kill, Chromium
+terminating host 5113, and replacement 7249 BIND APPLICATION ANR after exact-alarm
+revocation. Recovered checks do not close F-36/F-35, establish a leak/lock cause or
+prove trial loss. Historical doctor F-43 is not erased by current success. No new
+emulator acceptance is claimed; iOS remains experimental and untested.
+
+## Fresh combined gates
+
+| Gate | Result |
+|---|---|
+| Root npm test | 114 passed, zero failures/skips; generated Dart and strict/verbatim TS included |
+| Runtime flutter test --concurrency=1 | 615 passed |
+| Runtime dart analyze --fatal-infos . | No issues |
+| Core pub dry run | 0 warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / no issues / 0 warnings, 1 local-override hint |
+| Bridge tests / strict TS / pack dry run | 36 passed / passed / passed |
+| Example tests | 29 passed |
+| Example debug APK | Passed, 13.7 seconds |
+| Standalone Windows py Firebase audit | PASS: core graph and all 19 DEX files / manifest contain no Firebase SDK references |
+| Root pack dry run | Passed |
+| Site build and SEO | 49 pages passed |
+
+Independent security review of R33, its failed-storage hardening and the combined
+S8/debugging interaction found no confirmed unresolved implementation defect.
+The restored ledger's old header and an extra EOF blank line were identified and
+corrected before handoff. Initial R33 brace-analysis failure and dirty-package pub
+warning are recorded separately in docs/r33-validation.md, with clean reruns; neither
+is counted as a pass. No protected branch changes, version bump, test-app writes,
+push or publication. R32 remains todo for a separate branch/run.
+
+## Current exact inclusion order
+
+| Order | Branch | Code tip | Site tip |
+|---|---|---|---|
+| 1 | codex/r8 | 91589a47cb80a4b2f2ba8cf1a6d1ce3dc5a4eb4e | 072552f08d626d2915e63e7fda2c4c183c4380e3 |
+| 2 | codex/r7 | 969b1a4fb03d76d2af85c69987c4ed5eeb0eb840 | 965b8eb83a7412a9ec601919f227c2c0005a9252 |
+| 3 | codex/r6 | 5b64e06051fab10e0a01d8b3215c17f45d81c980 | 388cd9d3c0fd6043cfa21b0a6440916232847742 |
+| 4 | codex/r3 | db669ddd75ffeb97588fd62304122a58c242f3b0 | f45ccf28d741a2c6e05c766eeb6bff059900bcc5 |
+| 5 | codex/r4 | 588f8761807b1893933303533a04fa14c9975a6f | d8e5dd775dfaf902e206bc2f195c30537f797ba4 |
+| 6 | codex/r5 | 3cc1c0f4d062d13919adcfe5343434e00098fdea | 57a44b50dfd82800f151823ff1563d8a73340678 |
+| 7 | codex/r9 | 0c1b0fb01a48494991cdae4ab32369fb6a2af7b2 | 2913b4d0a743188808a66bd5b7db416ca870c52f |
+| 8 | codex/r10 | f3fcd0dac875fc30af226c7f1bf70750942c0550 | b905b742ab9d90984d513cdf7b99977eabd929f2 |
+| 9 | codex/r14 | fa6e16c55d84bb9a3162514a9c09b65cb634fd54 | fa5e8164a968bd74d943b8a50590dfbd010e08ca |
+| 10 | codex/r11 | 4347872fd95b0a213b99774c3e758c7d60f047d5 | 797224cf3cab016866ecbb56213210ca4fe6556f |
+| 11 | codex/r12 | de783ae9a9f04052cfc2eb7c07ae992c980ccc42 | a57ca8f05358b0bd6cd050c3a475e2aa51b1ecce |
+| 12 | codex/r15 | 2951ac8b84ff2e0935dbb719b749ebbd8839f51f | 87695bbf61a1a647bec692416cacdb3a611a07ac |
+| 13 | codex/r16 | dba50d483f95b724bc10869b460e7774e63cc8de | bb1775d3801e9bc6032523327ce502eb7c7383eb |
+| 14 | codex/r17 | a9922853bb751ac75590cb262d2d732cbed967d1 | 971e5a93d6ff7e910c1c5640fc856940ea0861a4 |
+| 15 | codex/r19 | ebbd5e051f08661adbdc0e485cc5cf1bba32b352 | 7c31ed431453f1df73a494bb2b24d0a7a5603fb4 |
+| 16 | codex/r20 | f8f3f1f9b79117e73d30917f65ed2a281b57a070 | 98cbad0d516db52225dd593fe72dea76b4800df0 |
+| 17 | codex/r21 | 92221ea7682259d7fea49b4f8afbb98d5d735610 | d3d0e2b226196d871d53c47224bcf491bc44a444 |
+| 18 | codex/r22 | b2e5a4009b44ea8729eafb208ee0be4a5aad876a | e84efa7a38d0858491632e429bc659b8252ffb55 |
+| 19 | codex/r23 | 373d29fca370bb03e2f49f148606bda8283950fa | 0bcc4407a44cc260677dce499efad0cbfe4a6690 |
+| 20 | codex/r24 | 23a2783f5c1bb8e68db2f6712a66b6caee542617 | fcb04f2a5690a22dbf75cbdf1de2f06982aa1440 |
+| 21 | codex/r25 | 52fd6e5c382df6582d5955b02586f77c80383c4c | 9f614ee0a44a9a4c98e5d07d16cba243151df60c |
+| 22 | codex/r26 | 7c43658637da1f97a6fe3e80c2669ab83ec347ad | 14376728046b8ba6f6c062154d41fa1b41399176 |
+| 23 | codex/r27 | 8296d4e68753185c132c39da3c94369989818f27 | c4a8fad9bc2dc04f9b8033080608e1250785e08e |
+| 24 | codex/r28 | 8d42a82d96ad124c3cbe122280b64a00f43371bb | 0cbadc71c2f2d40aa11b5aa6b21cf114ab8ece65 |
+| 25 | codex/r29 | 6e250677b3bc6510f7ef2ea3e7c2ddb4ab1a509f | d5a98a85ea9e9c41aa3c2cde461e0e92de1aa555 |
+| 26 | codex/r31 | 44de344c92e0122f3361dacef1acc0788ff312c2 | 1dfdc0a50ed78b2103dfe3ce15b8461c588332cb |
+| 27 | codex/link-compat | 48d1a8a0a71a5e0d06f3d1ecac2057514598e45c | f494813c716882cfab8161c1edfdbddaaaef85d9 |
+| 28 | codex/notify-event-compat | 8a69b5da422eb403014d907f66154aea17469af9 | 094697cfb948d466c6d25dabfd7351ddac6664e2 |
+| 29 | codex/sync-fixes | aa025cfdf795e6c3caa941d4dda2701e12d2c381 | dc223e8ec5d3e85e8d02cf9a99bfe547fc3e3e64 |
+| 30 | codex/renderer-diagnostics | dc53ba05fcfc5108e88896ab9cd6218bdbcb0f25 | d3fd0d95cc232e26ae8e3e739da2e96d0db05887 |
+| 31 | codex/s7 | f28a562c9f61b205b650de7dc11919ed13110667 | 5f774d8805a10251947435d3f1a58e5368d1876a |
+| 32 | codex/r33 | ea9e63cf96f1b459672b2e58cf986567f7996c8c | 0e23509e1d98efba98feae7a126ded919cd88daf |
+| 33 | codex/s8 | 3f444554f0482046b4e09dbddf4da9d581e5ad87 | 05943aaf49d460554dd70105579bc3ee8f9f7d67 |
+| 34 | codex/pendingids-adoption | 886a9f92a21228c14e33c290796f522accb5f6c3 | 99a8bf76b3d1d32f4080782b0fd8b58f696cd90e |
+| 35 | codex/permissions-adoption | 3e7231a3e8d6d842f61ce876ceede20fd69e4d66 | ee4292ce5d60a907457d696abbf318f1c81738cf |
+
+
 ## November 2: refresh on the debugging/checklist packages bases
 
 Fresh integration starts at code 03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 / site
