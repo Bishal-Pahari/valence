@@ -165,6 +165,9 @@ final class ValenceUpdater {
   /// Mutable because the host widget attaches after the runtime is open.
   void Function(int seq)? onUpdateReady;
 
+  /// Called once after a completed check publishes its status.
+  void Function()? onChecked;
+
   /// The active manifest and the hashes its server deleted as corrupt. Set by `Valence.bound`.
   ///
   /// A closure rather than two fields, because the server is rebound on every bundle swap and resume.
@@ -318,6 +321,7 @@ final class ValenceUpdater {
     );
     // Event-driven bundle.status reads must observe this check, after its lease is released.
     if (seq != null) onUpdateReady?.call(seq);
+    onChecked?.call();
     return seq;
   }
 
