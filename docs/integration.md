@@ -1,5 +1,92 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: F-45 dependency guidance corrected; iteration 87 acceptance failed
+
+In plain terms: read both findings inventories and newest reports, Kundalini 18
+and App C 87. No eligible must-have or queue refresh remains. App C's new F-45
+is a documentation defect: two competing section-6 dependency rows and a blank
+line splitting the copied skill's table. Removed the stale duplicate, retained
+the existing compatibility guidance and clarified the site's notification guide.
+The scoped docs-scout evidence and branch gates are in dependency-baseline.md.
+No new dependency recommendation, package pin or runtime behavior was introduced.
+The app must refresh tooling before it can verify this correction.
+
+### Assembly and decision
+
+Packages bases remain code 03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 and site
+62f950ba1d52632b47fdd0e170bc41e18d467ae1. Verified both bases and all 37 current
+exact branch tips as integration ancestors. The existing 36-tip assembly and its
+recorded merge order are retained; appended the documentation-only follow-up:
+
+| Merge order | Code | Site |
+| --- | --- | --- |
+| Existing integration predecessor | ae2b55bd6d705d59b89492cd592d0f7dfeea3101 | f9de30456cdf431a24517501c6897dfa297aac25 |
+| codex/dependency-baseline | 700da56f6362ababdbca2f2f65a2a222a9cb8be3 | 6a7bfd5ffb00e476345b2dd9c0c230ea2874072b |
+| Gated integration merge | 19b179effe6d729e80f17b913bc94e6ff98786b0 | 0c32543d081088605485d882be2a5d874e9e6f11 |
+
+Decision: correct contradictory instructions without disturbing working pins,
+security boundaries, users' data or shipped schemas. Runtime, spec, codegen and
+templates still match candidate 7385f4e / 1539b66. Only documentation differs.
+S1 stays deliberately parked; S2 needs a Play account. No security path changed,
+so no new runtime security review is claimed. iOS remains experimental/untested.
+
+### Fresh combined gates - 2026-11-04
+
+| Gate | Result on the integration merge above |
+| --- | --- |
+| Root npm test | 115 passed, no failures/skips; generated Dart and strict/verbatim TS ran |
+| Core tests / fatal-info analysis / pub dry run | 617 passed / no issues / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / no issues / zero warnings, one local-override hint |
+| Example tests / debug APK | 29 passed / built in 30.0 seconds; existing Kotlin plugin warning |
+| Standalone Windows py Firebase audit | PASS: core graph, manifest and all 19 DEX files contain no Firebase SDK references |
+| Bridge tests / strict-verbatim TypeScript / npm pack dry run | 36 passed / passed / passed |
+| Root npm pack dry run | Passed |
+| Site build and SEO | 50 pages OK |
+| Baseline and diff inspection | One section-6 row, continuous Markdown table; diff hygiene passed |
+
+Logs: %TEMP%/valence-baseline-integration-*.log. Branch-only gates in
+[dependency-baseline.md](dependency-baseline.md) have their own counts and scope.
+No assertions or timeouts were weakened. Final ledger commits change only notes.
+
+### Saved app evidence and limits
+
+App C's saved audit records 69 passing artifact checks but acceptancePassed=false.
+Raw Settings log corroborates lowmemorykiller killing renderer 6475 at
+04:15:52.239 and host 6188 at 04:15:52.274. The saved outcome records replacement
+7962 blank before explicit relaunch recovery. This is a survival failure despite
+later recovered checks; no package-level memory cause is established. F-36 stays
+open. Retained/rebuilt offline and reconnect passed without process recovery;
+absence of a current F-44 recurrence does not close the historical failure or
+identify its owner/cancellation cause. No speculative lease or data-reset fix.
+
+Independently rehashed both archived APKs: release 54711308 bytes, SHA256
+54bf5e370af6bb1e8c13cae91edb2e10bd03f9a7d77d45a57367a6fa3b83f67b;
+debug 168852021 bytes, SHA256
+4f16eb126fa7f941a451a2bb6562444a47a5866a12dd0fecbda51e7fb8f8a9ff.
+Matched raw worker log to PID 10019: callback begin 04:30:24.001, complete
+04:30:25.040, native SUCCESS 04:30:25.050. Receipt records forced=true;
+runner says readiness/earliest time were observed before the explicit -f trigger.
+This proves one execution, not natural cadence. Independently hashed activation
+bytes remain equal, SHA256
+659632bf72a611644ac2e536e000f8cc6b6833b9056e3f0b1474515a11f3e5da:
+current 1793745454, pending 1793745463, no trial before foreground. Saved native
+SQLite receipts report outbox 2/incoming absent before isolation and matching
+transfers/outbox 0 before foreground. Final commitment, retention and cleanup are
+saved receipts, not live device verification here. Saved doctor: 14 PASS, 10 WARN,
+0 FAIL; not rerun here. Read-only footprint 484960 KiB / 4788 files measures
+retained history, not a leak or per-iteration growth; F-27 remains open.
+
+Preserve runner qualifications: premature CDP/accessibility reads, rejected
+missing evidence-dir attempt, reused share-text label, direct restore provenance,
+corrected prior-report filename with exact restoration, and the final permission
+image inspection that superseded a copied black-image exclusion. The app audit
+was read, not replayed. Historical findings and Kundalini F-72/F-73/F-74 adoption
+limits remain open. Sources: read-only app findings, ITERATION_18_REPORT.md,
+ITERATION_87_REPORT.md and app-c/evidence/iteration-87/.
+
+No test-app writes, emulator acceptance, protected-branch changes, schema/version
+changes, push or publication. Roadmap status cells are unchanged.
+
 ## November 4: iteration 86 adds a naturally observed worker execution
 
 In plain terms: reviewed both findings inventories and newest reports, Kundalini
