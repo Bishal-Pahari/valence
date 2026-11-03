@@ -1,5 +1,55 @@
 # Integration with current packages - 2026-11-03
 
+## November 3: iteration 73 scoped success; historical failures remain open
+
+Read both findings inventories and newest reports, Kundalini 18 / app-c 73.
+No eligible must-have or queue refresh remains. Packages bases remain 0302556
+(code) / 62f950b (site). Independently verified both bases and all 36 exact
+recorded inclusion tips as ancestors. Only integration notes differ from
+implementation candidate 7385f4e / 1539b66.
+
+App-c's completed report records scoped acceptancePassed=true. Read its saved
+59-check artifact audit, runner qualifications and self-review; did not re-run
+the app audit or emulator regression. Inspected the saved painted Settings
+return screenshot and same-PID 5082 receipt. This successful attempt does not
+close historical renderer loss, startup, busy-sync, background or doctor
+findings, or reverse iteration 72's failed Settings acceptance. The initial
+pre-readiness CDP fetch and null-root accessibility sample remain qualified;
+Flutter analysis overlapped the tail of its test process, with both reported
+successful before APK builds and doctor. No cause or latency inferred.
+
+Independently rehashed both archived APKs against receipts: release 54711308
+bytes, SHA256 b9cd72ef1dc125d8d2e603e479a51a342302ddc9ac36b4d65cbcfc49ea4afcfe;
+debug 168851839 bytes, SHA256
+921f12d459b7060758b98928f22dc7c3d25a7744f8e0d4114d922b3f5d0183ff.
+Saved doctor records 14 PASS / 10 WARN / 0 FAIL and child exit 0; not re-run.
+
+Matched raw worker-full-logcat.txt lines in PID 8070: begin 13:44:54.775,
+complete 13:44:56.114 and native SUCCESS 13:44:56.124. This was one explicitly
+triggered registered execution after reported ready/elapsed timing; it proves
+no natural scheduling cadence. Saved native SQLite receipts report outbox 2
+and incoming fixture absent before isolation, then exact outgoing objects,
+incoming USN 1860002 and outbox 0 before foreground. These are saved app
+receipts, not a fresh database inspection by this builder.
+
+Independently compared raw activation files: byte-identical, SHA256
+2e8917e8eee93b373dad205e0518c200c556186346c62aca6401fe0efac6f380;
+current 1793692340, pending 1793692351, no trial before foreground. Saved final
+state records current 1793692351, no pending or trial. Saved retention/cleanup
+receipts report original inspection fields and photo bytes retained, fixtures
+and queues cleaned, airplane mode off and owned app/mocks stopped. No live
+cleanup or device-state verification claimed.
+
+Decision: preserve security, users' data and the frozen candidate; no runtime
+change is justified by this evidence intake. S1 stays parked, S2 needs a Play
+account, and Kundalini F-72/F-73/F-74 still need adoption/verification. iOS
+remains experimental and untested. Sources: read-only app findings, reports
+and valence-test-app-c/evidence/iteration-73/. Mirrored notes, ancestry,
+unchanged implementation trees and diff hygiene checked. Existing gates retain
+their recorded scope; no fresh full gates, emulator acceptance or runtime
+security review claimed. No test-app writes, protected-branch, schema or
+version changes, push or publication.
+
 ## November 3: iteration 72 completed; Settings acceptance still failed
 
 Read both findings inventories and newest reports, Kundalini 18 / app-c 72.
