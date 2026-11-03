@@ -1,4 +1,57 @@
-# Integration with current packages - 2026-11-03
+# Integration with current packages - 2026-11-04
+
+## November 4: iteration 79 Settings failure; deferred worker attempt kept separate
+
+Reviewed both findings inventories and newest reports, Kundalini 18 / app-c 79,
+including Kundalini's latest handoff. No eligible must-have or rebase-queue item
+remains. Packages bases remain 0302556 (code) / 62f950b (site). Independently
+verified both bases and all 36 exact recorded inclusion tips as ancestors of the
+integration HEADs. Only integration notes differ from implementation candidate
+7385f4e / 1539b66; no new integration assembly is needed on unchanged bases.
+
+Read the saved 62-check artifact audit, self-review and runner qualifications;
+all artifact checks pass but scoped acceptancePassed=false. Did not re-execute
+the app audit or emulator regression. Saved receipts report fresh offline and
+restored startup without runtime recovery. Settings survival failed: raw full
+log lines 57174/57179/57201 record renderer 5118 killed at 00:15:41.065, host
+5040 directly killed by lowmemorykiller at 00:15:41.094, and host death at
+00:15:41.184. The saved outcome records replacement PID 6198, pagePainted=false
+and a closed CDP connection before recovery. Later recovered feature checks do
+not repair this failed attempt. These logs establish neither a Valence memory
+leak nor Chromium's historical unhandled-renderer-loss path killing the host.
+
+Independently rehashed archived APKs against receipts: release 54711308 bytes,
+SHA256 59c2274979ae875c4993b0200e8bab3a89dd846aa7e4194fc0219554788d7b5c;
+debug 168852021 bytes, SHA256
+1d42844543a6ed7473ed19f74151dde0bef384bfb367609201249c772ac5d2d1.
+Saved doctor reports 14 PASS / 10 WARN / 0 FAIL; not re-run here.
+
+Preserve both worker attempts. Raw worker-full-logcat.txt lines 79889/79890
+show the early accepted -f request deferred by WorkManager before callback at
+00:23:14.878/.881. It proves no transfer. A separate explicit registered-job
+trigger followed reported timing readiness. Lines 81869/81887/81888 match PID
+8113 callback begin 00:30:07.776, complete 00:30:09.261 and native SUCCESS
+00:30:09.269. One execution proves no natural scheduling cadence. Saved stable
+native SQLite receipts report exact outgoing objects, incoming row and outbox
+zero before foreground; these are saved receipts, not a fresh database inspection.
+
+Independently hashed raw activation files are byte-identical, SHA256
+54257656ff95da129863bb7c5fdba2d8a0cad767eda925ae991d36fc87ef53a2,
+current 1793731068, pending 1793731078, no trial before foreground. The report
+records final commitment of 1793731078. Retention, painted screens and cleanup
+remain report/receipt evidence; no live device-state, visual inspection or cleanup
+verification claimed here. The initial unsupported --offline release-build
+invocation exited before building; the report records a successful --no-pub retry.
+
+Decision: preserve security, users' data and the frozen candidate. Retain the
+failed acceptance outcome; direct OS termination does not justify speculative
+runtime changes or weakening rollback strikes. Historical reliability findings
+remain open. S1 stays parked; S2 needs a Play account. Kundalini F-72/F-73/F-74
+still need adoption and verification. iOS remains experimental and untested.
+Sources: read-only app findings, reports and app-c/evidence/iteration-79/.
+Earlier full gates retain their recorded scope; no fresh full gates, emulator
+acceptance or runtime review claimed. No test-app writes, protected-branch,
+schema or version changes, push or publication.
 
 ## November 3: iteration 78 scoped success; restore isolation retry preserved
 
