@@ -1,5 +1,58 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 88 distinguishes transport interruption from app survival
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / App C 88. No eligible must-have or queue refresh remains. Both integrations
+contain all 37 exact current recorded branch tips and unchanged packages bases
+03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 /
+62f950ba1d52632b47fdd0e170bc41e18d467ae1. Verified ancestry again this run.
+Existing integration gates below retain their recorded scope and date.
+
+The saved artifact audit has 71 passing checks and scoped acceptancePassed=true;
+it was read, not replayed. Initial Settings capture failed to connect to the local
+ADB daemon (10060). Missing image/page evidence makes that attempt inconclusive,
+not proof of F-36 recurrence. The initial classifier's failed-survival label is
+preserved and excluded; the separate Settings-only retry records same PID 4722
+and painted=true. The basic-native continuation must be read together with the
+original permission/offline receipts and separate Settings retry. No account or
+database reset or emulator restart was used for that recovery. A successful
+retry does not reverse iteration 87's failure or close historical findings.
+Retained/rebuilt offline and reconnect passed; F-44 remains open.
+
+Independently rehashed archived APKs: release 54711308 bytes, SHA256
+54bf5e370af6bb1e8c13cae91edb2e10bd03f9a7d77d45a57367a6fa3b83f67b;
+debug 168852021 bytes, SHA256
+4f16eb126fa7f941a451a2bb6562444a47a5866a12dd0fecbda51e7fb8f8a9ff.
+Matched raw worker log to PID 7345: callback begin 05:28:49.051, complete
+05:28:50.335, native SUCCESS 05:28:50.346. Observation receipt records
+forced=false. This supports one naturally observed registered execution, not a
+cadence guarantee. Saved stable SQLite receipts report outbox 2/incoming absent
+before isolation, exact outgoing/incoming effects and outbox 0 before foreground.
+Independently hashed both raw activation files: 1081 bytes, SHA256
+6e9a96e6c5334c80c6b340945d5ed2d697967fabb3256e9ff5a10ec589c69d8e.
+They are byte-identical: current 1793749104, pending 1793749113, no trial.
+Final commitment of 1793749113, original-data/photo retention and cleanup remain
+saved receipts, not live device verification here. Saved doctor reports
+14 PASS / 10 WARN / 0 FAIL with exit 0; not rerun here.
+
+The eleven locally fetched docs pages and npm tarballs still match iteration 87;
+F-45's correction is integrated but its adoption is not yet established. Retain
+F-41/F-43/F-45 qualifications, historical reliability findings and Kundalini's
+F-72/F-73/F-74 adoption limits. Read-only footprint 491076 KiB / 4848 files measures
+retained history, not a leak or per-iteration growth. The exploratory widget-seven
+image shows the first launcher page; the separate widget-sync receipts carry the
+placed-count proof. No broader device acceptance or iOS verification inferred.
+
+Decision: preserve security, users' data and the frozen implementation candidate;
+no speculative lease weakening, data deletion or late native recovery shim.
+S1 stays deliberately parked; S2 needs a Play account. Implementation and schema
+are unchanged. No fresh full gates were necessary for this evidence-only note;
+no new runtime security review or emulator acceptance claimed. Sources: read-only
+app findings, ITERATION_18_REPORT.md, ITERATION_88_REPORT.md and
+app-c/evidence/iteration-88/. No test-app writes, protected-branch changes,
+schema/version changes, push or publication. Roadmap status cells are unchanged.
+
 ## November 4: F-45 dependency guidance corrected; iteration 87 acceptance failed
 
 In plain terms: read both findings inventories and newest reports, Kundalini 18
