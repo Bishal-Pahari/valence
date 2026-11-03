@@ -1,5 +1,54 @@
 # Integration with current packages - 2026-11-03
 
+## November 3: iteration 72 completed; Settings acceptance still failed
+
+Read both findings inventories and newest reports, Kundalini 18 / app-c 72.
+The completed app-c report supersedes the worker-pending checkpoint below.
+No eligible must-have or queue refresh remains. Packages bases remain 0302556
+(code) / 62f950b (site); independently verified both bases and all 36 recorded
+inclusion tips as ancestors. Only integration notes differ from implementation
+candidate 7385f4e / 1539b66.
+
+Settings survival remains failed: the recorded direct Android low-memory kill
+of host 5730 and blank replacement 6827 are not repaired by later recovered
+checks. The app's saved artifact audit has 59 passing consistency checks and
+explicitly reports acceptancePassed=false. Read that audit, runner qualifications
+and self-review; did not re-execute the app's audit or emulator regression.
+No historical renderer, startup, busy-sync, background or doctor finding closes.
+
+Matched the accepted worker's raw log lines in worker-full-logcat.txt: PID 3745
+begin 08:26:12.539, complete 08:26:13.594 and native SUCCESS 08:26:13.608.
+The earlier force-stopped attempt and before-schedule trigger remain excluded.
+The accepted run was explicitly triggered after reported ready/elapsed timing;
+it establishes no natural scheduling cadence. Native SQLite receipts report
+outbox 2/incoming absent before isolation, then exact outgoing objects, incoming
+row USN 1830002 and outbox 0 before foreground. Those database effects are saved
+app evidence, not a fresh database inspection by this builder.
+
+Independently compared raw activation files: byte-identical, SHA256
+3e47ebcd418f65fb0b5eaaada71b4fde8dc8d60d4c99bd07755d5d465e08b02c,
+current 1793670248, pending 1793672808, no trial before foreground. Saved final
+state subsequently records current 1793672808 with no pending or trial. Final
+retention and cleanup receipts report original inspection/photo preservation,
+matching photo bytes, fixtures/queues cleaned, airplane mode off, and owned app
+and mocks stopped. No live cleanup or device-state verification claimed.
+
+Independently rehashed both archived APKs against receipts: release 54711308
+bytes, SHA256 d5f7e43c85feb3c7b9af888e07e77359b335897638a9126b9cc72ac3a988baf0;
+debug 168851835 bytes, SHA256
+54a3ecfa1138e2a4f3f5508e7f0fddc76fc534a1e952fcbf1fa1da662be076ff.
+Saved sequential doctor remains 14 PASS / 10 WARN / 0 FAIL; not re-run here.
+
+Decision: preserve security, users' data and the frozen candidate. No runtime
+change is justified by this evidence intake. S1 stays parked, S2 needs a Play
+account, and Kundalini F-72/F-73/F-74 still need adoption/verification. iOS remains
+experimental and untested. Sources are read-only app findings, reports and
+valence-test-app-c/evidence/iteration-72/. Mirrored notes, ancestry, unchanged
+implementation trees and diff hygiene checked. Existing gates retain their
+recorded scope; no fresh full gates, emulator acceptance or runtime security
+review claimed. No test-app writes, protected-branch, schema or version changes,
+push or publication.
+
 ## November 3: iteration 72 checkpoint; Settings survival failed
 
 Reviewed both findings inventories and newest reports, Kundalini 18 / app-c 72.
