@@ -1,5 +1,53 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 82 hands off the completed iteration 81 run
+
+Reviewed both findings inventories, Kundalini iteration 18 and app-c iteration 82,
+plus the completed iteration-81 report and saved receipts. Iteration 82 is a
+continuation handoff, not a second fresh install or independent regression. This
+entry supersedes the unfinished checkpoint below. Saved artifact audit records
+62 passing checks and scoped acceptancePassed=true; neither the app audit nor the
+emulator regression was re-executed here. Same-PID 4944 painted Settings return
+does not close historical reliability findings or reverse earlier failures.
+
+Independently rehashed both archived APKs: release 54711308 bytes, SHA256
+62e653668f431d13d8df007bdb38e73bf3f06bf4294bbb29861d2b72707c5655;
+debug 168852021 bytes, SHA256
+b4c93056c1a862d34569c291ef73674a26f287591dc34f05c3f4075a2a5b004f.
+Saved doctor remains 14 PASS / 10 WARN / 0 FAIL, not re-run here.
+
+Matched raw worker log lines to PID 4837: callback begin 01:54:33.518, complete
+01:54:34.932 and native SUCCESS 01:54:34.941. The saved trigger qualification
+explicitly records timingBypassed=true with jobscheduler -f, even though readiness
+and earliest time were reported. This establishes one execution and its reported
+SQLite effects, not natural scheduling, timing readiness or cadence. Independently
+hashed raw activation bytes are identical, SHA256
+faff377d7376b187006fbb711db88796b2c650fadeae10a678dab91fa6f0d3ba:
+current 1793735955, pending 1793735964, no trial before foreground. Final commitment
+of 1793735964, original data/photo retention and cleanup remain saved report/receipt
+evidence; no live device or visual verification claimed.
+
+Retained host-publication measurements report 453688 KiB and 4468 regular files
+across stress history. This is neither a leak attribution nor a per-session growth
+rate; F-27 remains open. Preserve initial missing evidence-directory invocation,
+empty accessibility dump, corrected preparation filename and duplicate-mock launch
+as runner qualifications. The resume identified the original owned mock and
+recovered earlier log bytes; no new Valence defect was established by that mistake.
+
+Packages bases remain 0302556 / 62f950b. Independently verified both bases and all
+36 exact recorded inclusion tips as ancestors of the two integration HEADs. Only
+integration notes differ from implementation candidate 7385f4e / 1539b66; no queue
+refresh, new assembly or eligible must-have remains. Decision: preserve security,
+users' data and the frozen candidate. S1 stays deliberately parked; S2 needs a Play
+account. Kundalini F-72/F-73/F-74 still need adoption and verification. iOS remains
+experimental and untested.
+
+Sources: read-only app findings, ITERATION_18_REPORT.md, ITERATION_81_REPORT.md,
+ITERATION_82_REPORT.md and app-c/evidence/iteration-81/. Earlier full gates retain
+their recorded scope; no fresh full gates, runtime review or emulator acceptance.
+This evidence-only update leaves roadmap status cells unchanged. No test-app
+writes, protected-branch, schema or version changes, push or publication.
+
 ## November 4: iteration 81 remains an unfinished checkpoint
 
 Reviewed both findings inventories and newest reports, Kundalini 18 / app-c 81.
