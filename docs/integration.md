@@ -1,5 +1,60 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 84 preserves the busy-sync failure after recovery
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / app-c 84. App-c's saved artifact audit has 63 passing checks but
+acceptancePassed=false because new F-44 interrupted the rebuilt offline probe.
+Twenty bounded calls returned busy/pending=1; the saved native SQLite capture has
+one outbox object and lease 1793739542500:4893. Paired device/host clocks qualify
+that observation. Raw logs record a background callback at 02:44:01.756 followed
+by WorkManager cancellation at 02:44:02.918; a later callback completed with a busy
+skip. Temporal overlap does not identify the owning operation or establish a
+lease-expiry violation. After restoring the original fields locally, HOME/am kill
+and a new process, sync returned ok/changed=1/pending=0; the mock acknowledged two
+operations. Recovery and the settled retry do not erase the original failure.
+No account reset, runtime-file deletion or package-level cause is inferred.
+
+Saved Settings receipt records painted return in the same PID 5499. First-attempt
+Camera/gallery success does not reverse iteration 83 or close historical findings.
+The black permission-grant PNG remains excluded; native XML and the granted result
+are separate receipts. No live visual or device verification was performed here,
+and the app audit was read, not replayed.
+
+Independently rehashed archived APKs against iteration-84 receipts: release
+54711308 bytes, SHA256
+d39767d390504481fb845911b351d55973b3c59073406a12e10b24ee675f2bb1;
+debug 168852021 bytes, SHA256
+55c91396594e9ffda73a7085bcb7201928f840d82bfb526acd9f736ad7da723b.
+Matched raw worker log lines to PID 7711: callback begin 02:59:39.325, complete
+02:59:40.656 and native SUCCESS 02:59:40.664. The saved execution is explicitly
+triggered (forced=true), not natural scheduling or cadence. Independently hashed
+raw activation bytes match, SHA256
+91e0b737eb690bc8b353fd0ed8fb161602ecc6ad96d2f1a36fbc5f8c0370de2f:
+current 1793740162, pending 1793740172, no trial before foreground. Saved stable
+SQLite receipts show outbox 2/incoming absent before isolation and matching
+outgoing objects/incoming row/outbox 0 before foreground. Final commitment,
+original data/photo retention and cleanup remain saved report/receipt evidence.
+Saved doctor reports 14 PASS / 10 WARN / 0 FAIL, not re-run here. Native metadata
+reports 465932 KiB / 4601 regular publication files across retained stress history,
+not a leak or per-session growth rate; F-27 stays open.
+
+Verified all 36 exact recorded tips and packages bases 0302556 / 62f950b as
+ancestors of both integrations. Only integration notes differ from implementation
+candidate 7385f4e / 1539b66. No queue refresh, new assembly or eligible must-have
+remains. Decision: preserve security, users' data and the frozen candidate; do not
+weaken the sync lease or discard queued writes on an unproven ownership cause.
+F-44 needs targeted cancellation/ownership investigation rather than a claimed
+fix from a successful retry. S1 stays deliberately parked; S2 needs a Play account.
+Kundalini F-72/F-73/F-74 still need adoption and verification. iOS remains
+experimental and untested.
+
+Sources: read-only app findings, ITERATION_18_REPORT.md, ITERATION_84_REPORT.md and
+app-c/evidence/iteration-84/. Earlier full gates retain their recorded scope; no
+fresh full gates, runtime review or emulator acceptance. Roadmap status cells stay
+unchanged. No test-app writes, protected-branch, schema or version changes, push
+or publication.
+
 ## November 4: iteration 83 preserves the Camera failure after recovery
 
 In plain terms: reviewed both findings inventories and newest reports, Kundalini
