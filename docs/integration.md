@@ -1,5 +1,59 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 85 passes its scope; F-44 remains open
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / app-c 85. The saved app-c artifact audit records 62 passing checks and
+acceptancePassed=true within its stated Android scope. Retained and rebuilt
+offline/reconnect probes passed without process recovery; the rebuilt receipt
+records offline/pending=1, then ok/changed=1/pending=0. No current F-44 recurrence
+was observed. This does not reverse iteration 84's failure, identify its owning
+operation or establish a package-level cause. Historical findings remain open.
+
+Saved Settings receipt records painted return in the same PID 4882. First-attempt
+camera/gallery success does not close historical reliability findings. The black
+permission-grant PNG remains excluded; native Allow-card XML and granted reply
+remain separate receipts. Preserved runner qualifications: preparation briefly
+wrote the prior report before restoring its exact HEAD bytes; initial listener
+inventories did not establish configured-port absence; a cold-card image lookup
+preceded capture and was later inspected before the tap. These are saved runner
+receipts, not fresh visual or device verification here. The audit was read, not
+replayed.
+
+Independently rehashed archived APKs against iteration-85 receipts: release
+54711308 bytes, SHA256
+54bf5e370af6bb1e8c13cae91edb2e10bd03f9a7d77d45a57367a6fa3b83f67b;
+debug 168852021 bytes, SHA256
+4f16eb126fa7f941a451a2bb6562444a47a5866a12dd0fecbda51e7fb8f8a9ff.
+Matched raw worker log lines to PID 7339: callback begin 03:28:58.604, complete
+03:28:59.875 and native SUCCESS 03:28:59.885. The registered job was explicitly
+triggered with jobscheduler -f; its qualification says timing was bypassed. One
+execution proves no natural scheduling readiness or cadence. Independently hashed
+raw activation bytes match, SHA256
+5254359e81dbdf1f9036ace967a3599d1d2b7cee7ed5dee21804a8b2c86af84e:
+current 1793741766, pending 1793741776, no trial before foreground. Saved stable
+SQLite receipts show outbox 2/incoming absent before isolation and matching
+outgoing objects/incoming row/outbox 0 before foreground. Final commitment,
+original data/photo retention and cleanup remain saved report/receipt evidence.
+Saved doctor reports 14 PASS / 10 WARN / 0 FAIL, not re-run here. Read-only native
+metadata reports 472048 KiB / 4661 regular publication files across retained
+stress history, not a leak or per-iteration growth rate; F-27 stays open.
+
+Verified all 36 current exact recorded tips and packages bases 0302556 / 62f950b
+as ancestors of both integrations. Only integration notes differ from frozen
+implementation candidate 7385f4e / 1539b66. No queue refresh, new assembly or
+eligible must-have remains. Decision: preserve security, users' data and the
+candidate; a successful pass cannot justify weakening leases or discarding queued
+writes. F-44 still needs targeted cancellation/ownership evidence. S1 stays
+parked; S2 needs a Play account. Kundalini F-72/F-73/F-74 still need adoption and
+verification. iOS remains experimental and untested.
+
+Sources: read-only app findings, ITERATION_18_REPORT.md, ITERATION_85_REPORT.md and
+app-c/evidence/iteration-85/. Earlier full gates retain their recorded scope; no
+fresh full gates, runtime review or emulator acceptance. Roadmap status cells and
+integration candidate/gate date are unchanged. No test-app writes, protected-branch
+changes, schema or package-version changes, push or publication.
+
 ## November 4: iteration 84 preserves the busy-sync failure after recovery
 
 In plain terms: reviewed both findings inventories and newest reports, Kundalini
