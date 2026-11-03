@@ -1,5 +1,54 @@
 # Integration with current packages - 2026-11-03
 
+## November 3: iteration 74 startup failed; recovered worker observed naturally
+
+Reviewed both findings inventories and newest reports, Kundalini 18 / app-c 74.
+No eligible must-have or rebase-queue item remains. Packages bases remain
+0302556 (code) / 62f950b (site). Verified both bases and all 36 current exact
+inclusion tips as ancestors of their integration HEADs. Only integration notes
+differ from implementation candidate 7385f4e / 1539b66.
+
+App-c's saved audit has 59 passing artifact checks but acceptancePassed=false.
+Read the audit, startup qualification, runner notes and self-review; did not
+re-execute the app audit or emulator regression. Raw logs confirm restored PID
+6834 store.open completed in 66895 ms, system_server 690's null reference in
+AppCompatCameraDisplayRotationPolicy.dump, and Watchdog killing system_server
+5794 for a blocked I/O handler. Reported startup and BOOT_COMPLETED receiver
+ANRs and the initial blank fresh-launch image remain qualified separately from
+later recovery. No Valence blocking frame, lock owner or causal diagnosis is
+established. Saved Settings receipt reports painted return in the same PID 2619;
+this recovered success does not erase startup failures or close historical findings.
+
+Independently rehashed archived APKs against receipts: release 54711308 bytes,
+SHA256 e04b77ae0ead82bf4d7bfaff2b8eeaa357ee97ad7f0c964684168f3cfdb62016;
+debug 168852021 bytes, SHA256
+cbc890e233188fd88fc391a1bdec7bac3a664c883f3e07fe08493bbd10b94382.
+Saved doctor records 14 PASS / 10 WARN / 0 FAIL; not re-run here.
+
+Matched worker-full-logcat.txt lines 72853/72888/72889: PID 7024 callback begin
+15:01:44.395, complete 15:01:45.334 and native SUCCESS 15:01:45.347. Unlike the
+previous iteration, worker-execution.json records forced=false; the observation
+script can force an eligible job but records that branch, and this receipt says
+it was not taken. One naturally observed execution establishes no cadence.
+Saved stable native SQLite receipts report outbox 2/incoming absent before the
+worker, exact outgoing objects, incoming USN 1890002 and outbox 0 before foreground.
+These are saved app database receipts, not a fresh database inspection here.
+Independently hashed the two raw activation files: identical SHA256
+998feccb4ea504535cd97ffa9d2dc894e6d448156f2b8ff0553d3b9239e33ea7,
+current 1793697254, pending 1793697264, no trial before foreground. Saved final
+state records current 1793697264 with no pending or trial. Retention and cleanup
+remain report/audit evidence; no live device-state or cleanup verification claimed.
+
+Decision: preserve security, users' data and the frozen candidate. These platform
+interruptions justify retaining the failed acceptance result, not a speculative
+runtime change. S1 stays parked; S2 needs a Play account. Kundalini F-72/F-73/F-74
+still need adoption/verification. iOS remains experimental and untested. Sources:
+read-only app findings, reports and valence-test-app-c/evidence/iteration-74/.
+Matching integration notes, ancestry, unchanged implementation trees and diff
+hygiene checked. Earlier full gates retain their recorded scope; no fresh full
+gates, emulator acceptance or runtime security review claimed. No test-app writes,
+protected-branch, schema or version changes, push or publication.
+
 ## November 3: iteration 73 scoped success; historical failures remain open
 
 Read both findings inventories and newest reports, Kundalini 18 / app-c 73.
