@@ -1,5 +1,61 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 80 scoped success; publication footprint measured
+
+Reviewed both findings inventories and newest reports, Kundalini 18 / app-c 80,
+including Kundalini's latest handoff. No eligible must-have or rebase-queue item
+remains. Packages bases remain 0302556 (code) / 62f950b (site). Independently
+verified both bases and all 36 exact recorded inclusion tips as ancestors of the
+integration HEADs. Only integration notes differ from implementation candidate
+7385f4e / 1539b66; no new integration assembly is needed on unchanged bases.
+
+Read the saved 62-check artifact audit, scoped acceptancePassed=true, self-review
+and runner qualifications; did not re-execute the app audit or emulator regression.
+Saved receipts report fresh offline and restored startup without runtime recovery,
+and painted Settings return in the same PID 4862. This successful attempt does
+not reverse iteration 79's failure or close historical reliability findings.
+Preserve the initial retained CDP socket closure separately: it preceded readiness,
+and establishes no process-death or startup cause. The initial preparation used an
+unavailable Python alias and was retried with Node. The denial PNG captured a dimmed
+transition; the report relies on native XML for the actual permission card.
+
+Independently rehashed archived APKs against receipts: release 54711308 bytes,
+SHA256 2b9d34ee93c14d9100bd9b6930520961c43812d9cb7e5b851dadfc36e0015f67;
+debug 168852021 bytes, SHA256
+56dece93df4a6235035964dac76c872f29f61e10a9909fcacafbfb7682dd2360.
+Saved doctor records 14 PASS / 10 WARN / 0 FAIL; not re-run here.
+
+Matched worker-full-logcat.txt lines 80069/80073/80074: PID 7729 callback begin
+00:59:36.065, complete 00:59:37.163 and native SUCCESS 00:59:37.178. Trigger
+qualification records an explicit jobscheduler -f request after Ready:true and
+passed earliest time, while captured job text still lists TIMING_DELAY unsatisfied.
+Actual callback and data receipts establish one execution, not natural scheduling
+or cadence. Saved stable native SQLite receipts report exact outgoing objects,
+incoming USN 2070002 and outbox zero before foreground; not a fresh database
+inspection by this evidence intake.
+
+Independently hashed raw activation files are byte-identical, SHA256
+cf26c20d441752a35ef5ef9a27f47988760e9c7ea8a69076b02d2f20ed6d9399,
+current 1793732769, pending 1793732778, no trial before foreground. The report
+records final commitment of 1793732778. Retention, painted screens and cleanup
+remain report/receipt evidence; no live device-state, visual inspection or cleanup
+verification claimed here.
+
+Read-only native storage receipts record 447564 KiB and 4408 regular files under
+files/valence/host across the retained stress history. F-27's publication lifetime
+and caps gap remains open. A footprint measurement establishes neither a Valence
+leak nor a per-session growth rate; deleting runtime publications would sacrifice
+retained evidence without establishing a fix.
+
+Decision: preserve security, users' data and the frozen candidate. A scoped pass
+does not justify closing earlier failures, weakening rollback strikes or speculative
+runtime changes. S1 stays parked; S2 needs a Play account. Kundalini F-72/F-73/F-74
+still need adoption and verification. iOS remains experimental and untested.
+Sources: read-only app findings, reports and app-c/evidence/iteration-80/.
+Earlier full gates retain their recorded scope; no fresh full gates, emulator
+acceptance or runtime review claimed. No test-app writes, protected-branch,
+schema or version changes, push or publication.
+
 ## November 4: iteration 79 Settings failure; deferred worker attempt kept separate
 
 Reviewed both findings inventories and newest reports, Kundalini 18 / app-c 79,
