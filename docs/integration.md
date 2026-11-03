@@ -1,5 +1,58 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 86 adds a naturally observed worker execution
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / app-c 86. The saved app-c artifact audit records 62 passing checks and scoped
+acceptancePassed=true; it was read, not replayed. Retained and rebuilt offline /
+reconnect probes passed without process recovery. Rebuilt receipts report
+reason=offline/pending=1 followed by reason=ok/changed=1/pending=0. No current F-44
+recurrence is reported; this neither reverses iteration 84's failure nor identifies
+the owning operation or establishes a package-level cause. Historical findings
+remain open.
+
+The worker observer records forced=false after 453.256 seconds of observation.
+Its script permits an explicit trigger only in a branch that writes a qualification
+and sets forced=true; this run's saved receipt reports no such trigger. Matched raw
+worker-full-logcat.txt to PID 7319: callback begin 03:59:46.143, complete
+03:59:47.430 and native BackgroundWorker SUCCESS 03:59:47.439. This supports one
+naturally observed registered execution, not a natural cadence or a reliability
+rate. Stable native SQLite receipts show outbox 2 / incoming absent before
+isolation, then matching outgoing objects / incoming row / outbox 0 before
+foreground. Independently hashed raw activation bytes are identical, SHA256
+43653770aff07cb4e8deff9f91715d01b775ec0c611a7571d62d3287662fa796:
+current 1793743579, pending 1793743589, no trial before foreground.
+
+Independently rehashed both archived APKs: release 54711308 bytes, SHA256
+54bf5e370af6bb1e8c13cae91edb2e10bd03f9a7d77d45a57367a6fa3b83f67b;
+debug 168852021 bytes, SHA256
+4f16eb126fa7f941a451a2bb6562444a47a5866a12dd0fecbda51e7fb8f8a9ff.
+Saved Settings receipt records painted return in the same PID 4811. First-attempt
+media success closes no historical finding. The black grant PNG remains excluded;
+native Allow-card XML and granted reply are separate receipts. Preserve runner
+qualifications: incomplete listener inventories; initial owned mock at the previous
+USN base stopped and replaced before rebuilt tests; initial null accessibility
+dumps followed by bounded polling without restart; direct restored-startup command
+provenance. Saved doctor reports 14 PASS / 10 WARN / 0 FAIL. Read-only metadata
+reports 478612 KiB / 4726 regular publication files across retained history, not a
+leak or per-iteration growth measurement. Final commitment, retention and cleanup
+are saved report/receipt evidence; no live visual or device verification here.
+
+Verified all 36 current exact recorded branch tips and packages bases 0302556 /
+62f950b as ancestors of both integrations. Only integration notes differ from
+frozen implementation candidate 7385f4e / 1539b66. No eligible must-have, queue
+refresh or missing integration merge remains. Decision: preserve security, users'
+data and the candidate; do not weaken leases or discard writes on an unproven
+cause. F-44 needs targeted ownership/cancellation evidence. S1 stays deliberately
+parked; S2 needs a Play account. Kundalini F-72/F-73/F-74 still need adoption and
+verification. iOS remains experimental and untested.
+
+Sources: read-only app findings, ITERATION_18_REPORT.md, ITERATION_86_REPORT.md and
+app-c/evidence/iteration-86/. Earlier full gates retain their recorded scope; no
+fresh full gates, runtime security review or emulator acceptance. Roadmap status
+cells and integration candidate/gate date are unchanged. No test-app writes,
+protected-branch changes, schema/version changes, push or publication.
+
 ## November 4: iteration 85 passes its scope; F-44 remains open
 
 In plain terms: reviewed both findings inventories and newest reports, Kundalini
