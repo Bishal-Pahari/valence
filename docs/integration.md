@@ -1,5 +1,37 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 81 remains an unfinished checkpoint
+
+Reviewed both findings inventories and newest reports, Kundalini 18 / app-c 81.
+App-c's report is a native checkpoint, not a completed acceptance run: it records
+painted Settings return in the same PID 4944 and permission/plugin/queue/share
+checks, while media, routes, widget sync, OTA and worker checks remain pending.
+The saved Settings outcome agrees on PID and paint; no live visual or device
+verification is claimed. Earlier reliability findings remain open.
+
+Independently rehashed the archived APKs against iteration-81 receipts: release
+54711308 bytes, SHA256
+62e653668f431d13d8df007bdb38e73bf3f06bf4294bbb29861d2b72707c5655;
+debug 168852021 bytes, SHA256
+b4c93056c1a862d34569c291ef73674a26f287591dc34f05c3f4075a2a5b004f.
+Saved doctor counts are 14 PASS / 10 WARN / 0 FAIL, not re-run here. Preserve the
+initial missing evidence-directory invocation, empty retained accessibility dump,
+and corrected preparation filename separately, as the runner notes require.
+No final iteration-81 audit or worker outcome is inferred from iteration 80.
+
+Packages bases remain 0302556 / 62f950b. Verified both bases and all 36 exact
+recorded inclusion tips as ancestors of the integration HEADs. Only integration
+notes differ from implementation candidate 7385f4e / 1539b66. No eligible must-have
+or rebase-queue item remains; no new assembly is needed on unchanged bases.
+Decision: preserve security, users' data and the frozen candidate while the app
+run finishes. S1 stays parked; S2 needs a Play account. Kundalini F-72/F-73/F-74
+still need adoption and verification; iOS remains experimental and untested.
+
+Sources: read-only app findings, ITERATION_18_REPORT.md / ITERATION_81_REPORT.md,
+and app-c/evidence/iteration-81/. Earlier full gates retain their recorded scope;
+no fresh full gates, emulator acceptance or runtime review. No test-app writes,
+protected-branch, schema or version changes, push or publication.
+
 ## November 4: iteration 80 scoped success; publication footprint measured
 
 Reviewed both findings inventories and newest reports, Kundalini 18 / app-c 80,
