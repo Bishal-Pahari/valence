@@ -1,5 +1,48 @@
 # Integration with current packages - 2026-11-03
 
+## November 3: iteration 72 checkpoint; Settings survival failed
+
+Reviewed both findings inventories and newest reports, Kundalini 18 / app-c 72.
+App-c 72 is a worker checkpoint, not a completed acceptance run. No eligible
+must-have or queue refresh remains. Packages bases are unchanged at 0302556
+(code) / 62f950b (site). Both integrations contain their base and all 36 exact
+recorded inclusion tips; only integration notes differ from implementation candidate
+7385f4e / 1539b66.
+
+Directly checked settings-return-full-logcat.txt and settings-return-exit-info.txt:
+lmkd killed renderer 5836 at 07:21:44.371 and directly killed host 5730 at
+07:21:44.403; ActivityManager records host death at 07:21:44.693. Both exit
+records say LOW_MEMORY. The app records blank replacement 6827 before recovery.
+Settings survival failed. This establishes neither the historical unhandled
+renderer callback path nor a Valence leak, ANR, database lock or lost trial.
+Recovery results do not turn that failure into an acceptance pass.
+
+Independently rehashed both build outputs and their archived APKs against current
+receipts: release 54711308 bytes, SHA256
+d5f7e43c85feb3c7b9af888e07e77359b335897638a9126b9cc72ac3a988baf0;
+debug 168851835 bytes, SHA256
+54a3ecfa1138e2a4f3f5508e7f0fddc76fc534a1e952fcbf1fa1da662be076ff.
+Saved doctor rows count 14 PASS / 10 WARN / 0 FAIL, with doctor exit 0. This is
+app evidence and does not close historical doctor failures.
+
+At the report checkpoint, raw activation has pending 1793670248, no trial,
+current 1793670239. The saved stable native SQLite receipt reports outbox 2,
+incoming fixture absent, no foreground resume. The app's registered job 9 has
+unsatisfied TIMING_DELAY in background-jobs-near-due.txt. No completed worker,
+background transfer, final activation, natural cadence or cleanup is claimed.
+
+Decision: preserve security, users' data and the frozen candidate. S1 stays
+parked; S2 requires a Play account. Keep Settings reliability open and await
+completed worker evidence rather than infer a runtime fix from OS eviction.
+Kundalini F-72/F-73/F-74 still need app adoption and verification. iOS remains
+experimental and untested.
+
+Sources: read-only valence-test-app-c/evidence/iteration-72/ and both apps'
+findings/reports. Mirrored notes, ancestry, unchanged implementation trees and
+diff hygiene checked. Existing November 3 gates retain their recorded scope;
+no fresh full gates, emulator acceptance or runtime security review claimed.
+No test-app writes, protected-branch, schema or version changes, push or publication.
+
 ## November 3: iteration 71 evidence intake; implementation unchanged
 
 Reviewed both findings inventories and newest reports, Kundalini 18 / app-c 71.
