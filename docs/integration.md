@@ -1,5 +1,51 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 83 preserves the Camera failure after recovery
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / app-c 83, including the iteration-82 continuation handoff. App-c's saved
+artifact audit has 63 passing checks but acceptancePassed=false: Android Camera
+ANR interrupted capture at 02:15:50. The native last-ANR receipt names
+com.android.camera2 CaptureActivity and a 5001ms input-dispatch wait. Recovery
+through its native dialog and a successful retry do not erase that failure or
+establish a Valence cause. Saved Settings receipt records painted return in the
+same PID 4872; historical reliability findings remain open. No live visual or
+device verification was performed here, and the app audit was read, not replayed.
+
+Independently rehashed the archived APKs against iteration-83 receipts: release
+54711308 bytes, SHA256
+62e653668f431d13d8df007bdb38e73bf3f06bf4294bbb29861d2b72707c5655;
+debug 168852021 bytes, SHA256
+b4c93056c1a862d34569c291ef73674a26f287591dc34f05c3f4075a2a5b004f.
+Matched raw worker log lines to PID 7676: callback begin 02:28:34.597, complete
+02:28:35.731 and native SUCCESS 02:28:35.741. The report records one naturally
+observed registered execution without an explicit jobscheduler trigger; this
+does not establish cadence. Independently hashed raw activation bytes match,
+SHA256 5d3110b728f93b83bec8fab3d31c1ca01776611f8aff89041f53cd401efb6da8:
+current 1793738301, pending 1793738311, no trial before foreground. SQLite effects,
+final commitment, original data/photo retention and cleanup remain saved receipt
+evidence. Saved doctor reports 14 PASS / 10 WARN / 0 FAIL, not re-run here.
+
+Preserve the excluded empty accessibility sample and black grant PNG, corrected
+checkpoint filename and initial audit refusal. The preinstall restore-sync reply
+is busy/pending=0, not proof that this call completed a transfer. Native metadata
+reports 459612 KiB under files/valence and 4541 regular publication files across
+retained stress history, not a leak or per-session growth rate; F-27 stays open.
+
+Verified all 36 exact recorded tips and packages bases 0302556 / 62f950b as
+ancestors of both integrations. Only integration notes differ from implementation
+candidate 7385f4e / 1539b66. No queue refresh, new assembly or eligible must-have
+remains. Decision: preserve security, users' data and the frozen candidate rather
+than change runtime behavior on an external Camera failure. S1 stays deliberately
+parked; S2 needs a Play account. Kundalini F-72/F-73/F-74 still need adoption and
+verification. iOS remains experimental and untested.
+
+Sources: read-only app findings, ITERATION_18_REPORT.md, ITERATION_82_REPORT.md,
+ITERATION_83_REPORT.md and app-c/evidence/iteration-83/. Earlier full gates retain
+their recorded scope; no fresh full gates, runtime review or emulator acceptance.
+Roadmap status cells stay unchanged. No test-app writes, protected-branch, schema
+or version changes, push or publication.
+
 ## November 4: iteration 82 hands off the completed iteration 81 run
 
 Reviewed both findings inventories, Kundalini iteration 18 and app-c iteration 82,
