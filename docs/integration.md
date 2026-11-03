@@ -1,5 +1,58 @@
 # Integration with current packages - 2026-11-03
 
+## November 3: iteration 77 scoped success; prior Settings failure remains open
+
+Reviewed both findings inventories and newest reports, Kundalini 18 / app-c 77,
+including Kundalini's latest handoff. No eligible must-have or rebase-queue item
+remains. Packages bases remain 0302556 (code) / 62f950b (site). Independently
+verified both bases and all 36 exact recorded inclusion tips as ancestors of the
+integration HEADs. Only integration notes differ from implementation candidate
+7385f4e / 1539b66; no new integration assembly is needed on these unchanged bases.
+
+Read the saved 60-check artifact audit, scoped acceptancePassed=true, runner
+qualifications and self-review. All saved artifact checks pass; did not re-execute
+the app audit or emulator regression. Saved receipts report fresh offline and
+restored startup without recovery, plus painted Settings return in the same PID
+5058. This successful attempt does not reverse iteration 76's direct low-memory
+host/renderer kills or close historical reliability findings.
+
+Independently rehashed archived APKs against receipts: release 54711308 bytes,
+SHA256 cb0ccdc07a3ec2900311ecd27969e34ac298adc84a39ff493ebf95413186b521;
+debug 168852021 bytes, SHA256
+ccd846df467150ad76b97a2204310c1c6c6387589037a85b34d013e7b24db505.
+Saved doctor records 14 PASS / 10 WARN / 0 FAIL and exit 0; not re-run here.
+
+Matched worker-full-logcat.txt lines 88343/88346/88347: PID 7528 callback begin
+17:00:23.117, complete 17:00:24.698 and native SUCCESS 17:00:24.713. Saved trigger
+qualification records explicitlyTriggered=false and execution records forced=false:
+one registered execution observed without the observer issuing a force command,
+not a scheduling-cadence guarantee. Saved stable native SQLite receipts report
+outbox 2 and incoming fixture absent before isolation, exact outgoing objects,
+incoming USN 1980002 and outbox 0 before foreground. These remain saved database
+receipts, not a fresh database inspection here.
+
+Independently compared raw activation files: byte-identical SHA256
+eca21387c24df8e3b78497a9febf87b6f2be78dc1519916b5fbcc1f669e93d85,
+current 1793704119, pending 1793704129, no trial before foreground. Saved final
+state records current 1793704129 with no pending or trial. Retention, painted
+screens and cleanup remain report/receipt evidence; no live device-state,
+visual inspection or cleanup verification claimed by this evidence intake.
+
+Preserve both runner interruptions: a 20-second Windows mock-ownership query
+timeout before fixture creation, then a 30-second full-logcat timeout after a
+stable isolation baseline. The report records recovery with the same ownership
+guard and existing baseline. Neither establishes a Valence failure.
+
+Decision: preserve security, users' data and the frozen candidate. A scoped pass
+does not justify closing earlier failures or weakening rollback strikes. S1 stays
+parked; S2 needs a Play account. Kundalini F-72/F-73/F-74 still need adoption and
+verification. iOS remains experimental and untested. Sources: read-only findings,
+reports and valence-test-app-c/evidence/iteration-77/. Matching notes, ancestry,
+unchanged implementation trees and diff hygiene checked. Earlier full gates
+retain their recorded scope; no fresh full gates, emulator acceptance or runtime
+review claimed. No test-app writes, protected-branch, schema or version changes,
+push or publication.
+
 ## November 3: iteration 76 Settings survival failed; recovered checks stay separate
 
 Reviewed both findings inventories and newest reports, Kundalini 18 / app-c 76.
