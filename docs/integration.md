@@ -1,5 +1,47 @@
 # Integration with current packages - 2026-11-03
 
+## November 3: iteration 71 evidence intake; implementation unchanged
+
+Reviewed both findings inventories and newest reports, Kundalini 18 / app-c 71.
+No eligible must-have or queue refresh remains. Packages bases remain 0302556
+(code) / 62f950b (site); both integrations contain their base and all 36 exact
+recorded inclusion tips. Only this note differs from the gated implementation
+candidate 7385f4e / 1539b66.
+
+Decision: preserve security, users' data and the frozen candidate. S1 remains
+parked and S2 requires a Play account. App-c reports no new Valence defect;
+success here does not close historical renderer, startup, background, busy-sync,
+media or doctor findings. Kundalini F-72/F-73/F-74 still need app adoption and
+verification. iOS remains experimental and untested.
+
+Independently rehashed archived iteration-71 APKs against their saved receipts:
+release 54711084 bytes, SHA256
+f224ad89cf89b6c8c69a607a032cb5a666990d6b3f1127e47143143c8a110be6;
+debug 168851587 bytes, SHA256
+8f13b787b21f0ff7b39a8d34dd95d1e4e2cf9ec9bfdafeb9b87ce6d54dfe83a5.
+The saved audit records 59 passing artifact checks; read, not re-executed.
+Read the runner qualifications and scoped review, including the corrected gate
+for preserved preinstall offline/reconnect/restored-sync receipts. Those three
+current receipts show queue 1 offline, then queue 0 after reconnect and restore.
+Runner PATH/test-file errors and the initial missed widget capture remain
+separate from accepted retries. Sequential doctor reports 14 PASS / 10 WARN /
+0 FAIL; this does not erase iteration 70's failed invocation or close F-43.
+Settings receipt reports painted return in the same PID 5257.
+
+Matched PID 7989 begin 06:38:37.069, complete 06:38:38.527 and native SUCCESS
+06:38:38.534 directly in worker-full-logcat.txt. Independently compared raw
+activation files: byte-identical, SHA256
+12582698f3519167b62b651ab06e7c95c8f9145b0cad667756e34c082fd278bf,
+pending 1793666816, no trial. One explicitly triggered registered run establishes
+no natural cadence; the 398.638-second observer wait is not callback duration.
+Native SQLite effects and final foreground commitment are app-reported evidence.
+
+Sources: read-only valence-test-app-c/evidence/iteration-71/ and both apps'
+findings/reports. No test-app writes. Mirrored notes, ancestry, unchanged
+implementation trees and diff hygiene checked. Earlier November 3 gates retain
+their scope; no fresh full gates, emulator acceptance or runtime security review
+claimed. No protected-branch, schema or version changes, push or publication.
+
 ## November 3: iteration 70 evidence intake; implementation unchanged
 
 Read both apps' VALENCE_FINDINGS.md inventories and newest completed reports:
