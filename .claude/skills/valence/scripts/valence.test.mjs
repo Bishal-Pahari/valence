@@ -2123,6 +2123,24 @@ test('the CLI runs through a linked path (npm bin links, junctions)', () => {
   assert.equal(execSync(`node "${join(link, 'valence.mjs')}" version`, { encoding: 'utf8' }).trim(), VALENCE_VERSION);
 });
 
+// K F-48's other half: the release number cannot tell two copies of the CLI apart, and a copy that knows
+// about a built-in the vendored one does not is how a built-in becomes app-owned in silence (K F-62).
+// `version` stays one machine-readable line — scripts and the test above compare it — so the digest is a
+// flag, and it has to actually move when the file does.
+test('version --build names a digest of this CLI, and plain version stays one line', () => {
+  const run = (a) => execSync(`node "${join(import.meta.dirname, 'valence.mjs')}" version${a}`, { encoding: 'utf8' }).trim();
+  assert.equal(run(''), VALENCE_VERSION);
+  assert.match(run(' --build'), new RegExp(`^${VALENCE_VERSION.replace(/[.+]/g, '\\$&')}\\+build\\.[0-9a-f]{12}$`));
+  assert.equal(run(' --build'), run(' --build'), 'the same bytes give the same build');
+
+  // A copy that differs by one byte must not report the same build, which is the whole point.
+  const other = join(mkdtempSync(join(tmpdir(), 'mr-build-')), 'valence.mjs');
+  writeFileSync(other, `${readFileSync(join(import.meta.dirname, 'valence.mjs'), 'utf8')}\n// one more byte\n`);
+  const theirs = execSync(`node "${other}" version --build`, { encoding: 'utf8' }).trim();
+  assert.notEqual(theirs, run(' --build'));
+  assert.ok(theirs.startsWith(`${VALENCE_VERSION}+build.`), 'same release, different build');
+});
+
 // ---------- web client ----------
 
 // The runtime is @getvalence/bridge now, and it has its own tests. What is under test here is the

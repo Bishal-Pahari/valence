@@ -25,6 +25,17 @@ import { spawn, spawnSync } from 'node:child_process';
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 export const VALENCE_VERSION = '0.4.0-beta.0'; // keep equal to package.json "version" (tested)
+
+/// Where this copy of the CLI is, and what it contains.
+///
+/// `VALENCE_VERSION` names a *release*, so two copies that generate different Dart can report the same
+/// string: a vendored CLI against a newer published one, or two pre-release snapshots (K F-48, re-raised
+/// on eight consecutive iterations of one test app). The digest changes whenever the generator does,
+/// needs no network, and is read only by `version --build` and `doctor`'s `CLI build` row — never on a
+/// path that signs or verifies anything.
+export const cliPath = () => fileURLToPath(import.meta.url);
+export const cliBuild = () =>
+  createHash('sha256').update(readFileSync(cliPath())).digest('hex').slice(0, 12);
 const NATIVE = new Set(['.so', '.dex', '.jar', '.apk', '.aab', '.ipa', '.dylib', '.framework', '.a', '.o', '.class', '.exe', '.dll']);
 const PRIMS = new Set(['string', 'int', 'num', 'bool', 'json', 'void']);
 const CORE_METHODS = ['app.ready', 'app.info'];
@@ -1835,6 +1846,17 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
   // WARN, not FAIL: the generated code really is current for this CLI, and the method may genuinely be the
   // app's. But `doctor` is the first thing run when a built-in "has not shipped yet", so it is where the
   // stale-generator reading belongs (K F-62).
+  // K F-48, the half the version number cannot close. `VALENCE_VERSION` names a *release*, so two copies
+  // of the CLI that differ — a vendored one and a newer published one, or two pre-release snapshots — can
+  // report the same string while generating different Dart. That is how a built-in a newer CLI knows about
+  // becomes app-owned in silence (K F-62), and kundalini re-raised it on eight consecutive iterations. A
+  // content digest of this file is the one identifier that changes whenever the generator does, needs no
+  // network, and is free to compute.
+  await check('CLI build', () => ({
+    msg: `${VALENCE_VERSION}, build ${cliBuild()} (sha256 of valence.mjs, first 12) at ${cliPath()}; ` +
+      'a different build with the same version generates different code, so compare this line between runs ' +
+      'and run "npx create-valence update" when it moves',
+  }), 'run "npx create-valence update" to replace the vendored CLI with the published one');
   await check('generated code', () => codegen({ root, cfg, check: true }).warnings.join(' ') || undefined);
   await check('native plugin registration', () => {
     const { namespaces, owners } = loadPluginSchema(root, cfg);
@@ -2286,7 +2308,8 @@ async function dev(options) {
 
 const HELP = `Valence CLI ${VALENCE_VERSION} (spec: references/contracts.md)
 
-  valence version                        print the CLI version (doctor compares it with the skill copy)
+  valence version [--build]              print the CLI version; --build appends the digest of this file,
+                                    which is what tells two copies at the same version apart (K F-48)
   valence keygen                         new Ed25519 key in ~/.valence/keys, public key into valence/keyring.json
   valence codegen [--check]              bridge.schema.json -> bridge.g.ts, bridge.g.dart, config.g.dart
   valence bundle [--builtin | --store [--rebaseline]] [--floor N] [--requires-bridge N] [--min-host N] [--urgent] [--key file]
@@ -2337,13 +2360,18 @@ export async function main(argv) {
       'app-id': { type: 'string' },
       out: { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
+      build: { type: 'boolean', default: false },
     },
   });
   const cmd = positionals[0];
   if (v['allow-lan'] && cmd !== 'dev') throw new Error('--allow-lan only applies to valence dev');
   // Otherwise a release script that loses --store still takes --rebaseline and reports nothing.
   if (v.rebaseline && !(cmd === 'bundle' && v.store)) throw new Error('--rebaseline only means something with "bundle --store"');
-  if (cmd === 'version') return console.log(VALENCE_VERSION);
+  // `version` stays exactly one machine-readable line, because scripts and two tests compare it. The
+  // build digest that tells two same-version copies apart is `version --build` and `doctor`'s CLI row.
+  if (cmd === 'version') {
+    return console.log(v.build ? `${VALENCE_VERSION}+build.${cliBuild()}` : VALENCE_VERSION);
+  }
   if (!cmd || v.help) return console.log(HELP);
   if (cmd === 'assetlinks' || cmd === 'aasa') {
     return console.log(JSON.stringify(association({ kind: cmd, packageId: v.package, fingerprints: v.fingerprints, appId: v['app-id'], out: v.out }), null, 2));
