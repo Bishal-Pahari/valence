@@ -249,6 +249,10 @@ final class ValenceCookies {
   /// during the request bumps it, and the response's cookies are then dropped rather than written back
   /// over the jar of whoever is signed in now — the §4.4 isolation guarantee, which an in-flight
   /// response would otherwise undo seconds after the user left.
+  ///
+  /// ponytail: optional rather than required, because the jar's own tests absorb without a request to
+  /// attribute it to, and `ValenceHttp` is the only caller in the package. Make it required the moment a
+  /// second production caller appears — an absorb with no generation is the bug this closes.
   Future<void> absorb(Uri url, Iterable<String> setCookies,
       {int? atGeneration}) async {
     if (!owns(url) || setCookies.isEmpty) return;
