@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: tell two copies of the CLI apart
+
+`valence version --build` appends a digest of the CLI file — `0.4.0-beta.0+build.54954a1846cf` — and
+`doctor` opens with a `CLI build` row carrying the same pair and the path it read. The version names a
+*release*, so a vendored `valence/valence.mjs` and a newer published one can report the same string while
+generating different code, which is how a built-in the newer copy knows about becomes *your* method in
+silence. Plain `valence version` is unchanged and still one machine-readable line. The digest is a flag,
+never a gate: nothing signs or refuses on it, and what it points at is `npx create-valence update`.
+
 ## Unreleased: four fixes from two independent reviews
 
 - **A sign-out or an account switch can no longer be undone by a response already in flight.** An
