@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased: a busy sync can say who is holding it
+
+Nothing in this package changes. On a host at built-in revision 20, a generated `SyncStatus` that
+declares `leaseKind: "string?"` and `leaseAgeMs: "int?"` receives which run holds the sync lease and how
+long it has held it, so `reason: "busy"` stops being the end of the story. Both are null whenever a run
+starting now would not be refused. Gate on `(info.builtins ?? 0) >= 20`, never on your own schema
+number. [Sync outcomes](https://getvalence.pages.dev/docs/guides/sync-outcomes/#busy-finding-out-who-is-holding-the-lease).
+
 ## Unreleased: see bridge traffic in a debug panel
 
 `traceBridge(fn)` reports each finished `call()`: method, milliseconds, error code, and for `http.request` the URL without its query plus the status. It never carries params, bodies, headers or query strings, though a path can hold an identifier, so keep it to debug builds. Native HTTP does not appear in a browser network panel, so this is the only way a page can see it. See [Debugging](https://getvalence.pages.dev/docs/guides/debugging/).

@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased: a busy sync can say who is holding it
+
+`sync.status` gains two nullable returned fields at built-in **revision 20**, `leaseKind` and
+`leaseAgeMs`: which run holds the §5.6 sync lease — `foreground`, `background` or `push` — and for how
+long. The lease row grows a third field, `<epoch ms>:<pid>:<kind>`, appended so an older row still reads
+and an older host still finds the pid it compares.
+
+Until now `reason: "busy"` said a run had been refused and nothing could say by what. App-c spent four
+iterations capturing the same shape — a bounded `sync.now` answering busy twenty times after a reconnect,
+a WorkManager run cancelled a second in, a relaunch draining the queue first try — and every report said
+the same thing about itself: it cannot identify the owning operation and does not prove a lease-expiry
+violation. That is a diagnosability bug before it is a lease bug.
+
+Both fields are null **exactly** when a run starting now would not be refused, which includes a lease the
+host is about to take over: past its two-minute expiry, dated in the future, or left by a process that is
+gone. A held row that records no kind reports `unknown`, never null — null means "nothing would be
+refused", and conflating that with "held by something I cannot name" is the bug being fixed. `leaseKind`
+is an open set; treat a value you do not recognise as "something holds it".
+
+Gate on `(app.info().builtins ?? 0) >= 20`, declare the two fields, regenerate and ship a store build.
+**They are a diagnostic, not a schedule:** a page cannot release another run's lease, and lease expiry and
+takeover are deliberately unchanged by this release. [Sync
+outcomes](https://getvalence.pages.dev/docs/guides/sync-outcomes/#busy-finding-out-who-is-holding-the-lease).
+
 ## Unreleased: tell two copies of the CLI apart
 
 `valence version --build` appends a digest of the CLI file — `0.4.0-beta.0+build.54954a1846cf` — and

@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased: a busy sync can say who is holding it
+
+`ValenceSyncStatus` gains `leaseKind` and `leaseAgeMs`, and the `valence.sync.lease` row grows a third
+field — `<epoch ms>:<pid>:<kind>`, with `foreground`, `background` or `push`. Appended, so a row from an
+earlier 0.4 host and a 0.3 row both still parse. `ValenceSync` takes a `kind:`, defaulting to
+`foreground`; `Valence.backgroundSync` takes one too, defaulting to `background`, so a push transport
+passes `ValenceSyncKind.push`. The two status fields are non-null on exactly the predicate
+`acquireLease` refuses on, from one shared helper, so a lease this host would take over reports free.
+A held row with no kind reports `unknown` rather than free.
+
+The log carries the same facts: a refused run prints `holder=`, `heldForMs=` and its own `refused=` kind
+(once per refusal, not per retry); each run prints taking and releasing the lease with how long it was
+held; and `backgroundSync` brackets its whole run with `entered` / `left`. A `took` with no `released`,
+or an `entered` with no `left`, is a lease a torn-down isolate never gave back — a WorkManager
+cancellation runs no `finally` — so a leak is a missing line rather than an inference from a later
+`busy`. Lease acquisition, renewal and expiry are unchanged.
+
+`app.info().builtins` is now 20. [Startup
+diagnostics](https://getvalence.pages.dev/docs/guides/startup-diagnostics/).
+
 ## Unreleased: four fixes from two independent reviews
 
 - **A sign-out or an account switch can no longer be undone by a response already in flight.** An

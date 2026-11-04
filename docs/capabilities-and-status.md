@@ -8,7 +8,7 @@ target; iOS remains experimental and untested.
 ## Gate grown parameters
 
 `app.info().bridge` is your app's schema number. `builtins` is Valence's capability
-revision, currently 15, independent of how many custom methods your app added.
+revision, currently 20, independent of how many custom methods your app added.
 
 ```ts
 const info = await call('app.info');
@@ -54,4 +54,22 @@ The Dart API keeps synchronous `bundleStatus()` for existing callers; generated
 schemas declaring urgent use the additive async `bundleStatusWithUrgency()`.
 Urgency can change wording or prominence, and never bypasses trial/ready/rollback.
 
-Source of truth: contracts, "Schema 15 returned-field additions (R17)".
+## Revision 20: who holds the sync lease
+
+Two more nullable returned fields, on `SyncStatus`: `leaseKind` and `leaseAgeMs`.
+`reason` says a run was refused; these say by what, and for how long. `leaseKind`
+is `foreground`, `background`, `push`, or `unknown` for a held lease written by an
+older host — an open set, so treat an unrecognised value as "something holds it".
+Both are null whenever a run starting now would **not** be refused, including a
+lease the host is about to take over: past its two-minute expiry, dated in the
+future, or left by a process that is gone. Gate on `(info.builtins ?? 0) >= 20`.
+
+They are for reporting a stuck-looking sync accurately, not for deciding a holder
+has leaked — a page cannot release another run's lease, and expiry and takeover are
+unchanged. The host log carries the same facts: a refused run prints the holder,
+its age and its own kind, each run prints taking and releasing the lease, and the
+background isolate brackets its run, so a lease a torn-down isolate never released
+is a missing line. See [Sync outcomes](sync-outcomes.md).
+
+Source of truth: contracts, "Schema 15 returned-field additions (R17)" and
+"Revision 20 returned-field additions (S9)".
