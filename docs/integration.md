@@ -1,5 +1,57 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 94 evidence review
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / App C 94. No eligible must-have or queue refresh remains. Both integrations
+contain all 37 current feature tips and unchanged packages bases
+03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 /
+62f950ba1d52632b47fdd0e170bc41e18d467ae1. Ancestry was checked this run.
+
+The saved artifact audit records 72 passing checks, zero failed checks and
+acceptancePassed=false. F-36 recurred: raw Settings log records renderer 7004
+killed for the low-memory watermark at 08:16:37.212, followed by Chromium host
+6930 terminating itself at 08:16:37.259. Exit-info records host SIGNALED/status 9
+at 08:16:37.347. Replacement PID 7715 was blank; the pre-relaunch CDP socket
+closed. Ordinary relaunch recovery does not erase that failure. No Valence leak,
+database-lock owner or healthy-trial-loss cause is established. No native SQLite
+snapshot or paired-clock receipt was captured before recovery for this specific
+interruption; preinstall backup and final retention receipts are separate.
+Ordinary launch after the unfinished picker passed this attempt; historical
+F-29/F-36/F-44 and other findings remain open.
+
+Independently rehashed the archived APKs: release 54711308 bytes, SHA256
+1a6b12fb7c3637af866fbb25485c3c575a4dc04b58a300377a1d83a079f5e642;
+debug 168852021 bytes, SHA256
+4e1056faf3e7e1aabf00ac1c457918639c8692fa7e5587ab2568afe3641ac4fc.
+Saved manifest comparison records both embedding built-in seq 1793759159 after
+sequential builds. Initial fresh-offline screenshot overlapped restore and is
+excluded; repeated sequential checks remain separate. Preserve the failed
+Python Store-alias invocation and subsequent explicit-interpreter verification.
+
+Matched raw worker-full-logcat.txt against the completion receipt: PID 9701 begin
+08:31:34.258, complete 08:31:35.724, native SUCCESS 08:31:35.731. One registered
+job explicitly triggered after timing readiness proves no natural cadence.
+Stable native SQLite effects remain saved receipts, not replayed here.
+Independently hashed both raw activation files: 1147 bytes, identical SHA256
+8e7f1427cc0b1a227e8d4f4b325dff5010e1d850aca2a05dda17a1d38c028478.
+Current 1793759950, pending 1793759959, no trial before foreground. Final commit
+and original-data/photo retention remain saved receipts. Eleven local docs pages
+and tarballs still match iteration 93, so F-45 correction adoption remains
+unverified. Saved doctor is 14 PASS / 10 WARN / 0 FAIL. Retained-history footprint
+530196 KiB / 5228 files establishes no leak or growth rate. Kundalini
+F-72/F-73/F-74 adoption limits remain.
+
+Decision: preserve security, users' data and the frozen implementation; retain
+failed automatic recovery separately from successful explicit relaunch rather
+than changing runtime behavior without a diagnosed fix. S1 stays deliberately
+parked and S2 needs a Play account. This evidence-only update retains existing
+combined gates' recorded scope and date; no fresh full gates, security review or
+emulator acceptance claimed. iOS remains experimental and untested. Sources:
+read-only app findings, ITERATION_18_REPORT.md, ITERATION_94_REPORT.md and
+app-c/evidence/iteration-94/. No test-app writes, protected-branch changes,
+schema/version changes, push or publication. Roadmap status cells are unchanged.
+
 ## November 4: iteration 93 evidence review
 
 In plain terms: reviewed both findings inventories and newest reports, Kundalini
