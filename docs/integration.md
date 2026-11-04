@@ -1,5 +1,54 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 97 evidence review
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / App C 97. No eligible must-have or queue refresh remains. Both integrations
+contain all 37 current feature tips and unchanged packages bases
+03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 /
+62f950ba1d52632b47fdd0e170bc41e18d467ae1. Ancestry was checked this run.
+
+The saved audit records 78 passing artifact checks, zero failed checks and
+scoped acceptancePassed=false: external Camera ANR F-40 recurred. Raw lastanr
+names com.android.camera2 CaptureActivity and a 5001ms input dispatch timeout.
+Separate successful recovery does not erase the failed attempt or establish a
+Valence cause. Initial retained-release accessibility observations were blocked
+by a System UI dialog; Wait and relaunch recovery remain separate. These
+observations do not establish a host ANR or exact first-paint timing. Settings
+returned painted in the same PID 5232 and ordinary picker launch passed this
+attempt; historical F-29/F-36/F-44 remain open.
+
+Independently rehashed archived APKs: release 54711308 bytes, SHA256
+f58af9375d8567872605e2e44ad0b09271293aa89d83ab1ddaccd31a18657b76;
+debug 168852021 bytes, SHA256
+95ffb559b7a3fa1655604ab7edbb7f1859325bda9a7be14fc7e1c56a0ce50829.
+Saved manifest comparison records built-in seq 1793771934 in both sequential
+builds. Matched raw worker log to PID 8446 begin 12:04:35.643, complete
+12:04:36.913 and native SUCCESS 12:04:36.922. The saved observer records
+forced=true: one explicitly triggered execution proves no natural scheduling
+or cadence.
+
+Independently hashed both raw activation files: identical SHA256
+0fc8beb2c961d216d110292a1acaf03bb70e209b68e5327ec99f656d08a43845.
+Current 1793772927, pending 1793772937, no trial before foreground. Initial
+worker verification opened iteration 96's database and failed; corrected
+capture before foreground records stable native SQLite, exact outgoing objects,
+incoming rows and outbox 0. The initial failure and resumed cleanup remain
+separate. Final commit and original-data/photo retention remain saved receipts,
+not replayed here. Eleven docs pages and tarballs match iteration 96; F-45
+correction adoption remains unverified. Kundalini F-72/F-73/F-74 adoption limits
+remain open.
+
+Decision: preserve security, users' data and the frozen implementation; do not
+alter runtime behavior without a diagnosed fix. S1 stays deliberately parked;
+S2 needs a Play account. Existing combined gates retain their recorded scope and
+date; no fresh full gates, security review or emulator acceptance claimed. This
+change updates only matching integration notes. iOS remains experimental and
+untested. Sources: read-only app findings, ITERATION_18_REPORT.md,
+ITERATION_97_REPORT.md and app-c/evidence/iteration-97/. No test-app writes,
+protected-branch changes, schema/version changes, push or publication. Roadmap
+status cells are unchanged.
+
 ## November 4: iteration 96 evidence review
 
 In plain terms: reviewed both findings inventories and newest reports, Kundalini
