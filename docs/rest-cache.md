@@ -86,7 +86,9 @@ rollback until ordinary post-commit garbage collection removes that pair.
 **A bundle that is given up on cannot refill the cache on its way out.** Dropping the
 overlays is one step of a rollback whose other steps are asynchronous, and the failed
 page is still able to call the bridge through all of them, so from just before the drop
-until the replacement page starts `data.cache` answers `E_DENIED` and says why.
+until the document *that rollback asked for* starts, `data.cache` answers `E_DENIED`
+and says why. Not the next page load: the failed page can navigate itself, and a
+rollback whose reload fails leaves the cache closed rather than open.
 
 Recorded account switch/sign-out clears **all** cached values alongside writable
 rows, and emits `sync.changed` for cache-enabled buckets. A refused `E_PENDING`

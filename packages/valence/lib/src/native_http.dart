@@ -198,7 +198,6 @@ final class ValenceHttp {
           throw const BridgeError(
               BridgeErrorCode.timeout, 'the 20-second HTTP deadline passed');
         }
-        if (cookie != null) values['cookie'] = cookie;
         final header = jarred.jar?.csrfHeader?.toLowerCase();
         if (header != null && hostControlled(header)) {
           // Unreachable through codegen, which refuses it. A hand-written config gets a loud failure
@@ -207,9 +206,19 @@ final class ValenceHttp {
               'the configured CSRF header "$header" is controlled by the host');
         }
         final csrf = await jarred.csrfValue(uri);
-        // No cookie yet means no header. The server's own 403 is the honest answer, and a browser
-        // sending the pair it does not have would do the same.
-        if (header != null && csrf != null) values[header] = csrf;
+        // §4.5.1's generation, checked on the way *out* as well as on the way back in. The bearer token
+        // was read above and the jar was read here, so a sign-out or an account switch landing between
+        // the two would pair this account's token with the next one's session — and on a
+        // cookie-authenticated API, which is what the jar exists for, the server may then answer with
+        // the wrong user's data. This request began before the change, so it carries no cookie and no
+        // mirror at all; the server's own 401 or 403 is the honest answer, and it is the same answer a
+        // page gets when the pair has not been obtained yet.
+        if (jarGeneration == null || jarGeneration == jarred.generation) {
+          if (cookie != null) values['cookie'] = cookie;
+          // No cookie yet means no header. The server's own 403 is the honest answer, and a browser
+          // sending the pair it does not have would do the same.
+          if (header != null && csrf != null) values[header] = csrf;
+        }
       }
       // The page's own headers were already measured and named a size before this point. This second
       // check includes the bearer token, the `Cookie` header and the mirror, so naming the total would

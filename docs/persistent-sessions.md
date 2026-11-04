@@ -30,8 +30,11 @@ cookies with explicit server expiry. Explicit Expires, Max-Age and deletion are
 never extended by this option.
 
 Sign-out and an account switch empty the jar, and a response already in flight cannot
-refill it: each request carries the jar's generation and a response whose generation has
-moved on has its `Set-Cookie` dropped. The page still receives the response.
+refill it, and a request that straddles the change sends no cookie either: each request
+carries the jar's generation, a response whose generation has moved on has its
+`Set-Cookie` dropped, and the outgoing `Cookie` and CSRF header are omitted when the
+generation moved after the request began — otherwise one account's bearer token could go
+out beside the next account's session. The page still receives the response.
 
 Cookies remain in the reserved secure-storage key, never readable or writable by
 the page. The same one-origin grant, HTTPS rule (loopback excepted), path matching

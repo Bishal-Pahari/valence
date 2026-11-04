@@ -90,7 +90,11 @@ void main() {
       return bytes == null ? null : ByteData.sublistView(bytes);
     });
     runtime = await Valence.open(
-      testConfig(key, writableBuckets: {'shelf'}).copyWith(
+      testConfig(key,
+              writableBuckets: {'shelf'},
+              dataSchemas: {'days': 1},
+              cacheBuckets: {'days'})
+          .copyWith(
         bundleCheckedEvent: true,
         readyTimeout: const Duration(milliseconds: 80),
         updateInterval: const Duration(seconds: 5),
@@ -911,6 +915,52 @@ void main() {
     expect(runtime.state.trialFails, 1);
     expect(controller.loads, hasLength(2));
   });
+
+  testWidgets(
+      'a rollback refuses the given-up page cache writes until its replacement starts',
+      (tester) async {
+    await mount(tester, pending: true);
+    final controller = webview.controller;
+    await tester.runAsync(
+        () async => controller.navigation.started(runtime.server!.origin));
+    await tester.runAsync(() => runtime.dataCache('days', 'a', {'n': 1}));
+    expect(await tester.runAsync(() => runtime.dataGet('days', 'a')), isNotNull);
+
+    // The ready window expires, so the trial is given up on, its overlays are dropped and `current` is
+    // reloaded -- but no document has started on it yet, and the given-up page is still on screen and
+    // still dispatching. This is the window §5.5.1's refusal exists for.
+    await io(tester);
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 1200)));
+    await io(tester);
+    expect(runtime.state.trialFails, 1, reason: '${log.lines}');
+    expect(controller.loads, hasLength(2),
+        reason: 'current was reloaded, but no page has started on it');
+    await tester.runAsync(() async {
+      Object? thrown;
+      try {
+        await runtime.dataCache('days', 'b', {'n': 2});
+      } on Object catch (e) {
+        thrown = e;
+      }
+      expect(
+          thrown,
+          isA<BridgeError>()
+              .having((e) => e.code, 'code', BridgeErrorCode.denied),
+          reason: '${log.lines}');
+    });
+
+    // The document the rollback's own swap asked for is what reopens it.
+    await tester.runAsync(
+        () async => controller.navigation.started(runtime.server!.origin));
+    await tester.runAsync(() => runtime.dataCache('days', 'c', {'n': 3}));
+    expect(await tester.runAsync(() => runtime.dataGet('days', 'c')), {'n': 3});
+    expect(await tester.runAsync(() => runtime.dataGet('days', 'a')), isNull,
+        reason: 'the trial took its overlays with it');
+    expect(await tester.runAsync(() => runtime.dataGet('days', 'b')), isNull,
+        reason: 'and the write it attempted mid-rollback never landed');
+  });
+
 
   testWidgets('current pages never arm a failure timer or commit a null trial',
       (tester) async {

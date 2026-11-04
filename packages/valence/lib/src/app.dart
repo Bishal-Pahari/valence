@@ -367,8 +367,14 @@ class _ValenceAppState extends State<ValenceApp>
     _valence.restoration.observe(url, _origin);
     _log('webview started $url');
     _pageLoaded = false;
-    // A new document means the page a rollback was protecting the cache from is gone (§5.5.1).
-    _valence.releaseCacheWrites();
+    // §5.5.1: the cache reopens for the document the rollback's own swap asked for, and for no other.
+    // A same-origin navigation the given-up page starts itself — `location.replace('/login')`, say —
+    // arrives here too, and releasing on that would hand the page it is protecting against an open
+    // cache with the overlays already deleted.
+    if (_cacheBlockedBeforeSwap != null && _swaps != _cacheBlockedBeforeSwap) {
+      _cacheBlockedBeforeSwap = null;
+      _valence.releaseCacheWrites();
+    }
     _valence.links.beginPage();
     final state = _valence.state;
     // Armed only while serving a trial. A `current` page is not on probation, so a slow start costs it
@@ -489,18 +495,22 @@ class _ValenceAppState extends State<ValenceApp>
     }
     _log(
         'ready: app.ready did not arrive within ${_valence.config.readyTimeout.inSeconds}s for trial $trial');
-    // §5.5.1: up before the overlays are dropped and down when the replacement document starts. The
-    // given-up page is alive and dispatching through both awaits below.
+    // §5.5.1: up before the overlays are dropped and down when the document *this swap asked for*
+    // starts. The given-up page is alive and dispatching through both awaits below — and it can also
+    // navigate itself, which is one plausible reason a page never calls `app.ready()`, so the release
+    // cannot be "the next page start" either. There is deliberately no `finally`: a swap that throws
+    // loads no page, and §5.5.1 says such a launch leaves the cache **closed** rather than open.
     await _valence.blockCacheWrites();
-    try {
-      await _valence.updater.countFailure();
-      await _reloadCurrent();
-    } on Object {
-      // A swap that threw never loads a page, so nothing will release the block for us.
-      _valence.releaseCacheWrites();
-      rethrow;
-    }
+    _cacheBlockedBeforeSwap = _swaps;
+    await _valence.updater.countFailure();
+    await _reloadCurrent();
   }
+
+  /// Completed bundle swaps, so a page start can be told apart from the one a rollback asked for.
+  int _swaps = 0;
+
+  /// The value of [_swaps] when the rollback block went up, or null when no block is up.
+  int? _cacheBlockedBeforeSwap;
 
   @override
   Future<void> handleReady() async {
@@ -587,6 +597,8 @@ class _ValenceAppState extends State<ValenceApp>
     _valence.restoration.activate(manifest.seq);
     _origin = server.origin;
     _pageLoaded = false;
+    // Before the load, so the page start this swap causes already sees the new count (§5.5.1).
+    _swaps++;
     _log('serving bundle ${manifest.seq} on ${server.origin}');
     await _controller?.loadRequest(Uri.parse(server.origin));
   }

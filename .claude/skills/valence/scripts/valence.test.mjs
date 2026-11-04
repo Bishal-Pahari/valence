@@ -1777,6 +1777,8 @@ test('an app that already shipped a store build can take a built-in\'s new param
   bad((s) => (s.methods['data.list'].since = 2), /restore that "since"/);
   bad((s) => (s.methods['data.list'].since = 2), /Do not rename it/);
   bad((s) => (s.methods['mine.list'].params.after = 'string?'), /for example "mine\.list\.v2"/);
+  // A reserved name below its reserved revision gets the rename advice too; see the
+  // "custom notification names retain app-owned shapes" test, which has the store baseline for it.
   // A grown param needs the version bump with it. A param has no `since`, so the only thing a page can
   // gate on is a sibling method or event at the new version — without this an app could add `after` at
   // the shipped version and leave the page no way to tell it from a host that answers E_PARAMS.
@@ -2785,6 +2787,12 @@ for (const since of [1, 10]) test(`schema-${since} custom notification names ret
   bundle({ root, cfg, key, store: true, now: NOW });
   editSchema(root, (s) => { s.methods['notify.schedule'].params.hour = 'string'; });
   assert.throws(() => codegen({ root, cfg }), /changed|additive|shipped/);
+  // And the refusal must offer the **rename**, because this name is the app's own: `notify.*` is
+  // reserved from 11 whatever `minSince` says, so below 11 nothing delegates it and `name.v2` is the
+  // only move. Telling this app to "restore the recorded since" would be advice it cannot act on, and
+  // §6.5 promises its method keeps working.
+  assert.throws(() => codegen({ root, cfg }), /for example "notify\.schedule\.v2"/);
+  assert.throws(() => codegen({ root, cfg }), (e) => !/is a built-in and cannot change/.test(e.message));
 });
 
 test('push builtins freeze permission and nullable initial-message shapes', () => {

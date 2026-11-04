@@ -268,14 +268,19 @@ const BUILTINS = {
 // which is how a pre-11 custom `notify.*` keeps its shipped signature — and the trap `assertReservedSince`
 // closes, because below it codegen emits an abstract handler that `ValenceBuiltins` does not satisfy.
 const reservedSince = (name) => {
-  if (!(name in BUILTINS)) return null;
+  // `Object.hasOwn`, not `in`: a schema may legally declare a method called `constructor` or `toString`,
+  // and `in` finds `Object`'s own member on this literal. Benign today — the shape never matches, so the
+  // method stays app-owned — but that is luck rather than a guard, and these are exactly the names the
+  // sibling fix in `notificationFieldMismatches` was filed about.
+  if (!Object.hasOwn(BUILTINS, name)) return null;
   const own = BUILTINS[name].minSince ?? 1;
   if (/^(notify\.|badge\.)/.test(name)) return Math.max(own, 11);
   if (name.startsWith('push.')) return Math.max(own, 12);
   return own;
 };
 
-const builtinFor = (m) => (m.name in BUILTINS && m.since >= reservedSince(m.name) ? BUILTINS[m.name] : undefined);
+const builtinFor = (m) =>
+  (Object.hasOwn(BUILTINS, m.name) && m.since >= reservedSince(m.name) ? BUILTINS[m.name] : undefined);
 
 // The areas the package ships built-ins in, derived from the table rather than listed twice.
 const BUILTIN_AREAS = new Set(Object.keys(BUILTINS).map((n) => n.split('.')[0]));
@@ -1257,18 +1262,19 @@ const wireShape = (kind, def) =>
 
 /// The built-in the store build's own declaration of [name] is delegated to, or undefined.
 ///
-/// A reserved name declared at a **different** signature is the app's own method and always has been
-/// (§4.3), so "add a new one" is the right advice for it. Only a declaration the package actually
-/// implements needs to hear the other sentence, which is why this compares the shape rather than the
-/// name: `notify.schedule({hour})` at `since: 1` is nobody's built-in.
+/// A reserved name **below** its reserved revision is the app's own method and always has been (§6.5),
+/// so "add a new one" is the right advice for it — a pre-11 `notify.cancel` of the app's own keeps its
+/// shipped signature and nothing delegates it. `reservedSince` is the whole test, and the same one
+/// [builtinFor] uses, because the floor is not `minSince`: `notify.*`/`badge.*` are reserved from 11 and
+/// `push.*` from 12 with no `minSince` entry at all. At or above the floor there is no shape question
+/// left open either — `assertBuiltinShapes` has already refused any declaration whose params or return
+/// differ, which is why comparing them here would be answering a question that cannot be open.
 function shippedBuiltin(kind, name, shippedDef) {
-  const want = kind === 'methods' ? BUILTINS[name] : undefined;
-  if (!want || !shippedDef || typeof shippedDef !== 'object') return undefined;
-  if (want.minSince && !(shippedDef.since >= want.minSince)) return undefined;
-  const optional = want.optionalParams ?? {};
-  const required = Object.fromEntries(
-    Object.entries(shippedDef.params ?? {}).filter(([f]) => !(f in optional)));
-  return canonical(required) === canonical(want.params) ? want : undefined;
+  if (kind !== 'methods' || !shippedDef || typeof shippedDef !== 'object') return undefined;
+  const reserved = reservedSince(name);
+  return reserved !== null && typeof shippedDef.since === 'number' && shippedDef.since >= reserved
+    ? BUILTINS[name]
+    : undefined;
 }
 
 // The schema is additive only once a store build has shipped it (contracts §4.1).
@@ -1307,7 +1313,7 @@ export function assertAdditive(shipped, current) {
       const reservedDef = shippedBuiltin(kind, name, shippedDef);
       throw new Error(reservedDef
         ? `${kind} "${name}" is a built-in and cannot change: your store build recorded it at since ${shippedDef.since}` +
-          `${reservedDef.minSince ? ` (reserved at revision ${reservedDef.minSince})` : ''}, so restore that "since" and that shape. ` +
+          ` (reserved at revision ${reservedSince(name)}), so restore that "since" and that shape. ` +
           'Do not rename it: a name the package does not reserve is app-owned, so you would be implementing it yourself.'
         : `${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
     }
