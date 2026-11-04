@@ -2001,6 +2001,34 @@ JSON values are limited to 65,536 UTF-8 bytes (`E_TOO_LARGE`); the page chooses
 what to retain and removes stale keys explicitly. This is a disposable cache,
 not a way to save user edits or authenticate server data.
 
+**That value cap is the only one, and in 0.4 nothing underneath it stops a page that never prunes.**
+There is no cap on the number of cached rows, no cap on total cached bytes and no eviction of any kind, so
+a page with a compiled grant can fill the device one 64 KiB value at a time — and the user's only remedy
+is clearing app data, which also destroys their synced rows and their queued writes. **This is the one
+store in the system shaped that way**, which is what makes it easy to read past: a read-only bucket
+cannot grow on the device without a server row at all, `notify.schedule` caps pending requests at 64 and
+says so when it refuses, the widget store bounds both key count and value length and names the key it
+refused, and `http.request` caps the request body, the response body and the headers separately. The
+delegation itself is right — only the page knows which keys are worth keeping, and no host-side rule
+could have written an app's "keep what the date strip can reach" — but it is a delegation, not an
+absence of a problem, and it is stated in half a sentence (K F-77). So:
+
+- **Write the retention rule with the first `data.cache` call, not after a report.** The shape that works
+  is a prune run at the end of whatever load filled the cache: `data.list` the bucket, keep the keys the
+  UI can still reach, and `data.cache(bucket, key, null)` every other one.
+- **A page can measure its own overlay without a new method.** `data.list` returns `usn: -2` for exactly
+  the cache rows (§5.5.1, above), so counting them is a filter on a list the page can already page
+  through. `data.count` cannot: it counts the union, which is the point of the union.
+- **`valence doctor` reports the grant and the missing ceiling** in its `REST cache` row, naming the
+  granted buckets, so the decision is visible at release time rather than only in this paragraph. It
+  passes rather than warns: `doctor` cannot see whether the page prunes, and a warning no correct app can
+  clear is a warning nobody reads.
+- **A compiled ceiling is the fix and it is not in 0.4.** A per-bucket `maxRows` or a total `cacheMaxBytes`
+  with the oldest write evicted first would let an app that never prunes degrade into a smaller cache
+  instead of a full disk. The `cache` table is `WITHOUT ROWID` and keyed by `(bucket, schema, key)` with
+  no written-at column, so "oldest" does not exist yet: it needs a database migration, which is why the
+  ceiling waits for a release that can carry one rather than being bolted on here.
+
 - Cache rows live in a separate table with **no USN**, bucket cursor or outbox.
   Database migration 3 creates it without changing existing rows or queued writes.
 - `data.get`, `getMany`, `list` and `count` read the union, with the cache value
@@ -2510,7 +2538,10 @@ switch/sign-out clearing and in-flight/transition write barriers, **with the swi
 `sync.changed` buckets read from the emitted script and a synced read-only row surviving
 beneath the overlay that goes**; **a given-up trial dropping every overlay on each of the
 two strikes while its server rows, cursor and outbox survive**; v1/v2 database
-migration preserves rows and pending writes. Covered in `cache_test.dart`,
+migration preserves rows and pending writes; **`doctor`'s `REST cache` row naming the
+granted buckets and the ceiling 0.4 does not have, passing with a grant and without one and
+failing on an invalid grant — there is no test for a row-count or total-bytes limit because
+there is none to test (K F-77)**. Covered in `cache_test.dart`,
 `updater_test.dart`, `runtime_test.dart`, CLI generated-Dart tests and the example wiring test.
 
 S5 renderer loss (§3): a `webContentProcessTerminated` resource error reloads the **same** manifest at

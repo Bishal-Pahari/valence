@@ -288,7 +288,10 @@ never queues a write or advances sync freshness. Recorded account changes clear
 it. New `data.cache` declarations use `since >= max(18, shipped store schema
 version + 1)`; keep shipped declarations unchanged. Cache-enabled buckets still
 need valid sync endpoints when sync is configured; serve a valid empty page/index
-for an empty bucket, not a 404. See the [REST cache guide](https://getvalence.pages.dev/docs/guides/rest-cache/).
+for an empty bucket, not a 404. **Retention is the page's, and nothing backs it up:**
+one value is capped at 65,536 UTF-8 bytes and the row count, total bytes and age are
+not, so a page that never prunes fills the device. `doctor`'s `REST cache` row names
+the grant and the missing ceiling. See the [REST cache guide](https://getvalence.pages.dev/docs/guides/rest-cache/).
 
 Response size grants: compiled `http.maxBodyBytes` raises the decompressed response cap (default 65536, range 1..262144); requests remain 64 KiB and escaped replies remain capped at 256 KiB. Regenerate and ship a store build. [Limits and adoption](https://getvalence.pages.dev/docs/guides/http-response-limits/).
 

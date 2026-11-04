@@ -60,9 +60,57 @@ Read SQLite first for an immediate offline paint, then refresh online. Validate
 the API payload before caching it. Handle transport failures by retaining the
 previous value. One encoded JSON value may occupy at most 65,536 UTF-8 bytes;
 larger values fail `E_TOO_LARGE` without replacing the previous value. The page
-must prune stale keys using `data.cache({bucket, key, value: null})`; there is no
-automatic TTL or total cache quota. Null removes the overlay and reveals any
-server row underneath. There is no literal-null cache value.
+must prune stale keys using `data.cache({bucket, key, value: null})`. Null removes
+the overlay and reveals any server row underneath. There is no literal-null cache value.
+
+## Nothing bounds the cache except you
+
+**That 64 KiB value cap is the only limit there is.** No cap on the number of cached rows, no cap on total
+cached bytes, no TTL, no eviction. A page with a grant can fill the device one value at a time, and the
+user's only remedy then is clearing app data — which also destroys their synced rows and anything they
+have written but not yet pushed.
+
+This is the one store in Valence shaped that way, which is exactly why it is easy to miss. A read-only
+bucket cannot grow on the device without a server row. `notify.schedule` caps pending reminders at 64 and
+tells you when it refuses. The widget store bounds key count and value length and names the key it
+refused. `http.request` caps the request body, the response body and the headers separately. Only the
+REST cache — the store you write to most often, because caching an API is its whole purpose — is
+unbounded.
+
+The retention rule has to stay yours: only your page knows which keys are worth keeping. So write it with
+your first `data.cache` call rather than after a support ticket. The shape that works is a prune at the
+end of whatever load filled the cache — keep what the UI can still reach, drop the rest:
+
+```ts
+// After loading a date, keep only the dates the strip can navigate to.
+async function pruneDays(reachable: Set<string>) {
+  let after: string | undefined;
+  for (;;) {
+    const rows = await call('data.list', { bucket: 'days', limit: 500, after });
+    if (!rows.length) return;
+    for (const row of rows) {
+      // usn -2 is a cache overlay; -1 is an unsent user write; anything else came from the server.
+      if (row.usn === -2 && !reachable.has(row.k)) {
+        await call('data.cache', { bucket: 'days', key: row.k, value: null });
+      }
+    }
+    after = rows[rows.length - 1].k;
+  }
+}
+```
+
+**`usn: -2` is also how you measure the overlay.** `data.count` counts the merged view, which is the point
+of the merged view, so it cannot tell you how much of the bucket is cache. Listing and counting the `-2`
+rows can.
+
+`valence doctor` reports the grant and this missing ceiling in its **REST cache** row, naming your granted
+buckets, so the decision is visible at release time. It passes rather than warns: `doctor` cannot see
+whether your page prunes, and a warning no correct app can clear is a warning nobody reads.
+
+A compiled ceiling — a per-bucket `maxRows`, or one `cacheMaxBytes`, evicting the oldest write first — is
+the real fix, so that an app which never prunes degrades into a smaller cache instead of a full disk. It
+is **not in 0.4**: the cache table has no written-at column, so "oldest" does not exist yet and adding it
+is a database migration.
 
 `data.list`, `getMany`, `get` and `count` combine cached and synced rows with one
 row per key. Cache wins until a pull or seed import replaces that key, including

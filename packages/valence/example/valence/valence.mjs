@@ -2148,6 +2148,23 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
     const cap = validateHttpMaxBodyBytes(cfg);
     return { msg: `${cap} decompressed response bytes; request bodies stay at 65536; escaped JSON reply including headers must fit the separate 262144-byte bridge envelope` };
   }, 'set http.maxBodyBytes to an integer 1..262144, regenerate and ship a store build; paginate responses that exceed the body or escaped reply limit');
+  // §5.5.1 caps one value and nothing else: no row count, no total bytes, no eviction. Every other store
+  // in the system bounds itself — `notify.schedule` at 64 pending, the widget store by key count and
+  // value length, `http.request` by three separate caps with the row above reporting one of them — so the
+  // one a page writes to most often is the exception, and the half-sentence that delegates retention to
+  // the page is easy to read past (K F-77). This row cannot add a ceiling; it makes the decision visible
+  // at release time, which is when somebody can still write the prune.
+  await check('REST cache', () => {
+    validateCacheBuckets(cfg);
+    const granted = cfg.cache ?? [];
+    if (!granted.length) {
+      return { msg: 'no cache grant, so data.cache is E_DENIED for every bucket (§5.5.1)' };
+    }
+    // PASS rather than WARN, deliberately: `doctor` cannot see whether the page prunes, so a WARN here
+    // would be unclearable for every app that uses the feature correctly — and an alarm nobody can
+    // silence is one nobody reads. The row's job is to state the ceiling that is missing.
+    return { msg: `cache grant for ${granted.join(', ')}: each value is capped at 65536 UTF-8 bytes and nothing caps the number of rows, the total bytes or their age. A page that never removes stale keys fills the device one value at a time, and clearing app data is then the user's only remedy — which also destroys their synced rows. Prune explicitly: list the bucket, keep the keys your UI can still reach, write null for the rest, and count overlay rows as the ones data.list returns with usn -2` };
+  }, 'write a retention rule for every granted cache bucket, or remove the grant from cache and ship a store build');
   await check('cookie jar', () => {
     const jar = cfg.http?.cookieJar;
     if (jar === undefined || jar === null) {

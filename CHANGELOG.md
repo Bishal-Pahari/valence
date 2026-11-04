@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased: say what bounds the REST cache, because nothing does
+
+`data.cache` caps one value at 64 KiB and nothing else: not the number of rows, not the total bytes, not
+their age. A page with a grant that never removes stale keys fills the device one value at a time, and the
+user's only remedy is clearing app data — which also destroys their synced rows and their unsent writes.
+That was true in 0.4 before this change and it is still true after it. What changes is that it is now
+said out loud, in the place you are standing when it matters:
+
+- **`valence doctor` has a `REST cache` row** naming your granted buckets and the ceiling that does not
+  exist. It passes rather than warns — `doctor` cannot see whether your page prunes, and a warning no
+  correct app can clear is a warning nobody reads.
+- **The REST cache guide has a section on it** with the prune pattern that works (keep what the UI can
+  still reach, write `null` for the rest, at the end of the load that filled the cache), and with the
+  measurement nobody had written down: `data.list` returns `usn: -2` for exactly the cache rows, so a page
+  can count its own overlay. `data.count` cannot, because it counts the merged view on purpose.
+- **Contracts §5.5.1 says why this one store is shaped that way** and what the fix is: a compiled
+  per-bucket `maxRows` or one `cacheMaxBytes` with the oldest write evicted first, so an app that never
+  prunes degrades into a smaller cache instead of a full disk. That is **not in 0.4** — the cache table
+  has no written-at column, so "oldest" does not exist yet and adding it is a database migration.
+
+Nothing to change in your app unless you hold a cache grant, in which case: write the retention rule.
+Found by the kundalini test app on its twentieth iteration, after adopting the cache for two buckets and
+trying to write exactly that rule.
+
 ## Unreleased: the release warning names the events too
 
 `valence bundle --requires-bridge <n>` warns when you pin below your schema version, because a call to a

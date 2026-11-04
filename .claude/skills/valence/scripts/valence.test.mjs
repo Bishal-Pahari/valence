@@ -422,14 +422,30 @@ test('cache adoption uses the app next revision and restores shipped builtins in
   assert.match(readFileSync(join(root, 'mobile/lib/valence/bridge.g.dart'), 'utf8'), /await valence.dataCache/);
 });
 
-test('cache grants are compiled and limited to unique declared read-only buckets', () => {
+test('cache grants are compiled and limited to unique declared read-only buckets', async () => {
   const { root, cfg } = fixture({ latest: true });
   cfg.cache = ['calendar'];
   codegen({ root, cfg });
   assert.match(readFileSync(join(root, 'mobile/lib/valence/config.g.dart'), 'utf8'), /cacheBuckets: \{'calendar'\}/);
+
+  // K F-77: the only store in the system with no ceiling on its row count, total bytes or age. `doctor`
+  // cannot add one and cannot see whether the page prunes — so the row states the missing ceiling and
+  // PASSes, because a WARN no correct app can clear is one nobody reads.
+  const cacheRow = async () => (await diagnose({ root, cfg })).find(([, name]) => name === 'REST cache');
+  const granted = await cacheRow();
+  assert.equal(granted[0], 'PASS');
+  assert.match(granted[2], /cache grant for calendar/);
+  assert.match(granted[2], /nothing caps the number of rows, the total bytes or their age/);
+  assert.match(granted[2], /usn -2/);
+  delete cfg.cache;
+  const none = await cacheRow();
+  assert.equal(none[0], 'PASS');
+  assert.match(none[2], /no cache grant/);
+
   for (const cache of ['calendar', ['missing'], ['user'], ['calendar', 'calendar'], [null], ['__proto__']]) {
     cfg.cache = cache;
     assert.throws(() => codegen({ root, cfg }), /cache.*unique declared read-only/);
+    assert.equal((await cacheRow())[0], 'FAIL');
   }
 });
 

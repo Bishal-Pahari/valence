@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased: the REST cache has no ceiling, and the package now says so
+
+No behaviour change in this package: `ValenceStore.cache` still caps one encoded value at 65,536 UTF-8
+bytes and still bounds nothing else — not the row count, not the total bytes, not their age. What changes
+is that the absence is documented where it is implemented rather than only implied by a half-sentence in
+the spec: a page that never prunes fills the device, and clearing app data is the user's only remedy,
+which also takes their synced rows and their unsent writes with it.
+
+The upgrade, for whoever carries a database migration next: a compiled per-bucket `maxRows` or one
+`cacheMaxBytes`, evicting the oldest write first. The `cache` table is `WITHOUT ROWID` and keyed by
+`(bucket, schema, key)` with no written-at column, so "oldest" does not exist yet. See contracts §5.5.1
+and the [REST cache guide](https://getvalence.pages.dev/docs/guides/rest-cache/#nothing-bounds-the-cache-except-you).
+
 ## Unreleased: a busy sync can say who is holding it
 
 `ValenceSyncStatus` gains `leaseKind` and `leaseAgeMs`, and the `valence.sync.lease` row grows a third

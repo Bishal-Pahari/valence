@@ -366,7 +366,12 @@ final class ValenceStore {
 
   /// Stores a disposable overlay; null evicts it. The caller enforces the read-only bucket boundary.
   /// Never changes server rows, cursors, freshness or the outbox (§5.5.1).
-  // ponytail: retention is page-managed; only each value is capped, not total cache size or age.
+  // ponytail: retention is page-managed; only each value is capped, not the row count, the total bytes
+  // or the age — so a page that never prunes fills the device one 64 KiB value at a time, and this is the
+  // only store in the system with no ceiling of its own (K F-77). The upgrade is a compiled per-bucket
+  // `maxRows` or one `cacheMaxBytes`, evicting the oldest write first; `cache` is `WITHOUT ROWID` and
+  // keyed by (bucket, schema, key) with no written-at column, so "oldest" needs a database migration,
+  // which is why §5.5.1 documents the absence and `doctor` reports it instead of this capping silently.
   Future<void> cache(String bucket, int schema, String key, Object? value) async {
     if (value == null) {
       await databaseOperation('store.cache', () => db.delete('cache',
