@@ -1969,9 +1969,7 @@ POST {SYNC_BASE}/{bucket}/push   {"ops":[{"id":"<uuid>","k":"…","v":{…},"d":
 
 ### 5.5.1 Local REST cache (revision 18)
 
-`data.cache({bucket, key, value: json?}) -> void`, **reserved at revision 18** — so declare it at
-`since: max(18, your next schema version)`, which is 18 only for an app whose store baseline is below
-it, and `codegen` does the arithmetic for you in its refusal (§4.3) — stores a fetched JSON
+`data.cache({bucket, key, value: json?}) -> void`, reserved at revision 18, stores a fetched JSON
 value for offline reads in a **declared read-only bucket** granted by the compiled
 `cache: ["bucket"]` config (`ValenceConfig.cacheBuckets`). The default empty grant
 denies every cache write, so old read-only buckets keep their integrity boundary.
@@ -1980,7 +1978,24 @@ retained overlays for buckets whose grant was removed or which became writable;
 server rows, cursors and outbox entries are preserved. Unknown buckets fail `E_PARAMS`; writable or
 ungranted buckets fail `E_DENIED`. Config rejects duplicate, writable or unknown
 cache names. Keys `.` and `..` fail `E_PARAMS`.
+For a new app declaration use `since >= max(18, shipped store schema version + 1)`
+and app `version >= since`; a store-19 app adds it at 20. The starter template's
+18 assumes no previous store baseline. Preserve an already-shipped declaration's
+`since` and shape. A refusal must advise restoring the recorded built-in definition,
+including its `since`, rather than renaming the method: an alias does not delegate
+to the package. Existing app-owned methods retain the advice to add a new name.
+
 The host resolves the schema from the active manifest, just like `data.get`.
+A cache grant does not exempt a bucket from sync. With `sync.base` configured,
+unscoped sync pulls the active manifest's read-only pairs, including cache-enabled
+ones; scoped sync may select fewer pairs. Publish a valid empty dynamic page
+(HTTP 200, matching bucket/schema, `rows: []`, `max: 0`, `more: false` for a new
+empty bucket) or static index for an overlay-only bucket. Preserve any existing
+server history/cursor. HTTP 404 makes the run incomplete (`failed`), retaining
+successful work in other buckets and queued writes (section 5.6). No `sync.base` means
+no pull; 0.4 has no per-bucket cache-only exemption.
+The reference adapter in `examples/rest-sync-adapter` serves only `items` and
+returns 404 for other names; add empty overlay buckets there explicitly too.
 Null removes only the cached value, revealing any underlying synced value.
 JSON values are limited to 65,536 UTF-8 bytes (`E_TOO_LARGE`); the page chooses
 what to retain and removes stale keys explicitly. This is a disposable cache,
@@ -2000,22 +2015,6 @@ not a way to save user edits or authenticate server data.
   **same transaction** as applying the server row. A subsequent cache call can
   replace the visible value again. An empty pull does not evict unrelated keys.
   Seeded keys also take precedence over an older cached value when imported.
-- **A cache-enabled bucket is still a data bucket, so it is still pulled.** The grant adds a local
-  overlay; it does not take the bucket out of `data`, and §5.3 pulls every declared pair on every sync.
-  A bucket declared only to hold REST overlays therefore asks the sync server for rows it will never
-  have — and a backend that answers `404 {"error":"unknown bucket"}`, which is a correct answer to that
-  question, **fails the run, not just that bucket.** A non-200 on any pull sets the run incomplete, so
-  the result's `reason` is `failed` and `valence.sync.lastSyncedAt` does not advance (§5.3, and the R26
-  rule that a sync which did not succeed must not report `ok`) — the other buckets' rows still arrive,
-  but every page watching `sync.status` is told the sync failed, for ever, on an app whose data is
-  otherwise fine. So a sync server must serve every bucket in `data`, overlay-only ones as an **empty page**
-  (`{"rows": [], "max": 0, "more": false}`). Declaring a bucket for a REST overlay is consequently a
-  change on the sync server as well as in the config, which is surprising enough that it belongs here
-  rather than in a release note (K F-76). The reference adapter in `examples/rest-sync-adapter` serves
-  its one `items` bucket and answers 404 for every other name, deliberately — an unknown bucket is
-  usually a typo — so an overlay-only bucket has to be added there too, like any other backend. The
-  honest alternative is a `cache`-only bucket kind the host does not pull at all; that is a schema
-  change and is not in 0.4.
 - Cache writes never run sync or emit `sync.changed`/`sync.done`, never advance
   `lastSyncedAt`, and never satisfy the updater's synced-pair readiness check.
   `sync.status` continues to describe server sync and pending user writes only.

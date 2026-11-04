@@ -394,6 +394,34 @@ test('REST cache is an additive revision-18 builtin with a frozen shape and runt
   assert.throws(() => codegen({ root, cfg }), /data.cache/);
 });
 
+test('cache adoption uses the app next revision and restores shipped builtins instead of renaming them', () => {
+  const { root, cfg, key } = fixture({ latest: true });
+  // Reproduce the adopter's store-19 baseline independently of the moving starter template.
+  editSchema(root, s => {
+    s.version = 19;
+    delete s.methods['data.cache'];
+    delete s.types.SyncStatus.leaseKind;
+    delete s.types.SyncStatus.leaseAgeMs;
+  });
+  bundle({ root, cfg, key, store: true, now: NOW });
+  const cache = JSON.parse(readFileSync(join(TEMPLATES, 'bridge.schema.json'), 'utf8')).methods['data.cache'];
+  editSchema(root, s => { s.methods['data.cache'] = cache; });
+  assert.throws(() => codegen({ root, cfg }), /new since the store build.*so declare 20/);
+  editSchema(root, s => { s.version = 20; s.methods['data.cache'].since = 20; });
+  codegen({ root, cfg });
+  bundle({ root, cfg, key, store: true, now: NOW + 1000 });
+  const baseline = readFileSync(join(root, '.valence/baseline.json'), 'utf8');
+  editSchema(root, s => { s.methods['data.cache'].since = 18; });
+  const refuses = (e) => /recorded it at since 20.*restore that "since" and that shape/.test(e.message)
+    && !/data.cache.v2|data.cacheV2/.test(e.message);
+  assert.throws(() => codegen({ root, cfg }), refuses);
+  assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW + 2000 }), refuses);
+  assert.equal(readFileSync(join(root, '.valence/baseline.json'), 'utf8'), baseline);
+  editSchema(root, s => { s.methods['data.cache'].since = 20; });
+  codegen({ root, cfg });
+  assert.match(readFileSync(join(root, 'mobile/lib/valence/bridge.g.dart'), 'utf8'), /await valence.dataCache/);
+});
+
 test('cache grants are compiled and limited to unique declared read-only buckets', () => {
   const { root, cfg } = fixture({ latest: true });
   cfg.cache = ['calendar'];

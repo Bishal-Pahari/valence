@@ -285,7 +285,10 @@ Revision 18 adds `dataCache(bucket, key, value)` for disposable REST responses i
 read-only buckets granted by `ValenceConfig.cacheBuckets`. Read APIs merge these
 with synced rows (`usn: -2` for cache); pulls remove matching overlays. Cache
 never queues a write or advances sync freshness. Recorded account changes clear
-it. See the [REST cache guide](https://getvalence.pages.dev/docs/guides/rest-cache/).
+it. New `data.cache` declarations use `since >= max(18, shipped store schema
+version + 1)`; keep shipped declarations unchanged. Cache-enabled buckets still
+need valid sync endpoints when sync is configured; serve a valid empty page/index
+for an empty bucket, not a 404. See the [REST cache guide](https://getvalence.pages.dev/docs/guides/rest-cache/).
 
 Response size grants: compiled `http.maxBodyBytes` raises the decompressed response cap (default 65536, range 1..262144); requests remain 64 KiB and escaped replies remain capped at 256 KiB. Regenerate and ship a store build. [Limits and adoption](https://getvalence.pages.dev/docs/guides/http-response-limits/).
 
