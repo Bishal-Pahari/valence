@@ -563,7 +563,20 @@ within the same second, at `importance=400`, in the observed unhandled-loss case
 alone do not establish causation: correlate timestamps and PIDs with full logcat. The Chromium
 termination line establishes this path for that process; a direct lmkd host kill instead names the
 host package in the kill line, and handling renderer loss cannot prevent that separate kill. An ANR
-names the affected package. These records do not establish a Valence memory leak or rule out memory
+names the affected package.
+
+**The direct host kill is its own case, and the two are read apart by one line each.** Observed: a
+return from native Settings where lmkd named the *app's* package, the host's own exit-info reason was
+`reason=3 (LOW_MEMORY)` at 533 MB RSS, and **no Chromium termination line was present** — so the
+renderer-loss path above is not what happened, and nothing a shim could do would have changed it (C
+F-50). An excursion to another app is when it is likeliest: the host is then backgrounded and cached,
+which is what lmkd picks. Durable state survives — SQLite, the secure store, `state.json` and the
+outbox are all on disk — and the task snapshot behind §4.8 `state.restore` is best effort, so a kept
+task resumes the route and a dropped one starts at `/` with null. There is no host-side remedy and
+0.4 claims none; what the spec owes this failure is that it not be mistaken for the renderer path,
+because the two lead to different conclusions: one is a plugin gap native code could close, the other
+is the OS reclaiming a large backgrounded process. Capture logcat and exit-info **before** an ordinary
+relaunch, which overwrites them. These records do not establish a Valence memory leak or rule out memory
 use by app code. Preserve evidence before recovery; a successful restart does not close a prior
 intermittent failure.
 

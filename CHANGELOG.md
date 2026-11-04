@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased: tell a direct host kill apart from a renderer eviction
+
+No behaviour change; a distinction the spec made in a clause now gets its own case, because an app
+reported the wrong one.
+
+Android has two ways of taking your process. The one §3 describes at length is the unhandled renderer
+loss: lmkd kills the WebView's sandboxed process, Chromium logs that nothing handled it, and the WebView
+kills your host 70 ms later. The other is a **direct** low-memory kill of the host — lmkd names *your*
+package, the host's own exit-info reason is `reason=3 (LOW_MEMORY)`, and there is no Chromium
+termination line at all. The two lead to different conclusions: the first is a plugin gap native code
+could close, the second is the OS reclaiming a large backgrounded process, and no callback or future
+shim prevents it.
+
+Observed on a return from native Settings at 533 MB RSS, which is where it is likeliest: an excursion to
+another app leaves your process backgrounded and cached, which is what lmkd picks. What you get back is
+durable data always — SQLite, the secure store, `state.json`, the outbox — and the route and blob only if
+the OS kept the task, because the §4.8 snapshot is best effort. Capture logcat and exit-info **before**
+letting the app restart; an ordinary relaunch overwrites them.
+
+contracts §3 and the startup-diagnostics guide.
+
 ## Unreleased: four things an app has to get right that the spec only implied
 
 No behaviour change. Each of these cost a test app an iteration and was filed as a possible host defect

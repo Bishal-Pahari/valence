@@ -124,6 +124,17 @@ do not establish the cause. An ANR names the affected package in
 Neither a successful restart nor this signature establishes a Valence memory leak
 or rules out memory use by the app.
 
+**A direct host kill is a separate case and the log is what separates them.** When
+lmkd names *your* package and the host's own exit reason is `reason=3 (LOW_MEMORY)`
+with no Chromium termination line, the renderer was not the cause and no callback
+could have helped — the OS reclaimed a backgrounded process. It is likeliest during
+an excursion to another app (native Settings, a picker, the camera), and the user
+comes back to a cold start. Capture logcat and exit-info before letting the app
+restart; an ordinary relaunch overwrites the evidence. Durable data survives either
+way; the task snapshot behind `state.restore` is best effort (contracts section 4.8),
+so a dropped task starts at `/` with null. Nothing keeps the process alive
+(app-c F-50).
+
 0.4 cannot prevent it on Android; the shim is priced for 0.5. Because no host code
 runs, `serving` survives in `state.json` and the next UI start cannot tell the
 eviction from a bundle that crashed the app, so an eviction during a trial spends
