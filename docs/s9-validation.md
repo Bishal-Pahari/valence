@@ -79,6 +79,7 @@ it goes through `diagnosticLog`, so a host whose log sink throws cannot leak the
 | `packages/valence_push`: tests, analysis, dry run | 2 / 2, clean, warning-free |
 | `packages/bridge`: `node --test`, strict `tsc`, `npm pack --dry-run` | pass |
 | Site build + SEO gate | 50 pages, green |
+| Example app, debug APK on the `valence_test` emulator | built in 111 s, installed, launched, log captured |
 
 **Test sensitivity was checked, not assumed.** Every one of the eight new `sync_test.dart` cases was
 re-run against a deliberately broken runtime and failed on the behaviour it claims to cover: the kind
@@ -113,6 +114,37 @@ The LOWs: the `unknown` branch needs this process's pid, which the wording now s
 `entered`/`left` pair had no assertions, so an unset take-time would have printed an epoch-sized number
 with every test green; and a comment claimed an atomicity the sibling code deliberately relies on not
 holding.
+
+## What the device run showed
+
+The example app on the `valence_test` emulator, debug APK built on this tree, launched once with no
+network for its configured hosts. The diagnostics worked on the first launch, and they immediately caught
+a real collision — `docs/evidence/s9/example-launch-logcat.txt`:
+
+```
+21:32:07.086  sync: connectivity came back
+21:32:07.088  update: connectivity came back in the foreground
+21:32:07.473  sync: took the lease kind=foreground pid=8332
+21:32:07.520  sync: another sync holds the lease; skipping this run holder=foreground heldForMs=546 refused=foreground
+21:32:09.356  sync: released the lease kind=foreground heldForMs=2390
+```
+
+The pair brackets correctly on a real device, the refusal names its holder, and `heldForMs` is a real
+duration measured from the lease row's own timestamp — which is why it agrees with the refusal line's
+546 ms rather than with the gap between the two log lines.
+
+**And it exposed a limit worth stating rather than discovering later.** Both sides of that collision are
+`foreground`, because the UI isolate builds one driver and the connectivity trigger and the UI-start sync
+share it. So `kind` separates the three trigger *classes*, not individual runs inside one class. That is
+still the question F-44 could not answer — its hypothesis was a cancelled **background** isolate, and
+`foreground`/`foreground` rules that out — but it is less than "identify the owning operation", and the
+spec and both diagnostics guides now say so. Resolving the rest is a log read: the trigger lines sit
+immediately above, and the refused run's `heldForMs` dates the holder's row against the `took the lease`
+line.
+
+Giving each trigger its own label was considered and rejected for 0.4: it means threading a label through
+every call site of a shared driver, for a distinction the adjacent log lines already make, on an item
+whose whole point is to add diagnostics without touching sync control flow.
 
 ## What is not claimed
 

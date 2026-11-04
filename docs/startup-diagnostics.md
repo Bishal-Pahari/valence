@@ -56,6 +56,15 @@ sync: released the lease kind=background heldForMs=11280
 check's data pull), `background` (the periodic job) or `push`. The same two facts
 reach the page through `sync.status().leaseKind` and `.leaseAgeMs`.
 
+**It names the class of run, not the individual run.** The UI isolate has one
+sync driver, so two foreground triggers overlapping — the UI-start sync and the
+connectivity sync, which fire milliseconds apart on a reconnect — read
+`holder=foreground refused=foreground`. That rules out the background isolate,
+which is usually what the question is about; to tell the two foreground triggers
+apart, read the trigger lines immediately above (`sync: connectivity came back`,
+`update: ...`) and match the refused run's `heldForMs` against the timestamp of
+the `took the lease` line.
+
 **The pair of lines is the signal.** A `took the lease` with no matching
 `released the lease` is a run torn down while holding it — a cancelled WorkManager
 job runs no cleanup — and the background isolate brackets its whole run too:
