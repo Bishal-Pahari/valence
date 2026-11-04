@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased: REST cache adoption guidance
+
+- Shipped built-in edits now tell you to restore the recorded declaration, including its `since`, instead of suggesting a name the runtime cannot delegate. New `data.cache` declarations use at least `max(18, shipped store schema version + 1)`.
+- Cache guides explain that cache-enabled data buckets still need sync endpoints when sync is configured. Serve a valid empty page or static index for an empty bucket; a 404 makes sync incomplete.
+
 ## Unreleased: response size grants
 
 Optional compiled `http.maxBodyBytes` accepts 1..262144 decompressed response bytes (default 65536). Regenerate and ship a host for larger REST responses. Request and escaped reply limits stay unchanged; doctor reports both limits.

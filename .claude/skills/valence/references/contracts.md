@@ -1940,7 +1940,7 @@ POST {SYNC_BASE}/{bucket}/push   {"ops":[{"id":"<uuid>","k":"…","v":{…},"d":
 
 ### 5.5.1 Local REST cache (revision 18)
 
-`data.cache({bucket, key, value: json?}) -> void`, `since: 18`, stores a fetched JSON
+`data.cache({bucket, key, value: json?}) -> void`, reserved at revision 18, stores a fetched JSON
 value for offline reads in a **declared read-only bucket** granted by the compiled
 `cache: ["bucket"]` config (`ValenceConfig.cacheBuckets`). The default empty grant
 denies every cache write, so old read-only buckets keep their integrity boundary.
@@ -1949,7 +1949,22 @@ retained overlays for buckets whose grant was removed or which became writable;
 server rows, cursors and outbox entries are preserved. Unknown buckets fail `E_PARAMS`; writable or
 ungranted buckets fail `E_DENIED`. Config rejects duplicate, writable or unknown
 cache names. Keys `.` and `..` fail `E_PARAMS`.
+For a new app declaration use `since >= max(18, shipped store schema version + 1)`
+and app `version >= since`; a store-19 app adds it at 20. The starter template's
+18 assumes no previous store baseline. Preserve an already-shipped declaration's
+`since` and shape. A refusal must advise restoring the recorded built-in definition,
+including its `since`, rather than renaming the method: an alias does not delegate
+to the package. Existing app-owned methods retain the advice to add a new name.
+
 The host resolves the schema from the active manifest, just like `data.get`.
+A cache grant does not exempt a bucket from sync. With `sync.base` configured,
+unscoped sync pulls the active manifest's read-only pairs, including cache-enabled
+ones; scoped sync may select fewer pairs. Publish a valid empty dynamic page
+(HTTP 200, matching bucket/schema, `rows: []`, `max: 0`, `more: false` for a new
+empty bucket) or static index for an overlay-only bucket. Preserve any existing
+server history/cursor. HTTP 404 makes the run incomplete (`failed`), retaining
+successful work in other buckets and queued writes (section 5.6). No `sync.base` means
+no pull; 0.4 has no per-bucket cache-only exemption.
 Null removes only the cached value, revealing any underlying synced value.
 JSON values are limited to 65,536 UTF-8 bytes (`E_TOO_LARGE`); the page chooses
 what to retain and removes stale keys explicitly. This is a disposable cache,

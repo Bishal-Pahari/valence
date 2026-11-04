@@ -1268,6 +1268,9 @@ export function assertAdditive(shipped, current) {
           `"${name}" gained the param ${Object.keys(current.methods[name].params ?? {}).filter((p) => !Object.hasOwn(def.params ?? {}, p)).map((p) => `"${p}"`).join(', ')}, which needs "version" above the shipped ${shipped.version}. A param has no "since", so a page can only gate it on a sibling method or event at the new version — has("data.count") for data.list's "after".`,
         );
       }
+      if (kind === 'methods' && Object.hasOwn(BUILTINS, name) && def.since >= reservedSince(name)) {
+        throw new Error(`${kind} "${name}" shipped in a store build and cannot change; restore its recorded built-in definition, including since: ${def.since}. The package delegates only the reserved name; renaming it does not delegate to the built-in.`);
+      }
       throw new Error(`${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
     }
   }
