@@ -1,0 +1,32 @@
+11-04 21:31:47.898  8332  8332 I flutter : [valence] startup: phase=binding status=begin elapsedMs=2 phaseMs=1
+11-04 21:31:47.899  8332  8332 I flutter : [valence] startup: phase=binding status=complete elapsedMs=16 phaseMs=15
+11-04 21:31:47.899  8332  8332 I flutter : [valence] startup: phase=links status=begin elapsedMs=16 phaseMs=0
+11-04 21:31:49.744  8332  8332 I flutter : [valence] startup: phase=links status=complete elapsedMs=1858 phaseMs=1842
+11-04 21:31:49.744  8332  8332 I flutter : [valence] startup: phase=directories status=begin elapsedMs=1861 phaseMs=0
+11-04 21:31:49.839  8332  8332 I flutter : [valence] startup: phase=directories status=complete elapsedMs=1956 phaseMs=95
+11-04 21:31:49.839  8332  8332 I flutter : [valence] startup: phase=store status=begin elapsedMs=1956 phaseMs=0
+11-04 21:31:54.320  8332  8332 I flutter : [valence] startup: phase=store status=complete elapsedMs=6436 phaseMs=4480
+11-04 21:31:54.320  8332  8332 I flutter : [valence] startup: phase=state status=begin elapsedMs=6438 phaseMs=0
+11-04 21:31:54.433  8332  8332 I flutter : [valence] startup: phase=state status=complete elapsedMs=6550 phaseMs=112
+11-04 21:31:54.434  8332  8332 I flutter : [valence] startup: phase=services status=begin elapsedMs=6551 phaseMs=0
+11-04 21:31:54.806  8332  8332 I flutter : [valence] startup: phase=services status=complete elapsedMs=6923 phaseMs=372
+11-04 21:31:54.807  8332  8332 I flutter : [valence] startup: phase=notifications status=begin elapsedMs=6924 phaseMs=0
+11-04 21:31:54.881  8332  8332 I flutter : [valence] startup: phase=notifications status=complete elapsedMs=6998 phaseMs=74
+11-04 21:31:54.881  8332  8332 I flutter : [valence] startup: phase=seed status=begin elapsedMs=6998 phaseMs=0
+11-04 21:31:54.904  8332  8332 I flutter : [valence] seed: skipped; completion marker matches host build and asset length
+11-04 21:31:54.904  8332  8332 I flutter : [valence] startup: phase=seed status=complete elapsedMs=7022 phaseMs=24
+11-04 21:31:54.904  8332  8332 I flutter : [valence] startup: complete elapsedMs=7022
+11-04 21:32:01.536  8332  8332 I flutter : [valence] serving bundle 1793567181 on http://127.0.0.1:11441
+11-04 21:32:07.086  8332  8332 I flutter : [valence] sync: connectivity came back
+11-04 21:32:07.088  8332  8332 I flutter : [valence] update: connectivity came back in the foreground
+11-04 21:32:07.473  8332  8332 I flutter : [valence] sync: took the lease kind=foreground pid=8332
+11-04 21:32:07.520  8332  8332 I flutter : [valence] sync: another sync holds the lease; skipping this run holder=foreground heldForMs=546 refused=foreground
+11-04 21:32:07.740  8332  8332 I flutter : [valence] update: step 1 stopped, pointer fetch failed: ClientException with SocketException: Failed host lookup: 'ota.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://ota.example.invalid/com.getvalence.example/channels/production.json
+11-04 21:32:08.214  8332  8332 I flutter : [valence] webview started http://127.0.0.1:11441/
+11-04 21:32:08.248  8332  8332 I flutter : [valence] sync: offline pulling plants v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/plants?since=3&schema=1&limit=500
+11-04 21:32:09.245  8332  8332 I flutter : [valence] sync: offline pulling shelf v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/shelf?since=0&schema=1&limit=500
+11-04 21:32:09.356  8332  8332 I flutter : [valence] sync: released the lease kind=foreground heldForMs=2390
+11-04 21:32:11.319  8332  8332 I flutter : [valence] bridge error E_UNSUPPORTED: push is not configured
+11-04 21:32:11.357  8332  8332 I flutter : [valence] webview finished http://127.0.0.1:11441/
+11-04 21:32:11.753  8332  8332 I flutter : [valence] webview http 404 for http://127.0.0.1:11441/favicon.ico
+11-04 21:32:12.073  8332  8332 I flutter : [valence] ready: app.ready from a page that is not serving a trial; nothing to commit

@@ -22,16 +22,23 @@ So this is a diagnosability bug before it is a lease bug, and that is what was f
 
 **The lease row carries the holder's kind.** `valence.sync.lease` is now
 `<epoch ms>:<pid>:<kind>` — `foreground`, `background` or `push`. The field is *appended*, so a row
-written by a 0.4 host before this revision (`<ms>:<pid>`) and a 0.3 row (`<ms>`) both still parse, and an
-older host reading a newer row still finds the pid, the only field its own logic uses. `renewLease`
+written by a 0.4 host before this revision (`<ms>:<pid>`) and a 0.3 row (`<ms>`) both still parse. A host
+*older* than revision 20 reads a three-field row as live with no owner — its parser took everything
+after the first colon as the pid — so it takes the row over, which is right, because a downgrade means
+the writer is gone; it loses the pid and misattributes the row in its log. Mutual exclusion is
+unaffected: two hosts of different versions can never run at once. `renewLease`
 rewrites the kind too, so a refused run learns who holds it now rather than who took it.
 
 **`SyncStatus` gains `leaseKind: string?` and `leaseAgeMs: int?`,** nullable grown returned fields at
 built-in revision 20, gated by `(info.builtins ?? 0) >= 20`.
 
 **The log names the holder.** A refused run prints `holder=`, `heldForMs=` and its own `refused=` kind;
-taking and releasing the lease are each one line with the kind and how long it was held; and the
-background isolate brackets its whole run with `entered` / `left`.
+taking and releasing the lease are each one line with the kind and how long it was held — logged by the
+lease primitives, so the three paths that acquire outside a full run (step 7's pull, the GC's pair step,
+the §4.4 account switch) are bracketed too; **every** row a takeover displaces is named with which of
+the three cases it was, because `status` reports those free and the log is then the only place that can
+say a row was there; and the background isolate brackets its whole run with `entered` / `left`. All of
+it goes through `diagnosticLog`, so a host whose log sink throws cannot leak the lease being traced.
 
 ## The four decisions, and why
 
@@ -49,9 +56,11 @@ background isolate brackets its whole run with `entered` / `left`.
    answer this item was filed about. The log names those three cases instead, where they belong.
 
 3. **A held row that records no kind reports `"unknown"`, never null.** Null means "a run starting now
-   would not be refused". Reporting "free" for a lease that is genuinely held but written by an older host
-   would be a lie on the one path where the page is asking *because* it was refused — the exact conflation
-   the field exists to end. Security and data honesty before convenience.
+   would not be refused". Reporting "free" for a lease that is genuinely held would be a lie on the one
+   path where the page is asking *because* it was refused — the exact conflation the field exists to end.
+   Security and data honesty before convenience. (It needs a pre-revision-20 row whose pid matches this
+   process, so in practice it is the pid-recycling case; a row from a previous launch reports free, which
+   is what the takeover rule already says about it.)
 
 4. **Acquisition and expiry are untouched.** Changing lease lifetime or takeover on a
    verification-adjacent path, two weeks from a beta, to address a cause nobody has established, is the
@@ -64,17 +73,78 @@ background isolate brackets its whole run with `entered` / `left`.
 | Gate | Result |
 |---|---|
 | `npm test` (both root suites) | 117 / 117, zero skips — the generated-Dart and strict-TS tests both ran |
-| `flutter test` (`packages/valence`) | 627 / 627 |
+| `flutter test` (`packages/valence`) | 631 / 631 |
 | `dart analyze --fatal-infos .` (`packages/valence`) | clean |
 | `flutter pub publish --dry-run` (`packages/valence`) | warning-free on a clean tree |
 | `packages/valence_push`: tests, analysis, dry run | 2 / 2, clean, warning-free |
 | `packages/bridge`: `node --test`, strict `tsc`, `npm pack --dry-run` | pass |
 | Site build + SEO gate | 50 pages, green |
+| Example app, debug APK on the `valence_test` emulator | built in 111 s, installed, launched, log captured |
 
-**Test sensitivity was checked, not assumed.** Each of the five new `sync_test.dart` cases was re-run
-against a deliberately broken runtime — the kind dropped from the lease value, the pid check removed from
-the held-lease predicate, and `'unknown'` replaced by null — and each failed on the behaviour it claims to
-cover.
+**Test sensitivity was checked, not assumed.** Every one of the eight new `sync_test.dart` cases was
+re-run against a deliberately broken runtime and failed on the behaviour it claims to cover: the kind
+dropped from the lease value, the pid check removed from the held-lease predicate, `'unknown'` replaced by
+null, the takeover log narrowed back to live rows only, the take line taken out of `diagnosticLog`, and
+the take-time left unset.
+
+## The reviewer pass
+
+A `valence-reviewer` pass over the first two commits returned **no critical and no high**, four MEDIUMs
+and three LOWs. All seven were real and all seven are fixed here.
+
+The one that mattered was mine and it was the diagnostic undoing the thing it diagnoses: the
+`took the lease` line sat between acquisition and the `try`/`finally`, so a host whose `log` routes into
+a crash reporter that throws — not initialised, rate-limited, over a line-length cap — left the row on
+disk with `owner == pid`, and every sync for the next two minutes answered `busy`. That is F-44's own
+symptom, newly reachable *from the feature filed to explain it*. Everything observational now goes
+through `diagnosticLog`, including the background isolate's bracket, whose `finally` would otherwise have
+turned a completed background sync into a WorkManager `FAILURE`.
+
+The other three MEDIUMs were claims the code did not implement. The spec said an older host reading a
+newer lease row still finds the pid: it does not — its parser read `4893:foreground` and `int.tryParse`
+refused it — so five documents now say what actually happens, and why mutual exclusion survives it. The
+spec said the log names the rows `status` reports free: it named only the foreign-pid one, so an expired
+or future-dated takeover was byte-identical in the log to a clean acquisition — the state most in need of
+explaining had the least evidence. And take/release were logged by `run`, not by the lease, so step 7's
+`since = 0` pull could hold the lease across several pairs' downloads while a page collected twenty
+`holder=foreground` lines with nothing to pair them against — F-44's exact scenario. Both are fixed in
+the code rather than narrowed in the docs, because in both cases the stronger statement is the useful one.
+
+The LOWs: the `unknown` branch needs this process's pid, which the wording now says; `heldForMs` and the
+`entered`/`left` pair had no assertions, so an unset take-time would have printed an epoch-sized number
+with every test green; and a comment claimed an atomicity the sibling code deliberately relies on not
+holding.
+
+## What the device run showed
+
+The example app on the `valence_test` emulator, debug APK built on this tree, launched once with no
+network for its configured hosts. The diagnostics worked on the first launch, and they immediately caught
+a real collision — `docs/evidence/s9/example-launch-logcat.txt`:
+
+```
+21:32:07.086  sync: connectivity came back
+21:32:07.088  update: connectivity came back in the foreground
+21:32:07.473  sync: took the lease kind=foreground pid=8332
+21:32:07.520  sync: another sync holds the lease; skipping this run holder=foreground heldForMs=546 refused=foreground
+21:32:09.356  sync: released the lease kind=foreground heldForMs=2390
+```
+
+The pair brackets correctly on a real device, the refusal names its holder, and `heldForMs` is a real
+duration measured from the lease row's own timestamp — which is why it agrees with the refusal line's
+546 ms rather than with the gap between the two log lines.
+
+**And it exposed a limit worth stating rather than discovering later.** Both sides of that collision are
+`foreground`, because the UI isolate builds one driver and the connectivity trigger and the UI-start sync
+share it. So `kind` separates the three trigger *classes*, not individual runs inside one class. That is
+still the question F-44 could not answer — its hypothesis was a cancelled **background** isolate, and
+`foreground`/`foreground` rules that out — but it is less than "identify the owning operation", and the
+spec and both diagnostics guides now say so. Resolving the rest is a log read: the trigger lines sit
+immediately above, and the refused run's `heldForMs` dates the holder's row against the `took the lease`
+line.
+
+Giving each trigger its own label was considered and rejected for 0.4: it means threading a label through
+every call site of a shared driver, for a distinction the adjacent log lines already make, on an item
+whose whole point is to add diagnostics without touching sync control flow.
 
 ## What is not claimed
 

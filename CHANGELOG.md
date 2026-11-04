@@ -4,8 +4,10 @@
 
 `sync.status` gains two nullable returned fields at built-in **revision 20**, `leaseKind` and
 `leaseAgeMs`: which run holds the §5.6 sync lease — `foreground`, `background` or `push` — and for how
-long. The lease row grows a third field, `<epoch ms>:<pid>:<kind>`, appended so an older row still reads
-and an older host still finds the pid it compares.
+long. The lease row grows a third field, `<epoch ms>:<pid>:<kind>`, appended so an older row still reads. A host older
+than revision 20 reads a three-field row as live with no owner and takes it over, which is right — a
+downgrade means the writer is gone — though it loses the pid; mutual exclusion is unaffected, because two
+hosts of different versions can never run at once.
 
 Until now `reason: "busy"` said a run had been refused and nothing could say by what. App-c spent four
 iterations capturing the same shape — a bounded `sync.now` answering busy twenty times after a reconnect,

@@ -56,6 +56,15 @@ sync: released the lease kind=background heldForMs=11280
 check's data pull), `background` (the periodic job) or `push`. The same two facts
 reach the page through `sync.status().leaseKind` and `.leaseAgeMs`.
 
+**It names the class of run, not the individual run.** The UI isolate has one
+sync driver, so two foreground triggers overlapping — the UI-start sync and the
+connectivity sync, which fire milliseconds apart on a reconnect — read
+`holder=foreground refused=foreground`. That rules out the background isolate,
+which is usually what the question is about; to tell the two foreground triggers
+apart, read the trigger lines immediately above (`sync: connectivity came back`,
+`update: ...`) and match the refused run's `heldForMs` against the timestamp of
+the `took the lease` line.
+
 **The pair of lines is the signal.** A `took the lease` with no matching
 `released the lease` is a run torn down while holding it — a cancelled WorkManager
 job runs no cleanup — and the background isolate brackets its whole run too:
@@ -73,9 +82,23 @@ That is what makes it reportable; include these lines, `dumpsys activity
 exit-info` and the PID.
 
 One line per refusal, not per retry, so the account-switch wait and the update
-check's five-second wait do not fill the log. No lease deadline or takeover rule
-changed: a lease past its expiry, dated in the future, or left by a process that
-is gone is taken over as before, each with its own line.
+check's five-second wait do not fill the log. The take and release lines come from
+the lease primitives, so the paths that acquire without a full run — step 7's pull,
+the GC's pair step, the account switch — are bracketed too.
+
+No lease deadline or takeover rule changed. A lease past its expiry, dated in the
+future, or left by a process that is gone is taken over as before, and **each of
+the three now says which it was**:
+
+```
+sync: taking over a lease (kind=background, written 183001ms ago): past its 2-minute expiry
+```
+
+One thing to know about a `heldForMs` above 120000 on a release line: the lease
+had already expired and may have been taken over mid-run, and the release deletes
+the row unconditionally — so it clears the new holder's lease out from under it.
+That is pre-existing behaviour, not new here, and this number is the first thing
+that makes it visible.
 
 ## A WebView eviction writes no host line, and that is the signature
 

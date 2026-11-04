@@ -1480,6 +1480,44 @@ void main() {
       expect(log.has('the UI isolate holds the database'), isTrue);
     });
 
+    test('S9 a background run brackets itself and names its kind in the lease',
+        () async {
+      // The entered/left pair is what the diagnostics docs make the primary signal: a WorkManager
+      // cancellation kills the isolate with no `finally`, so an `entered` with no `left` is a lease that
+      // was never given back. The kind reaches the lease row too, which is how `sync.status` can tell a
+      // periodic run from a push-woken one.
+      final log = LogSpy();
+      final result = await Valence.backgroundSync(
+        testConfig(key, dataSchemas: {'plants': 1}),
+        log: log.call,
+        client: MockClient(
+            (_) async => http.Response('{"rows":[],"max":0,"more":false}', 200)),
+        supportDir: support,
+        documentsDir: support,
+        secure: testSecure({}),
+        databaseFactory: databaseFactoryFfi,
+        kind: ValenceSyncKind.push,
+      );
+      expect(result.reason, ValenceSyncReason.ok);
+      expect(log.has('background isolate entered kind=push'), isTrue);
+      expect(log.has('background isolate left kind=push'), isTrue);
+      expect(log.has('took the lease kind=push'), isTrue);
+      expect(log.has('released the lease kind=push'), isTrue);
+      // The default stays the periodic job, so an existing host's callback is unchanged.
+      final periodic = LogSpy();
+      await Valence.backgroundSync(
+        testConfig(key, dataSchemas: {'plants': 1}),
+        log: periodic.call,
+        client: MockClient(
+            (_) async => http.Response('{"rows":[],"max":0,"more":false}', 200)),
+        supportDir: support,
+        documentsDir: support,
+        secure: testSecure({}),
+        databaseFactory: databaseFactoryFfi,
+      );
+      expect(periodic.has('background isolate entered kind=background'), isTrue);
+    });
+
     test('isDatabaseLocked matches what Android prints, and nothing else', () {
       expect(isDatabaseLocked(LockedDatabaseException()), isTrue);
       expect(isDatabaseLocked(const SocketException('offline')), isFalse);
