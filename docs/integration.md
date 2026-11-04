@@ -1,5 +1,51 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 92 evidence review
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / App C 92. No eligible must-have or queue refresh remains. Both integrations
+contain all 37 current feature tips and unchanged packages bases
+03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 /
+62f950ba1d52632b47fdd0e170bc41e18d467ae1. Ancestry was checked this run.
+
+The saved artifact audit records 71 passing checks, zero failed checks and
+acceptancePassed=false: F-40 recurred in the external Android Camera. Native
+lastanr identifies com.android.camera2/com.android.camera.CaptureActivity and
+an input-dispatch timeout. Settings returned painted in the same host PID 4732;
+the saved report records that this host survived the camera interruption too.
+Recovered media checks do not erase the initial failure or establish a Valence
+cause. Historical F-36/F-44 and other findings remain open. Preserve the initial
+rootless camera UI dump separately from the later ANR and recovery. Preparation
+Python-alias and readiness-environment mistakes remain runner qualifications.
+
+Independently rehashed the archived APKs: release 54711308 bytes, SHA256
+cfee8d210aad9edfe800f410c6cff83887ecda0acb8679b645b9586afa63c2cc;
+debug 168852021 bytes, SHA256
+c1401931a17cbde1ee46d35b99756dc88cfb605bcd7538f3a8f0d7e882e5f8cb.
+Matched worker receipt lines against raw worker-full-logcat.txt: PID 7482 begin
+07:29:12.978, complete 07:29:14.129, native SUCCESS 07:29:14.138. The observer
+records forced=false and no explicit trigger: one naturally observed registered
+execution, with no cadence claim. Stable SQLite effects remain saved receipts.
+
+Independently hashed both raw activation files: 1125 bytes, identical SHA256
+4e0a8025274a1ea204a4dea1b77d52dd2a2b7ec67f2624072843b6e24065373c.
+Current 1793756288, pending 1793756297, no trial before foreground. Final
+commitment and retained original data/photo are saved receipts, not rerun here.
+Eleven fetched docs pages and tarballs still match iteration 91; adoption of the
+integrated F-45 correction remains unverified. Saved doctor is 14 PASS / 10 WARN /
+0 FAIL. Retained-history footprint 517516 KiB / 5104 files establishes no leak or
+growth rate. Kundalini F-72/F-73/F-74 adoption limits remain.
+
+Decision: preserve security, users' data and the frozen implementation; an
+external-camera failure without a Valence cause does not justify a runtime
+patch. S1 stays deliberately parked and S2 needs a Play account. This is an
+evidence-only update: existing combined gates retain their recorded scope and
+date; no fresh full gates, security review or emulator acceptance claimed.
+iOS remains experimental and untested. Sources: read-only app findings,
+ITERATION_18_REPORT.md, ITERATION_92_REPORT.md and app-c/evidence/iteration-92/.
+No test-app writes, protected-branch changes, schema/version changes, push or
+publication. Roadmap status cells are unchanged.
+
 ## November 4: iteration 91 evidence review
 
 In plain terms: reviewed both findings inventories and newest reports, Kundalini
