@@ -664,7 +664,7 @@ IDs are bare integers, so 64 of them are about 400 bytes and no field growth can
 over the cap. Both methods read the same native snapshot; neither keeps an app-maintained shadow
 list. A host without the notification service returns an empty list from both (§6.5).
 
-`builtins` reports the Valence built-in capability revision, currently 16,
+`builtins` reports the Valence built-in capability revision, currently 20,
 independently of the application's `bridge` schema number. Missing means unknown,
 so `(info.builtins ?? 0) >= 5` gates the `data.list.after` addition correctly even
 when an app's own schema number is larger. Existing method/event `has()` gates
@@ -697,6 +697,17 @@ observations. It is an open string set; unknown reasons are not success. An anon
 the stored reason and the returned result use the same lease-held classification.
 An app needing an acknowledgement tied to
 one authenticated bucket must still track its explicit scoped check.
+
+### Revision 20 returned-field additions (S9)
+
+`SyncStatus.leaseKind: string?` and `SyncStatus.leaseAgeMs: int?` say which run holds the §5.6 sync lease
+and for how long, so a `busy` reply can be acted on rather than only observed. Both are nullable grown
+returned fields, gated by `(info.builtins ?? 0) >= 20`, and both are null exactly when a run starting now
+would not be refused — including for a lease the host would take over. `leaseKind` is an open string set
+(`foreground`, `background`, `push`, or `unknown` for a host older than this revision); treat a value you
+do not recognise as "something holds it". Reading them takes no lease and starts nothing. They are a
+diagnostic, never a schedule: a page must not spin on `leaseAgeMs` to decide the holder has leaked, since
+the TTL and the takeover rules in §5.6 are what resolve that.
 
 `urgent` describes the currently pending bundle's signed manifest, never the
 pointer's offered bundle or the currently serving bundle. No pending bundle,
@@ -2068,11 +2079,17 @@ authenticated records must read `kv` directly or use a bucket with no cache gran
   - **A UI open that stays locked rethrows,** because an app with no store cannot start. This is the symmetric case and it is the worse one; the retry is what makes it rare.
   - **Never cache a failed open.** An implementation that memoises the open future by path (the §5.1 "same path, same connection" rule invites it) must not memoise the *rejection*, or every later call in that isolate fails against a database that is now perfectly healthy.
 - **One sync at a time,** across the UI and background isolates — **including the updater's step 7 pull (§2.3), which is a sync and takes the same lease.**
-  - Take a lease row in `prefs` (`valence.sync.lease` = `<epoch ms>:<pid>`, written in `BEGIN IMMEDIATE`).
+  - Take a lease row in `prefs` (`valence.sync.lease` = `<epoch ms>:<pid>:<kind>`, written in `BEGIN IMMEDIATE`). `kind` is `foreground`, `background` or `push` — see the diagnostics below. The field is appended, so a row written by a host before revision 20 is `<epoch ms>:<pid>` and a 0.3 row is `<epoch ms>`; both read back with the trailing fields absent, and an older host reading a newer row still finds the pid, the only field its own logic uses.
   - The lease is held only if `now - 2 min < lease <= now`. A lease time in the future, from clock skew or tampering, counts as expired.
   - **A lease recorded by another process is expired too, whatever its timestamp says.** The lease exists to keep the UI isolate and the background isolate apart, and those share one process, so a foreign pid can only be a launch that is gone: a crash, a force-stop, or Android reclaiming the app. Without this the next launch waits out the full two minutes — several launches and resumes on a cold app, each one logging "a sync already holds the lease" and returning an empty result, which a page cannot tell from "up to date". That is worst immediately after a crash, which is exactly when a user is least forgiving. A value with no pid at all, written by an older host, is treated the same way. (Single-process assumption: a host that puts a component in its own `android:process` needs an owner token both processes agree on.)
-  - Renew the lease after every applied page, so a long `since = 0` pull doesn't let a second sync start.
+  - Renew the lease after every applied page, so a long `since = 0` pull doesn't let a second sync start. The renewal rewrites `kind` too, so a refused run is told who holds it now rather than who took it.
   - Release it when the sync finishes.
+- **Who holds the lease is reportable, not just whether one is held** (revision 20, S9 / C F-44). `busy` on its own cannot tell "a foreground run is legitimately still working" from "a background isolate was cancelled and never released" — by the page, by the log, or by four iterations of device evidence — so:
+  - `SyncStatus` gains `leaseKind: string?` and `leaseAgeMs: int?`, nullable grown returned fields (§4.3), gated by `(info.builtins ?? 0) >= 20`. They are non-null on **exactly** the condition `acquireLease` refuses on: the lease is live by the two-minute TTL *and* owned by this process. A lease the host would simply take over — expired, future-dated, or left by a launch that is gone — reports free, because it is not what a `busy` answer is about; the log names those cases instead. The two must read one predicate, or a status that named a holder the next run displaces sends a developer hunting a leak that does not exist.
+  - `leaseKind` is an open string set, read like `reason`. A held row that records no kind reports `"unknown"`, **never null**: null means "a run starting now would not be refused", and conflating that with "held by a host I cannot name" is the bug this field exists to close.
+  - **A refused run logs the holder and its age**, naming both it and its own kind — one line per refusal, not per retry, so the account-switch wait (§4.4) and step 7's five-second wait do not fill the log.
+  - **Taking the lease and releasing it are each one log line, with the kind and how long it was held**, and a background isolate logs entering and leaving around its whole run. A WorkManager cancellation kills the isolate with no `finally` to run, so a lease it failed to release is a *missing* line — "took" with no "released", "entered" with no "left" — rather than something inferred from a later `busy` reply.
+  - **This changes nothing about acquisition or expiry.** Altering lease lifetime on a verification-adjacent path to address a cause nobody has established is the wrong trade; these diagnostics are what let the next reproduction be diagnosed instead of described.
 - **`SyncResult.reason` says whether the run completed:** `"busy"` when the lease blocked it, `"offline"` when it ran and at least one request had a transport failure, `"unauthorized"` when the server rejected a bearer token (§4.4), `"failed"` when a server response or protocol failure left a pull or push incomplete, and `"ok"` only when every attempted operation completed — including an app with no `syncBase`, which has no server for its data to be stale against. A **scoped** run that matched no read pair, no writable bucket and no outbox bucket attempted nothing, which is not an empty success: it reports `failed`, logs the names it was given, and writes no observation at all, so it cannot overwrite a stored `unauthorized` or `failed` with a success. `buckets` is page-supplied, so without that a page could ask for a bucket this bundle no longer has and turn a refused account into a reported healthy sync. An anonymous 401 is `failed`, never an expired login. Precedence is `unauthorized`, then `offline`, then `failed`, then `ok`. Successfully applied pages and remaining outbox counts are still reported; a positive `changed` count does not prove the whole run succeeded. No incomplete run advances `lastSyncedAt`, and a successful scoped retry does not advance the unscoped timestamp. `offline` keeps its old meaning and value; `reason` is an open string set (§4.3, §4.4), so this adds a value without a schema bump.
 - **On resume,** compare each bucket's `max_usn` with the last value sent to the UI, and emit `sync.changed` for the ones that moved. Background runs can't reach the WebView.
 - **iOS home widget:** write a small JSON snapshot into the App Group container. **Never put the SQLite file in a shared container**: iOS kills an app that suspends while holding a lock on a shared file (0xdead10cc).
@@ -2463,6 +2480,18 @@ USE_EXACT_ALARM by default. iOS installs the UNUserNotificationCenter delegate. 
 notification callback runs UI activation. iOS code paths are experimental and untested.
 
 ## 8. Test matrix (minimum; all must pass before "done")
+
+S9 lease diagnostics (§5.6): `sync.status` names the holder's kind and its age in milliseconds while a
+lease is held and reports both null when it is free; the kind comes off the **row**, so a driver of one
+kind reads another's correctly; a lease this host would take over — expired, future-dated, or left by a
+foreign pid — reports free rather than naming a holder the next run displaces; a held row written by a
+host before revision 20 reports `"unknown"`, not free; a refused run logs `holder=`, `heldForMs=` and
+its own `refused=` kind, and a run that takes the lease logs taking and releasing it with the kind.
+Codegen side: both fields are optional returned fields, emitted only when declared, independently of each
+other, and refused if declared non-nullable. Covered in `sync_test.dart` and
+`valence.test.mjs`. **No device row.** The diagnostics exist so that the *next* reproduction of C F-44 on
+a real phone can be read; nothing in `flutter test` reproduces a WorkManager cancellation, and this
+change deliberately alters no lease timing, so there is nothing about a leak for a test to assert.
 
 S7 / §5.5.1: compiled cache grants default-deny, unknown/writable/dot-key denials,
 store-upgrade grant revocation preserving server rows and outbox,

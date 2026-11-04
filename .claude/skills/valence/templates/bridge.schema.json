@@ -1,5 +1,5 @@
 {
-  "version": 19,
+  "version": 20,
   "methods": {
     "app.ready": {
       "since": 1,
@@ -439,7 +439,9 @@
       "pending": "int",
       "lastSyncedAt": "int?",
       "offline": "bool",
-      "reason": "string?"
+      "reason": "string?",
+      "leaseKind": "string?",
+      "leaseAgeMs": "int?"
     },
     "AppState": {
       "lifecycle": "string",

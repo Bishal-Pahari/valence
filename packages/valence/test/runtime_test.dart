@@ -499,7 +499,7 @@ void main() {
     final v = await open(
         config: testConfig(key, bridgeVersion: 41, writableBuckets: {'shelf'}));
     expect(v.appInfo().bridge, 41);
-    expect(v.appInfo().builtins, 19);
+    expect(v.appInfo().builtins, 20);
     expect((await v.syncStatus()).reason, isNull);
     await v.authSetToken('a', account: 'a');
     await v.store.hostPrefSet('valence.sync.reason', 'unauthorized');

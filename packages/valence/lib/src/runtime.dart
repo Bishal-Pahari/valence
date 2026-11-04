@@ -72,7 +72,12 @@ export 'store.dart'
         isDatabaseLocked,
         maxListLimit;
 export 'sync.dart'
-    show ValenceSync, ValenceSyncReason, ValenceSyncResult, ValenceSyncStatus;
+    show
+        ValenceSync,
+        ValenceSyncKind,
+        ValenceSyncReason,
+        ValenceSyncResult,
+        ValenceSyncStatus;
 export 'updater.dart'
     show ValenceBundleReason, ValenceBundleStatus, ValenceUpdater;
 export 'wire.dart' show BridgeError, BridgeErrorCode, maxMessageBytes;
@@ -87,7 +92,7 @@ final class ValenceAppInfo {
     required this.bundle,
     required this.locale,
     this.fontScale = 1,
-    this.builtins = 19,
+    this.builtins = 20,
   });
 
   /// `android`, `ios`, or whatever `Platform.operatingSystem` says.
@@ -1261,6 +1266,10 @@ final class Valence {
   /// Call `DartPluginRegistrant.ensureInitialized()` first, and open the store on the same path — each
   /// isolate gets the same plugin-side connection back, and **no isolate may close it** (§5.1). This runs
   /// sync only: it never touches the state machine, because a background launch must not consume a trial.
+  ///
+  /// [kind] is recorded in the §5.6 lease and reported by `sync.status`, so a page and a log can tell a
+  /// periodic run from a push-woken one. A host whose push transport calls this passes
+  /// [ValenceSyncKind.push]; the default is the periodic job this method was written for.
   static Future<ValenceSyncResult> backgroundSync(
     ValenceConfig config, {
     ValenceLogger log = defaultValenceLogger,
@@ -1269,6 +1278,7 @@ final class Valence {
     Directory? documentsDir,
     ValenceSecure? secure,
     DatabaseFactory? databaseFactory,
+    ValenceSyncKind kind = ValenceSyncKind.background,
   }) async {
     final support = supportDir ?? await getApplicationSupportDirectory();
     final ValenceStore store;
@@ -1280,7 +1290,8 @@ final class Valence {
       // holding the file is itself about to sync. `busy` is the honest answer and the one the page's
       // freshness line already knows how to not lie about; a throw would be a WorkManager FAILURE instead.
       if (!isDatabaseLocked(e)) rethrow;
-      log('sync: the UI isolate holds the database, so this background run did not start');
+      log('sync: the UI isolate holds the database, so this background run did not start '
+          'kind=${kind.name}');
       return const ValenceSyncResult([], 0, false, ValenceSyncReason.busy);
     }
     // The same token the UI isolate uses (§4.4). There is no page to tell about a 401 here, so
@@ -1293,10 +1304,20 @@ final class Valence {
           : config,
       client: client,
       log: log,
+      kind: kind,
     );
     // The active manifest is not loaded in a background isolate, so the configured schemas are what this
     // can follow. They are the schemas the store build reads, which is the conservative choice.
-    return sync.run(readSchemas: config.dataSchemas);
+    //
+    // Traced on the way out as well as inside `run`: a WorkManager cancellation tears the isolate down
+    // with no `finally` to run, so "entered" with no "left" is what a lease this run failed to release
+    // looks like in the log — which is the evidence C F-44 spent four iterations unable to produce.
+    log('sync: background isolate entered kind=${kind.name} pid=$pid');
+    try {
+      return await sync.run(readSchemas: config.dataSchemas);
+    } finally {
+      log('sync: background isolate left kind=${kind.name} pid=$pid');
+    }
   }
 
   /// Opens the store at `<appSupport>/<databaseName>`, adopting a 0.3 database left in the application

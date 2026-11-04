@@ -163,6 +163,100 @@ void main() {
       expect(await mine.acquireLease(), isFalse);
     });
 
+    // S9 / C F-44: `busy` alone cannot tell a foreground run that is legitimately still working from a
+    // cancelled background isolate that never released, which is what four iterations of app-c's
+    // evidence says about itself. These are the diagnostics that turn the next reproduction into a
+    // diagnosis; they deliberately change nothing about acquisition or expiry.
+    group('who holds it (S9)', () {
+      test('status names the holder and its age, and reports free when nothing holds it', () async {
+        var now = DateTime(2026, 11, 4, 9);
+        final s = syncWith(MockClient((_) async => http.Response('{}', 200)), clock: () => now);
+        final free = await s.status();
+        expect(free.leaseKind, isNull, reason: 'null means a run starting now would not be refused');
+        expect(free.leaseAgeMs, isNull);
+        expect(await s.acquireLease(), isTrue);
+        now = now.add(const Duration(milliseconds: 1500));
+        final held = await s.status();
+        expect(held.leaseKind, 'foreground');
+        expect(held.leaseAgeMs, 1500);
+        await s.releaseLease();
+        expect((await s.status()).leaseKind, isNull);
+      });
+
+      test('the kind is the holder\'s, so a background run is distinguishable', () async {
+        final now = DateTime(2026, 11, 4, 9);
+        final bg = ValenceSync(
+          store: store,
+          config: testConfig(key, dataSchemas: {'plants': 1}),
+          client: MockClient((_) async => http.Response('{}', 200)),
+          log: LogSpy().call,
+          clock: () => now,
+          kind: ValenceSyncKind.background,
+        );
+        expect(await bg.acquireLease(), isTrue);
+        // Read through a *different* driver: the kind comes off the row, not off the reader.
+        final reader = syncWith(MockClient((_) async => http.Response('{}', 200)), clock: () => now);
+        expect((await reader.status()).leaseKind, 'background');
+      });
+
+      test('a lease this host would take over reports free, not held', () async {
+        // Expired, future-dated and foreign-pid leases are all ones `acquireLease` ignores, so reporting
+        // them as holders would send a developer hunting a leak that the next run resolves by itself.
+        final now = DateTime(2026, 11, 4, 9);
+        final at = now.millisecondsSinceEpoch;
+        final s = syncWith(MockClient((_) async => http.Response('{}', 200)), clock: () => now);
+        for (final raw in [
+          '${at - 120001}:$pid:foreground',
+          '${at + 60000}:$pid:foreground',
+          '$at:${pid + 1}:background',
+        ]) {
+          await store.hostPrefSet('valence.sync.lease', raw);
+          expect((await s.status()).leaseKind, isNull, reason: raw);
+          expect((await s.status()).leaseAgeMs, isNull, reason: raw);
+        }
+      });
+
+      test('a held lease written by an older host says unknown rather than free', () async {
+        // The two 0.4 forms that record no kind. "Free" would be a lie on the one path where the page is
+        // asking *because* it was refused.
+        final now = DateTime(2026, 11, 4, 9);
+        final s = syncWith(MockClient((_) async => http.Response('{}', 200)), clock: () => now);
+        await store.hostPrefSet('valence.sync.lease', '${now.millisecondsSinceEpoch}:$pid');
+        expect((await s.status()).leaseKind, 'unknown');
+        expect((await s.status()).leaseAgeMs, 0);
+      });
+
+      test('a refused run logs the holder and its age; a run logs taking and releasing', () async {
+        var now = DateTime(2026, 11, 4, 9);
+        final holder = ValenceSync(
+          store: store,
+          config: testConfig(key, dataSchemas: {'plants': 1}),
+          client: MockClient((_) async => http.Response('{}', 200)),
+          log: LogSpy().call,
+          clock: () => now,
+          kind: ValenceSyncKind.background,
+        );
+        await holder.acquireLease();
+        now = now.add(const Duration(seconds: 7));
+        final log = LogSpy();
+        final refused = syncWith(MockClient((_) async => fail('must not reach the network')),
+            log: log, clock: () => now);
+        expect((await refused.run(readSchemas: {'plants': 1})).reason, ValenceSyncReason.busy);
+        expect(log.has('holder=background'), isTrue);
+        expect(log.has('heldForMs=7000'), isTrue);
+        expect(log.has('refused=foreground'), isTrue);
+        // And the pair of lines that makes a lease a background isolate never released a *missing* line
+        // rather than an inference: an isolate torn down by WorkManager runs no `finally`.
+        await holder.releaseLease();
+        final ran = LogSpy();
+        final s = syncWith(MockClient((_) async => http.Response('{"rows":[],"max":0,"more":false}', 200)),
+            log: ran, clock: () => now);
+        await s.run(readSchemas: {'plants': 1});
+        expect(ran.has('took the lease kind=foreground'), isTrue);
+        expect(ran.has('released the lease kind=foreground'), isTrue);
+      });
+    });
+
     test('a lease written by an older host, with no owner, is cleared rather than waited out', () async {
       final now = DateTime(2026, 10, 21, 12);
       await store.hostPrefSet('valence.sync.lease', '${now.millisecondsSinceEpoch}');

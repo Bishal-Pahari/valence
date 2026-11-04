@@ -169,9 +169,14 @@ const BUILTINS = {
   },
   'sync.status': {
     params: {},
-    returns: { fields: { pending: 'int', lastSyncedAt: 'int?', offline: 'bool' }, optional: { reason: 'string?' } },
+    returns: {
+      fields: { pending: 'int', lastSyncedAt: 'int?', offline: 'bool' },
+      // `leaseKind`/`leaseAgeMs` (§5.6, builtins 20) are the only way to tell a foreground run that is
+      // legitimately still working from a background one that never released: `busy` alone cannot.
+      optional: { reason: 'string?', leaseKind: 'string?', leaseAgeMs: 'int?' },
+    },
     call: (t, has) =>
-      `final r = await valence.syncStatus();\n        return ${t}(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline${has('reason') ? ', reason: r.reason' : ''});`,
+      `final r = await valence.syncStatus();\n        return ${t}(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline${has('reason') ? ', reason: r.reason' : ''}${has('leaseKind') ? ', leaseKind: r.leaseKind' : ''}${has('leaseAgeMs') ? ', leaseAgeMs: r.leaseAgeMs' : ''});`,
   },
   'data.put': {
     params: { bucket: 'string', key: 'string', value: 'json?' },

@@ -78,7 +78,12 @@ final class ValenceSyncResult {
 final class ValenceSyncStatus {
   /// Creates a local status snapshot.
   const ValenceSyncStatus(
-      {required this.pending, required this.lastSyncedAt, required this.offline, this.reason});
+      {required this.pending,
+      required this.lastSyncedAt,
+      required this.offline,
+      this.reason,
+      this.leaseKind,
+      this.leaseAgeMs});
 
   /// Remaining operations, including deletes and repeated edits.
   final int pending;
@@ -91,6 +96,36 @@ final class ValenceSyncStatus {
 
   /// Last completed attempt, including scoped runs; null before one. An open string set.
   final String? reason;
+
+  /// What kind of run holds the sync lease right now, or null when nothing does (§5.6).
+  ///
+  /// `foreground`, `background` or `push` — and `unknown` for a lease written by a host older than this
+  /// one, which records no kind. **Never null just because the kind is unreadable:** null means a run
+  /// starting now would not be refused, and conflating "free" with "held by something I cannot name" is
+  /// the diagnosability bug this field exists to close (C F-44).
+  ///
+  /// An open string set, read the same way as [reason].
+  final String? leaseKind;
+
+  /// How long the current holder has held the lease, in milliseconds, or null when it is free.
+  ///
+  /// Non-null on exactly the same condition as [leaseKind]: the lease is live by [syncLeaseTtl] *and*
+  /// owned by this process, which is the predicate [ValenceSync.acquireLease] refuses on. A lease this
+  /// host would take over — expired, future-dated, or left by a launch that is gone — reports free,
+  /// because it is not what a `busy` answer is about. The log names those cases instead.
+  final int? leaseAgeMs;
+}
+
+/// What kind of run holds the sync lease (§5.6). The wire values are the names.
+enum ValenceSyncKind {
+  /// A run on the UI isolate: UI start, resume, connectivity, `sync.now`, or the updater's step 7 pull.
+  foreground,
+
+  /// A run in the background isolate, fired by `workmanager` or BGTaskScheduler.
+  background,
+
+  /// A run woken by a data-only push message.
+  push,
 }
 
 /// The prefs key holding the sync lease. Reserved: the bridge refuses `valence.*` from the page (§4.2).
@@ -98,6 +133,9 @@ const syncLeaseKey = 'valence.sync.lease';
 
 /// How long a lease stays valid. A holder that dies releases it by expiry.
 const syncLeaseTtl = Duration(minutes: 2);
+
+/// A lease row this host would be refused by: its age and the kind of run holding it.
+typedef _HeldLease = ({int ageMs, String kind});
 
 /// Pull, push and the one-sync-at-a-time lease (contracts §5.3 to §5.6).
 ///
@@ -113,9 +151,16 @@ final class ValenceSync {
     http.Client? client,
     ValenceLogger log = defaultValenceLogger,
     DateTime Function()? clock,
+    this.kind = ValenceSyncKind.foreground,
   })  : _client = client ?? http.Client(),
         _log = log,
         _now = clock ?? DateTime.now;
+
+  /// What kind of run this driver performs, recorded in the lease and reported by [status] (§5.6).
+  ///
+  /// A property of the driver rather than of one [run]: the UI isolate builds exactly one, and the
+  /// updater's step 7 pull shares it, which is honest — that pull runs on the foreground triggers.
+  final ValenceSyncKind kind;
 
   /// The open store. Never closed, by either isolate (§5.1).
   final ValenceStore store;
@@ -150,23 +195,33 @@ final class ValenceSync {
   Future<ValenceSyncStatus> status() async {
     final rows = await databaseOperation(
         'sync.status',
-        () => store.db.query('prefs', where: 'key IN (?, ?, ?)', whereArgs: [
+        () => store.db.query('prefs', where: 'key IN (?, ?, ?, ?)', whereArgs: [
               'valence.sync.lastSyncedAt',
               'valence.sync.offline',
               'valence.sync.reason',
+              syncLeaseKey,
             ]),
         _log);
     final values = {for (final row in rows) row['key']: row['value']};
+    // Read in the same query as the observations, not in a second one: a lease released between two
+    // reads would report a `busy` whose holder is already gone, which is the shape of the wrong answer
+    // this field exists to stop giving.
+    final held = _heldLease(values[syncLeaseKey] as String?, _now().millisecondsSinceEpoch);
     return ValenceSyncStatus(
       pending: await store.pendingWrites(),
       lastSyncedAt: int.tryParse(values['valence.sync.lastSyncedAt'] as String? ?? ''),
       offline: values['valence.sync.offline'] == 'true',
       reason: values['valence.sync.reason'] as String?,
+      leaseKind: held?.kind,
+      leaseAgeMs: held?.ageMs,
     );
   }
 
   /// Bytes of row payload this driver has applied. Used to budget §2.3 step 7.
   int bytesApplied = 0;
+
+  /// When [run] took the lease, for the held-for figure in its release line.
+  int _leaseTakenAt = 0;
 
   // ---------------------------------------------------------------------------
   // The lease (§5.6)
@@ -189,7 +244,8 @@ final class ValenceSync {
                 whereArgs: [syncLeaseKey],
                 limit: 1,
               );
-              final (held, owner) = _readLease(rows.isEmpty ? null : rows.first['value'] as String);
+              final raw = rows.isEmpty ? null : rows.first['value'] as String;
+              final (held, owner, leftBy) = _readLease(raw);
               final live = held != null && held > now - syncLeaseTtl.inMilliseconds && held <= now;
               // A lease recorded by **another process** cannot be held by anything running now. The lease exists to
               // keep the UI isolate and the background isolate apart, and those share this process (§5.6), so the
@@ -204,7 +260,8 @@ final class ValenceSync {
               if (live) {
                 _log(owner == null
                     ? 'sync: clearing a lease written by an older host, which records no owner'
-                    : 'sync: taking over a lease left by process $owner, which is gone');
+                    : 'sync: taking over a lease left by process $owner, which is gone '
+                        '(kind=${leftBy ?? 'unknown'}, held for ${now - held}ms)');
               }
               await txn.insert(
                 'prefs',
@@ -218,18 +275,41 @@ final class ValenceSync {
   }
 
   /// Pushes the lease forward. Call after every applied page, so a long `since = 0` pull keeps it.
+  ///
+  /// Renewing rewrites the kind too, so the holder a refused run is told about is the holder as of the
+  /// last page rather than as of acquisition.
   Future<void> renewLease() =>
       store.hostPrefSet(syncLeaseKey, _leaseValue(_now().millisecondsSinceEpoch));
 
-  String _leaseValue(int millis) => '$millis:$pid';
+  String _leaseValue(int millis) => '$millis:$pid:${kind.name}';
 
-  /// `<millis>:<pid>`. A value written by an older host is just `<millis>`, and reads back with a null
-  /// owner, which never matches this process — so the first launch after an upgrade clears it.
-  static (int?, int?) _readLease(String? raw) {
-    if (raw == null) return (null, null);
-    final colon = raw.indexOf(':');
-    if (colon < 0) return (int.tryParse(raw), null);
-    return (int.tryParse(raw.substring(0, colon)), int.tryParse(raw.substring(colon + 1)));
+  /// Reads the lease row as `(millis, pid, kind)`.
+  ///
+  /// `<millis>:<pid>:<kind>` since §5.6's diagnostics. A 0.4 host before them wrote `<millis>:<pid>` and
+  /// a 0.3 host wrote `<millis>`; both read back with the trailing fields null, and a null owner never
+  /// matches this process — so the first launch after an upgrade clears it. Additive in the other
+  /// direction too: an older host reading a newer row stops at the second colon and sees a pid it can
+  /// compare, which is the only field its own logic uses.
+  static (int?, int?, String?) _readLease(String? raw) {
+    if (raw == null) return (null, null, null);
+    final parts = raw.split(':');
+    return (
+      int.tryParse(parts[0]),
+      parts.length > 1 ? int.tryParse(parts[1]) : null,
+      parts.length > 2 && parts[2].isNotEmpty ? parts[2] : null,
+    );
+  }
+
+  /// The lease as a run starting now would find it: non-null exactly when [acquireLease] would refuse.
+  ///
+  /// The two read the same predicate so they cannot drift — a status that reported a holder this host
+  /// would simply take over would send a developer looking for a lease leak that does not exist.
+  /// A row with no kind is held by a host older than this one, and says so rather than reading as free.
+  static _HeldLease? _heldLease(String? raw, int now) {
+    final (held, owner, kind) = _readLease(raw);
+    if (held == null || held > now || held <= now - syncLeaseTtl.inMilliseconds) return null;
+    if (owner != pid) return null;
+    return (ageMs: now - held, kind: kind ?? 'unknown');
   }
 
   /// Releases the lease.
@@ -253,9 +333,20 @@ final class ValenceSync {
       return ValenceSyncResult([], 0, false, ValenceSyncReason.ok, await store.pendingWrites());
     }
     if (!await acquireLease()) {
-      _log('sync: another sync holds the lease; skipping this run');
-      return ValenceSyncResult([], 0, false, ValenceSyncReason.busy, await store.pendingWrites());
+      // Name the holder and its age, or four iterations of "busy" evidence cannot tell a foreground run
+      // that is legitimately still working from a cancelled background isolate that never released
+      // (C F-44). `status()` re-reads the row, so a lease released in the microseconds since the refusal
+      // reports free — which is itself the answer, and better than naming a holder that has gone.
+      final held = await status();
+      _log(held.leaseKind == null
+          ? 'sync: another sync holds the lease; skipping this run (it was released before this line, '
+              'so the next run should get it) kind=${kind.name}'
+          : 'sync: another sync holds the lease; skipping this run '
+              'holder=${held.leaseKind} heldForMs=${held.leaseAgeMs} refused=${kind.name}');
+      return ValenceSyncResult([], 0, false, ValenceSyncReason.busy, held.pending);
     }
+    _leaseTakenAt = _now().millisecondsSinceEpoch;
+    _log('sync: took the lease kind=${kind.name} pid=$pid');
     _unauthorized = false;
     _incomplete = false;
     final touched = <String>[];
@@ -357,6 +448,11 @@ final class ValenceSync {
       }
     } finally {
       await releaseLease();
+      // The other half of the trace C F-44 asked for: a run that took the lease and never printed this
+      // line was torn down holding it — a WorkManager cancellation kills the isolate with no `finally`
+      // to run — so a lease leak is a missing log line rather than an inference from a `busy` reply.
+      _log('sync: released the lease kind=${kind.name} '
+          'heldForMs=${_now().millisecondsSinceEpoch - _leaseTakenAt}');
     }
     return ValenceSyncResult(touched, changed, offline, reason, await store.pendingWrites());
   }
