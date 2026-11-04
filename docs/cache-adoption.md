@@ -174,3 +174,61 @@ identical. App evidence and platform limits are unchanged. Only this feature
 branch remains unmerged, so no integration rebuild is required. No test-app or
 protected-branch writes, version changes, push, publication or new device
 acceptance is claimed.
+
+## Lease-diagnostics packages refresh - 2026-11-04
+
+In plain terms: refreshed this cache-adoption follow-up on code packages
+`9b156960fd358d327070e7eb026f3ead3ebd5fd8` and site packages
+`2f3905fba5a19589c38d81d187a7c8119d07e7bc`. Both merges were clean
+(code `cacd4a1`, site `cbdd738`). Preserved upstream revision-20 lease
+fields, diagnostics and docs; no lease acquisition or expiry change was added.
+
+The first root run passed 117 of 118 tests: this branch's regression used the
+moving starter template as Kundalini's store-19 fixture. The revision-20 template
+correctly demanded 21, so its expectation of 20 failed. Commit `778e69b` pins
+that historical fixture to 19 and omits the later lease fields. The final full
+root run passed all 118 with zero skips, including generated Dart and strict TS.
+This correction changes only the fixture, not runtime or app-schema behavior.
+
+Decision: preserve the shipped additive contract, users' data and incoming
+security fixes, and refresh the existing follow-up before any new feature.
+Every must-have and original queue item is done. All current feature tips except
+this branch are ancestors of packages in both repos; archived integration
+checkpoints are not unmerged features. The two-unmerged-branch integration
+trigger is not met. S1 stays parked and S2 still needs a Play account. S9's
+upstream diagnostics are retained without inventing a lease leak or closing F-44.
+
+Read both findings inventories and latest completed reports read-only: Kundalini
+19 / App C 105. Kundalini's F-75/F-76 correction adoption remains unverified.
+App C's saved audit has 74 passing artifact checks and scoped acceptance=true.
+Independently rehashed both archived APKs against its delivery manifest: both
+match. Rehashed the raw activation snapshots: both are
+`d76bf41f4ef57badf08d57bab4ad1f5d5bd022ddb37aab333d18430755cab3f5`,
+with pending 1793805223 and no trial. Its worker receipt correlates PID 7498
+callback completion with native SUCCESS. One explicit trigger after timing
+readiness proves execution, not natural scheduling or cadence. Historical
+reliability findings stay open. Initial null-root sampling, the black grant PNG,
+mispositioned early widget PNGs and preparation errors remain qualified. Retained
+file totals establish no leak or growth rate. Saved device evidence was read,
+not replayed; no new emulator or adopter acceptance is claimed.
+
+Fresh gates on the merged trees, run with Flutter operations sequentially:
+
+- Root: 118 passed, zero skips, generated Dart and strict/verbatim TS included.
+- Core: 627 Flutter tests, clean fatal-info analysis, publish dry-run zero warnings.
+- Bridge: 36 tests, strict/verbatim TS, npm pack dry-run passed.
+- Optional push: 2 tests, clean fatal-info analysis, publish dry-run zero warnings
+  and the existing local path-override hint.
+- Site: 50-page build and SEO checks passed.
+- Example debug APK: passed, assembleDebug 34.2 seconds; existing future Kotlin
+  plugin compatibility warning retained. Standalone Windows py Firebase audit:
+  PASS for the core graph, manifest and all 19 DEX files.
+
+Logs: %TEMP%/valence-cache-refresh3-{root,root-retry,core,bridge,push,site,apk,firebase}.log.
+The initial failing run remains recorded; only the successful retry counts.
+Security checklist relative to packages: no runtime, generator, template, package
+version or app-schema delta. Signature/check order, nonce, strict decoding,
+navigation/subframe lock, atomic writes, keys, account isolation, cache grants
+and release-build dev exclusion remain unchanged. Diff hygiene passed.
+The matching code/site notes document the same scope. iOS remains experimental
+and untested. No test-app or protected-branch writes, push or publication.
