@@ -1,5 +1,53 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 91 evidence review
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / App C 91. No eligible must-have or queue refresh remains. Both integrations
+contain all 37 current feature tips and unchanged packages bases
+03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 /
+62f950ba1d52632b47fdd0e170bc41e18d467ae1. Ancestry was checked this run.
+Existing combined implementation gates retain their recorded scope and date.
+
+App C's saved artifact audit records 70 passing checks, zero failures and scoped
+acceptancePassed=true; read, not replayed. Retained/rebuilt offline and reconnect
+passed. Settings receipt records same PID 4801, painted=true. This does not close
+historical F-36/F-44 or establish their cause. Current runner qualifications
+preserve the corrected setup import, unsupported upgrade invocation followed by
+documented update, early WebView read and initially rootless UI dump. Later
+bounded observations are separate. The preparation helper was corrected after
+setup and not rerun over current evidence; inherited iteration-90 fixture labels
+do not override current IDs, timestamps and receipts.
+
+Independently rehashed archived APKs: release 54711308 bytes, SHA256
+c59f1b1f4e61eb4f55b87aa5e5df9aeafb909d0992812c1c016f9218a96c5df8;
+debug 168852021 bytes, SHA256
+fec94ee988356f201920071802754a399c408c6e89a4ebb5934b35cf9dcc4cfb.
+Matched all three receipt lines against raw worker-full-logcat.txt: PID 7302
+callback begin 06:59:43.669, complete 06:59:44.859, native SUCCESS 06:59:44.868.
+Runner records an explicit jobscheduler -f trigger after Ready:true and elapsed
+earliest timing. This supports one registered execution, not natural cadence.
+Saved stable SQLite receipts show outbox 2/incoming absent before isolation and
+matching outgoing/incoming effects/outbox 0 before foreground.
+
+Independently hashed both raw activation files: 1114 bytes, identical SHA256
+5c34c24af8c79df8c4e059f1b5278751935ff20bbfdf1b6337ad82739a0642f8.
+Current 1793754408, pending 1793754418, no trial. Final commitment, original
+data/photo retention and cleanup remain saved receipts. Saved doctor reports
+14 PASS / 10 WARN / 0 FAIL; not rerun here. Eleven fetched docs pages and npm
+tarballs still match iteration 90, so adoption of the integrated F-45 correction
+remains unverified. Retained-history footprint 509880 KiB / 5031 files is not
+evidence of a leak or growth rate. Kundalini F-72/F-73/F-74 adoption limits remain.
+
+Decision: preserve security, users' data and the frozen implementation; no
+speculative lease weakening, discarded writes or late native shim. S1 stays
+deliberately parked; S2 needs a Play account. No fresh full gates, runtime
+security review or emulator acceptance claimed for this evidence-only update.
+iOS remains experimental and untested. Sources: read-only app findings,
+ITERATION_18_REPORT.md, ITERATION_91_REPORT.md and app-c/evidence/iteration-91/.
+No test-app writes, protected-branch changes, schema/version changes, push or
+publication. Roadmap status cells are unchanged.
+
 ## November 4: iteration 90 evidence review
 
 In plain terms: reviewed both findings inventories and newest reports, Kundalini
