@@ -1,5 +1,49 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 96 evidence review
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / App C 96. No eligible must-have or queue refresh remains. Both integrations
+contain all 37 current feature tips and unchanged packages bases
+03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 /
+62f950ba1d52632b47fdd0e170bc41e18d467ae1. Ancestry was checked this run.
+
+The saved audit records 74 passing artifact checks, zero failed checks and
+scoped acceptancePassed=true; read, not replayed. Settings returned painted in
+the same PID 5661, and ordinary launch after unfinished picker passed this
+attempt. These successes do not reverse iteration 95 or close historical
+F-29/F-36/F-44. No Valence leak or database-lock owner is established.
+
+Independently rehashed archived APKs: release 54711308 bytes, SHA256
+33e517c00e28fe20a11bcdb9b00b234b60f4aa8ab8135c507d459c4df639e311;
+debug 168852021 bytes, SHA256
+91abc68558f09714452248a7bc3935a3e2307a63a8d1d6ad833f9a30b2dc83ca.
+Saved manifest comparison records built-in seq 1793770100 in both sequential
+builds. Matched raw worker log to PID 8626 begin 11:31:30.099, complete
+11:31:31.675 and native SUCCESS 11:31:31.688. Trigger qualification records
+explicitlyTriggered=true and timingBypassed=true: one forced registered job
+execution proves neither natural scheduling nor cadence.
+
+Independently hashed both raw activation files: identical SHA256
+25c335f8fc59df9d20e1dc4f4cebf0629adf5896eb659760c43e48fd56bccb87.
+Current 1793770879, pending 1793770888, no trial before foreground. Stable native
+SQLite effects, final commit and original-data/photo retention remain saved
+receipts, not replayed here. Initial cold-link/widget runner overlap is retained
+and excluded from sequential acceptance; serial repeats are recorded separately.
+The first post-restore busy/pending0 reply is not a transfer-completion receipt.
+Eleven docs pages and tarballs match iteration 95; F-45 correction adoption
+remains unverified. Kundalini F-72/F-73/F-74 adoption limits remain open.
+
+Decision: preserve security, users' data and the frozen implementation; do not
+alter runtime behavior without a diagnosed fix. S1 stays deliberately parked;
+S2 needs a Play account. Existing combined gates retain their recorded scope and
+date; no fresh full gates, security review or emulator acceptance claimed. This
+change updates only matching integration notes. iOS remains experimental and
+untested. Sources: read-only app findings, ITERATION_18_REPORT.md,
+ITERATION_96_REPORT.md and app-c/evidence/iteration-96/. No test-app writes,
+protected-branch changes, schema/version changes, push or publication. Roadmap
+status cells are unchanged.
+
 ## November 4: iteration 95 evidence review
 
 In plain terms: reviewed both findings inventories and newest reports, Kundalini
