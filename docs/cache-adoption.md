@@ -83,7 +83,7 @@ No fresh emulator or independent security-review acceptance is claimed. iOS rema
 experimental and untested. No test-app writes, protected-branch changes, package
 version changes relative to packages, pushes or publication.
 
-## Latest packages refresh - 2026-11-04
+## Build-digest packages refresh - 2026-11-04
 
 Merged code packages `58c25e1747e6e25997756501854049b410290605` and site
 packages `6381d682f23260569490a996aeab0a08501f95e4` without conflicts, producing
@@ -133,3 +133,44 @@ Flutter gates ran sequentially. No new emulator acceptance is claimed.
 The security-path checklist above remains applicable: relative to packages, this
 branch changes documentation and a regression test, with no runtime, generator,
 template, package-version or schema delta. iOS remains experimental and untested.
+
+## Reviewer-fix packages refresh - 2026-11-04
+
+Packages advanced during finalization to code
+`34f4d3c7315d9b23234302bd9001675c7c350229` and site
+`a903436984bc0213337f69fb8bb4f5e767cdd4f8`. Merged them as code `f3aaa3d`
+and site `41899af`. The code merge was clean. The site's one conflict was in
+`llms.txt`; it now preserves both the explicit store-baseline arithmetic and the
+incoming rollback-specific document rule, including keeping cache writes closed
+when reload throws. Automatically merged cache guides and the spec retain the
+same rule. No new behavior was invented to resolve the conflict.
+
+Preserved all incoming fixes: rollback blocks wait for the replacement swap;
+outgoing cookies and CSRF mirrors check the captured account generation; built-in
+diagnostics use the actual notification/push delegation floors; prototype names
+remain app-owned; the added widget and cookie regressions remain intact. The
+extra cache-adoption regression still checks the frozen store-20 definition.
+The CLI and its example copy now report build `08ffaeec8e81`. No version number
+or app schema was changed here. The branch's delta from packages still contains
+no runtime, generator or template changes.
+
+Decision: preserve the upstream security fixes and repeat all gates against the
+new merged trees. The earlier results above describe the previous base only.
+Repeated validation passed on 2026-11-04:
+
+- Root: 117 tests, zero skips, including generated Dart and strict/verbatim TS.
+- Core: 622 tests, clean fatal-info analysis, publish dry-run zero warnings.
+- Bridge: 36 tests, strict/verbatim TS and pack dry-run passed.
+- Optional push: 2 tests, clean fatal-info analysis, publish dry-run zero warnings
+  and the existing local path-override hint.
+- Site: 50-page build and SEO checks passed after conflict resolution.
+- Example debug APK: passed, assembleDebug 43.2 seconds; existing future
+  Kotlin-plugin compatibility warning retained. Standalone Windows py Firebase
+  audit: PASS for the core graph, manifest and all 19 DEX files.
+
+Logs use `%TEMP%/valence-cache-refresh2-` and the same suffixes as above.
+Flutter gates ran sequentially. Diff hygiene passed; the two validation notes are
+identical. App evidence and platform limits are unchanged. Only this feature
+branch remains unmerged, so no integration rebuild is required. No test-app or
+protected-branch writes, version changes, push, publication or new device
+acceptance is claimed.
