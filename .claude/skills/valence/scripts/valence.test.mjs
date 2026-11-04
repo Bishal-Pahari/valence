@@ -430,7 +430,7 @@ test('cache grants are compiled and limited to unique declared read-only buckets
 test('task restoration is optional, shape-frozen and delegated to the package', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 19);
+  assert.equal(schema.version, 20);
   assert.equal(schema.methods['state.save'].since, 8);
   assert.equal(schema.methods['state.restore'].since, 8);
   codegen({ root, cfg });
@@ -1326,13 +1326,13 @@ test("a refused built-in names the reserved minimum beside the additive one", ()
   bundle({ ...latest, store: true, now: NOW });
   editSchema(latest.root, (s) => (s.methods['app.openStore'] = { since: 17, params: {}, returns: 'void' }));
   assert.throws(() => codegen(latest),
-    /needs since > 19 \(and version bumped to at least that\), and at least 17 to use the package's implementation — so declare 20/);
+    /needs since > 20 \(and version bumped to at least that\), and at least 17 to use the package's implementation — so declare 21/);
 
   // Below the reserved number, `assertReservedSince` catches it first — and used to answer with the
   // reserved number alone, which this baseline refuses, so the same trap was two steps long.
   editSchema(latest.root, (s) => (s.methods['app.openStore'].since = 3));
   assert.throws(() => codegen(latest),
-    /Use "since": 20 — 17 is the reserved minimum, and a name new since your store build at version 19 also needs since above it/);
+    /Use "since": 21 — 17 is the reserved minimum, and a name new since your store build at version 20 also needs since above it/);
 
   // On a baseline below the reserved number the two agree, and only the one number is named.
   const { root, cfg, key } = fixture();
@@ -1508,7 +1508,7 @@ test('a retired method keeps its wire contract, loses its handler and stops warn
   // and the manifests directory.
   const row = async () => (await diagnose({ root, cfg })).find(([, name]) => name === 'oldest servable bundle');
   // With no release cut, the built-in bundle is the whole answer and it is at the current schema.
-  assert.match((await row())[2], /requires bridge 19 \(built-in seq \d+\)/);
+  assert.match((await row())[2], /requires bridge 20 \(built-in seq \d+\)/);
   // The OTA release pinned to an older host is what sets the line.
   bundle({ root, cfg, key, requiresBridge: 15, now: NOW + 1000 });
   const servable = await row();
@@ -1963,6 +1963,32 @@ test('schema 15 fields are nullable and additive against a recorded schema 14', 
   assert.throws(() => codegen({ root, cfg }), /declares builtins.*account/);
   editSchema(root, s => { s.methods['auth.setToken'].params.account = 'string?'; });
   editSchema(root, s => { s.types.AppInfo.builtins = 'int'; });
+  assert.throws(() => codegen({ root, cfg }), /fields are not/);
+});
+
+test('S9 lease diagnostics are optional returned fields, nullable, and passed through only when declared', () => {
+  // C F-44: `busy` cannot say whether a foreground run is still working or a cancelled background
+  // isolate never released. The two fields are grown returns on a shipped method, so an app that never
+  // declares them must keep compiling and the delegation must not pass what the type does not hold.
+  const { root, cfg } = fixture({ latest: true });
+  const output = join(root, cfg.host.dir, 'lib/valence/bridge.g.dart');
+  editSchema(root, s => { delete s.types.SyncStatus.leaseKind; delete s.types.SyncStatus.leaseAgeMs; });
+  codegen({ root, cfg });
+  assert.doesNotMatch(readFileSync(output, 'utf8'), /leaseKind|leaseAgeMs/);
+  // One without the other, because `has()` is per field and a page may only want the kind.
+  editSchema(root, s => { s.types.SyncStatus.leaseKind = 'string?'; });
+  codegen({ root, cfg });
+  const one = readFileSync(output, 'utf8');
+  assert.match(one, /leaseKind: r\.leaseKind/);
+  assert.doesNotMatch(one, /leaseAgeMs: r\.leaseAgeMs/);
+  editSchema(root, s => { s.types.SyncStatus.leaseAgeMs = 'int?'; });
+  codegen({ root, cfg });
+  assert.match(readFileSync(output, 'utf8'), /leaseKind: r\.leaseKind, leaseAgeMs: r\.leaseAgeMs/);
+  // Nullable or nothing: null is "no run would be refused right now", and a non-null type would make an
+  // older host's missing field a decode failure on the method a page polls.
+  editSchema(root, s => { s.types.SyncStatus.leaseKind = 'string'; });
+  assert.throws(() => codegen({ root, cfg }), /fields are not/);
+  editSchema(root, s => { s.types.SyncStatus.leaseKind = 'string?'; s.types.SyncStatus.leaseAgeMs = 'int'; });
   assert.throws(() => codegen({ root, cfg }), /fields are not/);
 });
 
@@ -2777,7 +2803,7 @@ test('notify.pendingIds is a schema-16 built-in that returns bare IDs and cannot
   const { root, cfg, key } = fixture({ latest: true });
   cfg.notifications = { enabled: true, icon: 'ic_stat_demo' };
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 19);
+  assert.equal(schema.version, 20);
   assert.equal(schema.methods['notify.pendingIds'].since, 16);
   // notify.pending keeps every field it has: an app that reads it still gets titles and payloads.
   assert.equal(schema.methods['notify.pending'].returns, 'NotifyPending[]');
@@ -2832,7 +2858,7 @@ test('push builtins freeze permission and nullable initial-message shapes', () =
 test('push uses reserved schema 12 while older app-owned push shapes remain custom', () => {
   const { root, cfg } = fixture({ latest: true });
   const schema = JSON.parse(readFileSync(schemaFile(root), 'utf8'));
-  assert.equal(schema.version, 19);
+  assert.equal(schema.version, 20);
   assert.equal(schema.methods['auth.account'].since, 13);
   for (const group of ['methods', 'events']) {
     for (const [name, def] of Object.entries(schema[group])) {
@@ -2893,7 +2919,7 @@ test('R31 signed minimum-host policy, numeric validation, builtin self-refusal a
   for (const minHost of [0, -1, 1.5, '18', null, Number.MAX_SAFE_INTEGER + 1]) {
     assert.throws(() => bundle({ ...f, minHost, now: NOW }), /min-host/);
   }
-  assert.throws(() => bundle({ ...f, minHost: 20, builtin: true, now: NOW }), /exceeds this built-in/);
+  assert.throws(() => bundle({ ...f, minHost: 21, builtin: true, now: NOW }), /exceeds this built-in/);
   // Unlike --floor, --min-host does not carry forward, because a manifest that omits it withdraws the
   // requirement (§2.5) — which means the next ordinary release unblocks every device the previous one was
   // holding at the store. For a security-motivated block that is the release silently lapsing, so it

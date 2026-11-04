@@ -41,6 +41,42 @@ Concurrent operations have separate ids. Fast operations produce no wait logs;
 timers stop on success or error. The first opener of a cached store in an isolate
 chooses its logger; direct `ValenceStore.open` callers can supply `log` too.
 
+## A `busy` sync names its holder (S9, revision 20)
+
+A `busy` reply means a run was refused because another one holds the §5.6 sync
+lease. The log says which, and for how long it had held it:
+
+```
+sync: took the lease kind=background pid=4893
+sync: another sync holds the lease; skipping this run holder=background heldForMs=7001 refused=foreground
+sync: released the lease kind=background heldForMs=11280
+```
+
+`kind` is `foreground` (UI start, resume, reconnect, `sync.now`, or an update
+check's data pull), `background` (the periodic job) or `push`. The same two facts
+reach the page through `sync.status().leaseKind` and `.leaseAgeMs`.
+
+**The pair of lines is the signal.** A `took the lease` with no matching
+`released the lease` is a run torn down while holding it — a cancelled WorkManager
+job runs no cleanup — and the background isolate brackets its whole run too:
+
+```
+sync: background isolate entered kind=background pid=4893
+sync: background isolate left kind=background pid=4893
+```
+
+An `entered` with no `left`, followed by `busy` replies naming
+`holder=background`, is a lease a cancelled isolate did not give back. The next
+run takes it over once it passes the two-minute expiry, so it is slow rather than
+permanent — but it is now visible in the log rather than inferred from a `busy`.
+That is what makes it reportable; include these lines, `dumpsys activity
+exit-info` and the PID.
+
+One line per refusal, not per retry, so the account-switch wait and the update
+check's five-second wait do not fill the log. No lease deadline or takeover rule
+changed: a lease past its expiry, dated in the future, or left by a process that
+is gone is taken over as before, each with its own line.
+
 ## A WebView eviction writes no host line, and that is the signature
 
 S5, contracts section 3 ("Renderer loss"). The WebView runs the page in a separate,

@@ -9,5 +9,7 @@ import 'valence/config.g.dart';
 Future<void> pushBackgroundMessage(RemoteMessage message) => ValencePush.handleBackground(
   message.data,
   hasNotification: message.notification != null,
-  sync: () async { await Valence.backgroundSync(valenceConfig); },
+  // `kind` is what makes a push-woken run distinguishable from the periodic job in the sync lease,
+  // in `sync.status` and in the log (§5.6).
+  sync: () async { await Valence.backgroundSync(valenceConfig, kind: ValenceSyncKind.push); },
 );

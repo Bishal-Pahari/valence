@@ -11,7 +11,7 @@ import 'package:valence/valence.dart';
 /// Canonical check 5 compares a manifest's `requires.bridge` against **this**, through
 /// `ValenceConfig.bridgeVersion`, and never against a second literal: a host that under-reports its
 /// version refuses its own built-in bundle on first launch, with nothing left to serve.
-const hostBridgeVersion = 19;
+const hostBridgeVersion = 20;
 
 final class AppInfo {
   const AppInfo({required this.platform, required this.host, required this.bridge, required this.bundle, required this.locale, this.fontScale, this.builtins});
@@ -84,20 +84,22 @@ final class HttpResponse {
 }
 
 final class SyncStatus {
-  const SyncStatus({required this.pending, this.lastSyncedAt, required this.offline, this.reason});
+  const SyncStatus({required this.pending, this.lastSyncedAt, required this.offline, this.reason, this.leaseKind, this.leaseAgeMs});
 
   factory SyncStatus.fromJson(Object? j, [String f = 'SyncStatus']) {
     final m = decodeObject(j, f);
-    decodeKeys(m, const {'pending', 'lastSyncedAt', 'offline', 'reason'}, f);
-    return SyncStatus(pending: decodeInt(m['pending'], '$f.pending'), lastSyncedAt: m['lastSyncedAt'] == null ? null : decodeInt(m['lastSyncedAt'], '$f.lastSyncedAt'), offline: decodeBool(m['offline'], '$f.offline'), reason: m['reason'] == null ? null : decodeString(m['reason'], '$f.reason'));
+    decodeKeys(m, const {'pending', 'lastSyncedAt', 'offline', 'reason', 'leaseKind', 'leaseAgeMs'}, f);
+    return SyncStatus(pending: decodeInt(m['pending'], '$f.pending'), lastSyncedAt: m['lastSyncedAt'] == null ? null : decodeInt(m['lastSyncedAt'], '$f.lastSyncedAt'), offline: decodeBool(m['offline'], '$f.offline'), reason: m['reason'] == null ? null : decodeString(m['reason'], '$f.reason'), leaseKind: m['leaseKind'] == null ? null : decodeString(m['leaseKind'], '$f.leaseKind'), leaseAgeMs: m['leaseAgeMs'] == null ? null : decodeInt(m['leaseAgeMs'], '$f.leaseAgeMs'));
   }
 
   final int pending;
   final int? lastSyncedAt;
   final bool offline;
   final String? reason;
+  final String? leaseKind;
+  final int? leaseAgeMs;
 
-  Map<String, Object?> toJson() => {'pending': pending, 'lastSyncedAt': lastSyncedAt, 'offline': offline, 'reason': reason};
+  Map<String, Object?> toJson() => {'pending': pending, 'lastSyncedAt': lastSyncedAt, 'offline': offline, 'reason': reason, 'leaseKind': leaseKind, 'leaseAgeMs': leaseAgeMs};
 }
 
 final class AppState {
@@ -1079,7 +1081,7 @@ abstract class ValenceBuiltins {
   /// `sync.status`, from the package.
   Future<SyncStatus> syncStatus() async {
     final r = await valence.syncStatus();
-    return SyncStatus(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline, reason: r.reason);
+    return SyncStatus(pending: r.pending, lastSyncedAt: r.lastSyncedAt, offline: r.offline, reason: r.reason, leaseKind: r.leaseKind, leaseAgeMs: r.leaseAgeMs);
   }
 
   /// `app.state`, from the package.

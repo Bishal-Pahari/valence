@@ -49,6 +49,7 @@ export 'src/runtime.dart'
         ValenceState,
         ValenceStore,
         ValenceSync,
+        ValenceSyncKind,
         ValenceSyncMode,
         ValenceServer,
         ValenceSyncReason,
