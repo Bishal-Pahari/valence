@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-export const VALENCE_VERSION = '0.3.0'; // keep equal to package.json "version" (tested)
+export const VALENCE_VERSION = '0.4.0-beta.0'; // keep equal to package.json "version" (tested)
 const NATIVE = new Set(['.so', '.dex', '.jar', '.apk', '.aab', '.ipa', '.dylib', '.framework', '.a', '.o', '.class', '.exe', '.dll']);
 const PRIMS = new Set(['string', 'int', 'num', 'bool', 'json', 'void']);
 const CORE_METHODS = ['app.ready', 'app.info'];
