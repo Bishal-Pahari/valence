@@ -118,6 +118,13 @@ if (has('notify.schedule') && await call('notify.permission', { request: true })
 does not request Android exact-alarm special access. An exact request downgrades to `inexact` if
 access is absent or revoked during the call. Even `exact` means the OS accepted that mode, not that
 delivery was observed: channel settings, power management and vendor restrictions still apply.
+
+**Read the grant per call, never once per page.** `timing` is the answer for *that* request, and exact
+access can be granted or revoked between two of them without your page reloading. So a "reminders may be
+late" warning derived from one result and then kept in a module-level variable outlives the condition it
+describes: the user grants exact access, the next reminder comes back `exact`, and the warning is still on
+screen. Scope the state to the scheduling call that produced it.
+
 Do not label `inexact` as an on-time reminder. `blocked` adds nothing and leaves any existing ID intact.
 
 `at` is a future Unix millisecond instant within 366 days. Reminders are one-shot absolute times,

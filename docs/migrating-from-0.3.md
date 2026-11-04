@@ -44,6 +44,14 @@ cd <your web app>
 npm install @getvalence/bridge
 ```
 
+**Installing a prerelease tarball from a fixed path? Check the lock entry, not the file.**
+`npm install ./vendor/getvalence-bridge.tgz` records the tarball's SHA-512 in `package-lock.json`, and
+replacing the file at the same path does not change the path — so npm can satisfy the dependency from its
+integrity match and keep the older contents, `--force` included. Verify the lock entry against the tarball
+you actually have, and reinstall with `npm uninstall @getvalence/bridge` first rather than over the top.
+Installing by version from npm cannot hit this; a vendored prerelease at a stable path can, and the
+symptom is a build one snapshot behind with nothing warning about it (C F-46).
+
 `flutter pub add valence` brings the verified stack with it: `webview_flutter`, `sqflite`,
 `path_provider`, `cryptography`, `crypto`, `http`, `url_launcher` and `connectivity_plus`. Remove those
 from your own `pubspec.yaml` **only if nothing else in your app uses them directly.**

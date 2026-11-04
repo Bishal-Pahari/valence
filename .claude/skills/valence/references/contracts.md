@@ -464,6 +464,7 @@ PopScope(
 Two things make it work, and neither is obvious from the rest of §3:
 
 - **`onNavigationRequest` never fires for `history.pushState`,** so a host author who has only read the navigation lock has no reason to think the page has navigable history at all. The web app needs real History API routes for there to be anything to go back to.
+  - **A view the page opens without a history entry makes this close the app**, and nothing in the host can warn about it for the reason just given. `canGoBack()` sees History API entries and nothing else, so a detail screen switched on by component state leaves the back stack empty, the else branch runs, and `SystemNavigator.pop()` finishes the activity — the user watches the app disappear from a screen that had a list behind it. Every reachable view pushes on the way in and handles `popstate` on the way out, including the ones the app's own UI can leave by a button. Reported twice from one app as a host defect, both times resolved by an activity dump (C F-48).
 - **History is safe against a reverted trial.** Every entry is a same-origin loopback path, answered from the *currently served* manifest, so going back cannot reach a bundle the host has given up on. The URL is the same; the bytes behind it are whatever is live.
 
 If the web app has modal state of its own it wants the gesture for, the host can emit an event and let the page consume it, but it must still close the app when nothing handles it. Swallowing back is worse than popping too eagerly.
@@ -2223,6 +2224,16 @@ Links arriving before the page subscribes replace the pending link (latest wins)
 Each WebView page start re-arms the mailbox until that page calls `link.initial()`, retaining a pending link without replaying already consumed links.
 Background isolates do not start link listeners. Dispose cancels the subscription.
 
+**`link.initial` and `notify.initial` are separate mailboxes, and a cold start can hold both.** Each
+answers only "did the OS start me with one of these?", so a boot that asks both gets two answers in the
+order its two awaits happen to resolve — which is not the order the events arrived in, and is not
+something either mailbox can know. A page that applies them in a fixed order routes to the older
+destination whenever the user's actual tap was the other one. **The rule is latest event wins, and it is
+the page's to enforce across sources:** record which destination arrived most recently, apply that one,
+have each handler clear the other's pending target, and drop a pending initial reply that a live event has
+already superseded. `onLink()` does exactly this within its own source — it subscribes before it asks and
+discards a late initial reply — and it has no way to see the other mailbox (C F-49).
+
 The path is the URL's path (empty becomes `/`), query and fragment; the authority of
 a custom link is an allowlisted host, not a route segment. At most 8 KiB UTF-8 per URL.
 Reject malformed escapes, control characters, backslashes, encoded path separators,
@@ -2430,7 +2441,11 @@ it and the first thing to fail would be the store build, on a device.
   `timing` is `exact`, `inexact`, `system` (iOS controls delivery), or `blocked` (permission denied;
   nothing enqueued). Android defaults to inexact; an exact request falls back honestly when access is
   absent or is revoked during scheduling. Acceptance is not proof of delivery; Doze, channel settings
-  and manufacturer restrictions can still delay or suppress it.
+  and manufacturer restrictions can still delay or suppress it. **`timing` describes that one request**,
+  and exact access can be granted or revoked between two of them with no page reload in between — so a
+  "may be late" warning derived from one result and held in page-level state outlives the condition it
+  describes, and the user who then grants access is still told their reminders are inexact. Scope it to
+  the scheduling call that produced it (C F-47).
 - IDs are app-wide integers 0..2147483647; scheduling the same ID replaces it. At most 64 pending
   requests; replacement at the cap is allowed. Coordinate ID ranges with app-owned plugin use.
   Title/body/payload UTF-8 limits are 256/4096/4096 bytes. `image` is base64 PNG or JPEG only, at most

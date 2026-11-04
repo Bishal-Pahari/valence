@@ -55,6 +55,18 @@ subscribes before requesting the initial link, drops a delayed initial reply if 
 live event arrived, and stops pending navigation after cleanup. A browser shim may
 return `{url,path}` or `null` from `link.initial`.
 
+**A cold start can carry more than one destination, and the last event wins — not the last `await`.**
+`link.initial` and `notify.initial` are separate mailboxes, each answering "did the OS start me with
+one of these?", and a boot that asks both gets two answers in whatever order the two awaits happen to
+resolve. Code that applies them in a fixed order — read the link, then read the reminder, then route to
+the reminder — routes to the older one whenever the user's actual tap was the link. `onLink()` already
+does the right thing within its own source: it subscribes before it asks, and drops a late initial reply
+if a live event has arrived. Across sources it is yours to do, and it is one line of discipline: record
+which destination arrived most recently, apply that, and have each handler clear the other's pending
+target. Pass over a pending initial reply once a live event has superseded it, rather than letting the
+await order decide. App-c reproduced the failure in an isolated scheduler before it ever saw it on a
+device, which is the cheap way to find it.
+
 For manual integration, subscribe to `link.opened` before calling
 `call('link.initial')`. The call consumes the latest pending accepted link once;
 it returns `null` on later calls unless a new page has started. Each WebView page start re-arms the mailbox, retaining pending links without replaying consumed ones. Until that call,

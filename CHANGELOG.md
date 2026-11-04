@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased: four things an app has to get right that the spec only implied
+
+No behaviour change. Each of these cost a test app an iteration and was filed as a possible host defect
+first, which is the signal that the rule existed only in somebody's head.
+
+- **Back closes your app if a view has no history entry** (contracts §3). `canGoBack()` sees History API
+  entries and nothing else, so a detail screen switched on by component state leaves the back stack
+  empty, the else branch runs, and `SystemNavigator.pop()` finishes the activity — the user watches the
+  app disappear from a screen that had a list behind it. Nothing in the host can warn you, because
+  `onNavigationRequest` never fires for `pushState`, which is the next bullet of the same section.
+- **A cold start can carry both a link and a reminder, and the last event wins — not the last `await`**
+  (contracts §6.3). `link.initial` and `notify.initial` are separate mailboxes that each answer only
+  "did the OS start me with one of these?", so applying them in a fixed order routes to the older
+  destination whenever the user's tap was the other one. `onLink()` does the right thing inside its own
+  source and cannot see the other mailbox.
+- **`timing` describes one request, not the page** (contracts §6.5). Exact-alarm access can be granted or
+  revoked between two calls with no reload in between, so a "may be late" warning held in page-level
+  state tells a user who has just granted access that their reminders are still inexact.
+- **A prerelease tarball replaced at the same path can keep its old lock integrity**, `--force`
+  included, so a build can be one snapshot behind with nothing warning about it. Verify the
+  `package-lock.json` entry and uninstall before reinstalling. In the 0.3 migration guide.
+
 ## Unreleased: say what bounds the REST cache, because nothing does
 
 `data.cache` caps one value at 64 KiB and nothing else: not the number of rows, not the total bytes, not
