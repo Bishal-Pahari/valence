@@ -1,7 +1,10 @@
 // Contracts §4.5.1: the host-managed cookie jar for one compiled origin.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter_secure_storage/test/test_flutter_secure_storage_platform.dart';
+import 'package:flutter_secure_storage_platform_interface/flutter_secure_storage_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -678,4 +681,51 @@ void main() {
     expect(next.sent.single.headers.containsKey('cookie'), isFalse,
         reason: 'and nothing is replayed in memory either');
   });
+
+  test('a sign-out that lands while the jar is being read is still honoured',
+      () async {
+    // The *second* generation check, after `_load`. Every other test here has already memoized the
+    // Keystore read, so `_load` returns without yielding and only the first check ever decides —
+    // leaving the case the comment is about, a sign-out landing during the read, unproven.
+    final data = <String, String>{
+      secureCookieJarKey:
+          jsonEncode({'origin': 'https://api.test', 'cookies': const []}),
+    };
+    final gate = Completer<void>();
+    FlutterSecureStoragePlatform.instance = _GatedRead(data, gate.future);
+    final cookies = ValenceCookies(
+        jar: const ValenceCookieJar(
+            origin: 'https://api.test', sessionCookieDays: 7),
+        secure: ValenceSecure(log: (_) {}));
+
+    final url = Uri.parse('https://api.test/login');
+    final absorbing = cookies.absorb(url, const ['sessionid=abc; Max-Age=600'],
+        atGeneration: cookies.generation);
+    await pumpEventQueue();
+    await cookies.clear();
+    gate.complete();
+    await absorbing;
+
+    expect(data[secureCookieJarKey], isNull,
+        reason: 'the response landed after the sign-out, so nothing is at rest');
+    expect(await cookies.header(url), isNull,
+        reason: 'and nothing is in memory either');
+  });
+}
+
+/// A Keystore whose reads park until the test lets them through.
+///
+/// The only way to put a `clear()` *inside* `absorb`'s `_load` await, which is where §4.5.1's second
+/// generation check lives.
+final class _GatedRead extends TestFlutterSecureStoragePlatform {
+  _GatedRead(super.data, this._gate);
+
+  final Future<void> _gate;
+
+  @override
+  Future<String?> read(
+      {required String key, required Map<String, String> options}) async {
+    await _gate;
+    return super.read(key: key, options: options);
+  }
 }
