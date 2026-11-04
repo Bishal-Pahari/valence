@@ -292,3 +292,60 @@ decoding, navigation/subframe lock, atomic writes, key handling, account isolati
 cache grants and release-build dev exclusion retain the incoming implementation.
 Diff hygiene passed. Matching code/site notes record the same scope. iOS remains
 experimental and untested. No test-app or protected-branch writes, push or publication.
+
+## Iteration 107 evidence review - 2026-11-04
+
+In plain terms: the latest app receipts do not establish a new Valence runtime
+fix. Read both findings inventories and newest reports, Kundalini 19 / App C 107,
+without writing into either app. Kundalini has no newer report verifying adoption
+of the F-75/F-76 corrections. App C's saved audit passes all 79 artifact checks
+but explicitly sets scoped acceptance=false. Its F-47 reminder warning is fixed
+in the app; F-48 missing History API/popstate integration remains open. Android's
+activity dump records the detail activity finishing and the retained Photo Picker
+resuming. A transitional detail screenshot does not establish the final visible
+page. The existing host contract already requires navigable web history.
+
+Decision: preserve security, users' data and the frozen additive runtime rather
+than change native Back or lease semantics to compensate for an app issue or an
+unattributed timeout. All must-haves and original queue items are done. Checked
+current feature tips in both worktrees: cache-adoption alone is unmerged, so the
+two-branch integration condition is not met. S1 remains explicitly deferred and
+S2 still needs a Play account. Bases remain code packages
+`da23d35d239ddf3b3d613cc8bf7c232347012aaa` and site packages
+`3e00b75a94d64e6e64e22ec2f48e3366301de4d7`.
+
+Read the saved evidence rather than replaying the device run. Independently
+rehashing both archived APKs matches the delivery manifest. Both raw activation
+files hash to `48a15908557f6c4e30958c28dca869cdd6a3e25a654d17e57f1a3c96549291da`:
+final 1793812346 remains pending with no trial across the isolated worker phase.
+Raw worker log lines correlate PID 8696 callback begin/complete, native SUCCESS
+and background enter/take/release/leave; the release logs heldForMs=970. The saved
+stable SQLite receipt records both outgoing objects, the incoming fixture and
+outbox=0 before foreground. This proves one explicitly triggered execution,
+not natural cadence, cancellation handling or lease-expiry correctness. F-44 and
+historical reliability findings remain open. Later final commit and cleanup are
+separate from the worker-phase activation comparison.
+
+The same-page denied/granted reminder receipt verifies that the corrected app
+warning clears without a reload. APK builtins predate that web-only correction;
+the final signed OTA is the corrected delivery. Initial post-Back OTA polling,
+warning-probe activation race and null-root paint sampling remain qualified.
+Unchanged local docs/tarballs do not establish adoption of older documentation
+corrections. Retained publication size establishes no leak or growth rate.
+No fresh emulator acceptance or iOS validation is claimed.
+Fresh gates passed on the unchanged packages bases, with Flutter operations
+sequential: root 118/118 zero skips (generated Dart and strict TS included), core
+631/631 and clean fatal-info analysis, bridge 36/36 with strict/verbatim TS and
+pack dry-run, optional push 2/2 and clean fatal-info analysis, both pub dry-runs
+zero warnings (push retains its local dependency-override hint), and the 50-page
+site build with SEO checks. The example debug APK rebuilt in 20.3 seconds;
+the existing future Kotlin plugin compatibility warning remains. Standalone
+Windows `py` audit printed PASS for the core graph, manifest and all 19 DEX files.
+Logs: %TEMP%/valence-iteration107-{root,core,bridge,push,site,apk,firebase}.log.
+
+This run changes only these matching validation notes. No runtime, generator,
+template, schema or version change. Security checklist against the prior branch
+tip: verification/check order, nonce, strict decoding, navigation/subframe lock,
+atomic writes, keys, account isolation, cache grants and release dev exclusion
+are unchanged. Diff hygiene passed. No protected branch, test app or other
+builder worktree writes, push or publication.
