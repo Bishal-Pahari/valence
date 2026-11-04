@@ -396,7 +396,13 @@ test('REST cache is an additive revision-18 builtin with a frozen shape and runt
 
 test('cache adoption uses the app next revision and restores shipped builtins instead of renaming them', () => {
   const { root, cfg, key } = fixture({ latest: true });
-  editSchema(root, s => { delete s.methods['data.cache']; });
+  // Reproduce the adopter's store-19 baseline independently of the moving starter template.
+  editSchema(root, s => {
+    s.version = 19;
+    delete s.methods['data.cache'];
+    delete s.types.SyncStatus.leaseKind;
+    delete s.types.SyncStatus.leaseAgeMs;
+  });
   bundle({ root, cfg, key, store: true, now: NOW });
   const cache = JSON.parse(readFileSync(join(TEMPLATES, 'bridge.schema.json'), 'utf8')).methods['data.cache'];
   editSchema(root, s => { s.methods['data.cache'] = cache; });
