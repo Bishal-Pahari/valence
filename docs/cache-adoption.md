@@ -232,3 +232,63 @@ navigation/subframe lock, atomic writes, keys, account isolation, cache grants
 and release-build dev exclusion remain unchanged. Diff hygiene passed.
 The matching code/site notes document the same scope. iOS remains experimental
 and untested. No test-app or protected-branch writes, push or publication.
+
+## Reviewed lease-diagnostics refresh - 2026-11-04
+
+In plain terms: refreshed the existing cache-adoption follow-up on code packages
+`da23d35d239ddf3b3d613cc8bf7c232347012aaa` and site packages
+`3e00b75a94d64e6e64e22ec2f48e3366301de4d7`. Both merges were clean
+(code `74c8dd0`, site `a980434`). Preserved the incoming reviewer fixes:
+observational logging cannot throw through lease acquisition, status and acquisition
+share the held-row predicate, and take/release logs bracket the lease primitives.
+The docs retain that kind names a trigger class, not an individual foreground run.
+No acquisition, renewal or expiry change was introduced by this follow-up.
+
+Decision: preserve security, users' data and the additive contract; refresh this
+unmerged follow-up rather than invent a cancellation fix. Every must-have and
+original queue item is done. Verified all current feature tips in both repos:
+only cache-adoption is unmerged, so the two-branch integration trigger is not met.
+S1 stays explicitly parked; S2 still needs a Play account. No schema or package
+version changed. The branch delta from packages contains docs and one CLI
+regression test, with no runtime, generator or template change.
+
+Read both findings inventories and latest reports read-only: Kundalini 19 / App C
+106. Kundalini has not yet verified adoption of the F-75/F-76 corrections. App C's
+saved audit has 76 passing checks and scoped acceptance=true; read, not replayed.
+Independently rehashed both archived APKs against its delivery manifest: both match.
+The two raw activation snapshots hash to
+`8fd380725eec472986df178fcce85fa5d326956a1f0d06d1fb5e9ea1a7f83293`,
+with final 1793808601 pending and no trial. PID 8068's callback completion and
+native SUCCESS correlate with native background enter/take/release/leave logs,
+including heldForMs=1330. Foreground refusals in PID 5299 name foreground holders.
+These receipts establish current diagnostics and one successful explicitly
+triggered execution, not natural cadence, cancellation or expiry correctness.
+Schema-16 returned fields remain unchanged; the revision-20 optional fields were
+not adopted in this app. F-44 and historical reliability findings remain open.
+
+F-46 records stale lock integrity after replacing a same-path prerelease tarball.
+Read the before/after receipts: explicit reinstall matches the new SHA512, and
+all five rebuilt web files match the signed builtin. This is snapshot-installation
+evidence, not a new runtime defect or a closed public-docs finding. Initial
+null-root sampling, the black grant PNG, early off-page widget images, preparation
+errors and overlapping doctor/build execution remain qualified. Retained file
+totals establish no leak or growth rate. No fresh emulator/adopter acceptance.
+
+Fresh gates on these merged trees passed, Flutter operations sequentially:
+
+- Root: 118 tests, zero skips, generated Dart and strict/verbatim TS included.
+- Core: 631 tests, clean fatal-info analysis, publish dry-run zero warnings.
+- Bridge: 36 tests, strict/verbatim TS, npm pack dry-run passed.
+- Optional push: 2 tests, clean fatal-info analysis, publish dry-run zero warnings
+  and the existing local dependency-override hint.
+- Site: 50-page build and SEO checks passed.
+- Example debug APK: built, assembleDebug 28.8 seconds; existing future Kotlin
+  plugin compatibility warning retained. Standalone Windows py Firebase audit:
+  PASS for the core graph, manifest and all 19 DEX files.
+
+Logs: %TEMP%/valence-cache-refresh4-{root,core,bridge,push,site,apk,firebase}.log.
+Security checklist relative to packages: signature/check order, nonce, strict
+decoding, navigation/subframe lock, atomic writes, key handling, account isolation,
+cache grants and release-build dev exclusion retain the incoming implementation.
+Diff hygiene passed. Matching code/site notes record the same scope. iOS remains
+experimental and untested. No test-app or protected-branch writes, push or publication.
