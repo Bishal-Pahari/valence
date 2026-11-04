@@ -29,6 +29,10 @@ Removing it drops stored session cookies before the first request, while preserv
 cookies with explicit server expiry. Explicit Expires, Max-Age and deletion are
 never extended by this option.
 
+Sign-out and an account switch empty the jar, and a response already in flight cannot
+refill it: each request carries the jar's generation and a response whose generation has
+moved on has its `Set-Cookie` dropped. The page still receives the response.
+
 Cookies remain in the reserved secure-storage key, never readable or writable by
 the page. The same one-origin grant, HTTPS rule (loopback excepted), path matching
 and limits of 16 cookies, 4096 bytes each and 8 KiB total apply. Sign-out and account

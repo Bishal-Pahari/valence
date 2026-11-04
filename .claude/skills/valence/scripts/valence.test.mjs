@@ -244,6 +244,17 @@ test('notification emission metadata preserves frozen legacy events and filters 
   assert.match(r.warnings[0], /fills payload as string or string\? and action as string\?/);
   assert.match(r.warnings[0], /notificationEventAdapter/);
 
+  // A field named after an `Object` member is an ordinary extra field. Reading the allowed-types map by
+  // truthiness returned `Object`'s own `constructor` and threw on `.includes`, so updating the generator
+  // broke a schema it had already accepted — and the additive-only rule leaves the app no way to drop
+  // the field.
+  editSchema(modern.root, s => { s.events['notify.tapped'].payload = { id: 'int', constructor: 'string' }; });
+  r = codegen(modern);
+  dart = readFileSync(join(modern.root, modern.cfg.host.dir, 'lib/valence/bridge.g.dart'), 'utf8');
+  assert.match(dart, /'notify.tapped': \{'id'\}/, 'the event still emits, without the extra field');
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /declares "constructor", which a native notification response does not carry/);
+
   // `notify.tapped` is the event chosen *because* the action is null, so a non-nullable `action` there
   // receives null on every tap; the same declaration is fine on `notify.action`.
   editSchema(modern.root, s => { s.events['notify.tapped'].payload = { id: 'int', action: 'string' }; });
@@ -395,7 +406,7 @@ test('cache adoption uses the app next revision and restores shipped builtins in
   bundle({ root, cfg, key, store: true, now: NOW + 1000 });
   const baseline = readFileSync(join(root, '.valence/baseline.json'), 'utf8');
   editSchema(root, s => { s.methods['data.cache'].since = 18; });
-  const refuses = (e) => /restore its recorded built-in definition, including since: 20/.test(e.message)
+  const refuses = (e) => /recorded it at since 20.*restore that "since" and that shape/.test(e.message)
     && !/data.cache.v2|data.cacheV2/.test(e.message);
   assert.throws(() => codegen({ root, cfg }), refuses);
   assert.throws(() => bundle({ root, cfg, key, store: true, now: NOW + 2000 }), refuses);
@@ -1782,6 +1793,12 @@ test('an app that already shipped a store build can take a built-in\'s new param
   bad((s) => (s.methods['data.list'].params.cursor = 'string?'), /must stay/); // not a param the runtime added
   bad((s) => (s.methods['mine.list'].params.after = 'string?'), /cannot change/); // an app's own method may not grow
   bad((s) => (s.methods['data.list'].since = 2), /cannot change/); // since is not negotiable
+  // …and the refusal tells a built-in to restore its recorded `since` rather than offering the rename
+  // that is right for an app-owned name and a trap for a reserved one: a name the package does not
+  // reserve is never delegated, so "data.list.v2" means implementing the built-in by hand (K F-75).
+  bad((s) => (s.methods['data.list'].since = 2), /restore that "since"/);
+  bad((s) => (s.methods['data.list'].since = 2), /Do not rename it/);
+  bad((s) => (s.methods['mine.list'].params.after = 'string?'), /for example "mine\.list\.v2"/);
   // A grown param needs the version bump with it. A param has no `since`, so the only thing a page can
   // gate on is a sibling method or event at the new version — without this an app could add `after` at
   // the shipped version and leave the page no way to tell it from a host that answers E_PARAMS.

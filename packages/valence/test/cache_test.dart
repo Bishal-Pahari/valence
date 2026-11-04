@@ -306,6 +306,28 @@ void main() {
     await migrated.cache('days', 1, 'tomorrow', 'REST');
     expect(await migrated.get('days', 1, 'tomorrow'), 'REST');
   });
+
+  test('a rollback refuses the given-up page\'s cache writes before it drops its overlays',
+      () async {
+    await v.dataCache('days', 'today', {'sunrise': '06:14'});
+    expect(await v.dataGet('days', 'today'), isNotNull);
+    // §2.4/§5.5.1: `countFailure` deletes the overlays, but the trial's document is still on screen
+    // and still dispatching through every await of the rollback. A delayed REST response landing there
+    // used to write the trial's shapes straight back, for `current` to read.
+    await v.blockCacheWrites();
+    await expectLater(
+        v.dataCache('days', 'tomorrow', {'sunrise': '06:15'}),
+        error(BridgeErrorCode.denied));
+    await v.store.clearCaches();
+    v.releaseCacheWrites();
+    expect(await v.dataGet('days', 'today'), isNull,
+        reason: 'the trial\'s overlays went with the trial');
+    expect(await v.dataGet('days', 'tomorrow'), isNull,
+        reason: 'and the write it attempted mid-rollback never landed');
+    await v.dataCache('days', 'today', {'sunrise': '06:16'});
+    expect(await v.dataGet('days', 'today'), {'sunrise': '06:16'},
+        reason: 'the page that replaces it caches normally again');
+  });
 }
 
 class _CacheView implements ValenceHostView {

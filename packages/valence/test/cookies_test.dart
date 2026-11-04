@@ -643,4 +643,39 @@ void main() {
     expect(after.sent.single.headers.containsKey('cookie'), isFalse,
         reason: 'the in-memory session cookie goes too');
   });
+
+  test('a response delivered after a sign-out cannot refill the cleared jar',
+      () async {
+    final data = <String, String>{};
+    final cookies = ValenceCookies(
+        jar: const ValenceCookieJar(
+            origin: 'https://api.test', sessionCookieDays: 7),
+        secure: testSecure(data));
+    final seeded = api(cookies: cookies, setCookie: ['sessionid=a; Max-Age=600']);
+    await seeded.http.request(url: 'https://api.test/login');
+    expect(data[secureCookieJarKey], isNotNull);
+
+    // §4.4: the user signs out — or switches account — while this request is in flight. The response
+    // then arrives carrying the leaving user's session, which the next request must not send under the
+    // next user's bearer token, and which must not be written back to the Keystore either.
+    final delayed = ValenceHttp(
+      origins: const {'https://api.test'},
+      cookies: cookies,
+      token: () async => null,
+      onUnauthorized: () {},
+      clientFactory: () => MockClient((_) async {
+        await cookies.clear();
+        return http.Response('ok', 200,
+            headers: {'set-cookie': 'sessionid=a; Path=/; Max-Age=600'});
+      }),
+    );
+    final response = await delayed.request(url: 'https://api.test/items');
+    expect(response.status, 200, reason: 'the page still gets its answer');
+    expect(data[secureCookieJarKey], isNull,
+        reason: 'the sign-out emptied the Keystore and the late response did not refill it');
+    final next = api(cookies: cookies);
+    await next.http.request(url: 'https://api.test/items');
+    expect(next.sent.single.headers.containsKey('cookie'), isFalse,
+        reason: 'and nothing is replayed in memory either');
+  });
 }

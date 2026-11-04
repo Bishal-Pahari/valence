@@ -95,6 +95,8 @@ under the normal static protocol. A 404 makes the run incomplete (`failed`),
 without undoing successful work in other buckets or deleting queued edits;
 it is not an instruction to skip this bucket. With no `sync.base`, no pull is
 attempted. There is no per-bucket cache-only sync exemption in 0.4.
+The reference adapter in `examples/rest-sync-adapter` serves only `items` and
+returns 404 for other names; add empty overlay buckets there explicitly too.
 
 A new data schema starts with no cached values. Old-schema values remain for
 rollback until ordinary post-commit garbage collection removes that pair.
@@ -109,6 +111,12 @@ server rows, cursors and queued writes are untouched; the cache costs a refetch,
 which is what makes it disposable. The schema-bump sentence above is the other
 case: there the old schema's values are still the right shape for the bundle being
 reverted to.
+
+**A bundle that is given up on cannot refill the cache on its way out.** Dropping the
+overlays is one step of a rollback whose other steps are asynchronous, and the failed
+page is still able to call the bridge through all of them, so from just before the drop
+until the replacement page starts `data.cache` answers `E_DENIED` and says why.
+
 Recorded account switch/sign-out clears **all** cached values alongside writable
 rows, and emits `sync.changed` for cache-enabled buckets. A refused `E_PENDING`
 switch leaves them intact; refresh and first account adoption preserve them.

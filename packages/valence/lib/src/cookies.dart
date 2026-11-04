@@ -128,6 +128,19 @@ final class ValenceCookies {
   /// Set when a revocation could not reach secure storage. Fail closed, never fail startup.
   bool _sealed = false;
 
+  /// Bumped by every [clear]: the jar's identity generation (§4.4, §4.5.1).
+  ///
+  /// An HTTP request that is already in flight has read the leaving user's `Cookie` header and will
+  /// absorb whatever `Set-Cookie` the response carries — and that response can arrive *after* a
+  /// sign-out or an account switch has emptied the jar. Without a generation, A's session cookie is
+  /// written back over B's empty jar, in memory and (with `sessionCookieDays`) in the Keystore, and the
+  /// next request carries A's session alongside B's bearer token. There is nothing to drain: the
+  /// account-switch lease orders us against sync, not against `http.request`.
+  int _generation = 0;
+
+  /// The generation a caller captured when its request began; see [absorb].
+  int get generation => _generation;
+
   /// Whether the build granted a jar at all.
   bool get enabled => jar != null;
 
@@ -152,6 +165,7 @@ final class ValenceCookies {
   /// Always runs, even for a build with no jar: that is what makes it a revocation rather than a clear.
   /// Memory first, so a write that fails still leaves this launch carrying nothing.
   Future<void> clear() async {
+    _generation += 1;
     _cookies.clear();
     _origin = null;
     _loading = Future.value();
@@ -230,9 +244,22 @@ final class ValenceCookies {
   }
 
   /// Takes `Set-Cookie` values from a response. Nothing here can fail the request (§4.5.1).
-  Future<void> absorb(Uri url, Iterable<String> setCookies) async {
+  ///
+  /// [atGeneration] is the [generation] read when the request began. A sign-out or an account switch
+  /// during the request bumps it, and the response's cookies are then dropped rather than written back
+  /// over the jar of whoever is signed in now — the §4.4 isolation guarantee, which an in-flight
+  /// response would otherwise undo seconds after the user left.
+  Future<void> absorb(Uri url, Iterable<String> setCookies,
+      {int? atGeneration}) async {
     if (!owns(url) || setCookies.isEmpty) return;
+    if (atGeneration != null && atGeneration != _generation) {
+      _log('cookies: dropped ${setCookies.length} Set-Cookie value(s) from '
+          '${url.origin}; the jar was cleared while the request was in flight');
+      return;
+    }
     await _load();
+    // `_load` awaits secure storage, which is long enough for a sign-out to land.
+    if (atGeneration != null && atGeneration != _generation) return;
     var changed = false;
     for (final raw in setCookies) {
       Cookie parsed;

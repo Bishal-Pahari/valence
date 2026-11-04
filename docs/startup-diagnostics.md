@@ -72,7 +72,11 @@ one of its two section 2.4 strikes. Where a platform reports the loss — iOS, a
 `webContentProcessTerminated` resource error — the host reloads the same manifest at
 the same route, counts no strike, and at the cap drops the controller and clears
 `serving`, retaining `trial` and its failure count for retry on the next launch.
-At the cap the host shows its error view; below it the page sees a reload.
+At the cap the host shows its error view; below it the page sees a reload. A recovery
+while the app is backgrounded arms the ready window without starting it, and the resume
+starts it: the window counts foreground time and is stopped by the pause transition,
+already delivered by then, so a clock started there would run unwatched and spend a
+strike on a release that was never on screen.
 A resume that reclaims the same port reloads the page when none is
 loaded. Unit tests cover all three; the Android half is unobservable from Dart by
 construction, and a tripwire test fails when the plugin exposes the callback.
