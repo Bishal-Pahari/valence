@@ -10,7 +10,7 @@ The reference example vendors the updated CLI byte for byte.
 
 The spec, repository guide, package README, public cache/data/config guides and
 machine-readable summary now distinguish these numbers. The template stays at 18
-for new apps with no store baseline; generated shapes and all versions are unchanged.
+for new apps with no store baseline; generated shapes are unchanged.
 The repository guide also carries the existing trial-failure cache warning.
 
 Decision: preserve the shipped contract, sync completeness and users' data before
@@ -29,40 +29,56 @@ success but scoped acceptance=false after an initial bounded CDP/startup failure
 later success does not erase it. Its first backup was rejected when a WorkManager
 process appeared during transfer. Historical reliability findings remain open.
 
-Feature bases: code e36d2aec4f567295ddc6eaff4da18f7cd8e5fd5a and site
-a3a32082310d5d031b3a430d26e8f66684949fa5, newest local packages when started.
-All pre-existing feature tips were checked as ancestors of packages in both repos;
-the original rebase queue is done. This follow-up is the only unmerged feature
-branch, so the later-branch two-unmerged integration trigger is not met.
-Implementation commits: code 60f5419 / site 1bc68bf, codex/cache-adoption.
+Feature started from code e36d2ae / site a3a3208. During final verification,
+packages advanced to code 5a568454c46b4bb62b33193a6ca96ba1ba3c5842 / site
+2f28a8fdd025c40c984e92c32bd9f636fa591803. Both were merged into this branch.
+The incoming commit independently fixed F-75/F-76 as well as account-cookie
+isolation, background ready timing, late rollback cache writes and prototype-name
+notification fields. Kept that implementation intact, including its shape-aware
+built-in classification, rather than the earlier name/revision-only diagnostic.
+The follow-up now adds the store-19-to-20-to-refused-18 regression, explicit
+baseline recovery location, concrete JSON declaration/page examples and scoped/
+no-sync qualifications. Overlapping paragraphs were reconciled while preserving
+the incoming runtime warnings. Merge commits: code c3b1e55 / site 7be91e6. A subsequent packages commit,
+f47263d2d028ee5a2bb03d2627b9c3797320c024, aligns the CLI version with the
+runtime release; merged as 65779cc and reran the root suite. No feature-specific
+version change is introduced. Runtime and site sources are identical across
+that version-only merge, so their gate results below retain the same scope.
+All pre-existing feature tips were already ancestors of packages in both repos;
+the original rebase queue is done. This is the only unmerged feature branch, so
+the later-branch two-unmerged integration trigger is not met.
 
 ## Validation
 
-All gates passed on 2026-11-04:
+Merged-tree validation on 2026-11-04:
 
 - Root npm test: 116 passed, zero skips; generated Dart and strict/verbatim TS ran.
 
-- Core: 617 Flutter tests passed; fatal-info analysis clean.
+- Core: 620 Flutter tests passed; fatal-info analysis clean.
 - Core publish dry-run: zero warnings after committing the README.
 - Bridge: 36 tests passed, strict/verbatim TypeScript passed, npm pack dry-run passed.
 - Optional push: 2 tests passed, fatal-info analysis clean, publish dry-run zero
   warnings (one existing local path-override hint).
 - Site: npm run build plus SEO passed, 50 pages.
-- Example debug APK: passed, assembleDebug 187.3 seconds; existing future Kotlin
+- Example debug APK: passed, assembleDebug 34.6 seconds; existing future Kotlin
   plugin compatibility warning remains. Windows py Firebase audit: PASS, core
   graph plus manifest and all 19 DEX files contain no Firebase SDK references.
 - Diff hygiene passed. The initial root run caught an unsynchronized example CLI;
-  it was copied before the final run. No failed check is counted as a pass.
+  it was copied before the final run. No failed check is counted as a pass. Root/generated Flutter checks and core
+  Flutter tests ran sequentially for merged-tree verification.
 
-Logs: %TEMP%/valence-cache-root-final.log, valence-cache-core.log,
-valence-cache-core-publish-final.log, valence-cache-bridge.log,
-valence-cache-push.log, valence-cache-site.log and valence-cache-apk.log.
+Logs: %TEMP%/valence-cache-root-version-aligned.log,
+valence-cache-root-merged.log, valence-cache-core-merged.log,
+valence-cache-bridge.log, valence-cache-push-merged.log,
+valence-cache-site-merged.log and valence-cache-apk-merged.log. The standalone
+Windows py Firebase audit was run again against the rebuilt APK and printed PASS.
 
-Security-path checklist: the diagnostic branch still refuses the same edits;
+Security-path checklist (relative to current packages): the inherited diagnostic
+still refuses the same edits;
 normal additive growth remains ahead of the refusal, and legacy app-owned methods
 retain their existing advice. Verification order, signatures, strict decoding,
 nonce, navigation/subframe locks, atomic state writes, key handling, compiled
 cache grants, account clearing and release-mode development exclusion are unchanged.
 No fresh emulator or independent security-review acceptance is claimed. iOS remains
 experimental and untested. No test-app writes, protected-branch changes, package
-version changes, pushes or publication.
+version changes relative to packages, pushes or publication.
