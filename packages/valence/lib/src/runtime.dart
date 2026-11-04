@@ -476,6 +476,25 @@ final class Valence {
   /// ValenceApp owns it while attached; direct updater calls do not enforce the native screen.
   Future<void> Function()? onCheckForUpdate;
 
+  /// Refuses `data.cache` from the page being given up on, and drains the writes already admitted.
+  ///
+  /// Called by [ValenceApp] before `countFailure`, so the clear that follows cannot be raced by a write
+  /// that is already inside `store.cache`. Draining is the same argument [_writesInFlight] makes for an
+  /// account switch: refusing new writes is not enough when SQLite may commit an older transaction last.
+  Future<void> blockCacheWrites() async {
+    _rollingBack = true;
+    for (final write in _writesInFlight.toList()) {
+      try {
+        await write;
+      } on Object catch (_) {
+        // A write that failed is still a write that is over, which is all this needs.
+      }
+    }
+  }
+
+  /// Lets `data.cache` work again, once the document that replaces the given-up page has started.
+  void releaseCacheWrites() => _rollingBack = false;
+
   /// Explicit discovery, without applying a pending bundle (contracts 4.6).
   Future<void> checkBundleUpdate() async {
     final check = onCheckForUpdate;
@@ -822,6 +841,11 @@ final class Valence {
       throw const BridgeError(BridgeErrorCode.internal,
           'an account change is in progress; cache again once auth.setToken settles');
     }
+    if (_rollingBack) {
+      throw const BridgeError(BridgeErrorCode.denied,
+          'this bundle has been given up on and its cache is being dropped; the page that replaces '
+          'it will fetch again (contracts §5.5.1)');
+    }
     // Join synchronously, before an account transition can start. Its clear waits for this write.
     final write = store.cache(bucket, schema, key, value);
     _writesInFlight.add(write);
@@ -918,6 +942,15 @@ final class Valence {
   /// held and applied afterwards it would simply land in the new account's outbox, which is the same
   /// cross-account write by a slower route.
   bool _switchingAccount = false;
+
+  /// Set while a given-up trial is being replaced, so its page cannot refill the cache (§5.5.1).
+  ///
+  /// `countFailure` deletes the overlays the trial wrote, but the trial's document is still on screen
+  /// and still dispatching: the clear, the state save and the bundle swap are all awaits, and a REST
+  /// response that lands in any of them calls `data.cache` and writes the trial's shapes straight back.
+  /// `current` then comes up and reads them, which is precisely what §2.4's "data intact" forbids and
+  /// what clearing the cache exists to prevent. Down again when the replacement document starts.
+  bool _rollingBack = false;
 
   /// Local writes whose transaction may not have committed yet.
   ///

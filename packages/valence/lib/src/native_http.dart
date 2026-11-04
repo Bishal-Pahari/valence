@@ -175,6 +175,10 @@ final class ValenceHttp {
 
     http.Client? client;
     var expired = false;
+    // Read before the token, so the whole request — not just the part after the bearer arrives — is
+    // attributed to the account that started it. A sign-out or switch any time from here on makes the
+    // response's `Set-Cookie` somebody else's credential, and `absorb` drops it (§4.4).
+    final jarGeneration = cookies?.generation;
     Future<ValenceHttpResponse> send() async {
       final bearer = await token();
       // Token lookup can finish after the deadline. Never start a late request.
@@ -226,7 +230,8 @@ final class ValenceHttp {
       // cannot fail the request — a malformed cookie or unwritable storage is logged, not thrown.
       if (jarred != null && jarred.owns(uri)) {
         await jarred.absorb(
-            uri, response.headersSplitValues['set-cookie'] ?? const <String>[]);
+            uri, response.headersSplitValues['set-cookie'] ?? const <String>[],
+            atGeneration: jarGeneration);
       }
       final result = <int>[];
       if (verb != 'HEAD' &&

@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased: four fixes from two independent reviews
+
+- **A sign-out or an account switch can no longer be undone by a response already in flight.** An
+  `http.request` begun as one user could deliver its `Set-Cookie` after that user signed out, which
+  refilled the cookie jar the sign-out had just emptied — in memory, and in the Keystore once
+  `sessionCookieDays` was on — so the next request carried the previous user's session beside the new
+  user's bearer token. Each request now carries the jar's generation and a response whose generation
+  has moved on has its cookies dropped. Your page still receives the response.
+- **A renderer recovery in the background no longer spends a trial's strike.** The ready window counts
+  foreground time and is stopped by the pause transition, so a page loaded after the app was already
+  backgrounded started a clock nothing would stop: background time then exhausted the window and
+  counted a failure against a release that was never on screen. Such a page arms the window and the
+  resume starts it.
+- **A bundle being rolled back cannot refill the cache on its way out.** Giving up on a trial drops
+  every `data.cache` overlay, but the failed page is alive through the rest of the rollback, so a
+  late REST response could write its shapes straight back for the previous bundle to read. From just
+  before the drop until the replacement page starts, `data.cache` answers `E_DENIED` and says why.
+- **`codegen` no longer throws on a payload field named after an `Object` member.** An event declaring
+  `constructor` or `toString` was accepted and then crashed the generator — and the additive-only rule
+  left no way to remove the field.
+
+## Unreleased: two confusing numbers, named properly
+
+- **A built-in's reserved revision is not the `since` to declare,** and the docs now say so where
+  `data.cache` is introduced: declare `max(18, your next schema version)`, which is what `codegen`
+  computes for you. The refusal that follows a *changed* built-in now tells you to restore the
+  recorded `since` instead of offering a `.v2` rename, which for a reserved name would quietly make
+  you reimplement a package feature.
+- **A cache-enabled bucket is still pulled.** Declaring a bucket purely to hold REST overlays makes
+  the device ask your sync server for it on every sync, and a `404` there makes the whole run report
+  `failed` and stops sync freshness advancing — the other buckets' rows still arrive, but your page is
+  told the sync failed. Serve overlay-only buckets as an empty page. Said on the REST cache guide,
+  the config reference and in the spec.
+
 ## Unreleased: response size grants
 
 Optional compiled `http.maxBodyBytes` accepts 1..262144 decompressed response bytes (default 65536). Regenerate and ship a host for larger REST responses. Request and escaped reply limits stay unchanged; doctor reports both limits.

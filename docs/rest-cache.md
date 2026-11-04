@@ -14,8 +14,10 @@ Enable a bucket in the **store build**:
 }
 ```
 
-Declare the new method in your app's bridge schema, with `since: 18` or a higher
-unused app revision, and raise `version` accordingly:
+Declare the new method in your app's bridge schema. **18 is the revision the name was
+reserved in, not the number most apps write.** Declare `max(18, your next schema
+version)` and raise `version` to match; `codegen` does that arithmetic and names the
+number in its refusal, so take the number it gives you and never lower it again:
 
 ```json
 "data.cache": {
@@ -24,6 +26,16 @@ unused app revision, and raise `version` accordingly:
   "returns": "void"
 }
 ```
+
+**A cache-enabled bucket is still a data bucket, so it is still pulled.** Every bucket in
+`data` is requested on every sync, so a bucket declared only to hold REST overlays asks
+your sync server for rows it will never have — and a `404 unknown bucket` there fails the
+**run**, not just that bucket: any non-200 pull makes the result `reason: "failed"` and
+stops `lastSyncedAt` advancing, so every page reading `sync.status` is told the sync
+failed even though the other buckets' rows arrived. Serve overlay-only buckets as an empty page
+(`{"rows": [], "max": 0, "more": false}`). The reference adapter in
+`examples/rest-sync-adapter` serves its one `items` bucket and 404s every other name on
+purpose, so an overlay-only bucket has to be added there too, like any other backend.
 
 Regenerate and ship the native host. An OTA cannot add the compiled grant. Removing a grant in a store build
 clears that bucket's retained overlays before native startup exposes reads;
@@ -71,6 +83,11 @@ an OTA requiring a new schema still needs the normal sync readiness protocol.
 
 A new data schema starts with no cached values. Old-schema values remain for
 rollback until ordinary post-commit garbage collection removes that pair.
+**A bundle that is given up on cannot refill the cache on its way out.** Dropping the
+overlays is one step of a rollback whose other steps are asynchronous, and the failed
+page is still able to call the bridge through all of them, so from just before the drop
+until the replacement page starts `data.cache` answers `E_DENIED` and says why.
+
 Recorded account switch/sign-out clears **all** cached values alongside writable
 rows, and emits `sync.changed` for cache-enabled buckets. A refused `E_PENDING`
 switch leaves them intact; refresh and first account adoption preserve them.

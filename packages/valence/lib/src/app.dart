@@ -367,6 +367,8 @@ class _ValenceAppState extends State<ValenceApp>
     _valence.restoration.observe(url, _origin);
     _log('webview started $url');
     _pageLoaded = false;
+    // A new document means the page a rollback was protecting the cache from is gone (§5.5.1).
+    _valence.releaseCacheWrites();
     _valence.links.beginPage();
     final state = _valence.state;
     // Armed only while serving a trial. A `current` page is not on probation, so a slow start costs it
@@ -375,9 +377,15 @@ class _ValenceAppState extends State<ValenceApp>
         !_valence.updater.storeUpdateRequired &&
         state.trial != null &&
         state.serving == state.trial) {
-      _readyClock
-        ..reset()
-        ..start();
+      _readyClock.reset();
+      // §2.4's window is foreground time, and the clock is started here but stopped by the *pause*
+      // transition. A renderer recovery loads a page while the app may already be in the background,
+      // where that transition has long since happened — so starting the clock there would count
+      // background seconds nobody stops, exhaust the window and spend a strike on a healthy release.
+      // Arm the ticker either way; `didChangeAppLifecycleState`'s resume branch starts the clock.
+      if (_valence.appState().lifecycle == ValenceLifecycle.foreground) {
+        _readyClock.start();
+      }
       _readyTicker?.cancel();
       _readyTicker = Timer.periodic(const Duration(seconds: 1), (_) {
         if (_readyClock.elapsed < _valence.config.readyTimeout) return;
@@ -481,8 +489,17 @@ class _ValenceAppState extends State<ValenceApp>
     }
     _log(
         'ready: app.ready did not arrive within ${_valence.config.readyTimeout.inSeconds}s for trial $trial');
-    await _valence.updater.countFailure();
-    await _reloadCurrent();
+    // §5.5.1: up before the overlays are dropped and down when the replacement document starts. The
+    // given-up page is alive and dispatching through both awaits below.
+    await _valence.blockCacheWrites();
+    try {
+      await _valence.updater.countFailure();
+      await _reloadCurrent();
+    } on Object {
+      // A swap that threw never loads a page, so nothing will release the block for us.
+      _valence.releaseCacheWrites();
+      rethrow;
+    }
   }
 
   @override

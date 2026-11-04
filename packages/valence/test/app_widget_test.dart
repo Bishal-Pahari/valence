@@ -960,6 +960,39 @@ void main() {
   });
 
   testWidgets(
+      'a renderer recovery in the background arms the trial window but does not run it',
+      (tester) async {
+    await mount(tester, pending: true);
+    final controller = webview.controller;
+    await tester.runAsync(
+        () async => controller.navigation.started(runtime.server!.origin));
+    // Backgrounded *first*: the pause transition that stops the ready clock has already happened, so
+    // nothing is left to stop a clock the recovery page starts.
+    await lifecycle(tester, AppLifecycleState.paused);
+    await io(tester);
+    await tester.runAsync(
+        () async => controller.navigation.resourceError(contentProcessGone));
+    await io(tester);
+    expect(controller.loads, hasLength(2));
+    // The recovery page starts while the app is still in the background.
+    await tester.runAsync(() async =>
+        controller.navigation.started('${runtime.server!.origin}/'));
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 1500)));
+    await io(tester);
+    expect(runtime.state.trialFails, 0, reason: '${log.lines}');
+    expect(runtime.state.serving, trial.seq,
+        reason: 'background seconds are not the §2.4 window, so no strike is spent');
+    // Resuming is what starts it, and the window then runs in full.
+    await lifecycle(tester, AppLifecycleState.resumed);
+    await io(tester);
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 1500)));
+    await io(tester);
+    expect(runtime.state.trialFails, 1, reason: '${log.lines}');
+  });
+
+  testWidgets(
       'a resume that reclaims the port reloads a page that is not there',
       (tester) async {
     await mount(tester);

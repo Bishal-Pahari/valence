@@ -299,7 +299,12 @@ const NOTIFICATION_FIELD_TYPES = {
 /// and warned about separately.
 function notificationFieldMismatches(e) {
   const allowed = NOTIFICATION_FIELD_TYPES[e.name] ?? {};
-  return e.payload.filter((f) => allowed[f.name] && !allowed[f.name].includes(typeString(f.type)));
+  // `Object.hasOwn`, not a truthiness test: a payload may legally declare a field called `constructor`
+  // or `toString`, and reading those off the literal returns `Object`'s own, whose `.includes` does not
+  // exist. An accepted schema must not start throwing because the generator was updated — and under the
+  // additive-only rule the app could not remove the field even if it wanted to.
+  return e.payload.filter((f) => Object.hasOwn(allowed, f.name) &&
+    !allowed[f.name].includes(typeString(f.type)));
 }
 
 /// Whether the runtime may emit this event by itself.
@@ -1239,6 +1244,22 @@ const wireShape = (kind, def) =>
     ? Object.fromEntries(Object.entries(def).filter(([k]) => k !== 'retired'))
     : def;
 
+/// The built-in the store build's own declaration of [name] is delegated to, or undefined.
+///
+/// A reserved name declared at a **different** signature is the app's own method and always has been
+/// (§4.3), so "add a new one" is the right advice for it. Only a declaration the package actually
+/// implements needs to hear the other sentence, which is why this compares the shape rather than the
+/// name: `notify.schedule({hour})` at `since: 1` is nobody's built-in.
+function shippedBuiltin(kind, name, shippedDef) {
+  const want = kind === 'methods' ? BUILTINS[name] : undefined;
+  if (!want || !shippedDef || typeof shippedDef !== 'object') return undefined;
+  if (want.minSince && !(shippedDef.since >= want.minSince)) return undefined;
+  const optional = want.optionalParams ?? {};
+  const required = Object.fromEntries(
+    Object.entries(shippedDef.params ?? {}).filter(([f]) => !(f in optional)));
+  return canonical(required) === canonical(want.params) ? want : undefined;
+}
+
 // The schema is additive only once a store build has shipped it (contracts §4.1).
 export function assertAdditive(shipped, current) {
   if (!shipped) return;
@@ -1268,7 +1289,16 @@ export function assertAdditive(shipped, current) {
           `"${name}" gained the param ${Object.keys(current.methods[name].params ?? {}).filter((p) => !Object.hasOwn(def.params ?? {}, p)).map((p) => `"${p}"`).join(', ')}, which needs "version" above the shipped ${shipped.version}. A param has no "since", so a page can only gate it on a sibling method or event at the new version — has("data.count") for data.list's "after".`,
         );
       }
-      throw new Error(`${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
+      // A rename is the right move for an app-owned name and a trap for a built-in: the reserved name is
+      // what makes the generated `ValenceBuiltins` delegate to the package at all, so `data.cache.v2`
+      // would be the app's own — it would have to reimplement a package feature on top of a table the
+      // package owns (K F-75). The CLI already knows which kind of name this is, so it says so.
+      const reservedDef = shippedBuiltin(kind, name, shippedDef);
+      throw new Error(reservedDef
+        ? `${kind} "${name}" is a built-in and cannot change: your store build recorded it at since ${shippedDef.since}` +
+          `${reservedDef.minSince ? ` (reserved at revision ${reservedDef.minSince})` : ''}, so restore that "since" and that shape. ` +
+          'Do not rename it: a name the package does not reserve is app-owned, so you would be implementing it yourself.'
+        : `${kind} "${name}" shipped in a store build and cannot change; add a new one (for example "${name}.v2" or "${name}V2")`);
     }
   }
   // New methods/events must be newer than every shipped host, or has() lies on old hosts and they get E_UNKNOWN.
