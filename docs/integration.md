@@ -1,5 +1,53 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 95 evidence review
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / App C 95. No eligible must-have or queue refresh remains. Both integrations
+contain all 37 current feature tips and unchanged packages bases
+03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 /
+62f950ba1d52632b47fdd0e170bc41e18d467ae1. Ancestry was checked this run.
+
+The saved audit records 74 passing artifact checks, zero failed checks and
+acceptancePassed=false. Raw Settings log records renderer 5635 killed for the
+low-memory watermark at 09:15:26.784; Chromium host 5558 terminates itself at
+09:15:26.845. Exit-info corroborates renderer LOW_MEMORY and host SIGNALED/status
+9. Replacement PID 6589 was blank before ordinary relaunch recovery. F-36 remains
+open; no Valence leak, database-lock owner or healthy-trial-loss cause is
+established. Ordinary launch after unfinished picker passed this attempt.
+
+Initial OTA automation exited 1 after 585320 ms amid a host-clock discontinuity.
+Saved activation retained trial 1793763413 with one failure and current
+1793763404. State, logs and paired clocks were captured before resuming that
+trial. The resumed two-strike rollback is separate from the interrupted attempt;
+neither the timeout cause nor suspension duration is established.
+
+Independently rehashed archived APKs: release 54711308 bytes, SHA256
+57ceafd3f595ba652685ffc46f51d2bc44979893cccb7aef27f5208bf90da9c7;
+debug 168852021 bytes, SHA256
+bb1e3a62c48e3006644b157570b5b36efdb7e104e7357c5f4e12ffff1026dcca.
+Saved manifest comparison records built-in seq 1793762741 in both sequential
+builds. Matched raw worker log to PID 8757 begin 10:35:26.041, complete
+10:35:27.563 and native SUCCESS 10:35:27.571. One registered job explicitly
+triggered after timing readiness establishes no natural cadence.
+
+Independently hashed both raw activation files: 1158 bytes, identical SHA256
+d7e6af3ed092c5441d494cbf1ce11556123b08edc9741dc3a73bffa5a2cb6451.
+Current 1793766940, pending 1793766950, no trial before foreground. Stable native
+SQLite effects, final commit and original-data/photo retention remain saved
+receipts, not replayed here. Eleven docs pages and tarballs match iteration 94;
+F-45 correction adoption remains unverified. Historical findings, including
+F-29/F-36/F-44 and Kundalini F-72/F-73/F-74 adoption limits, remain open.
+
+Decision: preserve security, users' data and the frozen implementation; do not
+alter runtime behavior without a diagnosed fix. S1 stays deliberately parked;
+S2 needs a Play account. Existing combined gates retain their recorded scope and
+date; no fresh full gates, security review or emulator acceptance claimed. iOS
+remains experimental and untested. Sources: read-only app findings,
+ITERATION_18_REPORT.md, ITERATION_95_REPORT.md and app-c/evidence/iteration-95/.
+No test-app writes, protected-branch changes, schema/version changes, push or
+publication. Roadmap status cells are unchanged.
+
 ## November 4: iteration 94 evidence review
 
 In plain terms: reviewed both findings inventories and newest reports, Kundalini
