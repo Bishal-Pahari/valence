@@ -1,5 +1,50 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 99 evidence review
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / App C 99. No eligible must-have or queue refresh remains. Both integrations
+contain all 37 current feature tips and unchanged packages bases
+03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 /
+62f950ba1d52632b47fdd0e170bc41e18d467ae1. Ancestry was checked this run.
+
+The saved audit records 74 passing artifact checks, zero failed checks and
+scoped acceptancePassed=true; read, not replayed. Settings returned painted in
+PID 5248, ordinary launch after unfinished picker passed, and Camera/gallery
+passed this attempt. These successes do not close historical F-29/F-36/F-40/F-44
+or establish a fix. No new Valence defect is established by this iteration.
+
+Independently rehashed archived APKs: release 54711308 bytes, SHA256
+519afb3b0d5c79e58b776815a16bc7d85b45a94be6a5c5cd99e11fba7a3ba443;
+debug 168852021 bytes, SHA256
+c863cc1e566a47c66be94685cdf280ea979de42c01d196317e586e0f78bb19c5.
+Saved manifest comparison records built-in seq 1793777185 in both sequential
+builds. The initial stopped-backup transfer timed out; its partial archive was
+excluded and a longer bounded retry was accepted before fresh-install testing.
+The missing optional preparation script reference was corrected before device
+phases. These runner qualifications establish no Valence defect.
+
+Matched raw worker log to PID 8114 begin 13:29:44.692, complete 13:29:46.183
+and native SUCCESS 13:29:46.191. The saved observer records forced=true: one
+explicitly triggered execution proves neither natural scheduling nor cadence.
+Independently hashed both raw activation files: identical SHA256
+27fd305075ffae9e12387c2b2a564ea2ec04f733460d8dca73f87f64cad31239.
+Current 1793777888, pending 1793777897, no trial before foreground. Stable native
+SQLite effects, final commit and original-data/photo retention remain saved
+receipts, not replayed here. Eleven docs pages and npm tarballs match iteration
+98, so F-45 correction adoption remains unverified. Kundalini F-72/F-73/F-74
+adoption limits remain open. Retained storage metadata (562572 KiB / 5546 files)
+is an observation, not proof of a leak or per-iteration growth.
+
+Decision: preserve security, users' data and the frozen implementation; no runtime
+change without a diagnosed fix. S1 stays deliberately parked; S2 needs a Play
+account. Existing combined gates retain their recorded scope and date; no fresh
+full gates, security review or emulator acceptance claimed. Only matching
+integration notes changed. iOS remains experimental and untested. Sources:
+read-only app findings, ITERATION_18_REPORT.md, ITERATION_99_REPORT.md and
+app-c/evidence/iteration-99/. No test-app writes, protected-branch changes,
+schema/version changes, push or publication. Roadmap status cells are unchanged.
+
 ## November 4: iteration 98 evidence review
 
 In plain terms: reviewed both findings inventories and newest reports, Kundalini
