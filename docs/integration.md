@@ -1,5 +1,58 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 93 evidence review
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / App C 93. No eligible must-have or queue refresh remains. Both integrations
+contain all 37 current feature tips and unchanged packages bases
+03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 /
+62f950ba1d52632b47fdd0e170bc41e18d467ae1. Ancestry was checked this run.
+
+The saved artifact audit records 74 passing checks, zero failed checks and
+acceptancePassed=false: F-29 recurred in the final refreshed-debug offline smoke.
+The initial ordinary launch reported Activity not started; readiness found no
+App C PID. Preserved activities show PhotoPicker MainActivity in task 1222 rooted
+in Fieldnote, with resultTo a removed Fieldnote activity. The activity capture
+followed cleanup, so postfailure process absence alone is not precleanup proof;
+the original nested readiness errors are the separate evidence. Explicit Android
+BACK dismissal followed by a painted offline retry does not erase the launch
+failure or establish a Valence runtime cause. Settings returned painted in PID
+4879. Historical F-36/F-44 and the other findings remain open.
+
+Preserve the runner's packaging qualification: detailed native tests used the
+archived debug host with prior built-in seq 1793755526. Sequential debug refresh
+aligned its built-in with release seq 1793757403; the saved ZIP comparison reports
+only manifest/signature changes. The original tested artifact remains archived,
+and the recovered final smoke is distinct from those detailed tests.
+
+Independently rehashed the final archived APKs: release 54711308 bytes, SHA256
+80005e3fa15cade066f504f658daaffa7de3b91b18beffe4b5dac6167a1af513;
+debug 168852021 bytes, SHA256
+ba05a7ff41b6175913499228a743d367aa0d3220bbb119c401df471e0afdf30e.
+Matched raw worker-full-logcat.txt against the completion receipt: PID 7260 begin
+07:59:20.453, complete 07:59:21.763, native SUCCESS 07:59:21.771. The report records
+one explicit trigger after timing readiness; one execution does not prove cadence.
+Stable SQLite effects remain saved receipts, not replayed here.
+
+Independently hashed both raw activation files: 1136 bytes, identical SHA256
+9144460f5130fee3b5600513ee0f67a0c4ac188f7ef2b02c653e686fc8e07d1f.
+Current 1793757977, pending 1793757987, no trial before foreground. Final
+commitment and original-data/photo retention remain saved receipts. Eleven local
+docs pages and tarballs still match iteration 92, so F-45 correction adoption
+remains unverified. Saved doctor is 14 PASS / 10 WARN / 0 FAIL. Retained-history
+footprint 522304 KiB / 5154 files establishes no leak or growth rate. Kundalini
+F-72/F-73/F-74 adoption limits remain.
+
+Decision: preserve security, users' data and the frozen implementation; retain
+the failed launch and recovery separately rather than changing runtime behavior
+without a diagnosed cause. S1 stays deliberately parked and S2 needs a Play
+account. This evidence-only update retains existing combined gates' recorded
+scope and date; no fresh full gates, security review or emulator acceptance
+claimed. iOS remains experimental and untested. Sources: read-only app findings,
+ITERATION_18_REPORT.md, ITERATION_93_REPORT.md and app-c/evidence/iteration-93/.
+No test-app writes, protected-branch changes, schema/version changes, push or
+publication. Roadmap status cells are unchanged.
+
 ## November 4: iteration 92 evidence review
 
 In plain terms: reviewed both findings inventories and newest reports, Kundalini
