@@ -1,5 +1,55 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 102 evidence review
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / App C 102, plus the intervening App C 101 report. No eligible must-have or
+queue refresh remains. Both integrations contain all 37 current feature tips and
+unchanged packages bases 03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 /
+62f950ba1d52632b47fdd0e170bc41e18d467ae1. Ancestry was checked this run.
+
+The saved iteration-102 audit records 74 passing artifact checks, zero failed
+checks and scoped acceptancePassed=true; read, not replayed. Settings returned
+painted in the same PID 4982, ordinary launcher after unfinished picker passed,
+and Camera/gallery passed this attempt. These successes do not close historical
+F-29/F-36/F-40/F-44 or establish a reliability fix. No new Valence defect is
+established by this iteration.
+
+Independently rehashed archived APKs: release 54711308 bytes, SHA256
+e67d8f43830060149dfd72c1e38ecd164817adbd54baa7b1b36d6fd07dd59a10;
+debug 168852021 bytes, SHA256
+dd54f5cbb90c70048109aa722c5b917e8b364afa8bdf33ff7cb377f8a0726eb7.
+Saved embedded-manifest comparison records builtin seq 1793782671 in both
+sequential builds. The stopped backup passed its saved transfer-hash check.
+Initial stale preparation/report destinations were corrected before checkpoints;
+a PowerShell JSON quoting failure occurred before bridge invocation. Three
+initial null-root retained-release captures preceded the successful 42019ms paint
+observation; that is neither precise first-paint latency nor a diagnosed cause.
+Iteration 101's stale labels/test invocation and initial null-root qualifications
+remain separate in its saved runner notes. No runtime fix follows from these.
+
+Matched raw worker log to PID 8287 begin 15:01:13.036, complete 15:01:13.419
+and native SUCCESS 15:01:13.431. Saved worker execution records forced=true:
+one explicit trigger after timing readiness proves neither natural scheduling nor
+cadence. Independently hashed both raw activation files: identical SHA256
+a8a5e7277ee7fefa8125ceac72713f8f64aea529f2b4c021c1eff8376606f6fb.
+Current 1793783433, pending 1793783446, no trial before foreground. Stable native
+SQLite effects, final commit and original-data/photo retention remain saved
+receipts, not replayed here. Eleven docs pages and npm tarballs match iteration
+101, so F-45 correction adoption remains unverified. Kundalini F-72/F-73/F-74
+adoption limits remain open. Retained footprint 581824 KiB / 5733 regular files
+is an observation, not evidence of a leak or per-iteration growth.
+
+Decision: preserve security, users' data and the frozen implementation; no runtime
+change without a diagnosed fix. S1 remains deliberately parked; S2 needs a Play
+account. Existing combined gates retain their recorded scope and date; no fresh
+full gates, security review or emulator acceptance claimed. Only matching
+integration notes changed. iOS remains experimental and untested. Sources:
+read-only app findings, ITERATION_18_REPORT.md, ITERATION_101_REPORT.md,
+ITERATION_102_REPORT.md and app-c/evidence/iteration-102/. No test-app writes,
+protected-branch changes, schema/version changes, push or publication. Roadmap
+status cells are unchanged.
+
 ## November 4: iteration 100 evidence review
 
 In plain terms: reviewed both findings inventories and newest reports, Kundalini
