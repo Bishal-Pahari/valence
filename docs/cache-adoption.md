@@ -349,3 +349,66 @@ tip: verification/check order, nonce, strict decoding, navigation/subframe lock,
 atomic writes, keys, account isolation, cache grants and release dev exclusion
 are unchanged. Diff hygiene passed. No protected branch, test app or other
 builder worktree writes, push or publication.
+
+## Iteration 108 evidence review - 2026-11-05
+
+In plain terms: App C's inspection Back fix now has scoped Android receipts;
+it does not establish a Valence runtime repair. Read both findings inventories
+and newest completed reports read-only: Kundalini 19 / App C 108. The latter
+started November 4 and completed November 5. Its saved artifact audit passes
+87 checks and sets scoped acceptance=true; read, not replayed here. F-48 has
+selected-inspection, warm/cold reminder, cold-link and mixed-picker Back receipts,
+plus native activity evidence that a second Back from the list exits. F-49's
+startup-intent precedence and queued-Back destination races were corrected in
+app code; 16 isolated scheduler assertions pass. Simultaneous OS intent ordering
+and Back from the native self-test panel remain outside that acceptance.
+
+Decision: preserve security, users' data and frozen additive contracts. Existing
+History API and live-event precedence requirements already cover these app fixes;
+no runtime or schema change is justified by this evidence. All original queue
+items and must-haves are done. Excluding archived integration checkpoints,
+cache-adoption alone remains unmerged in both repos, so the two-feature integration
+condition is not met. S1 remains explicitly deferred; S2 needs a Play account.
+Packages bases remain code da23d35d239ddf3b3d613cc8bf7c232347012aaa and site
+3e00b75a94d64e6e64e22ec2f48e3366301de4d7; both are ancestors of this branch.
+
+Independently rehashed the archived release/debug APKs: both match the delivery
+manifest. Both raw worker-phase activation files hash to
+`fb4b151bff31f392cd28e8fd5e8d3f17d7f16e439d48ab0bb4ff5b7ce412135f`:
+final 1793816097 remains pending without trial. Raw full log lines correlate
+PID 9165's callback begin/complete and native SUCCESS with background
+enter/take/release/leave; release reports heldForMs=980. Saved stable native
+SQLite records the exact outgoing objects, incoming fixture and outbox=0 before
+foreground. This proves one explicitly triggered registered job execution, not
+natural timing/cadence or cancellation/expiry correctness. The initial early OS
+trigger rescheduled without running the app callback and remains separate.
+F-44 and historical reliability findings remain open.
+
+Eleven refreshed docs pages and tarball hashes are unchanged from iteration 107;
+that refresh does not independently verify adoption of prior documentation
+corrections. Kundalini has no newer report verifying F-75/F-76 correction adoption.
+Settings returned painted this attempt; historical renderer/startup findings
+remain open. Initial doctor overlap, accessibility selection failure, early
+page-disposal probe and cleanup failure are preserved apart from corrected
+checks and the cleanup-only continuation. Retained file totals establish no leak
+or growth rate. No fresh emulator acceptance or iOS validation is claimed.
+
+Fresh gates on 2026-11-05 passed, with Flutter operations sequential:
+
+- Root: 118 tests, zero skips; generated Dart and strict/verbatim TS included.
+- Core: 631 tests, clean fatal-info analysis, publish dry-run zero warnings.
+- Bridge: 36 tests, strict/verbatim TS and npm pack dry-run passed.
+- Optional push: 2 tests, clean fatal-info analysis, publish dry-run zero warnings;
+  the existing local dependency-override hint remains.
+- Site: 50-page build and SEO checks passed.
+- Example debug APK rebuilt, assembleDebug 144.9 seconds; existing future Kotlin
+  plugin compatibility warning retained. Standalone Windows py Firebase audit:
+  PASS for the core graph, manifest and all 19 DEX files.
+
+Logs: %TEMP%/valence-iteration108-{root,core,bridge,push,site,apk,firebase}.log.
+Only matching validation notes change in this run. Security checklist against the
+prior branch tip: signature/check order, nonce, strict decoding, navigation and
+subframe lock, atomic writes, keys, account isolation, cache grants and release
+dev exclusion are unchanged. No runtime, generator, template, schema or version
+change. Diff hygiene passed. No test-app, other builder worktree or protected
+branch writes, push or publication.
