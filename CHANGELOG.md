@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased: the release warning names the events too
+
+`valence bundle --requires-bridge <n>` warns when you pin below your schema version, because a call to a
+newer method is then dead in the field. It listed only the methods. An **event** declared above the pin
+needs the newer host exactly as much — the older host never emits it — and it failed more quietly: nothing
+thrown, nothing logged, a subscription that simply waits for ever. A release that shipped a method and an
+event together was warned about half of itself.
+
+Both kinds are now counted and named, with what each one does on the old host:
+
+```
+warning: requires.bridge is pinned to 20, below the schema version 21, so 1 method and 1 event need a
+newer host than this bundle asks for: bundle.check (throws E_UNSUPPORTED), bundle.checked (never
+emitted). Gate every one of them on has(): an ungated call throws E_UNSUPPORTED on an older host, and an
+ungated subscription waits for an event that never arrives, which is the failure you are least likely to
+notice.
+```
+
+Nothing to change in your app: `has()` already answers for an event name, which is what makes the advice
+actionable. The singular case also reads as a sentence now — it said "1 method need" and then "every call
+to **them**".
+
 ## Unreleased: a busy sync can say who is holding it
 
 `sync.status` gains two nullable returned fields at built-in **revision 20**, `leaseKind` and

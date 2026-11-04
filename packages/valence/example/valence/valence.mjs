@@ -819,9 +819,23 @@ export function bundle({ root, cfg, key, builtin = false, store = false, rebasel
       // is wrong with calling it — and naming it here would tell an app to guard a call it should delete.
       .filter(([, d]) => (d?.since ?? 1) > bridge && d?.retired !== true)
       .map(([n]) => n);
-    if (above.length) {
+    // Events need the newer host exactly as much, and the failure is the quieter one: an older host simply
+    // never emits them, so a feature built on an event is dead there with nothing thrown and nothing logged.
+    // Naming only the methods told a release engineer the half of the answer they could already have noticed
+    // (K F-78). Events carry no `retired` — §4.1 defines it for methods only — so there is nothing to filter.
+    const aboveEvents = Object.entries(schema.events ?? {})
+      .filter(([, d]) => (d?.since ?? 1) > bridge)
+      .map(([n]) => n);
+    if (above.length || aboveEvents.length) {
+      const counts = [];
+      if (above.length) counts.push(`${above.length} method${above.length > 1 ? 's' : ''}`);
+      if (aboveEvents.length) counts.push(`${aboveEvents.length} event${aboveEvents.length > 1 ? 's' : ''}`);
+      const names = [
+        ...above.map((n) => `${n} (throws E_UNSUPPORTED)`),
+        ...aboveEvents.map((n) => `${n} (never emitted)`),
+      ];
       warnings.push(
-        `requires.bridge is pinned to ${bridge}, below the schema version ${schema.version}, so ${above.length} method${above.length > 1 ? 's' : ''} need a newer host than this bundle asks for: ${above.join(', ')}. Every call to them must be behind has(), or it throws E_UNSUPPORTED on an older host and the feature is simply dead there.`,
+        `requires.bridge is pinned to ${bridge}, below the schema version ${schema.version}, so ${counts.join(' and ')} need${above.length + aboveEvents.length > 1 ? '' : 's'} a newer host than this bundle asks for: ${names.join(', ')}. Gate every one of them on has(): an ungated call throws E_UNSUPPORTED on an older host, and an ungated subscription waits for an event that never arrives, which is the failure you are least likely to notice.`,
       );
     }
   }

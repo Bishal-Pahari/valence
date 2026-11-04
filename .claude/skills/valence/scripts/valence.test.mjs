@@ -796,6 +796,25 @@ test('OTA defaults to the store bridge while explicit and built-in builds can re
   assert.equal(pinned.manifest.requires.bridge, 4);
   assert.ok(!bridgeWarn(pinned).some((w) => w.includes('above the bridge version')));
   assert.match(bridgeWarn(pinned).join('\n'), /pinned to 4.*share\.image.*has\(\)/s);
+  // One method on its own reads as one method: "1 method need … Every call to them" was wrong twice (K F-78).
+  assert.match(bridgeWarn(pinned).join('\n'), /so 1 method needs a newer host/);
+
+  // An event added in the same version needs the newer host exactly as much, and fails differently: an older
+  // host emits nothing, so the subscription waits for ever rather than throwing. Naming only the methods left
+  // the quieter half of the release unwarned (K F-78).
+  editSchema(root, (s) => { s.events['share.done'] = { since: 5, payload: { ok: 'bool' } }; });
+  const withEvent = bridgeWarn(bundle({ root, cfg, key, requiresBridge: 4, now: NOW })).join('\n');
+  assert.match(withEvent, /so 1 method and 1 event need a newer host/);
+  assert.match(withEvent, /share\.image \(throws E_UNSUPPORTED\), share\.done \(never emitted\)/);
+
+  // An event on its own still warns. Before the fix this bundle was silent, which is the case the finding hit.
+  editSchema(root, (s) => { delete s.methods['share.image']; });
+  const eventOnly = bridgeWarn(bundle({ root, cfg, key, requiresBridge: 4, now: NOW })).join('\n');
+  assert.match(eventOnly, /so 1 event needs a newer host than this bundle asks for: share\.done \(never emitted\)/);
+  editSchema(root, (s) => {
+    s.methods['share.image'] = { since: 5, params: { png: 'string' }, returns: 'bool' };
+    delete s.events['share.done'];
+  });
 
   // A store build is allowed to raise it — that build *is* the new floor — and so a fresh project has nothing to say.
   assert.deepEqual(bridgeWarn(bundle({ root, cfg, key, store: true, now: NOW })), []);
