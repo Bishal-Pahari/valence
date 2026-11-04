@@ -73,9 +73,23 @@ That is what makes it reportable; include these lines, `dumpsys activity
 exit-info` and the PID.
 
 One line per refusal, not per retry, so the account-switch wait and the update
-check's five-second wait do not fill the log. No lease deadline or takeover rule
-changed: a lease past its expiry, dated in the future, or left by a process that
-is gone is taken over as before, each with its own line.
+check's five-second wait do not fill the log. The take and release lines come from
+the lease primitives, so the paths that acquire without a full run — step 7's pull,
+the GC's pair step, the account switch — are bracketed too.
+
+No lease deadline or takeover rule changed. A lease past its expiry, dated in the
+future, or left by a process that is gone is taken over as before, and **each of
+the three now says which it was**:
+
+```
+sync: taking over a lease (kind=background, written 183001ms ago): past its 2-minute expiry
+```
+
+One thing to know about a `heldForMs` above 120000 on a release line: the lease
+had already expired and may have been taken over mid-run, and the release deletes
+the row unconditionally — so it clears the new holder's lease out from under it.
+That is pre-existing behaviour, not new here, and this number is the first thing
+that makes it visible.
 
 ## A WebView eviction writes no host line, and that is the signature
 

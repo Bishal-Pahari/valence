@@ -1312,11 +1312,13 @@ final class Valence {
     // Traced on the way out as well as inside `run`: a WorkManager cancellation tears the isolate down
     // with no `finally` to run, so "entered" with no "left" is what a lease this run failed to release
     // looks like in the log — which is the evidence C F-44 spent four iterations unable to produce.
-    log('sync: background isolate entered kind=${kind.name} pid=$pid');
+    diagnosticLog(log, 'sync: background isolate entered kind=${kind.name} pid=$pid');
     try {
       return await sync.run(readSchemas: config.dataSchemas);
     } finally {
-      log('sync: background isolate left kind=${kind.name} pid=$pid');
+      // Observational, so a throwing sink cannot turn a completed background sync into a WorkManager
+      // FAILURE — and cannot be the reason the lease it is tracing goes unreleased.
+      diagnosticLog(log, 'sync: background isolate left kind=${kind.name} pid=$pid');
     }
   }
 

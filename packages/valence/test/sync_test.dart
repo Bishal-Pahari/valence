@@ -253,7 +253,73 @@ void main() {
             log: ran, clock: () => now);
         await s.run(readSchemas: {'plants': 1});
         expect(ran.has('took the lease kind=foreground'), isTrue);
-        expect(ran.has('released the lease kind=foreground'), isTrue);
+        // heldForMs, not just the line: the docs tell an operator to judge a suspected leak by this
+        // number, and an unset take-time would print an epoch-sized one with the test still green.
+        expect(ran.has('released the lease kind=foreground heldForMs=0'), isTrue);
+      });
+
+      test('the pair covers the three paths that take the lease outside run()', () async {
+        // Step 7's pull, the GC's pair step and the account switch all acquire directly. Without the
+        // lines here, F-44's own case — a reconnect whose update check holds the lease across several
+        // pairs' downloads — gives a page twenty holder= lines with nothing to pair them against.
+        var now = DateTime(2026, 11, 4, 9);
+        final log = LogSpy();
+        final s = syncWith(MockClient((_) async => http.Response('{}', 200)),
+            log: log, clock: () => now);
+        expect(await s.acquireLease(), isTrue);
+        expect(log.has('took the lease kind=foreground'), isTrue);
+        now = now.add(const Duration(milliseconds: 2500));
+        await s.releaseLease();
+        expect(log.has('released the lease kind=foreground heldForMs=2500'), isTrue);
+        // A release by a driver that never took it says nothing, rather than claiming a 56-year hold:
+        // the account switch releases unconditionally.
+        final naive = LogSpy();
+        await syncWith(MockClient((_) async => http.Response('{}', 200)), log: naive).releaseLease();
+        expect(naive.has('released the lease'), isFalse);
+      });
+
+      test('every displaced row is named, not only the one left by another process', () async {
+        // status() reports an expired or future-dated lease free, correctly — so the log is the only
+        // place that can say a row was there, and it used to say nothing for either case.
+        final now = DateTime(2026, 11, 4, 9);
+        final at = now.millisecondsSinceEpoch;
+        for (final (raw, expected) in [
+          ('${at - 180000}:${pid + 1}:background', 'past its 2-minute expiry'),
+          ('${at + 60000}:$pid:foreground', 'dated in the future'),
+          ('${at - 1000}:${pid + 1}:push', 'which is gone'),
+          ('${at - 1000}', 'records no owner'),
+        ]) {
+          await store.hostPrefSet('valence.sync.lease', raw);
+          final log = LogSpy();
+          final s = syncWith(MockClient((_) async => http.Response('{}', 200)),
+              clock: () => now, log: log);
+          expect(await s.acquireLease(), isTrue, reason: raw);
+          expect(log.has(expected), isTrue, reason: raw);
+          await s.releaseLease();
+        }
+        // An empty lease row is not a displaced holder and says nothing.
+        final clean = LogSpy();
+        expect(
+            await syncWith(MockClient((_) async => http.Response('{}', 200)),
+                    clock: () => now, log: clean)
+                .acquireLease(),
+            isTrue);
+        expect(clean.has('taking over a lease'), isFalse);
+      });
+
+      test('a throwing logger cannot leak the lease it is tracing', () async {
+        // The take/release lines are observational. Before they went through diagnosticLog, a host whose
+        // log routed into a not-yet-initialised crash reporter threw between acquisition and the
+        // try/finally — leaving the row on disk, owner == pid, so every sync for two minutes answered
+        // busy. That is the F-44 symptom, reachable from the diagnostic itself.
+        final s = ValenceSync(
+          store: store,
+          config: testConfig(key, dataSchemas: {'plants': 1}),
+          client: MockClient((_) async => http.Response('{"rows":[],"max":0,"more":false}', 200)),
+          log: (_) => throw StateError('the sink is not ready'),
+        );
+        expect((await s.run(readSchemas: {'plants': 1})).reason, ValenceSyncReason.ok);
+        expect(await store.hostPrefGet('valence.sync.lease'), isNull);
       });
     });
 
