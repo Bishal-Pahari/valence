@@ -1,5 +1,57 @@
 # Integration with current packages - 2026-11-04
 
+## November 4: iteration 89 proves one scheduled-ready worker execution
+
+In plain terms: reviewed both findings inventories and newest reports, Kundalini
+18 / App C 89. No eligible must-have or queue refresh remains. Verified that
+both integrations include all 37 current recorded branch tips and packages bases
+03025560651d9df41fe4a7d6d0cc3ff4a12d3b29 /
+62f950ba1d52632b47fdd0e170bc41e18d467ae1. Existing integration gates retain
+their recorded scope and date; this update changes evidence notes only.
+
+The saved artifact audit has 70 passing checks and scoped acceptancePassed=true;
+it was read, not replayed. Retained/rebuilt offline and reconnect passed. Saved
+Settings outcome records same PID 5231 and painted=true. This successful attempt
+does not reverse iteration 87's failure or close historical F-36/F-44 findings.
+Initial runner backup-basename errors remain preserved separately: the initial
+restore stopped before extraction, and corrected restore receipts are the basis
+for the current result. Black permission-grant PNG is excluded; native XML and
+typed result carry that assertion.
+
+Independently rehashed archived APKs: release 54711308 bytes, SHA256
+8f5a08475c06c1e4976c4f5506440e1783c1ecaa973e6f1603828305c8db40c7;
+debug 168852021 bytes, SHA256
+904fe733777ac42023cf48b6c8e3e2256869132eae32b4b28b675ac810baa6c7.
+Matched all three worker receipt lines against the raw log: PID 7814 callback
+begin 06:01:47.896, complete 06:01:49.244, native SUCCESS 06:01:49.256.
+The early forced request was explicitly deferred by WorkManager, with no callback.
+A later scheduler snapshot reported Ready:true and elapsed earliest timing, then
+a second explicit jobscheduler -f request preceded success. That supports one
+explicitly triggered registered execution after timing readiness, not natural
+execution or periodic cadence. Saved stable SQLite receipts report outbox 2 and
+incoming fixture absent before isolation, exact outgoing/incoming effects and
+outbox 0 before foreground. Independently hashed both raw activation files:
+1092 bytes, SHA256
+11518da1547fd58a54d4029527da894cf2a76f4489b97f216c7b90afc02d34c5.
+They are byte-identical: current 1793750802, pending 1793750811, no trial.
+Final commitment of 1793750811, retained original data/photo and cleanup are saved
+receipts, not live device verification here. Saved doctor reports 14 PASS /
+10 WARN / 0 FAIL; not rerun here.
+
+Eleven fetched docs pages and npm tarballs still match iteration 88, so adoption
+of the integrated F-45 correction remains unverified. Retain F-41/F-43/F-45
+qualifications and Kundalini F-72/F-73/F-74 adoption limits. Read-only retained
+footprint 497200 KiB / 4907 files measures history, not a leak or growth rate.
+
+Decision: preserve security, users' data and the frozen implementation; no lease
+weakening, discarded writes or late native recovery shim on unproven causation.
+S1 stays deliberately parked; S2 needs a Play account. No fresh full gates,
+emulator acceptance or runtime security review claimed. iOS remains experimental
+and untested. Sources: read-only app findings, ITERATION_18_REPORT.md,
+ITERATION_89_REPORT.md and app-c/evidence/iteration-89/. No test-app writes,
+protected-branch changes, schema/version changes, push or publication. Roadmap
+status cells are unchanged.
+
 ## November 4: iteration 88 distinguishes transport interruption from app survival
 
 In plain terms: reviewed both findings inventories and newest reports, Kundalini
