@@ -151,6 +151,11 @@ test('both doctor entry points exit nonzero with a fix for a broken mechanical s
     assert.equal(result.status, 1);
     assert.match(result.stdout, /database directory/);
     assert.match(result.stdout, /Fix:/);
+    // C F-43: both entry points narrate themselves on stderr while they run, so a doctor killed by a
+    // CI timeout still names the check it was on — and stdout stays the document/table it already was.
+    assert.match(result.stderr, /doctor: running database directory/);
+    assert.ok(result.stderr.split('\n').some((l) => l.startsWith('doctor: FAIL database directory (') && l.includes(' ms) host.database must be a plain file name')), result.stderr);
+    assert.doesNotMatch(result.stdout, /doctor: running /);
   }
 });
 

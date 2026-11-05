@@ -1834,12 +1834,27 @@ export function codegen({ root, cfg, check = false }) {
 
 // ---------- CLI ----------
 
+// Every child command `doctor` spawns is bounded by this, and the number appears in the message a
+// timeout produces, so a developer reading the row knows what it means instead of guessing at a hang.
+const CHILD_TIMEOUT_MS = 180_000;
+
+// `spawnSync`'s own timeout reports `ETIMEDOUT` with a null status and no output, which read exactly like
+// a command that ran and failed. So a `flutter test` killed at 180 s was indistinguishable from a test
+// that asserted and failed, and app-c spent an iteration hunting a mapped bridge-test failure that never
+// happened (C F-43). Classify it, and say in the row that nothing asserted.
+const killedByTimeout = (r) => r.error?.code === 'ETIMEDOUT';
+const timeoutError = (what, fix) => {
+  const e = new Error(`${what} was killed by its own ${CHILD_TIMEOUT_MS / 1000}s timeout; no assertion ran, so this says nothing about whether the app is correct`);
+  e.fix = fix;
+  return e;
+};
+
 // Mechanical evidence only. A declaration or a passing unit test cannot establish device behavior.
 function runFlutter(args, cwd) {
   // Windows Flutter is a .bat entry point. Only fixed flags and the validated relative test paths reach
   // this command string; reject shell syntax here too, so adding another caller cannot widen it.
   if (args.some((arg) => !/^[A-Za-z0-9_./-]+$/.test(arg))) throw new Error('unsafe Flutter argument');
-  const options = { cwd, encoding: 'utf8', timeout: 180_000 };
+  const options = { cwd, encoding: 'utf8', timeout: CHILD_TIMEOUT_MS };
   if (process.platform !== 'win32') return spawnSync('flutter', args, options);
   if (spawnSync('where.exe', ['flutter.bat'], { encoding: 'utf8' }).status !== 0) {
     return { error: { code: 'ENOENT' } };
@@ -1847,7 +1862,7 @@ function runFlutter(args, cwd) {
   return spawnSync('cmd.exe', ['/d', '/c', `flutter ${args.join(' ')}`], options);
 }
 
-export async function diagnose({ root, cfg, tests = false, run = runFlutter, keyDir = join(homedir(), '.valence', 'keys'), git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' }) }) {
+export async function diagnose({ root, cfg, tests = false, run = runFlutter, keyDir = join(homedir(), '.valence', 'keys'), git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8', timeout: CHILD_TIMEOUT_MS }), onPhase = () => {} }) {
   const rows = [];
   const fixes = {
     'generated code': 'run valence codegen; restore incompatible shipped schema changes before regenerating',
@@ -1861,14 +1876,28 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
   // A string is a warning; `{ msg }` is a passing row that still has something to report, the same shape
   // the wizard's own checks use. Without it a row whose whole job is to publish a number would have to
   // warn for ever to be seen, which is the failure mode F-64 names: a permanent warning stops being read.
+  // C F-43: a wrapper that killed `doctor --tests` on its own 300-second timeout got nothing at all — no
+  // completed rows, and no name for the check that was still running, so the timeout could not even be
+  // attributed to a phase. Every boundary and duration is therefore streamed as it happens, through
+  // `onPhase`, while the returned table keeps the `[status, name, detail]` shape the tests and every
+  // wrapper already read by index. The fourth element is the elapsed milliseconds, so the slow check is
+  // named in the saved artifact too, and not only in a terminal somebody happened to be watching.
   const check = async (name, fn, fix = fixes[name] ?? 'correct the mapped test path or failing test, then rerun valence doctor --tests') => {
+    onPhase(`running ${name}`);
+    const started = Date.now();
+    let row;
     try {
       const r = await fn();
       const warning = typeof r === 'object' && r !== null ? r.warn : r;
-      rows.push([warning ? 'WARN' : 'PASS', name, warning ?? (typeof r === 'object' && r !== null ? r.msg : undefined) ?? 'verified']);
+      row = [warning ? 'WARN' : 'PASS', name, warning ?? (typeof r === 'object' && r !== null ? r.msg : undefined) ?? 'verified'];
     } catch (e) {
-      rows.push(['FAIL', name, `${e.message.split('\n')[0]} | Fix: ${fix}`]);
+      // A killed child command carries its own `fix`, because "correct the failing test" is the wrong
+      // advice — and the expensive kind of wrong — for a command stopped before it asserted anything.
+      row = ['FAIL', name, `${e.message.split('\n')[0]} | Fix: ${e.fix ?? fix}`];
     }
+    row.push(Date.now() - started);
+    rows.push(row);
+    onPhase(`${row[0]} ${name} (${row[3]} ms) ${row[2]}`);
   };
   const p = paths(root, cfg);
   const host = resolve(root, cfg.host.dir);
@@ -2118,9 +2147,14 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
     if (insideGit(keyDir)) throw new Error('configured signing-key directory resolves inside a Git work tree');
     const repo = git(['rev-parse', '--show-toplevel']);
     if (repo.error?.code === 'ENOENT') return 'Git unavailable; private-key scan not run';
+    if (killedByTimeout(repo)) throw timeoutError('git rev-parse --show-toplevel', 'check that Git is responsive in this directory, then rerun doctor');
     if (repo.error || repo.status !== 0) return 'not a Git work tree; private-key scan not run';
     // -l returns names only: never include matching lines or subprocess stderr in diagnostic output.
     const result = git(['-C', repo.stdout.trim(), 'grep', '--untracked', '-a', '-l', '-E', '-e', '-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY-----', '--', '.']);
+    // This walks every tracked and non-ignored file, so it is the check that grows with the checkout
+    // rather than with the app, and it is bounded like the Flutter commands are. A scan that could not
+    // finish must never read as "no key found": it stays a FAIL that says what did not happen.
+    if (killedByTimeout(result)) throw timeoutError('the Git private-key scan', 'rerun in a smaller checkout, or scan for PEM headers separately before shipping; a scan that did not finish is not a clean result');
     if (result.error || ![0, 1].includes(result.status)) throw new Error('Git private-key scan failed');
     if (result.status === 0) throw new Error('PEM private key found in tracked or non-ignored files (contents withheld)');
   }, 'move signing keys outside Git, remove exposed files from the index and rotate exposed keys; audit history separately');
@@ -2220,6 +2254,7 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
     if (!existsSync(join(host, 'pubspec.lock'))) return 'pubspec.lock missing; run flutter pub get before checking resolved dependencies';
     const r = run(['pub', 'deps', '--json'], host);
     if (r.error?.code === 'ENOENT') return 'Flutter unavailable; dependency resolution not checked';
+    if (killedByTimeout(r)) throw timeoutError('flutter pub deps --json', 'run flutter pub get in the host and rerun; a cold pub cache or a second concurrent Flutter command is the usual cause');
     if (r.error || r.status !== 0) throw new Error('flutter pub deps --json failed; run flutter pub get in the host');
     const deps = JSON.parse(r.stdout).packages;
     if (!Array.isArray(deps) || !deps.some((d) => d.name === 'valence')) throw new Error('resolved host does not depend on valence');
@@ -2255,6 +2290,7 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
       if (!tests) return 'mapped but not executed; pass --tests';
       const r = run(['test', ...files], host);
       if (r.error?.code === 'ENOENT') return 'Flutter unavailable; tests not run';
+      if (killedByTimeout(r)) throw timeoutError(`flutter test for ${id}`, `run "flutter test ${files.join(' ')}" in host.dir yourself; doctor runs one Flutter command at a time and a second concurrent run is the usual cause`);
       if (r.error || r.status !== 0) throw new Error(`flutter test failed for ${id}`);
     });
   }
@@ -2366,6 +2402,7 @@ const HELP = `Valence CLI ${VALENCE_VERSION} (spec: references/contracts.md)
                                     --files is the content-addressed files/ directory inside the bundle, not the bundle directory
   valence seed --from dir                <bucket>.json files {schema, rows:[{k,v,u,d}]} -> host assets/valence/seed.db
   valence doctor [--tests]               mechanical diagnostics; execute mapped unit tests with --tests
+                                    each check's name and duration streams to stderr as it runs; stdout is the JSON table
   valence assetlinks --package id --fingerprints SHA256,... --out public-dir
   valence aasa --app-id TEAMID.bundle.id --out public-dir
 
@@ -2466,7 +2503,10 @@ export async function main(argv) {
     return log({ out: r.out, counts: r.counts });
   }
   if (cmd === 'doctor') {
-    const rows = await diagnose({ root, cfg, tests: v.tests });
+    // stderr, not stdout: stdout stays exactly one JSON document for the wrappers that parse it, and a
+    // wrapper that kills doctor on its own timeout still has every completed check and the name of the
+    // one that was running (C F-43).
+    const rows = await diagnose({ root, cfg, tests: v.tests, onPhase: (line) => console.error(`doctor: ${line}`) });
     log(rows);
     if (rows.some(([s]) => s === 'FAIL')) process.exitCode = 1;
     return rows;

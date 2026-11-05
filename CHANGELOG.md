@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased: `doctor` says what it is doing, and a killed command is no longer a failing test
+
+`valence doctor` wrote nothing at all until every check had finished, so a run stopped by a CI
+timeout left no completed checks and no clue which check it was on. Each check now streams
+`running <name>` before it starts and `<status> <name> (<ms> ms) <detail>` when it finishes — on
+**stderr**, so stdout stays exactly one JSON document you can pipe into `jq` — and every row in that
+document carries its own elapsed milliseconds. If you wrap doctor in CI, keep the stderr capture: a
+trailing `running <name>` with no result after it is the check that was still going.
+
+A child command killed by its own 180-second bound used to produce the same row as a command that ran
+and failed, so a `flutter test` that was stopped mid-run read as a failing mapped test. It now says it
+was killed, names the bound, states that **no assertion ran**, and tells you to run the command
+yourself instead of "correct the failing test". The same applies to `flutter pub deps --json` and to
+the Git private-key scan — which walks every tracked and non-ignored file and so is the check that
+grows with your repository rather than your app, and which must never read as "no key found" when it
+did not finish. Those rows are still `FAIL` and still exit nonzero, because doctor could not establish
+what the row claims.
+
+**Nothing for an adopter to change.** If you parse doctor's JSON by index, the rows are still
+`[status, name, detail]` with the milliseconds appended as a fourth element. `--tests` in a large
+checkout costs the sum of the bounds, not one of them, so budget for it; and do not run a second
+Flutter command in the same checkout while doctor is running, which is the usual reason a bound is
+reached at all.
+
 ## Unreleased: a ready() cannot commit a bundle that never rendered
 
 Two ways that was reachable, found in the same day's review of the fix below.

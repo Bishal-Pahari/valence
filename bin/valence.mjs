@@ -527,13 +527,22 @@ function update(o) {
 export async function doctor(o) {
   const root = resolve(o.root);
   const rows = [];
+  // Both entry points narrate themselves on stderr, so stdout stays the table a person reads and a run
+  // killed by a CI timeout still names the check it was on (C F-43). This one's own checks are fast; the
+  // slow ones are in `diagnose`, which gets the same callback below.
+  const onPhase = (line) => console.error(`doctor: ${line}`);
   const check = (name, fn) => {
+    onPhase(`running ${name}`);
+    const started = Date.now();
+    let row;
     try {
       const r = fn() ?? {};
-      rows.push([r.warn ? 'WARN' : 'PASS', name, r.warn ?? r.msg ?? '']);
+      row = [r.warn ? 'WARN' : 'PASS', name, r.warn ?? r.msg ?? ''];
     } catch (e) {
-      rows.push(['FAIL', name, e.message.split('\n')[0]]);
+      row = ['FAIL', name, e.message.split('\n')[0]];
     }
+    rows.push(row);
+    onPhase(`${row[0]} ${name} (${Date.now() - started} ms) ${row[2]}`);
   };
   let cfg;
   check('config', () => {
@@ -569,7 +578,7 @@ export async function doctor(o) {
       if (missing.length) throw new Error(`missing: ${missing.join(' | ')} (${NPX} update adds them)`);
     });
   }
-  if (cfg) rows.push(...await diagnose({ root, cfg, tests: o.tests, keyDir: o.keyDir }));
+  if (cfg) rows.push(...await diagnose({ root, cfg, tests: o.tests, keyDir: o.keyDir, onPhase }));
   for (const row of rows) {
     if (row[0] === 'FAIL' && !row[2].includes('Fix:')) row[2] += ' | Fix: correct the reported input, then rerun valence doctor';
   }

@@ -348,7 +348,17 @@ not on disk, which is what a fresh clone or a CI release pipeline looks like. A 
 file is gone names the mapping and the prune, since a retirement is what usually deletes it. Git scanning excludes ignored files
 and history; unavailable Git is WARN. Rotate exposed keys and audit history separately.
 
-Run `node valence/valence.mjs doctor --tests` before the manual audit. Report every WARN separately: missing stack/baseline, current seed pairs, dependency resolution, native-value declarations, an intent filter `links.origins` does not declare, and unexecuted section 8 mappings. `.valence/test-matrix.json` maps `bridge`, `loopback`, `updater`, `store-sync`, `integration` to host-relative test files. The package owns its invariants; map app wiring and device evidence rather than duplicating the runtime suite.
+Run `node valence/valence.mjs doctor --tests` before the manual audit, and **keep its stderr**: each
+check prints `running <name>` before it starts and `<status> <name> (<ms> ms) <detail>` when it
+finishes there, while stdout stays one JSON document whose rows each end with their elapsed
+milliseconds. If a wrapper or a session timeout kills the run, the trailing `running <name>` with no
+result after it is the only thing that names the check that was still going, and stdout is empty.
+Every child command is bounded at 180 s — one `flutter test` per mapped layer, `flutter pub deps
+--json`, and the whole-checkout Git private-key scan — so `--tests` costs the sum of those bounds in a
+large checkout. **A timeout row is not a failing test and must not be reported as one:** it names the
+bound and says no assertion ran, and a private-key scan that did not finish is never a clean scan. Do
+not run a second Flutter command concurrently; doctor runs one at a time, and a concurrent run is the
+usual reason a bound is reached (C F-43). Report every WARN separately: missing stack/baseline, current seed pairs, dependency resolution, native-value declarations, an intent filter `links.origins` does not declare, and unexecuted section 8 mappings. `.valence/test-matrix.json` maps `bridge`, `loopback`, `updater`, `store-sync`, `integration` to host-relative test files. The package owns its invariants; map app wiring and device evidence rather than duplicating the runtime suite.
 
 For batch reads, use `data.getMany` (since 3, max 500 keys). Read outbox depth from `sync.status`, including deletes; its offline flag is the last attempt, not connectivity. From revision 20, `sync.status` also names the holder of the sync lease (`leaseKind`) and its age (`leaseAgeMs`), both null when a run starting now would not be refused, so a `busy` can be reported rather than only observed; the host log carries the same facts, and a `took the lease` with no `released` is a lease a torn-down background isolate never gave back. `SyncResult.pending` can be absent on older hosts. Set `ota.channel` before codegen; bundles are channel-neutral. OTA bridge defaults to the recorded store baseline; guard newer calls. Declare older seed schemas under `seedSchemas` and use versioned filenames. Test doubles can opt into `BridgeHandlersDefaults`; production hosts extend `ValenceBuiltins`.
 

@@ -1075,6 +1075,63 @@ test('codegen requires event-only plugin namespaces without adding wire methods'
   assert.match(dart, /requiredNamespaces: hostPluginNamespaces, requiredMethods: hostPluginMethods/);
 });
 
+// C F-43 (ledger I-122). App-c's 25,962-file checkout had `doctor --tests` killed by a 300-second
+// wrapper timeout: stdout was empty, so not one completed check survived and nothing named the check
+// that was still running. The run before it reported a FAIL for the mapped bridge test while the same
+// suite passed standalone — because a `flutter test` killed at its own 180-second bound and a
+// `flutter test` whose assertion failed produced the identical row.
+test('doctor streams named check boundaries with durations, and reports a killed child command as a timeout rather than a failing test', async () => {
+  const { root, cfg } = fixture({ latest: true });
+  codegen({ root, cfg });
+  mkdirSync(join(root, '.valence'), { recursive: true });
+  mkdirSync(join(root, cfg.host.dir, 'test'), { recursive: true });
+  writeFileSync(join(root, cfg.host.dir, 'test', 'wiring_test.dart'), 'void main() {}');
+  writeFileSync(join(root, '.valence', 'test-matrix.json'), JSON.stringify({ bridge: ['test/wiring_test.dart'] }));
+
+  // Every row carries its elapsed milliseconds as a fourth element, so the slow check is named in the
+  // saved JSON artifact and not only in a terminal somebody was watching.
+  const phases = [];
+  const rows = await diagnose({ root, cfg, onPhase: (line) => phases.push(line) });
+  for (const row of rows) {
+    assert.equal(row.length, 4, row[1]);
+    assert.ok(Number.isInteger(row[3]) && row[3] >= 0, row[1]);
+  }
+  // A boundary on both sides of every check, in order, so a kill mid-check leaves the running check's
+  // name as the last line of the stream. `running X` with no matching result is the attribution.
+  assert.deepEqual(phases.filter((l) => l.startsWith('running ')), rows.map(([, name]) => `running ${name}`));
+  for (const [status, name, , ms] of rows) {
+    const at = phases.indexOf(`running ${name}`);
+    assert.ok(at >= 0, name);
+    assert.equal(phases[at + 1].startsWith(`${status} ${name} (${ms} ms) `), true, name);
+  }
+
+  // The two readings that were indistinguishable. A failing assertion still says the test failed...
+  const failed = (await diagnose({ root, cfg, tests: true, run: () => ({ status: 1 }) })).find(([, n]) => n === '§8 bridge');
+  assert.equal(failed[0], 'FAIL');
+  assert.match(failed[2], /flutter test failed for bridge/);
+  assert.doesNotMatch(failed[2], /timeout/);
+  // ...and a command killed by its own bound says so, names the bound, refuses to claim anything about
+  // the app, and carries a fix that is not "correct the failing test".
+  const timedOut = (await diagnose({ root, cfg, tests: true, run: () => ({ status: null, signal: 'SIGTERM', error: { code: 'ETIMEDOUT' } }) })).find(([, n]) => n === '§8 bridge');
+  assert.equal(timedOut[0], 'FAIL');
+  assert.match(timedOut[2], /flutter test for bridge was killed by its own 180s timeout; no assertion ran/);
+  assert.doesNotMatch(timedOut[2], /flutter test failed/);
+  assert.ok(timedOut[2].includes('Fix: run "flutter test test/wiring_test.dart" in host.dir yourself'), timedOut[2]);
+  assert.doesNotMatch(timedOut[2], /correct the mapped test path or failing test/);
+  // `flutter pub deps --json` is bounded by the same number and was misreported the same way. It only
+  // spawns once a resolved host is there to ask about.
+  writeFileSync(join(root, cfg.host.dir, 'pubspec.yaml'), 'name: host\n');
+  writeFileSync(join(root, cfg.host.dir, 'pubspec.lock'), 'packages:\n');
+  const deps = (await diagnose({ root, cfg, run: () => ({ status: null, signal: 'SIGTERM', error: { code: 'ETIMEDOUT' } }) })).find(([, n]) => n === 'Flutter dependencies');
+  assert.equal(deps[0], 'FAIL');
+  assert.match(deps[2], /flutter pub deps --json was killed by its own 180s timeout; no assertion ran/);
+  // The private-key scan walks the whole checkout, so it grows with the repository rather than with the
+  // app — and a scan that could not finish must never be readable as "no key found".
+  const scan = (await diagnose({ root, cfg, git: (args) => (args[0] === 'rev-parse' ? { status: 0, stdout: `${root}\n` } : { status: null, signal: 'SIGTERM', error: { code: 'ETIMEDOUT' } }) })).find(([, n]) => n === 'signing keys in Git');
+  assert.equal(scan[0], 'FAIL');
+  assert.match(scan[2], /the Git private-key scan was killed by its own 180s timeout/);
+  assert.match(scan[2], /a scan that did not finish is not a clean result/);
+});
 test('doctor reports absent evidence as warnings, compatibility errors as failures and mapped execution honestly', async () => {
   const { root, cfg, key } = fixture({ latest: true });
   codegen({ root, cfg });
