@@ -1,5 +1,65 @@
 # Integration review correction - 2026-11-06
 
+## November 6: iteration 133 evidence review
+
+In plain terms: no eligible must-have or queue refresh remains. Packages bases
+remain code 0fe3391faf2ba25e69ccae3079382be2179be4be and site
+0c468908a7ed412ce13c6b2899efdc50dbd37d6b. Verified all 39 current recorded exact
+feature tips as ancestors of both integrations. Reviewed both findings inventories
+and newest reports: Kundalini 21 and App C 133. S1 stays deliberately parked,
+S2 requires a Play account, and S10 stays deferred.
+
+App C's saved audit passes 97 artifact checks with scoped acceptance=true.
+Settings records same PID 5233 and painted return; explicit postrestore sync is
+ok/pending0. Restore execution records status 0. Initial retained baseline failed
+with UND_ERR_SOCKET during startup; the preserved failure and later successful
+probe are separate attempts, and no Valence cause is established. Retained paint
+observed at 16310ms and first fresh paint observed at 14945ms are separate from
+fresh open completion at 651ms. No exact first-paint latency or cause is proven;
+the inherited fresh-retry filename names the first current bounded observation.
+Current success does not close iteration 129's F-33 or iteration 130's F-36.
+Kundalini F-79/F-80 and historical reliability findings remain open.
+
+Independently rehashed both archived iteration133 APKs: release 54777012 bytes,
+SHA256 995919c40a914cbd0ac14347af09534910757f067d044916e7b594b1068bf830;
+debug 193194989 bytes,
+SHA256 955848d0caf98cc7134c652fd8f88af93ef418d410555edec8c6b3df7cf4bcdf.
+Both match saved delivery receipts. The report records signed builtin 1793921186
+in both APKs; embedded-manifest comparison was not independently rerun.
+Independently compared identical worker-phase activation bytes, SHA256
+f6ca34dd7d1bd676b0dfb9bf21aee5b3660bdb53fa42e0bbb87e5c49fe2a5d9b,
+pending 1793921949, no trial. All seven exact PID8459 callback/lease/native
+SUCCESS lines match raw worker logs and are absent from the pre-worker capture:
+callback begin 05:30:15.880, background entry 05:30:16.008, lease take .046,
+release 05:30:17.043, background exit/callback complete .046, SUCCESS .056.
+The execution receipt records forced=true. Reported scheduler readiness and
+elapsed earliest time preceded the explicit trigger; one execution proves
+neither natural cadence nor cancellation/expiry correctness. Saved SQLite
+effects, retention and final cleanup were read, not independently replayed.
+
+Runner notes preserve an initial preparation-script whitespace failure and its
+corrected rerun, and raw-log whitespace status 2 separately from the passing
+application/tooling/docs check. Doctor records 17 PASS / 10 WARN / 0 FAIL;
+timeout paths remain unexercised. Findings record 800796 KiB / 7872 retained
+files; a history footprint is not evidence of a leak or per-session growth rate.
+
+Decision: security first, then users' data. A passing scoped regression does not
+justify pre-empting a lease, changing transaction ownership or closing historical
+failures. Preserve the frozen runtime. No behavior, schema, package version or
+host migration changes. Only mirrored integration evidence notes and the roadmap
+top note change; item Status cells remain untouched. Earlier November 6 full
+gates retain their recorded scope; no fresh full gates, emulator acceptance or
+independent runtime review is claimed. iOS stays experimental and untested.
+Test apps stayed read-only; no protected-branch commit/merge, push or publication.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_21_REPORT.md};
+valence-test-app-c/{VALENCE_FINDINGS.md,ITERATION_133_REPORT.md}; App C
+evidence/iteration-133/{evidence-audit.json,settings-outcome.json,
+postrestore-outcome.json,restore-execution.json,binary-delivery-state.json,
+background-state-before-raw.json,background-state-after-raw.json,
+worker-execution.json,worker-completion-proof.json,worker-lease-diagnostics.json,
+worker-full-logcat.txt,background-full-log-before.txt,runner-notes.md}.
+
 ## November 6: iteration 132 evidence review
 
 In plain terms: no eligible must-have or queue refresh remains. Packages bases
