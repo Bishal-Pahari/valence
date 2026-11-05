@@ -1,5 +1,80 @@
 # Integration with current packages - 2026-11-05
 
+## November 6: iteration-126 evidence refresh
+
+In plain terms: App C's newest completed report is iteration 126, which began
+November 5 and crossed midnight into November 6. Its saved artifact audit has
+92 passing checks and scoped acceptance=true; Settings returned painted in the
+same PID 5382. Kundalini's newest completed report remains iteration 20. Read
+both findings inventories and newest reports read-only. This successful run
+does not close historical startup, process-loss, task-recovery, retained-file
+or F-44 lease findings.
+
+### Decision and queue
+
+Preserve security, users' data and the frozen candidate. These observations
+establish no new runtime defect; changing lease timing or migrating the database
+without a reproduced cause would risk durable state. Every must-have and the
+original rebase queue are done. S1 stays deliberately parked, S2 requires a Play
+account and S10's cache ceiling remains deferred to 0.5. Kundalini F-78's
+methods/events warning is already implemented in the current CLI and spec.
+
+Packages bases remain code 0ad023ed2861d6754cb1c7e27fdad3b6fed90b5b /
+site 13828ac0a1f05faf5f1e50d3bfbefb454a02b022. Independently checked all 39
+exact recorded feature tips against current branch refs and inclusion in both
+integrations, plus packages ancestry. No integration reconstruction is needed
+on unchanged bases and feature tips.
+
+### Evidence and limits
+
+Independently rehashed the iteration-126 archived APKs against the saved binary
+delivery receipt:
+
+| Artifact | Bytes | SHA256 |
+| --- | --- | --- |
+| release APK | 54711468 | 30f6efa44b49f3d1827194f8fc42fde8ed7a0b67d76ee493f67549eb65783573 |
+| debug APK | 193189904 | ec26c0200cc1970aad945e370c8773cbdbe9f7487a85509a154d39cdb5461e2d |
+
+Both raw worker-phase activation files independently hash to
+d595f928dd7455cc6632cf30a759b6cdede2ee33e13243de164f238837fc8756:
+current 1793902122, pending 1793902131, no trial. Matched all seven saved
+completion and lease-proof lines against raw logcat: PID 9208 callback begin
+00:00:25.706, background isolate entry 00:00:25.859, lease acquisition
+00:00:25.899, release 00:00:26.911, isolate exit/callback completion
+00:00:26.916 and native WorkManager SUCCESS 00:00:26.925, all November 6.
+Saved stable SQLite receipts report outbox 2 and the inbound fixture absent
+before isolation, then bidirectional effects and outbox 0 before foreground
+resume. Readiness and elapsed earliest time preceded an explicit scheduler
+trigger. One such execution proves neither sustained natural cadence nor
+cancelled-isolate cleanup or lease-expiry correctness.
+
+Runner notes preserve raw evidence whitespace status 2 separately from the
+passing application/tooling/docs whitespace check. Retained accessibility paint
+was observed at 16008 ms after two unsuccessful observations; the first current
+bounded fresh observation painted at 14986 ms, while Valence.open completed at
+692 ms. These are separate boundaries, not exact first-paint latency or causal
+evidence. Saved receipts accept a stopped 722049536-byte backup and report
+matching restore transfer hashes, original inspection fields and photo hash
+preserved, fixtures cleaned, airplane off, app and owned mocks stopped.
+Metadata 750196 KiB / 7380 regular files measures retained history, not proof
+of a leak or a growth rate.
+
+Sources: both VALENCE_FINDINGS.md inventories, Kundalini ITERATION_20_REPORT.md,
+App C ITERATION_126_REPORT.md and iteration-126 saved audit, binary delivery,
+Settings outcome, raw activation pair, raw worker logcat/completion/lease proofs,
+stable SQLite receipts, runner notes, backup/restore, retention, cleanup and
+storage metadata. Saved audits were read, not rerun. No fresh emulator or iOS
+acceptance is claimed.
+
+### Validation scope
+
+Only mirrored integration notes change. Checked their equality, all 39 exact
+tips and packages ancestry, unchanged implementation trees since full-gate
+candidates 5289bce / 49dc10a and diff whitespace. Earlier November 5 full gates
+retain their original scope; no fresh full-gate run or runtime/security review
+is claimed. Contracts, runtime, codegen, schemas, package versions and public
+feature pages are unchanged. Roadmap item Status cells remain untouched.
+
 ## November 5: iteration-125 evidence refresh
 
 In plain terms: App C's latest completed report is iteration 125. Its saved
