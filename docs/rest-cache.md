@@ -167,7 +167,9 @@ overlays is one step of a rollback whose other steps are asynchronous, and the f
 page is still able to call the bridge through all of them, so from just before the drop
 until the document *that rollback asked for* starts, `data.cache` answers `E_DENIED`
 and says why. Not the next page load: the failed page can navigate itself, and a
-rollback whose reload fails leaves the cache closed rather than open.
+rollback whose reload fails leaves the cache closed rather than open — and logs
+that it could not serve the replacement, naming the trial and the error, because
+that is the one state neither the page nor a passing glance at the log can see.
 
 Recorded account switch/sign-out clears **all** cached values alongside writable
 rows, and emits `sync.changed` for cache-enabled buckets. A refused `E_PENDING`

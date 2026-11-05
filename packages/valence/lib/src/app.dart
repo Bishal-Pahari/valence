@@ -503,7 +503,17 @@ class _ValenceAppState extends State<ValenceApp>
     await _valence.blockCacheWrites();
     _cacheBlockedBeforeSwap = _swaps;
     await _valence.updater.countFailure();
-    await _reloadCurrent();
+    try {
+      await _reloadCurrent();
+    } on Object catch (e) {
+      // The block stays up, which is the whole point of catching here rather than letting this escape
+      // the timer: the given-up page is still on screen and still dispatching, with no replacement
+      // document coming to release the refusal. Caught so that the one state nobody can see from the
+      // page says so in the log — an unhandled error from a periodic timer names neither the rollback
+      // nor the bundle it could not serve.
+      _log('rollback: serving current after the given-up trial $trial failed: '
+          '$e; the page stays on screen and data.cache stays closed');
+    }
   }
 
   /// Completed bundle swaps, so a page start can be told apart from the one a rollback asked for.

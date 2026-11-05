@@ -961,6 +961,60 @@ void main() {
         reason: 'and the write it attempted mid-rollback never landed');
   });
 
+  testWidgets(
+      'a rollback whose swap throws leaves the cache closed, and the given-up '
+      'page cannot reopen it by navigating itself', (tester) async {
+    await mount(tester, pending: true);
+    final controller = webview.controller;
+    await tester.runAsync(
+        () async => controller.navigation.started(runtime.server!.origin));
+    await tester.runAsync(() => runtime.dataCache('days', 'a', {'n': 1}));
+
+    // Take the swap's target away: `current`'s manifest is gone from disk and the built-in asset is
+    // unreadable, so §2.4 step 4 has nothing left to serve and throws. §5.5.1 says a launch that
+    // throws leaves the cache closed, which is why `_onReadyTimeout` has no `finally`.
+    File('${runtime.dir.path}/manifests/${builtin.seq}.json').deleteSync();
+    messenger.setMockMessageHandler('flutter/assets', (_) async => null);
+
+    await io(tester);
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 1200)));
+    await io(tester);
+    expect(runtime.state.trialFails, 1, reason: '${log.lines}');
+    expect(
+        log.lines.where((l) =>
+            l.contains('rollback: serving current') &&
+            l.contains('data.cache stays closed')),
+        hasLength(1),
+        reason: 'the swap threw and said so: ${log.lines}');
+    expect(controller.loads, hasLength(1),
+        reason: 'a swap that throws loads no page');
+
+    Future<Object?> refused(String key) => tester.runAsync<Object?>(() async {
+          try {
+            await runtime.dataCache('days', key, {'n': 2});
+            return null;
+          } on Object catch (e) {
+            return e;
+          }
+        });
+    final denied = isA<BridgeError>()
+        .having((e) => e.code, 'code', BridgeErrorCode.denied);
+
+    expect(await refused('b'), denied,
+        reason: 'the cache stays closed after a failed swap: ${log.lines}');
+
+    // The given-up page navigates itself -- `location.replace('/login')`, one plausible reason a page
+    // never calls `app.ready()`. That is a page start and it is not the one a swap asked for, so it
+    // must not hand the page this refusal protects against an open cache.
+    await tester.runAsync(
+        () async => controller.navigation.started(runtime.server!.origin));
+    expect(await refused('c'), denied,
+        reason: 'a self-navigation is not the swap\'s own document: '
+            '${log.lines}');
+    expect(await tester.runAsync(() => runtime.dataGet('days', 'b')), isNull);
+    expect(await tester.runAsync(() => runtime.dataGet('days', 'c')), isNull);
+  });
 
   testWidgets('current pages never arm a failure timer or commit a null trial',
       (tester) async {

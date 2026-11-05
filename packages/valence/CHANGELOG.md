@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased: a rollback that cannot serve its replacement logs it
+
+`ValenceApp`'s ready-window timeout drops the trial's cached rows, blocks the given-up page's
+`data.cache` writes and then serves `current`. A failure in that last step — no servable manifest, a
+socket that will not bind — used to escape the periodic timer as an unhandled async error. The host
+now catches it and logs `rollback: serving current after the given-up trial <seq> failed: <error>; the
+page stays on screen and data.cache stays closed`.
+
+Observable behaviour is unchanged: the block stays up, because there is no replacement document to
+release it and the given-up page is still dispatching. §5.5.1 said so already; it now says it in the
+log as well, and `app_widget_test.dart` covers both the failed swap and a self-navigation by the
+given-up page, which must not release the refusal either.
+
 ## Unreleased: a pulled row with a negative usn is refused
 
 `ValenceSync`'s row decoder now requires `u >= 0`, so a pull page or static chunk carrying a negative

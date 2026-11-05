@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased: a rollback that cannot serve its replacement now says so
+
+When a release is given up on after its ready window, the host drops the trial's cached rows, refuses
+the given-up page's `data.cache` writes, and loads `current` in its place. If that last step fails —
+nothing left to serve, a socket it cannot bind — the refusal stays up, which is correct and was already
+the behaviour. What it did not do was tell anyone: the error escaped a periodic timer as an unhandled
+async error, naming neither the rollback nor the trial, and the app sat on the page that had just
+failed with its cache closed and no line in the log. The host now catches it and logs
+`rollback: serving current after the given-up trial <seq> failed: …`, saying that the page stays on
+screen and that `data.cache` stays closed.
+
+**Nothing an app does changes.** The same two writes are refused, the same page stays on screen, and the
+same `E_DENIED` is returned. Two properties that shipped argued from the code now have a test: that the
+refusal is released by the document *that swap* asked for and not by the given-up page navigating itself,
+and that a swap which throws leaves the cache closed.
+
 ## Unreleased: four review findings in the same day's own work
 
 A `valence-reviewer` pass over the four commits above found five things; four were real.
