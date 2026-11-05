@@ -6,6 +6,8 @@ import type { Json, Shim } from '@getvalence/bridge';
 
 export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';
 
+export type { AppLink, ReceivedLink } from '@getvalence/bridge';
+
 export type { Json };
 
 export const BRIDGE_VERSION = 20;

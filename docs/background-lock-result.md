@@ -1,4 +1,4 @@
-# Background lock result correction ? 2026-11-06
+# Background lock result correction - 2026-11-06
 
 In plain terms: keep the packages classifier, and add committed-page accounting
 and explicit work/cleanup error precedence on top. This supersedes the rejected
@@ -54,3 +54,9 @@ painted in PID 5500, and one explicitly triggered ready worker in PID 9090. Thos
 are app-reported evidence, not fresh device validation of this branch. Kundalini
 F-80 contention and historical reliability findings remain open. No emulator
 session or iOS validation; iOS remains experimental and untested.
+
+The final example codegen check also found inherited staleness: packages now
+emits AppLink/ReceivedLink type re-exports that its checked-in example lacked.
+Regenerated that file; only two type-export lines changed. Signed assets,
+schema values and runtime JavaScript stay unchanged. The full native gate
+chain is repeated after this correction; earlier failures remain separate.
