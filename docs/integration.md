@@ -1,5 +1,75 @@
 # Integration review correction - 2026-11-06
 
+## November 6: iteration 129 evidence review
+
+In plain terms: the must-have list and rebase queue are done; there is no eligible
+new item. Both integrations still include all 39 recorded exact feature tips and
+current packages bases 0fe3391faf2ba25e69ccae3079382be2179be4be /
+0c468908a7ed412ce13c6b2899efdc50dbd37d6b. Ancestry was checked this run.
+Kundalini's newest report remains iteration 21. App C iteration 129 changes the
+current reliability verdict: its saved audit passes all 95 artifact checks but
+scoped acceptance is false because F-33 recurred after a retained-data restore.
+This evidence does not invalidate the earlier package gates; it does prevent
+reading those passing gates as unqualified device or beta acceptance.
+
+Matched the current F-33 proof against the raw native log, PID 5037:
+background callback begin 03:14:46.615; bridge E_INTERNAL / no current transaction
+on COMMIT 03:14:46.762; callback complete 03:14:47.310. The foreground lease was
+released at 03:14:46.759; the background-isolate entered diagnostic arrived at
+03:14:46.797 and its lease was taken at 03:14:46.918. Callback overlap is observed;
+these lines do not identify a transaction owner or establish why COMMIT failed.
+Later offline/pending1 and reconnect/ok/pending0 results are recovery evidence,
+not a fix. No lost writes, root cause or safe transaction-handling change is
+established. F-33 stays major/open; F-80 contention and historical reliability
+findings are not closed by this iteration.
+
+Independently rehashed archived iteration129 APKs: release 54777012 bytes,
+SHA256 5cb94d6da3ff4ffaa4b158bfd3332a20625a0bc9c77a57334279eff0a5a0fcc0;
+debug 193194989 bytes,
+SHA256 fb4735391461a724f3d40ca8ecff207245027b4cb4e2d9ebff7aa72b4b51d05d.
+The saved embedded-manifest comparison records builtin 1793913969 in both.
+Independently compared raw worker-phase activation bytes: identical SHA256
+5e5c5c875d55258f974ed1326af7397237a62ce8bb210ab94d8dcaf8c83ab433,
+pending 1793914746 and no trial. Matched PID 8240 callback begin 03:30:00.481,
+background entry .633, lease take .681, release 03:30:01.995, exit .998,
+callback complete .999 and native SUCCESS 03:30:02.008 in the full worker log.
+The begin/complete/SUCCESS lines are absent from the pre-worker full-log capture.
+The worker receipt records forced=true after readiness and elapsed earliest time;
+one explicit execution proves neither natural cadence nor cancellation/expiry
+correctness. Saved SQLite receipts report bidirectional effects and outbox0;
+these were read, not independently replayed. Settings returned painted in the
+same PID 5037 according to its saved receipt; this does not erase F-33 or earlier
+process-loss failures.
+
+Doctor progress proof records all 27 running/completed duration pairs; the saved
+report records 17 PASS / 10 WARN / 0 FAIL. Forced termination and child-timeout
+paths were not exercised. Runner notes preserve the initial missing-checkpoint
+preparation failure before a corrected retry, singular test-label normalization,
+and raw-log whitespace failures separately from successful checks. The first
+local evidence reader assumed UTF-8 for a UTF-16 raw log and stopped; rerunning
+with BOM-aware decoding verified all three F-33 lines and both ancestry checks.
+No failed read is counted as a successful verification.
+
+Decision: security, then users' data. Preserve the frozen candidate and the real
+failure instead of suppressing a non-lock transaction error or weakening lease
+ownership on temporal evidence. No new runtime/spec/schema/version change or
+host migration follows. S1 stays parked, S2 needs a Play account, S10 stays
+explicitly deferred. Item Status cells are unchanged. Only integration evidence
+notes change in the code and site worktrees; public behavior documentation stays
+consistent because behavior is unchanged. Earlier November 6 full gates retain
+their recorded scope; no fresh full gates, emulator or iOS acceptance is claimed.
+iOS remains experimental and untested. Test-app repositories stayed read-only;
+no protected-branch commit/merge, push or publication.
+
+Evidence: read-only valence-test-app-c/ITERATION_129_REPORT.md and
+VALENCE_FINDINGS.md; evidence/iteration-129/{f33-current-proof.json,
+postrestore-transaction-logcat.txt,evidence-audit.json,settings-outcome.json,
+embedded-both-manifests.json,background-state-before-raw.json,
+background-state-after-raw.json,worker-execution.json,worker-completion-proof.json,
+worker-full-logcat.txt,background-full-log-before.txt,doctor-progress-proof.json,
+runner-notes.md}; valence-test-kundalini/VALENCE_FINDINGS.md and
+ITERATION_21_REPORT.md. Saved receipts were inspected, not re-executed.
+
 In plain terms: the two requested improvements are rebuilt on current packages.
 Lease-acquisition locks remain busy; committed pages remain visible after a later
 lock, and cleanup preserves a primary non-lock error and its original stack.
