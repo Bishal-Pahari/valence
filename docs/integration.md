@@ -1,5 +1,81 @@
 # Integration with current packages - 2026-11-05
 
+## November 5: iteration-122 evidence refresh
+
+In plain terms: App C's saved artifact audit passes all 93 checks and records
+scoped acceptance=true. Settings returned painted in the same PID 4870. This
+successful attempt does not reverse iteration 121 or close historical process,
+startup, task-recovery, retained-file or F-44 lease findings. Kundalini's newest
+completed report remains iteration 20. Both findings inventories and both newest
+reports were read without writing to the test apps.
+
+### Decision and queue
+
+Preserve security, users' data and the frozen candidate. No newly attributed
+Valence runtime defect is established by iteration 122. Changing lease timing or
+renderer recovery based on one successful run would add risk without resolving
+the earlier failures. S1 stays parked, S2 needs a Play account and S10's database
+migration remains deferred to 0.5. Every must-have and original rebase-queue item
+is done; no eligible new item exists.
+
+Packages bases remain code `0ad023ed2861d6754cb1c7e27fdad3b6fed90b5b` /
+site `13828ac0a1f05faf5f1e50d3bfbefb454a02b022`. Checked all 39 exact recorded
+feature tips against their current refs and inclusion in both integrations.
+Both packages bases are ancestors too. No integration rebuild is needed while
+these bases and feature tips remain unchanged.
+
+### Evidence and limits
+
+Independently rehashed both archived APKs against binary-delivery-state.json:
+
+| Artifact | Bytes | SHA256 |
+| --- | --- | --- |
+| release APK | 54711468 | 906e1e4e27377aa76dbad625aa79c27e5c0c25eafbfad00b88dfbe4df0cecb2d |
+| debug APK | 193189904 | 757fddd32bc952e8d7a81276aaaa128a8bc3b877a1313b30bddc6a1ccca0aca2 |
+
+Both raw worker-phase activation files independently hash to
+`6989c3d699b627f203d84b0e1b152de9176885da1bae9275e3f263faffc8000f`:
+current 1793895036, pending 1793895045, no trial. Raw PID 7927 logcat records
+callback begin at 22:01:25.605, background isolate entry and lease acquisition,
+release at 22:01:26.643, isolate exit and callback completion at 22:01:26.646,
+then native WorkManager SUCCESS at 22:01:26.655. Saved stable SQLite receipts
+record bidirectional effects and outbox 0 before foreground. The job was
+explicitly triggered after observed readiness and elapsed earliest time.
+This proves one registered execution, neither sustained natural cadence nor
+cancelled-isolate teardown or lease-expiry correctness.
+
+Preserve the runner failures separately: the first stopped backup transfer
+exceeded its 120-second budget and was rejected before data clearing; the
+600-second retry validated and restored a 693983232-byte archive. The first
+signature invocation omitted --manifest and was corrected. Input pruning removed
+rollback.mjs and interrupted orchestration after broken apply; its failed
+receipt/log survive, and a separate continuation restored the canonical runner
+and proved the same trial rollback. None establishes a Valence defect.
+
+Retained-release accessibility initially returned a null root before a later
+16758 ms paint observation. The first bounded fresh attempt painted at 14922 ms,
+with Valence.open complete at 363 ms. These are separate observations, not exact
+startup latency. Saved doctor reports 17 PASS / 10 WARN / 0 FAIL. Retention and
+cleanup receipts report the original inspection/photo preserved and test fixtures
+removed. Current scoped success leaves historical findings open.
+
+Sources: both VALENCE_FINDINGS.md inventories, Kundalini ITERATION_20_REPORT.md,
+App C ITERATION_122_REPORT.md and its evidence/iteration-122/ audit,
+binary-delivery-state, settings-outcome, raw background-state pair,
+worker-full-logcat, worker-completion-proof, worker-lease-diagnostics,
+background-sqlite-before-resume and runner-notes. The saved audit was read,
+not re-executed. No fresh emulator or iOS acceptance.
+
+### Validation scope
+
+This refresh changes only mirrored integration notes. Checked note equality,
+exact-tip ancestry, unchanged implementation trees and diff whitespace.
+The earlier November 5 full-gate results below retain their original scope;
+no fresh full-gate run or runtime/security audit is claimed. Runtime, contracts,
+schema numbers, package versions and public feature documentation are unchanged.
+No protected-branch changes, pushes or publication. Roadmap item Status cells
+remain untouched.
+
 ## November 5: iteration-121 evidence refresh
 
 In plain terms: App C's latest artifact audit passes all 93 checks, but scoped
