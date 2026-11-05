@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased: a pulled row with a negative usn is refused
+
+`ValenceSync`'s row decoder now requires `u >= 0`, so a pull page or static chunk carrying a negative
+update sequence number is undecodable and leaves the run incomplete instead of writing a `kv` row.
+
+The reason is the read union, not the wire: it reports `usn: -2` for a `data.cache` overlay and `-1` for a
+pending write, and those two numbers are the only way a page can tell a local-only row from one the server
+vouched for. A pulled row at `-2` would be a server row indistinguishable from the page's own cache, so a
+retention rule written against §5.5.1 would delete rows it does not own, and native code reading
+provenance from `kv` could not separate them either. The incremental path already refused it through the
+strict-ascending-USN check; the static variant takes `max_usn` from the index rather than from the rows and
+had no such check, so the bound belongs in the decoder where both paths pass through it.
+
+No change for a conforming server: a USN counts from 1.
+
 ## Unreleased: the REST cache has no ceiling, and the package now says so
 
 No behaviour change in this package: `ValenceStore.cache` still caps one encoded value at 65,536 UTF-8

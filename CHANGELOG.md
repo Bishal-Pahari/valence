@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased: four review findings in the same day's own work
+
+A `valence-reviewer` pass over the four commits above found five things; four were real.
+
+- **A pulled row with a negative `usn` is now refused by the row shape** (§5.3). The read union reports
+  `usn: -2` for a cache overlay and `-1` for a pending write, and those two numbers are the only way a
+  page can tell a local-only row from one the server vouched for — so a pulled row at `-2` would be a
+  `kv` row indistinguishable from the page's own cache, and a retention rule written against §5.5.1
+  would delete rows it does not own. The incremental path refused it already, through the
+  ascending-order check; the **static** variant takes `max_usn` from the index rather than from the rows
+  and had no such check. The bound now lives in the decoder, where both paths pass through it. **If you
+  run a sync server, no change: a USN counts from 1 and always did.**
+- **The REST cache guide's prune example used the wrong field name.** It read `row.k`, which is the
+  *sync wire* row of §5.3; the `Row` your bridge returns is `{key, value, usn}`. In TypeScript it did
+  not compile, and in plain JavaScript it pruned nothing and never terminated. Fixed to `row.key`.
+- **"The widget store bounds key count and value length" was not true of anything.** Valence ships no
+  widget store — §6.2 has the *page* build the snapshot — and the sentence was one of four examples
+  supporting "every other store bounds itself". While checking it, the surrounding claim turned out to be
+  an over-claim too: `prefs.set` has no cap either, so the REST cache is **not** the only unbounded
+  store. Both are corrected: the cache is the one where the absence *matters*, because accumulating a row
+  per fetched resource is its normal operating mode, and the stores that are bounded are now named
+  accurately (`state.save` at 65,536 bytes in place of the invented one).
+- **`doctor`'s `REST cache` row cannot FAIL from the CLI**, because an invalid `cache` grant is refused at
+  config load before any row exists. Only a library caller reaches that branch. The §8 row said so as
+  though it were user-visible behaviour, and now says which it is.
+
+The fifth was reported as impossible sample output in the pinned-bridge warning. It is real output: an
+app whose last store build recorded schema 20 declares a built-in reserved at revision 19 as `since: 21`,
+because the rule is `max(reserved, baseline + 1)`. The CLI reference now says so beside the sample.
+
 ## Unreleased: tell a direct host kill apart from a renderer eviction
 
 No behaviour change; a distinction the spec made in a clause now gets its own case, because an app

@@ -369,6 +369,9 @@ void main() {
       '<html>',
       '{"rows":[],"max":0,"more":true}',
       '{"rows":[{"k":"b","v":2,"u":2},{"k":"a","v":1,"u":1}],"max":2,"more":false}',
+      // A negative usn is refused here too, but by the strict-USN-order check rather than by the row
+      // shape, so the case that pins `_validRow`'s bound is the static one below — this path would
+      // still refuse it with the bound removed, and a test that cannot fail is worse than none.
     ]) {
       test('invalid pull page reports failed: $body', () async {
         final sync = syncWith(MockClient((_) async => http.Response(body, 200)));
@@ -773,6 +776,28 @@ void main() {
       });
       expect(await syncWith(r.client, config: staticConfig()).pullPair('plants', 1), 1);
       expect(await store.get('plants', 1, 'a'), 1);
+    });
+
+    test('a chunk row with a negative usn is refused, so no server row can read as a cache row', () async {
+      // The dynamic path refuses this already, for a different reason: it checks strict USN order
+      // against the cursor, and -2 is not above it. A static chunk has no such check — `maxUsnAfter`
+      // comes from the index, not from the rows — so without `_validRow`'s non-negative bound this
+      // page writes a `kv` row at usn -2, which is what §5.5.1 tells a page means "my own cache
+      // overlay". A page pruning by `usn === -2` would then delete a server row, and native code
+      // reading provenance from `kv` could not tell the two apart either.
+      for (final bad in [-1, -2]) {
+        final r = recordingClient((req) async {
+          if (req.url.path.endsWith('index.json')) {
+            return http.Response(jsonEncode([{'from': 1, 'to': 5, 'file': 'c.json'}]), 200);
+          }
+          return http.Response(jsonEncode({'rows': [row('a', 1, bad)], 'max': 5}), 200);
+        });
+        final sync = syncWith(r.client, config: staticConfig());
+        expect((await sync.run(readSchemas: {'plants': 1})).reason, ValenceSyncReason.failed,
+            reason: 'usn $bad must make the run incomplete');
+        expect(await store.get('plants', 1, 'a'), isNull, reason: 'usn $bad must write no row');
+        expect(await store.maxUsn('plants', 1), 0);
+      }
     });
 
     test('an index entry whose file name tries to escape is ignored', () async {

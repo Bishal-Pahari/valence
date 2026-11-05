@@ -744,7 +744,14 @@ final class ValenceSync {
     return token == null || token.isEmpty ? const {} : {'authorization': 'Bearer $token'};
   }
 
-  bool _validRow(Object? r) => r is Map<String, Object?> && r['k'] is String && r['u'] is int;
+  /// §5.3's row shape. **`u` must be non-negative**, which strict decoding owes §5.5.1: the union gives
+  /// cache rows `usn: -2` and a pending write `-1`, and those two numbers are the only way a page can
+  /// tell a local-only overlay from a row the server vouched for. A pull that accepted `u: -2` would
+  /// write a `kv` row no `data.list` reader could distinguish from its own cache — so a server could make
+  /// its rows read as page-supplied, or make a page's retention logic delete rows it does not own. A
+  /// server USN counts up from 1; a negative one is malformed, and it would also corrupt `max_usn`.
+  bool _validRow(Object? r) =>
+      r is Map<String, Object?> && r['k'] is String && r['u'] is int && (r['u'] as int) >= 0;
 
   ({List<Map<String, Object?>> rows, int max, bool more})? _decodePage(String body,
       {bool requireMore = true}) {

@@ -2148,12 +2148,11 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
     const cap = validateHttpMaxBodyBytes(cfg);
     return { msg: `${cap} decompressed response bytes; request bodies stay at 65536; escaped JSON reply including headers must fit the separate 262144-byte bridge envelope` };
   }, 'set http.maxBodyBytes to an integer 1..262144, regenerate and ship a store build; paginate responses that exceed the body or escaped reply limit');
-  // §5.5.1 caps one value and nothing else: no row count, no total bytes, no eviction. Every other store
-  // in the system bounds itself — `notify.schedule` at 64 pending, the widget store by key count and
-  // value length, `http.request` by three separate caps with the row above reporting one of them — so the
-  // one a page writes to most often is the exception, and the half-sentence that delegates retention to
-  // the page is easy to read past (K F-77). This row cannot add a ceiling; it makes the decision visible
-  // at release time, which is when somebody can still write the prune.
+  // §5.5.1 caps one value and nothing else: no row count, no total bytes, no eviction. `prefs.set` is
+  // unbounded too, but it holds a handful of settings — the cache exists to accumulate a row per fetched
+  // resource, so growing without limit is its normal operating mode, and the half-sentence that delegates
+  // retention to the page is easy to read past (K F-77). This row cannot add a ceiling; it makes the
+  // decision visible at release time, which is when somebody can still write the prune.
   await check('REST cache', () => {
     validateCacheBuckets(cfg);
     const granted = cfg.cache ?? [];

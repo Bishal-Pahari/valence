@@ -70,12 +70,14 @@ cached bytes, no TTL, no eviction. A page with a grant can fill the device one v
 user's only remedy then is clearing app data — which also destroys their synced rows and anything they
 have written but not yet pushed.
 
-This is the one store in Valence shaped that way, which is exactly why it is easy to miss. A read-only
-bucket cannot grow on the device without a server row. `notify.schedule` caps pending reminders at 64 and
-tells you when it refuses. The widget store bounds key count and value length and names the key it
-refused. `http.request` caps the request body, the response body and the headers separately. Only the
-REST cache — the store you write to most often, because caching an API is its whole purpose — is
-unbounded.
+It is not the only unbounded store — `prefs.set` has no cap either — but it is the one where the absence
+matters, and that is why it is easy to miss. `prefs` holds a handful of settings; the cache exists to
+accumulate a row per fetched resource, so growing without limit is its normal operating mode rather than
+a misuse of it. Everything here whose growth *is* bounded is bounded visibly: a read-only bucket cannot
+grow on the device without a server row, `notify.schedule` caps pending reminders at 64 and tells you when
+it refuses, `state.save` refuses a blob over 65,536 UTF-8 bytes, and `http.request` caps the request body,
+the response body and the headers separately. The store you write to most often, because caching an API is
+its whole purpose, is the one with no ceiling.
 
 The retention rule has to stay yours: only your page knows which keys are worth keeping. So write it with
 your first `data.cache` call rather than after a support ticket. The shape that works is a prune at the
@@ -90,11 +92,11 @@ async function pruneDays(reachable: Set<string>) {
     if (!rows.length) return;
     for (const row of rows) {
       // usn -2 is a cache overlay; -1 is an unsent user write; anything else came from the server.
-      if (row.usn === -2 && !reachable.has(row.k)) {
-        await call('data.cache', { bucket: 'days', key: row.k, value: null });
+      if (row.usn === -2 && !reachable.has(row.key)) {
+        await call('data.cache', { bucket: 'days', key: row.key, value: null });
       }
     }
-    after = rows[rows.length - 1].k;
+    after = rows[rows.length - 1].key;
   }
 }
 ```

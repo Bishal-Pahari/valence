@@ -1935,6 +1935,7 @@ GET {SYNC_BASE}/{bucket}?since={max_usn}&schema={n}&limit=500     Authorization:
 ```
 
 - Rows come in strictly ascending `usn` order, above the requested cursor. `max` may name the server head and never advances the cursor past returned rows. Empty final pages leave the cursor unchanged.
+- **A row whose `u` is negative is refused by the row shape**, which makes the page undecodable and the run incomplete. A server USN counts from 1, so this is malformed either way — but the reason it is a *shape* rule rather than a consequence of the ascending-order rule is §5.5.1: the read union reports `usn: -2` for a cache overlay and `-1` for a pending write, and those two numbers are the only way a page can tell a local-only row from one the server vouched for. A pulled row at `-2` would be a `kv` row indistinguishable from the page's own cache, so a retention rule written against §5.5.1 would delete rows it does not own, and native code reading provenance from `kv` could not separate them either. The ascending-order check happens to refuse it on the incremental path (`-2` is not above a cursor of 0); the **static** variant takes `max_usn` from the index rather than from the rows and has no such check, which is why the bound lives in the decoder.
 - Apply each page in **one transaction**, set `max_usn` for that `(bucket, schema)` to the last row's `u`, and loop while `more` is true.
 - A row with `d: 1` is a tombstone, so set `deleted = 1`. `max_usn` only moves forward.
 - **Rows whose `(bucket, key)` has pending outbox entries are skipped**: the local write wins until the server acknowledges it.
@@ -2018,11 +2019,14 @@ not a way to save user edits or authenticate server data.
 **That value cap is the only one, and in 0.4 nothing underneath it stops a page that never prunes.**
 There is no cap on the number of cached rows, no cap on total cached bytes and no eviction of any kind, so
 a page with a compiled grant can fill the device one 64 KiB value at a time — and the user's only remedy
-is clearing app data, which also destroys their synced rows and their queued writes. **This is the one
-store in the system shaped that way**, which is what makes it easy to read past: a read-only bucket
-cannot grow on the device without a server row at all, `notify.schedule` caps pending requests at 64 and
-says so when it refuses, the widget store bounds both key count and value length and names the key it
-refused, and `http.request` caps the request body, the response body and the headers separately. The
+is clearing app data, which also destroys their synced rows and their queued writes. **It is not the only
+unbounded store — `prefs.set` has no cap either — but it is the one where the absence matters**, and that
+is what makes it easy to read past: `prefs` holds a handful of settings, while the cache exists to
+accumulate a row per fetched resource, so unbounded growth is its normal operating mode rather than a
+misuse of it. Every store here whose growth *is* bounded is bounded visibly: a read-only bucket cannot
+grow on the device without a server row at all, `notify.schedule` caps pending requests at 64 and says so
+when it refuses, `state.save` refuses a blob over 65,536 UTF-8 bytes, and `http.request` caps the request
+body, the response body and the headers separately. The
 delegation itself is right — only the page knows which keys are worth keeping, and no host-side rule
 could have written an app's "keep what the date strip can reach" — but it is a delegation, not an
 absence of a problem, and it is stated in half a sentence (K F-77). So:
@@ -2030,9 +2034,11 @@ absence of a problem, and it is stated in half a sentence (K F-77). So:
 - **Write the retention rule with the first `data.cache` call, not after a report.** The shape that works
   is a prune run at the end of whatever load filled the cache: `data.list` the bucket, keep the keys the
   UI can still reach, and `data.cache(bucket, key, null)` every other one.
-- **A page can measure its own overlay without a new method.** `data.list` returns `usn: -2` for exactly
-  the cache rows (§5.5.1, above), so counting them is a filter on a list the page can already page
-  through. `data.count` cannot: it counts the union, which is the point of the union.
+- **A page can measure its own overlay without a new method.** `data.list` returns `usn: -2` for every
+  cache row and for nothing else — a pulled row carries the server's own non-negative USN, and §5.3
+  refuses a page whose `u` is negative for exactly this reason — so counting them is a filter on a list
+  the page can already page through. `data.count` cannot: it counts the union, which is the point of the
+  union.
 - **`valence doctor` reports the grant and the missing ceiling** in its `REST cache` row, naming the
   granted buckets, so the decision is visible at release time rather than only in this paragraph. It
   passes rather than warns: `doctor` cannot see whether the page prunes, and a warning no correct app can
@@ -2549,6 +2555,11 @@ a throwing log sink cannot leak the lease it is tracing; and a background run br
 `entered`/`left` and records its kind, `push` included. Codegen side: both fields are optional returned
 fields, emitted only when declared, independently of each other, and refused if declared non-nullable.
 Covered in `sync_test.dart`, `runtime_test.dart` and `valence.test.mjs`.
+
+§5.3 row shape: **a pulled row with a negative `u` writes nothing and makes the run incomplete, tested on
+the *static* path** — the incremental path refuses it through the ascending-order check instead, so a test
+there would pass with the decoder's bound removed and would be a test that cannot fail. Both `-1` and
+`-2` are covered, because those are the two numbers §5.5.1 gives a page to recognise its own rows by.
 **On a device:** one launch of the example app prints the take / refuse / release triple with real
 durations, and the two runs colliding on a reconnect are **both** `foreground` — which is the evidence
 for the trigger-class limit above. **No device row for a leak.** The diagnostics exist so that the *next*
@@ -2568,8 +2579,9 @@ beneath the overlay that goes**; **a given-up trial dropping every overlay on ea
 two strikes while its server rows, cursor and outbox survive**; v1/v2 database
 migration preserves rows and pending writes; **`doctor`'s `REST cache` row naming the
 granted buckets and the ceiling 0.4 does not have, passing with a grant and without one and
-failing on an invalid grant — there is no test for a row-count or total-bytes limit because
-there is none to test (K F-77)**. Covered in `cache_test.dart`,
+and failing for a library caller handed an invalid grant, which the CLI itself refuses at
+config load before any row exists — there is no test for a row-count or total-bytes limit because there
+is none to test (K F-77)**. Covered in `cache_test.dart`,
 `updater_test.dart`, `runtime_test.dart`, CLI generated-Dart tests and the example wiring test.
 
 S5 renderer loss (§3): a `webContentProcessTerminated` resource error reloads the **same** manifest at
