@@ -35,6 +35,30 @@ test('subscribes before initial; live event supersedes delayed launch reply and 
   assert.equal(paths.length, 2);
 });
 
+test('a handler is told which arrival each link was, so one arbiter can order both sources', async () => {
+  // K F-79: the wrapper already distinguishes the launch mailbox from a live event -- it is what makes
+  // a live event supersede a pending initial reply -- and without passing that on, §6.3's "latest event
+  // wins across sources" is a rule a page cannot write through the supported API.
+  const { b, sent, connect } = host(); await connect;
+  const seen: Array<[string, boolean]> = [];
+  b.onLink((l) => seen.push([l.path, l.initial]));
+  window.__valence!.r({ id: sent[1].id, ok: true, v: link('/cold') });
+  await flush();
+  window.__valence!.e('link.opened', link('/warm'));
+  assert.deepEqual(seen, [['/cold', true], ['/warm', false]]);
+
+  // And the other order: a live event first means the launch reply is never delivered at all, so a page
+  // that drops every later initial is consistent with what the wrapper already does.
+  __resetForTests();
+  const second = host(); await second.connect;
+  const later: Array<[string, boolean]> = [];
+  second.b.onLink((l) => later.push([l.path, l.initial]));
+  window.__valence!.e('link.opened', link('/live'));
+  window.__valence!.r({ id: second.sent[1].id, ok: true, v: link('/launch') });
+  await flush();
+  assert.deepEqual(later, [['/live', false]]);
+});
+
 test('unsubscribe suppresses delayed initial navigation; old host sends no link call', async () => {
   const { b, sent, connect } = host(); await connect;
   const paths: string[] = [];

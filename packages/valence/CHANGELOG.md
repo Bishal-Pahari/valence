@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased: giving up on a trial clears `serving` before it awaits anything
+
+`ValenceApp._onReadyTimeout` cleared `serving` only once `ValenceUpdater.countFailure` ran, which is
+behind `blockCacheWrites()` — an `async` call that returns to the event loop even with no admitted write
+to drain. `handleReady` tests exactly `trial != null && serving == trial`, and the given-up page keeps
+dispatching, so an `app.ready()` landing in that window committed the expired trial, raised the floor and
+counted no failure (the timer was already stopped, so the resumed timeout found no trial). The clear now
+happens in the same synchronous step as the decision. `countFailure` still clears it for the UI-start
+callers, which reach it with nothing awaited in front of them.
+
+§2.4 states the rule as "giving up clears `serving` before the host awaits anything", so the next change
+on that path knows why the order matters. The interleaving itself has no test and §8 says so: the ready
+ticker is a real timer while the only lever that holds the drain open is a competing SQLite writer, and a
+flaky test in the rollback path is worse than a named gap.
+
+## Unreleased: a locked database mid-run no longer fails the WorkManager job
+
+`Valence.backgroundSync` already answered `reason: busy` for a locked *open*. A lock that surfaces once
+`ValenceSync.run` is going now returns `reason: failed` with a log line instead of throwing — `failed`
+rather than `busy`, because the lease was taken and buckets may already have been pulled, so "nothing was
+attempted" is a claim this path cannot make. Non-lock errors still propagate to the job.
+
+`ValenceUpdater`'s step-7 lease refusal now logs `holder=` and `heldForMs=`, so a launch whose OTA did not
+install names what held the store. Lease acquisition, expiry and pre-emption are unchanged: §5.6 explains
+why displacing a holder mid-transaction is not available.
+
 ## Unreleased: a rollback that cannot serve its replacement logs it
 
 `ValenceApp`'s ready-window timeout drops the trial's cached rows, blocks the given-up page's

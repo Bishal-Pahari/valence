@@ -124,7 +124,7 @@ Guard `has("data.count")` to page `data.list` with `after`: pass the last key of
 
 ## Route OS links
 
-After `connect()`, install one `onLink()` subscription at the app root. It consumes `link.initial`, subscribes to `link.opened`, and defaults to a local `history.pushState` plus `popstate`. Pass `onLink(({path}) => router.navigate(path), reportError)` for your own router and call its returned cleanup on unmount. Import from your generated `bridge.g.ts`; unsupported hosts are a no-op. See [deep-link setup](../../docs/deep-links.md).
+After `connect()`, install one `onLink()` subscription at the app root. It consumes `link.initial`, subscribes to `link.opened`, and defaults to a local `history.pushState` plus `popstate`. Pass `onLink(({path}) => router.navigate(path), reportError)` for your own router and call its returned cleanup on unmount. The handler receives `{url, path, initial}` (`ReceivedLink`): `initial` is true for the link that was waiting when the page started and false for one opened while it was running, which is what lets one arbiter apply the cross-source "latest event wins" rule against `notify.initial`/`notify.tapped`. The client adds it; nothing on the wire changed, so handlers that ignore it are unchanged. Import from your generated `bridge.g.ts`; unsupported hosts are a no-op. See [deep-link setup](../../docs/deep-links.md).
 
 ## OS permissions
 

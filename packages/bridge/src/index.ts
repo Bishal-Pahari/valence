@@ -55,6 +55,20 @@ export interface AppLink {
   path: string;
 }
 
+/**
+ * A link as a handler receives it: the destination, plus which arrival it was.
+ *
+ * `initial` is true for the one link that was waiting when the page started (the `link.initial`
+ * mailbox) and false for a `link.opened` event, which §6.3 calls a live event. The wrapper has always
+ * known the difference — it is what makes a live event supersede a pending initial reply — and this is
+ * how it says so, because §6.3's "latest event wins across sources" cannot be enforced by a page that
+ * cannot tell its own two link arrivals apart (K F-79). Not a wire field: the host sends `{url, path}`
+ * and the client labels it.
+ */
+export interface ReceivedLink extends AppLink {
+  initial: boolean;
+}
+
 /** Validates before passing untrusted native event data to a router. */
 function checkedLink(value: unknown): AppLink {
   if (!value || typeof value !== 'object') throw new BridgeError('E_PARAMS', 'invalid link');
@@ -87,14 +101,14 @@ function routeLink(link: AppLink): void {
  * Errors go to onError (the default logs a fixed message without the link's contents).
  */
 export function onLink(
-  handler: (link: AppLink) => void = routeLink,
+  handler: (link: ReceivedLink) => void = routeLink,
   onError: (error: unknown) => void = () => console.error('Valence link could not be routed'),
 ): () => void {
   return subscribeLink(handler, onError, 9);
 }
 
 function subscribeLink(
-  handler: ((link: AppLink) => void) | undefined,
+  handler: ((link: ReceivedLink) => void) | undefined,
   onError: ((error: unknown) => void) | undefined,
   since: number | undefined,
 ): () => void {
@@ -103,17 +117,17 @@ function subscribeLink(
   installTransport();
   let active = true;
   let live = false;
-  const deliver = (value: unknown) => {
+  const deliver = (value: unknown, initial: boolean) => {
     if (!active) return;
-    try { (handler ?? routeLink)(checkedLink(value)); }
+    try { (handler ?? routeLink)({ ...checkedLink(value), initial }); }
     catch (error) { (onError ?? (() => console.error('Valence link could not be routed')))(error); }
   };
-  const receive = (value: never) => { live = true; deliver(value); };
+  const receive = (value: never) => { live = true; deliver(value, false); };
   const set = listeners.get('link.opened') ?? new Set();
   set.add(receive);
   listeners.set('link.opened', set);
   void rawCall('link.initial', {}, since).then((value) => {
-    if (!live && value !== null) deliver(value);
+    if (!live && value !== null) deliver(value, true);
   }).catch((error: unknown) => {
     if (active) (onError ?? (() => console.error('Valence initial link unavailable')))(error);
   });
@@ -255,7 +269,7 @@ function traced(m: string, params: object, run: () => Promise<unknown>): Promise
 /** The typed surface `valence codegen` re-exports from bridge.g.ts. */
 export interface Bridge<M, E> {
   /** Subscribe to deep links after connect(). Unsupported schemas/hosts are a no-op. */
-  onLink(handler?: (link: AppLink) => void, onError?: (error: unknown) => void): () => void;
+  onLink(handler?: (link: ReceivedLink) => void, onError?: (error: unknown) => void): () => void;
   call<K extends keyof M & string>(m: K, ...args: Args<M, K>): Promise<Returns<M, K>>;
   /**
    * True when the host can serve this method, or emit this event. Call connect() first.

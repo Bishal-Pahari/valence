@@ -638,6 +638,10 @@ void main() {
       expect(state.pending, isNull);
       expect(log.has('another sync holds the lease'), isTrue);
       expect(log.has('the next check retries'), isTrue);
+      // Who is holding it, not just that somebody is (K F-80): a launch whose OTA silently did not
+      // install is otherwise one line that names nothing to go and look at.
+      expect(log.has('holder=foreground'), isTrue, reason: '${log.lines}');
+      expect(log.has('heldForMs='), isTrue, reason: '${log.lines}');
       expect(state.bad, isEmpty, reason: 'it must not count as a failure');
     });
 

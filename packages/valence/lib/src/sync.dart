@@ -36,6 +36,10 @@ enum ValenceSyncReason {
 
   /// A server response or protocol failure left a pull or push incomplete. An anonymous 401 is
   /// a server failure too: it does not expire a login. Applied rows and queued writes are retained.
+  ///
+  /// Also a **local** failure that stopped a run already under way: a background isolate meeting the UI
+  /// isolate's lock mid-run reports this rather than throwing (§5.6, K F-80). Not `busy`, which promises
+  /// nothing was attempted.
   failed,
 }
 

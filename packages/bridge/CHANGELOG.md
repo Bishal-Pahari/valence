@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased: a link handler is told which arrival it got
+
+`onLink(handler)` now calls the handler with `{url, path, initial}` — the new `ReceivedLink` type, which
+extends `AppLink`. `initial` is true for the `link.initial` launch mailbox's reply and false for a live
+`link.opened`. The wrapper already distinguished them internally, which is how a live event supersedes a
+pending launch reply; it simply did not say so, and §6.3's cross-source "latest event wins" rule is the
+page's to enforce. Existing handlers typed `(link: AppLink) => void` still compile and can ignore the
+field. Nothing on the wire changed, so no schema moves and no `has()` gate applies.
+[Deep links](https://getvalence.pages.dev/docs/guides/deep-links/).
+
 ## Unreleased: a busy sync can say who is holding it
 
 Nothing in this package changes. On a host at built-in revision 20, a generated `SyncStatus` that

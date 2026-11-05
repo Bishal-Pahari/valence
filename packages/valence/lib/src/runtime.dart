@@ -1315,6 +1315,19 @@ final class Valence {
     diagnosticLog(log, 'sync: background isolate entered kind=${kind.name} pid=$pid');
     try {
       return await sync.run(readSchemas: config.dataSchemas);
+    } on Object catch (e) {
+      // The same argument the locked *open* above makes, for the lock that surfaces once the run is
+      // already going: an isolate that collides with the UI's writes has met a condition that clears in
+      // seconds, and a throw makes it a WorkManager FAILURE — exponential backoff, and on Android a
+      // periodic job that has already been rescheduled anyway. A launch replaying an unfinished job is
+      // when this is most likely, because that is when the UI isolate is reading hardest (K F-80).
+      // `failed` rather than `busy`: the lease was taken and buckets may have been pulled before the
+      // lock, so "nothing was attempted" would be a claim this path cannot make. The caller still sees a
+      // run that did not fully succeed and can retry on its own terms.
+      if (!isDatabaseLocked(e)) rethrow;
+      log('sync: the database was locked mid-run, so this background run stopped short '
+          'kind=${kind.name} pid=$pid');
+      return const ValenceSyncResult([], 0, false, ValenceSyncReason.failed);
     } finally {
       // Observational, so a throwing sink cannot turn a completed background sync into a WorkManager
       // FAILURE — and cannot be the reason the lease it is tracing goes unreleased.

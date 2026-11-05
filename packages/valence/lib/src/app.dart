@@ -495,6 +495,14 @@ class _ValenceAppState extends State<ValenceApp>
     }
     _log(
         'ready: app.ready did not arrive within ${_valence.config.readyTimeout.inSeconds}s for trial $trial');
+    // The decision to give up is made by the guard above, so the state says so here, with no `await`
+    // in between. `serving == trial` is the one thing `handleReady` tests, and every path below yields:
+    // `blockCacheWrites` is `async` and so returns to the event loop even with nothing to drain, while
+    // the given-up page is still alive and still dispatching. Clearing this in `countFailure` instead
+    // left that gap open, and an `app.ready()` landing in it committed the expired trial and raised the
+    // floor — the exact opposite of a rollback. Not saved yet on purpose: a process death during the
+    // drain should still be read by §2.4 step 2 as dying while serving a trial, which it did.
+    _valence.state.serving = null;
     // §5.5.1: up before the overlays are dropped and down when the document *this swap asked for*
     // starts. The given-up page is alive and dispatching through both awaits below — and it can also
     // navigate itself, which is one plausible reason a page never calls `app.ready()`, so the release

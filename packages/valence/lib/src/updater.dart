@@ -590,7 +590,17 @@ final class ValenceUpdater {
       acquired = await sync.acquireLease();
     }
     if (!acquired) {
-      _log('update: step 7 stopped, another sync holds the lease after a 5-second wait; the next check retries');
+      // Name the holder, for the same reason `sync.run`'s refusal does (S9): "another sync" over a
+      // launch that a replayed background job is holding the store through reads as the update mechanism
+      // failing, when what happened is a collision that the next launch resolves by taking over a lease
+      // whose process is gone. Without the kind and the age, K F-80's fourteen seconds and its skipped
+      // OTA are one unexplained line each.
+      final held = await sync.status();
+      _log(held.leaseKind == null
+          ? 'update: step 7 stopped, another sync holds the lease after a 5-second wait (released before '
+              'this line, so the next check should get it); the next check retries'
+          : 'update: step 7 stopped, another sync holds the lease after a 5-second wait '
+              'holder=${held.leaseKind} heldForMs=${held.leaseAgeMs}; the next check retries');
       _reason = ValenceBundleReason.busy;
       return false;
     }
@@ -882,6 +892,12 @@ final class ValenceUpdater {
   /// count:** a ready timeout on a `current` page means the app is slow, not that a release is bad.
   /// `async` only for the cache drop. Everything that decides the outcome runs synchronously first, so a
   /// caller that cannot await still gets the state transition; what it would lose is the eviction.
+  ///
+  /// Clearing `serving` here is for the UI-start callers, which reach this with no await in front of them.
+  /// It is **not** what protects the ready-timeout path: that one clears `serving` itself, before it awaits
+  /// anything, because by the time this runs a late `app.ready()` has had the whole drain to commit in
+  /// (§2.4, "Giving up clears `serving` before the host awaits anything"). Harmless to repeat, and not
+  /// something to move back here.
   Future<void> countFailure() async {
     final trial = state.trial;
     if (trial == null) {

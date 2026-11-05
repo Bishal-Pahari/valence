@@ -1480,6 +1480,53 @@ void main() {
       expect(log.has('the UI isolate holds the database'), isTrue);
     });
 
+    test(
+        'a lock that surfaces after the open also reports instead of failing the job (K F-80)',
+        () async {
+      // The open path's promise was only ever half the story: a launch replaying an unfinished periodic
+      // job collides with the UI isolate *while the run is going*, which is where K F-80's SQLITE_BUSY
+      // came from. A throw there is a WorkManager FAILURE and an exponential backoff on a condition that
+      // clears in seconds, so the run reports a result it did not finish rather than dying.
+      final log = LogSpy();
+
+      final result = await Valence.backgroundSync(
+        testConfig(key, dataSchemas: {'plants': 1}),
+        log: log.call,
+        client: MockClient(
+            (_) async => http.Response('{"rows":[],"max":0,"more":false}', 200)),
+        supportDir: support,
+        documentsDir: support,
+        secure: testSecure({}),
+        databaseFactory: _LockedAfterOpenFactory(),
+      );
+
+      expect(result.reason, ValenceSyncReason.failed,
+          reason: 'not `busy`: that one claims nothing was attempted');
+      expect(result.changed, 0);
+      expect(log.has('the database was locked mid-run'), isTrue,
+          reason: '${log.lines}');
+      expect(log.has('sync: background isolate left'), isTrue,
+          reason: 'the bracket still closes: ${log.lines}');
+    });
+
+    test('a mid-run failure that is not a lock still reaches the job',
+        () async {
+      // The catch above is for locks only. Anything else is a bug the job should record, so a host
+      // reading WorkManager failures is not blinded to it by the lock handling.
+      await expectLater(
+        Valence.backgroundSync(
+          testConfig(key, dataSchemas: {'plants': 1}),
+          log: LogSpy().call,
+          client: MockClient((_) async => http.Response('{}', 200)),
+          supportDir: support,
+          documentsDir: support,
+          secure: testSecure({}),
+          databaseFactory: _LockedAfterOpenFactory(lock: false),
+        ),
+        throwsA(isA<DatabaseException>()),
+      );
+    });
+
     test('S9 a background run brackets itself and names its kind in the lease',
         () async {
       // The entered/left pair is what the diagnostics docs make the primary signal: a WorkManager
@@ -1801,6 +1848,58 @@ final class _WatchedSecureStorage extends TestFlutterSecureStoragePlatform {
     await _onWrite(key);
     return super.write(key: key, value: value, options: options);
   }
+}
+
+/// Opens, then refuses the first write — the collision K F-80 met, where the lock arrives after the
+/// background run has already started rather than at its open.
+///
+/// `transaction` is what `sync.acquireLease` takes, and it is the first write any run makes. Nothing in
+/// `flutter_test` can hold a real exclusive lock across isolates, which is the same reason
+/// [LockingDatabaseFactory] exists for the open path.
+final class _LockedAfterOpenFactory implements DatabaseFactory {
+  _LockedAfterOpenFactory({this.lock = true});
+
+  /// False to throw a constraint failure instead, so a test can show the handling is lock-only.
+  final bool lock;
+
+  @override
+  Future<Database> openDatabase(String path, {OpenDatabaseOptions? options}) =>
+      Future.value(_LockedAfterOpenDatabase(lock: lock));
+
+  @override
+  Future<String> getDatabasesPath() async => '.';
+
+  @override
+  Future<void> setDatabasesPath(String path) async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _LockedAfterOpenDatabase implements Database {
+  _LockedAfterOpenDatabase({required this.lock});
+
+  final bool lock;
+
+  @override
+  Future<T> transaction<T>(Future<T> Function(Transaction txn) action,
+          {bool? exclusive}) =>
+      Future.error(lock
+          ? LockedDatabaseException()
+          : NotLockedDatabaseException('UNIQUE constraint failed', 'x'));
+
+  @override
+  Future<List<Map<String, Object?>>> rawQuery(String sql,
+          [List<Object?>? arguments]) async =>
+      [
+        {'n': 0}
+      ];
+
+  @override
+  Future<void> execute(String sql, [List<Object?>? arguments]) async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// A platform whose account-id read throws, as an invalidated Keystore entry does.

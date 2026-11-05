@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased: a late `ready()` can no longer commit a release the host gave up on
+
+When a bundle misses its ready window, the host gives up on it: it stops the timer, drops the trial's
+cached rows, refuses that page's `data.cache` writes and loads the previous release in its place. The
+page it gave up on is still alive and still dispatching through all of that — and until now the state
+did not record the decision until partway through. An `app.ready()` arriving in that gap passed the
+same check the host had just failed, **committed the expired trial, raised the rollback floor and
+counted no failure**: the exact inverse of a rollback, reached by the ordinary page shape of "cache the
+response, then call `ready()`", which is the slow start most likely to trip the window in the first
+place. The host now clears `serving` in the same step that decides to give up, before it awaits
+anything.
+
+**Nothing to change in your app**, and nothing about a well-behaved page was ever affected: one
+`ready()` per load, on every path that paints, is still the whole contract (§2.4). If you have been
+seeing a release you expected to revert stay installed, this was a way for that to happen.
+
+## Unreleased: a background sync that meets a lock no longer fails its job, and says who holds the store
+
+Three things from one launch. A force-stop, crash, task-swipe or reboot leaves Android's WorkManager
+with an unfinished periodic job, which it reschedules **immediately** on the next launch — so the one
+moment a background sync is most likely to be running is the moment your first screen needs the
+database most.
+
+- **A `SQLITE_BUSY` that arrives once a background run is going now reports `reason: "failed"` instead of
+  throwing.** Only a locked *open* was covered before; a lock mid-run escaped as a WorkManager
+  `FAILURE`, which buys an exponential backoff for a condition that clears in seconds. Anything that is
+  not a lock still throws, so a real bug still reaches your worker. If your worker maps a result to
+  `Result.retry()`, it now gets the chance to.
+- **The update check says who is holding the lease.** Step 7's refusal logs `holder=` and `heldForMs=`
+  like every other refusal, because "another sync holds the lease" over a launch whose already-published
+  OTA silently did not install is one line that names nothing to go and look at.
+- **Pre-empting the holder is deliberately not the fix, and the spec now says why** (§5.6). Taking the
+  lease from a run that is mid-transaction starts a second sync underneath it, over the user's own rows
+  — the concurrent write the lease exists to prevent. The collision resolves itself: the next launch
+  finds a lease left by a process that is gone, takes it over and installs the OTA in under a second.
+
+## Unreleased: a link handler can tell a launch link from a live one
+
+`onLink`'s handler now receives `{url, path, initial}`. `initial` is true for the link that was waiting
+when the page started and false for one opened while it was running. The client always knew the
+difference — it is what makes a live event supersede a pending launch reply — but it did not pass it on,
+so the cross-source rule §6.3 asks a page to enforce ("latest event wins") could not be written through
+the supported API: the notification side has two names, `notify.initial` and `notify.tapped`, and the
+link side had one callback for both.
+
+**Existing handlers keep working** and can ignore the new field; nothing on the wire changed, so no
+schema moves and no host-version gate applies. What is still not possible is ordering a link against a
+notification by *when the user tapped*: neither launch mailbox carries an arrival time, so a page can
+only order what it observed. §6.3 now states that limit instead of implying the rule is fully
+enforceable.
+
 ## Unreleased: a rollback that cannot serve its replacement now says so
 
 When a release is given up on after its ready window, the host drops the trial's cached rows, refuses
