@@ -1,5 +1,64 @@
 # Integration review correction - 2026-11-06
 
+## November 6: iteration 132 evidence review
+
+In plain terms: no eligible must-have or queue refresh remains. Packages bases
+remain code 0fe3391faf2ba25e69ccae3079382be2179be4be and site
+0c468908a7ed412ce13c6b2899efdc50dbd37d6b. Verified all 39 current recorded exact
+feature tips as ancestors of both integrations. Read both findings inventories
+and newest reports: Kundalini 21 and App C 132. S1 stays deliberately parked,
+S2 requires a Play account, and S10 stays deferred.
+
+App C's saved artifact audit passes 96 checks with scoped acceptance=true.
+Settings records same PID 6480 and painted return; explicit postrestore sync is
+ok/pending0. The current restore command completed successfully. These current
+successes do not reverse iteration 129's F-33 COMMIT failure or iteration 130's
+F-36 renderer loss. Kundalini F-79/F-80 and historical reliability findings remain
+open. Retained paint observed at 17360ms and fresh paint observed at 20395ms are
+separate from fresh open completion at 849ms; no exact first-paint latency or
+cause is established. The inherited fresh-retry filename names the first current
+bounded observation, not a second clear or retry.
+
+Independently rehashed both archived iteration132 APKs: release 54777012 bytes,
+SHA256 7fab12b6b7d48b85979d7f51ae56fa0de293914ab180560dd25a4e28a39302c2;
+debug 193194989 bytes,
+SHA256 3b34b9701f1cac1f42e1e01f713142b675ae14773aa562037c9f08b740d6a816.
+Both match saved delivery receipts. The report records signed builtin 1793919338
+in both APKs; embedded-manifest comparison was not independently rerun.
+Independently compared identical worker-phase activation bytes, SHA256
+23859597edee86c9f9da096dd6a39b3751c40ac7da317fcbf14cfe5b8bc2b5c5,
+pending 1793920157, no trial. All seven exact PID9795 callback/lease/native
+SUCCESS lines match raw worker logs and are absent from the pre-worker capture:
+callback begin 05:00:27.283, background entry .405, lease take .441,
+release 05:00:28.496, background exit/callback complete .499, SUCCESS .508.
+The execution receipt records forced=true. Reported scheduler readiness and
+elapsed earliest time preceded the explicit trigger; one execution proves
+neither natural cadence nor cancellation/expiry correctness. Saved SQLite
+effects, retention and final cleanup were read, not independently replayed.
+
+Runner notes preserve raw-log whitespace status 2 separately from the passing
+application/tooling/docs check. Doctor records 17 PASS / 10 WARN / 0 FAIL;
+timeout paths remain unexercised. Findings record 794400 KiB / 7812 retained
+files; a history footprint is not evidence of a leak or per-session growth rate.
+
+Decision: security first, then users' data. A passing scoped regression does not
+justify changing transaction ownership, pre-empting a lease or closing historical
+failures. Preserve the frozen runtime. No behavior, schema, package version or
+host migration changes. Only mirrored integration evidence notes and the roadmap
+top note change; item Status cells remain untouched. Earlier November 6 full
+gates retain their recorded scope; no fresh full gates, emulator acceptance or
+independent runtime review is claimed. iOS stays experimental and untested.
+Test apps stayed read-only; no protected-branch commit/merge, push or publication.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_21_REPORT.md};
+valence-test-app-c/{VALENCE_FINDINGS.md,ITERATION_132_REPORT.md}; App C
+evidence/iteration-132/{evidence-audit.json,settings-outcome.json,
+postrestore-outcome.json,binary-delivery-state.json,
+background-state-before-raw.json,background-state-after-raw.json,
+background-state-comparison.json,worker-execution.json,worker-completion-proof.json,
+worker-lease-diagnostics.json,worker-full-logcat.txt,background-full-log-before.txt,
+runner-notes.md}.
+
 ## November 6: iteration 131 evidence review
 
 In plain terms: no eligible must-have or queue refresh remains. Packages bases
