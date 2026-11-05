@@ -1750,8 +1750,9 @@ void main() {
       final result = await Valence.backgroundSync(
         testConfig(key, dataSchemas: {'plants': 1}),
         log: (message) {
-          if (message.contains('database was locked taking the lease'))
+          if (message.contains('database was locked taking the lease')) {
             throw StateError('sink failed');
+          }
         },
         client: MockClient((_) async => http.Response('{}', 200)),
         supportDir: support,

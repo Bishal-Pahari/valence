@@ -8,7 +8,7 @@ codex/integration-before-20261106-review in both repositories.
 
 ## Decision and scope
 
-Start from code packages b8ac61d / site packages 8ddff57. Preserve the busy branch
+Start from code packages 0fe3391 / site packages 0c46890. Preserve the busy branch
 around acquireLease: a locked acquisition attempted no sync work. A lock during
 work returns failed, unless an earlier unauthorized/offline outcome takes
 precedence. Count HTTP pages and static chunks immediately after commit, before
@@ -43,7 +43,9 @@ The first full focused run exposed an incomplete existing fake (delete was
 unimplemented, formerly swallowed); its delete now succeeds as intended. A
 release-only test initially left a non-writable outbox bucket, which correctly
 made its work incomplete; that unrelated fixture was removed so it tests a
-completed run. No production assertion or timeout was weakened. Logs remain at
+completed run. The first full core run passed 647 tests; fatal-info analysis then found a missing
+brace in the new logger test. That style issue was corrected before the final
+gates. No production assertion or timeout was weakened. Logs remain at
 TEMP/valence-nov6-review-*.log. Full gates are recorded in integration.md.
 
 Read-only inputs: both apps' VALENCE_FINDINGS.md inventories and latest completed
