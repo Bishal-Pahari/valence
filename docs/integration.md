@@ -1,3 +1,159 @@
+# Integration review correction - 2026-11-06
+
+In plain terms: the two requested improvements are rebuilt on current packages.
+Lease-acquisition locks remain busy; committed pages remain visible after a later
+lock, and cleanup preserves a primary non-lock error and its original stack.
+All must-have and original queue items are done. No new feature is claimed.
+
+## Bases and merge order
+
+Code packages: 0fe3391faf2ba25e69ccae3079382be2179be4be. Site packages: 0c468908a7ed412ce13c6b2899efdc50dbd37d6b.
+Validated implementation heads: code 85380149a583a57cb0e331f62ead70184068ba73, site b5e2bc1cd43f4a2d95ffd2546827367262c7d534. Later commits
+only correct documentation and record these gates; implementation trees remain
+identical. The rejected integration b643466 / a3647eb remains preserved at
+codex/integration-before-20261106-review in both repositories.
+
+Fresh integrations start from those packages heads. Original queue order is R8,
+R7, R6, R3, R4, R5, R9, R10, R14, followed by the already merged later tips and
+then the corrected background-lock-result branch. All first 38 tips are already
+ancestors of packages, so only the final branch introduces a merge. The assembly
+initially repeated historical table rows; those commands were no-ops. The final
+assembly deduplicates the list below. The already merged example-revision branch
+is excluded, as requested. All 39 exact tips are ancestors in both integrations.
+There were no conflicts or competing sync implementations to reconcile.
+
+| Order | Branch | Code tip | Site tip |
+| --- | --- | --- | --- |
+| 1 | codex/r8 | 91589a47cb80a4b2f2ba8cf1a6d1ce3dc5a4eb4e | 072552f08d626d2915e63e7fda2c4c183c4380e3 |
+| 2 | codex/r7 | 969b1a4fb03d76d2af85c69987c4ed5eeb0eb840 | 965b8eb83a7412a9ec601919f227c2c0005a9252 |
+| 3 | codex/r6 | 5b64e06051fab10e0a01d8b3215c17f45d81c980 | 388cd9d3c0fd6043cfa21b0a6440916232847742 |
+| 4 | codex/r3 | db669ddd75ffeb97588fd62304122a58c242f3b0 | f45ccf28d741a2c6e05c766eeb6bff059900bcc5 |
+| 5 | codex/r4 | 588f8761807b1893933303533a04fa14c9975a6f | d8e5dd775dfaf902e206bc2f195c30537f797ba4 |
+| 6 | codex/r5 | 3cc1c0f4d062d13919adcfe5343434e00098fdea | 57a44b50dfd82800f151823ff1563d8a73340678 |
+| 7 | codex/r9 | 0c1b0fb01a48494991cdae4ab32369fb6a2af7b2 | 2913b4d0a743188808a66bd5b7db416ca870c52f |
+| 8 | codex/r10 | f3fcd0dac875fc30af226c7f1bf70750942c0550 | b905b742ab9d90984d513cdf7b99977eabd929f2 |
+| 9 | codex/r14 | fa6e16c55d84bb9a3162514a9c09b65cb634fd54 | fa5e8164a968bd74d943b8a50590dfbd010e08ca |
+| 10 | codex/r11 | 4347872fd95b0a213b99774c3e758c7d60f047d5 | 797224cf3cab016866ecbb56213210ca4fe6556f |
+| 11 | codex/r12 | de783ae9a9f04052cfc2eb7c07ae992c980ccc42 | a57ca8f05358b0bd6cd050c3a475e2aa51b1ecce |
+| 12 | codex/r15 | 2951ac8b84ff2e0935dbb719b749ebbd8839f51f | 87695bbf61a1a647bec692416cacdb3a611a07ac |
+| 13 | codex/r16 | dba50d483f95b724bc10869b460e7774e63cc8de | bb1775d3801e9bc6032523327ce502eb7c7383eb |
+| 14 | codex/r17 | a9922853bb751ac75590cb262d2d732cbed967d1 | 971e5a93d6ff7e910c1c5640fc856940ea0861a4 |
+| 15 | codex/r19 | ebbd5e051f08661adbdc0e485cc5cf1bba32b352 | 7c31ed431453f1df73a494bb2b24d0a7a5603fb4 |
+| 16 | codex/r20 | f8f3f1f9b79117e73d30917f65ed2a281b57a070 | 98cbad0d516db52225dd593fe72dea76b4800df0 |
+| 17 | codex/r21 | 92221ea7682259d7fea49b4f8afbb98d5d735610 | d3d0e2b226196d871d53c47224bcf491bc44a444 |
+| 18 | codex/r22 | b2e5a4009b44ea8729eafb208ee0be4a5aad876a | e84efa7a38d0858491632e429bc659b8252ffb55 |
+| 19 | codex/r23 | 373d29fca370bb03e2f49f148606bda8283950fa | 0bcc4407a44cc260677dce499efad0cbfe4a6690 |
+| 20 | codex/r24 | 23a2783f5c1bb8e68db2f6712a66b6caee542617 | fcb04f2a5690a22dbf75cbdf1de2f06982aa1440 |
+| 21 | codex/r25 | 52fd6e5c382df6582d5955b02586f77c80383c4c | 9f614ee0a44a9a4c98e5d07d16cba243151df60c |
+| 22 | codex/r26 | 7c43658637da1f97a6fe3e80c2669ab83ec347ad | 14376728046b8ba6f6c062154d41fa1b41399176 |
+| 23 | codex/r27 | 8296d4e68753185c132c39da3c94369989818f27 | c4a8fad9bc2dc04f9b8033080608e1250785e08e |
+| 24 | codex/r28 | 8d42a82d96ad124c3cbe122280b64a00f43371bb | 0cbadc71c2f2d40aa11b5aa6b21cf114ab8ece65 |
+| 25 | codex/r29 | 6e250677b3bc6510f7ef2ea3e7c2ddb4ab1a509f | d5a98a85ea9e9c41aa3c2cde461e0e92de1aa555 |
+| 26 | codex/r31 | 44de344c92e0122f3361dacef1acc0788ff312c2 | 1dfdc0a50ed78b2103dfe3ce15b8461c588332cb |
+| 27 | codex/link-compat | 48d1a8a0a71a5e0d06f3d1ecac2057514598e45c | f494813c716882cfab8161c1edfdbddaaaef85d9 |
+| 28 | codex/notify-event-compat | 8a69b5da422eb403014d907f66154aea17469af9 | 094697cfb948d466c6d25dabfd7351ddac6664e2 |
+| 29 | codex/sync-fixes | aa025cfdf795e6c3caa941d4dda2701e12d2c381 | dc223e8ec5d3e85e8d02cf9a99bfe547fc3e3e64 |
+| 30 | codex/renderer-diagnostics | dc53ba05fcfc5108e88896ab9cd6218bdbcb0f25 | d3fd0d95cc232e26ae8e3e739da2e96d0db05887 |
+| 31 | codex/s7 | f28a562c9f61b205b650de7dc11919ed13110667 | 5f774d8805a10251947435d3f1a58e5368d1876a |
+| 32 | codex/r32 | 3d1fa7f53ed9f61ff12295cb53e7bb4d991813de | cc7831bcbee4f3c63972bcaa8e9a904313eba53f |
+| 33 | codex/r33 | ea9e63cf96f1b459672b2e58cf986567f7996c8c | 0e23509e1d98efba98feae7a126ded919cd88daf |
+| 34 | codex/s8 | 3f444554f0482046b4e09dbddf4da9d581e5ad87 | 05943aaf49d460554dd70105579bc3ee8f9f7d67 |
+| 35 | codex/pendingids-adoption | 886a9f92a21228c14e33c290796f522accb5f6c3 | 99a8bf76b3d1d32f4080782b0fd8b58f696cd90e |
+| 36 | codex/permissions-adoption | 3e7231a3e8d6d842f61ce876ceede20fd69e4d66 | ee4292ce5d60a907457d696abbf318f1c81738cf |
+| 37 | codex/dependency-baseline | 700da56f6362ababdbca2f2f65a2a222a9cb8be3 | 6a7bfd5ffb00e476345b2dd9c0c230ea2874072b |
+| 38 | codex/cache-adoption | 77853b3964f88d471036bd61340f7c9172057f5f | 04edf8276501f9ec02531aff326389fb6ffc44b7 |
+| 39 | codex/background-lock-result | 47c862e350cde63afb305fe558100c78e1722185 | f37c05a6922b3cf0a473ee77ff0422fc4093c5c6 |
+
+## Decision and review
+
+Security, then users' data: retain packages' acquisition-busy classifier, lease
+ownership, renewal, expiry and takeover rules, transaction boundaries, account
+and outbox behavior, verification order, atomic activation state, nonce, strict
+decoding, navigation locks and release-build dev exclusion. Built-in revision 20,
+reserved schemas and package versions do not change. The public pullPair API
+stays unchanged; private callbacks account for each committed HTTP page or static
+chunk before renewal. Generated code and templates continue to delegate to the
+runtime. No host migration is required.
+
+Cleanup preserves the primary non-lock error and its stack. A non-lock cleanup
+failure after a primary lock surfaces. Release-only locks retain the completed
+outcome, as upstream specifies, and diagnostics cannot throw into recovery.
+Earlier authentication/offline outcomes retain their normal precedence. The
+existing runtime final-read lock backstop is retained: unreadable progress and
+pending counts cannot be recovered by that fallback. This explicitly drops the
+rejected candidate's broader final-read propagation policy.
+
+The scoped checklist reviewed changed sync paths and callers, commits before
+callbacks, error classification/precedence, account/outbox isolation and the
+unchanged security files. No unresolved defect was established in this scoped
+self-review; it is not independent improver approval or a fresh security audit.
+[Correction and regression details](background-lock-result.md).
+
+## Gates
+
+| Gate | Result | Wall time |
+| --- | --- | --- |
+| root | Passed | 44.55s |
+| core | Passed | 138.86s |
+| core-analysis | Passed | 4.47s |
+| core-pub | Passed | 5.42s |
+| push | Passed | 3.62s |
+| push-analysis | Passed | 2.54s |
+| push-pub | Passed | 4.57s |
+| example | Passed | 4.95s |
+| codegen | Passed | 0.08s |
+| apk | Passed | 34.77s |
+| firebase | Passed | 0.95s |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed, zero skipped / passed / passed | separate logs |
+| Site build and SEO | 50 pages passed | separate log |
+
+Root: 119 passed, zero skips, including generated Dart analysis/execution and
+generated strict TypeScript. Core: 647 passed. Push: 2 passed. Example: 29 passed.
+Both Dart analyzers report no issues; both pub dry runs report zero warnings
+(the push adapter retains its documented local-dependency-override hint).
+Example codegen --check passes; the regenerated example TypeScript also passes
+strict/verbatim checking against the bridge source through an isolated TEMP config. Debug APK builds, and the standalone Windows py
+Firebase audit reports no references in the core graph, manifest and all 19 DEX
+files. Native gates run serially; bridge/site gates run independently. The APK
+uses only command-local bounded Gradle heap/workers, without changing config.
+Bridge and site source trees match their passing earlier gate inputs; subsequent
+site changes are notes outside the built content tree.
+
+The first focused command used the wrong working directory, a second found no
+matched tests, and the actual baseline regression then failed expected=1 /
+actual=0 for an interrupted pair. The first full core pass was followed by one
+fatal-info test-style issue; braces were added, and the full native gate chain
+was rerun. That run then found inherited example codegen staleness: two link
+type re-exports were absent. Regenerated only those exports and repeated the
+entire native gate chain. Earlier final-gate logs/results retain that failure
+separately from the complete-gate successes. The incomplete fake and unrelated outbox fixture corrections are
+recorded in the correction note. No failed attempt is counted as a pass, and no
+assertion or timeout was weakened. Logs: TEMP/valence-nov6-review-*.log and
+TEMP/valence-nov6-review-complete-gate-*.log. Timings and exits are retained in
+TEMP/valence-nov6-review-complete-gate-results.json. Bridge/site logs retain their
+separate TEMP/valence-nov6-review-bridge*.log and site.log paths.
+
+## App evidence and limits
+
+Read both VALENCE_FINDINGS.md inventories and latest completed reports:
+Kundalini 21 and App C 128. Kundalini reports F-79 source ambiguity and F-80 launch
+contention; the current packages contains upstream corrections, while this branch
+improves reporting without claiming to solve contention. App C reports scoped
+acceptance=true, Settings painted in PID 5500, and one explicitly triggered ready
+worker in PID 9090 with native data effects and unchanged activation bytes.
+These are app-reported receipts, not a fresh device run of this integration.
+Neither one worker nor deterministic fault injection proves natural cadence,
+competing-isolate cancellation/expiry correctness or production durability.
+Historical reliability findings remain open. S1 stays parked, S2 needs a Play
+account, S10 stays deferred. No fresh emulator or iOS acceptance; iOS remains
+experimental and untested. Test-app repos stayed read-only. No packages/main
+commit or merge, version change, push or publication.
+
+## Historical integration evidence
+
+Earlier sections below retain their original dates and limits; they are not
+fresh acceptance of the current candidate.
+
 # Integration with current packages - 2026-11-04
 
 ## November 4: iteration 102 evidence review
