@@ -1,5 +1,86 @@
 # Integration with current packages - 2026-11-05
 
+## November 5: iteration-121 evidence refresh
+
+In plain terms: App C's latest artifact audit passes all 93 checks, but scoped
+acceptance is false. Settings survival failed again. Later recovered native,
+OTA and worker successes do not erase that failure. Kundalini's newest completed
+report remains iteration 20; both findings inventories were read without writing
+to either app repository.
+
+### Decision and queue
+
+Preserve security, users' data and the frozen candidate. Android's direct
+low-memory kills do not establish a Valence memory leak, an unhandled Chromium
+renderer-loss path or a lease-expiry defect. A speculative runtime change would
+risk durable data and update behavior without an attributed cause. S1 stays
+parked, S2 needs a Play account, and S10's migration remains deferred to 0.5.
+Every must-have and original rebase-queue item is done; no eligible new item
+exists.
+
+Packages bases remain code `0ad023ed2861d6754cb1c7e27fdad3b6fed90b5b` /
+site `13828ac0a1f05faf5f1e50d3bfbefb454a02b022`. Independently checked all 39
+current branch tips in the table below against their refs and confirmed each is
+an ancestor of its integration. Both packages bases are ancestors too.
+No integration rebuild is required while those bases and feature tips are
+unchanged.
+
+### Latest evidence and limits
+
+Raw Settings logcat records lowmemorykiller killing renderer 5937 at
+21:06:52.235 and host 5785 at 21:06:52.266. Both exit-info entries say LOW_MEMORY;
+host RSS is 522 MB. Return PID 7020 failed the saved painted-page/same-PID check.
+This is F-50 recurring, not a fresh reproduction of F-36's Chromium termination
+path. Historical reliability findings, including F-44, remain open.
+
+Independently rehashed both archived APKs:
+
+| Artifact | Bytes | SHA256 |
+| --- | --- | --- |
+| release APK | 54711468 | 3182e3545906a45ae4b5890af80fc55f1c764512ccf7aec1353eda47cab74a19 |
+| debug APK | 193189904 | d4c7c262c7e19e72ea9d1fdeffd11ca4a62c09379ecf2cef77afcfa2fcd4f118 |
+
+Both raw worker-phase activation files hash to
+`a50a666231cf9e51ad8f29ea25754fcca8e327b0f31bc7e3e53f1aec51f4bc6e`:
+current 1793892668, pending 1793892678, no trial. Raw PID 9715 logs corroborate
+callback begin 21:21:05.158, background isolate entry and lease take/release,
+isolate exit, callback complete 21:21:06.270 and native WorkManager SUCCESS
+21:21:06.276. Saved stable SQLite receipts record bidirectional effects and
+outbox 0 before foreground. The worker was explicitly triggered after observed
+readiness and elapsed earliest time: this proves one execution, no natural
+cadence or cancelled-isolate/expiry correctness.
+
+The initial worker observer failed with Windows UNKNOWN while opening its log
+during a concurrent checkpoint. Its failed execution JSON and observer/job
+snapshots survive; the full failed orchestration text was overwritten by the
+continuation redirect before copying. Only a labelled terminal excerpt survives.
+The later proof continued the same isolated setup without foreground/data
+recovery; it cannot restore that missing log or turn the first observer into a
+pass.
+
+Retained-release accessibility returned two null roots before a later 24563 ms
+paint observation. First bounded fresh paint was 14598 ms; Valence.open completed
+at 989 ms. These are separate observations, not exact startup latency or a cause.
+Saved retention receipts match the original inspection fields and photo hash.
+Metadata 713952 KiB / 7026 regular files measures retained stress history, not a
+leak or per-session growth rate. Saved doctor reports 17 PASS / 10 WARN / 0 FAIL.
+
+Sources: both findings inventories, Kundalini `ITERATION_20_REPORT.md`, App C
+`ITERATION_121_REPORT.md` and its `evidence/iteration-121/` audit, binary-delivery,
+Settings logcat/exit-info/outcome, raw background-state pair, worker logcat,
+completion/lease/SQLite receipts, startup, retention and runner notes. The saved
+audit was read, not re-executed. No fresh emulator or iOS acceptance.
+
+### Validation scope
+
+This refresh changes only the mirrored integration notes. Checked their equality,
+current-tip ancestry, unchanged implementation trees and diff whitespace.
+The earlier November 5 full-gate results below retain their original scope;
+no new full-gate run or runtime/security audit is claimed. Runtime, contracts,
+schema numbers, package versions and public feature documentation are unchanged.
+No protected-branch changes, pushes or publication. Roadmap item Status cells
+remain untouched.
+
 ## November 5: current packages, example wiring correction and app evidence
 
 In plain terms: refreshed both integrations to the newest packages, preserving all
