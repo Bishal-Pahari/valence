@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased: background lock result accuracy
+
+Background SQLite lock recovery now retains committed page counts and remaining queued
+writes instead of returning zeros. Diagnostic failures do not fail recovery, and a cleanup
+lock cannot hide a different work error. An unreadable final outbox count still throws,
+because reporting zero would be false. No schema or package version change.
+
+
 ## Unreleased: a late `ready()` can no longer commit a release the host gave up on
 
 When a bundle misses its ready window, the host gives up on it: it stops the timer, drops the trial's

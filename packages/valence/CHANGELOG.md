@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased: background lock result accuracy
+
+Background SQLite lock recovery now retains committed page counts and remaining queued
+writes instead of returning zeros. Diagnostic failures do not fail recovery, and a cleanup
+lock cannot hide a different work error. An unreadable final outbox count still throws,
+because reporting zero would be false. No schema or package version change.
+
+
 ## Unreleased: giving up on a trial clears `serving` before it awaits anything
 
 `ValenceApp._onReadyTimeout` cleared `serving` only once `ValenceUpdater.countFailure` ran, which is

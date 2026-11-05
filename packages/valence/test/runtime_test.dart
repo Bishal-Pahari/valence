@@ -1509,6 +1509,164 @@ void main() {
           reason: 'the bracket still closes: ${log.lines}');
     });
 
+    for (final partialPair in [false, true]) {
+      test('background lock preserves committed progress and outbox (partialPair=$partialPair)',
+          () async {
+        final faults = _SyncFaultFactory();
+        final cfg =
+            testConfig(key, dataSchemas: {'plants': 1, 'places': 1}, writableBuckets: {'shelf'});
+        final store =
+            await ValenceStore.open('${support.path}/valence.db', factory: faults);
+        await store.put('shelf', 'queued', {'value': 1}, opId: 'retained-op');
+        var requests = 0;
+        final result = await Valence.backgroundSync(
+          cfg,
+          log: LogSpy().call,
+          client: MockClient((_) async {
+            if (++requests == 2) faults.lockNextTransaction = true;
+            return http.Response(
+                jsonEncode({
+                  'rows': [
+                    {
+                      'k': 'kept',
+                      'v': {'value': 2},
+                      'u': requests,
+                      'd': 0
+                    }
+                  ],
+                  'max': 1,
+                  'more': partialPair,
+                }),
+                200);
+          }),
+          supportDir: support,
+          documentsDir: support,
+          secure: testSecure({}),
+          databaseFactory: faults,
+        );
+        expect(result.reason, ValenceSyncReason.failed);
+        expect(await store.get('plants', 1, 'kept'), {'value': 2});
+        expect(await store.pendingWrites(), 1);
+        expect(result.changed, 1);
+        expect(result.buckets, ['plants']);
+        expect(result.pending, 1);
+        expect(await store.hostPrefGet('valence.sync.lastSyncedAt'), isNull);
+        expect(await store.hostPrefGet('valence.sync.lease'), isNull);
+      });
+    }
+
+    test('background static chunk lock retains committed progress', () async {
+      final faults = _SyncFaultFactory();
+      final store = await ValenceStore.open('${support.path}/valence.db', factory: faults);
+      await store.put('shelf', 'queued', 1, opId: 'retained-op');
+      final result = await Valence.backgroundSync(
+        testConfig(key, dataSchemas: {'plants': 1}).copyWith(syncMode: ValenceSyncMode.staticChunks),
+        log: LogSpy().call,
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('index.json')) {
+            return http.Response('[{"to":1,"file":"one.json"},{"to":2,"file":"two.json"}]', 200);
+          }
+          final second = request.url.path.endsWith('two.json');
+          if (second) faults.lockNextTransaction = true;
+          return http.Response(jsonEncode({'rows': [
+            {'k': second ? 'later' : 'kept', 'v': 1, 'u': second ? 2 : 1, 'd': 0}
+          ], 'max': second ? 2 : 1}), 200);
+        }),
+        supportDir: support, documentsDir: support, secure: testSecure({}), databaseFactory: faults,
+      );
+      expect(result.reason, ValenceSyncReason.failed);
+      expect(result.changed, 1);
+      expect(result.buckets, ['plants']);
+      expect(result.pending, 1);
+      expect(await store.get('plants', 1, 'kept'), 1);
+      expect(await store.get('plants', 1, 'later'), isNull);
+    });
+
+    for (final unauthorized in [false, true]) {
+      test('background lock preserves earlier reason (unauthorized=$unauthorized)', () async {
+        var requests = 0;
+        final result = await Valence.backgroundSync(
+          testConfig(key, writableBuckets: {'shelf', 'notes'}).copyWith(authToken: () async => 'test-token'),
+          log: LogSpy().call,
+          client: MockClient((_) async {
+            if (++requests == 2) throw LockedDatabaseException();
+            if (!unauthorized) throw const SocketException('offline');
+            return http.Response('', 401);
+          }),
+          supportDir: support, documentsDir: support, secure: testSecure({}), databaseFactory: databaseFactoryFfi,
+          kind: ValenceSyncKind.push,
+        );
+        expect(result.reason, unauthorized ? ValenceSyncReason.unauthorized : ValenceSyncReason.offline);
+        expect(result.offline, !unauthorized);
+      });
+    }
+
+    for (final failWork in [false, true]) {
+      test('cleanup lock preserves primary error and completed work (failWork=$failWork)', () async {
+        final factory = _SyncFaultFactory(failRelease: true);
+        final store = await ValenceStore.open('${support.path}/valence.db', factory: factory);
+        await store.put('shelf', 'queued', {'value': 1}, opId: 'retained-op');
+        final failure = StateError('primary work failed');
+        final work = Valence.backgroundSync(
+          testConfig(key, dataSchemas: {'plants': 1}),
+          log: LogSpy().call,
+          client: MockClient((_) async {
+            if (failWork) throw failure;
+            return http.Response('{"rows":[{"k":"kept","v":1,"u":1,"d":0}],"max":1,"more":false}', 200);
+          }),
+          supportDir: support, documentsDir: support,
+          secure: testSecure({}), databaseFactory: factory,
+        );
+        if (failWork) {
+          await expectLater(work, throwsA(same(failure)));
+        } else {
+          final result = await work;
+          expect(result.reason, ValenceSyncReason.failed);
+          expect(result.changed, 1);
+          expect(result.buckets, ['plants']);
+          expect(result.pending, 1);
+        }
+        expect(await store.hostPrefGet('valence.sync.lease'), isNotNull,
+            reason: 'a failed release never pretends the lease was freed');
+      });
+    }
+
+    test('a work lock cannot hide a non-lock cleanup error', () async {
+      final failure = StateError('cleanup failed');
+      final factory = _SyncFaultFactory(failRelease: true, releaseError: failure);
+      await expectLater(Valence.backgroundSync(
+        testConfig(key, dataSchemas: {'plants': 1}), log: LogSpy().call,
+        client: MockClient((_) async => throw LockedDatabaseException()),
+        supportDir: support, documentsDir: support, secure: testSecure({}), databaseFactory: factory,
+      ), throwsA(same(failure)));
+    });
+
+    test('unreadable final pending count throws instead of fabricating zero', () async {
+      final log = LogSpy();
+      await expectLater(Valence.backgroundSync(
+        testConfig(key, dataSchemas: {'plants': 1}), log: log.call,
+        client: MockClient((_) async => http.Response('{}', 200)),
+        supportDir: support, documentsDir: support, secure: testSecure({}),
+        databaseFactory: _LockedAfterOpenFactory(statusLocked: true),
+      ), throwsA(isA<DatabaseException>()));
+      expect(log.has('background isolate left'), isTrue);
+    });
+
+    test('a throwing lock diagnostic does not fail the background job', () async {
+      final result = await Valence.backgroundSync(
+        testConfig(key, dataSchemas: {'plants': 1}),
+        log: (message) {
+          if (message.contains('database was locked mid-run')) throw StateError('sink failed');
+        },
+        client: MockClient((_) async => http.Response('{}', 200)),
+        supportDir: support,
+        documentsDir: support,
+        secure: testSecure({}),
+        databaseFactory: _LockedAfterOpenFactory(),
+      );
+      expect(result.reason, ValenceSyncReason.failed);
+    });
+
     test('a mid-run failure that is not a lock still reaches the job',
         () async {
       // The catch above is for locks only. Anything else is a bug the job should record, so a host
@@ -1857,14 +2015,16 @@ final class _WatchedSecureStorage extends TestFlutterSecureStoragePlatform {
 /// `flutter_test` can hold a real exclusive lock across isolates, which is the same reason
 /// [LockingDatabaseFactory] exists for the open path.
 final class _LockedAfterOpenFactory implements DatabaseFactory {
-  _LockedAfterOpenFactory({this.lock = true});
+  _LockedAfterOpenFactory({this.lock = true, this.statusLocked = false});
+
+  final bool statusLocked;
 
   /// False to throw a constraint failure instead, so a test can show the handling is lock-only.
   final bool lock;
 
   @override
   Future<Database> openDatabase(String path, {OpenDatabaseOptions? options}) =>
-      Future.value(_LockedAfterOpenDatabase(lock: lock));
+      Future.value(_LockedAfterOpenDatabase(lock: lock, statusLocked: statusLocked));
 
   @override
   Future<String> getDatabasesPath() async => '.';
@@ -1877,7 +2037,9 @@ final class _LockedAfterOpenFactory implements DatabaseFactory {
 }
 
 final class _LockedAfterOpenDatabase implements Database {
-  _LockedAfterOpenDatabase({required this.lock});
+  _LockedAfterOpenDatabase({required this.lock, required this.statusLocked});
+
+  final bool statusLocked;
 
   final bool lock;
 
@@ -1890,10 +2052,10 @@ final class _LockedAfterOpenDatabase implements Database {
 
   @override
   Future<List<Map<String, Object?>>> rawQuery(String sql,
-          [List<Object?>? arguments]) async =>
-      [
-        {'n': 0}
-      ];
+          [List<Object?>? arguments]) async {
+    if (statusLocked && sql.contains('COUNT(*)')) throw LockedDatabaseException();
+    return [{'n': 0}];
+  }
 
   @override
   Future<void> execute(String sql, [List<Object?>? arguments]) async {}
@@ -1912,4 +2074,54 @@ final class _UnreadableAccount extends TestFlutterSecureStoragePlatform {
     if (key == secureAuthAccountKey) throw PlatformException(code: 'Invalid');
     return super.read(key: key, options: options);
   }
+}
+
+/// Real SQLite with explicit faults at the next transaction or lease cleanup write.
+final class _SyncFaultFactory implements DatabaseFactory {
+  _SyncFaultFactory({this.failRelease = false, this.releaseError});
+  final Object? releaseError;
+  final bool failRelease;
+  bool lockNextTransaction = false;
+  @override
+  Future<Database> openDatabase(String path, {OpenDatabaseOptions? options}) async =>
+      _SyncFaultDatabase(await databaseFactoryFfi.openDatabase(path, options: options), this);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _SyncFaultDatabase implements Database {
+  _SyncFaultDatabase(this.inner, this.faults);
+  final Database inner;
+  final _SyncFaultFactory faults;
+  @override
+  Future<T> transaction<T>(Future<T> Function(Transaction txn) action, {bool? exclusive}) =>
+      faults.lockNextTransaction ? _lockedTransaction<T>() : inner.transaction(action, exclusive: exclusive);
+  Future<T> _lockedTransaction<T>() {
+    faults.lockNextTransaction = false;
+    return Future.error(LockedDatabaseException());
+  }
+  @override
+  Future<void> execute(String sql, [List<Object?>? arguments]) => inner.execute(sql, arguments);
+  @override
+  Future<List<Map<String, Object?>>> rawQuery(String sql, [List<Object?>? arguments]) =>
+      inner.rawQuery(sql, arguments);
+  @override
+  Future<List<Map<String, Object?>>> query(String table, {bool? distinct, List<String>? columns,
+      String? where, List<Object?>? whereArgs, String? groupBy, String? having,
+      String? orderBy, int? limit, int? offset}) => inner.query(table, distinct: distinct,
+      columns: columns, where: where, whereArgs: whereArgs, groupBy: groupBy, having: having,
+      orderBy: orderBy, limit: limit, offset: offset);
+  @override
+  Future<int> insert(String table, Map<String, Object?> values, {String? nullColumnHack,
+      ConflictAlgorithm? conflictAlgorithm}) => inner.insert(table, values,
+      nullColumnHack: nullColumnHack, conflictAlgorithm: conflictAlgorithm);
+  @override
+  Future<int> delete(String table, {String? where, List<Object?>? whereArgs}) {
+    if (faults.failRelease && table == 'prefs' && whereArgs?.first == 'valence.sync.lease') {
+      return Future.error(faults.releaseError ?? LockedDatabaseException());
+    }
+    return inner.delete(table, where: where, whereArgs: whereArgs);
+  }
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

@@ -372,123 +372,161 @@ final class ValenceSync {
       _log('sync: no syncBase configured, nothing to do');
       return ValenceSyncResult([], 0, false, ValenceSyncReason.ok, await store.pendingWrites());
     }
-    if (!await acquireLease()) {
-      // Name the holder and its age, or four iterations of "busy" evidence cannot tell a foreground run
-      // that is legitimately still working from a cancelled background isolate that never released
-      // (C F-44). `status()` re-reads the row, so a lease released in the microseconds since the refusal
-      // reports free — which is itself the answer, and better than naming a holder that has gone.
-      final held = await status();
-      diagnosticLog(
-          _log,
-          held.leaseKind == null
-          ? 'sync: another sync holds the lease; skipping this run (it was released before this line, '
-              'so the next run should get it) kind=${kind.name}'
-          : 'sync: another sync holds the lease; skipping this run '
-              'holder=${held.leaseKind} heldForMs=${held.leaseAgeMs} refused=${kind.name}');
-      return ValenceSyncResult([], 0, false, ValenceSyncReason.busy, held.pending);
-    }
-    _unauthorized = false;
-    _incomplete = false;
     final touched = <String>[];
     var changed = 0;
     var attempted = 0;
     var offline = false;
-    late final ValenceSyncReason reason;
+    var unauthorized = false;
+    var reason = ValenceSyncReason.failed;
+    void applied(String bucket, int count) {
+      changed += count;
+      if (!touched.contains(bucket)) touched.add(bucket);
+    }
+
     try {
-      final wanted = only?.toSet();
-      for (final e in readSchemas.entries) {
-        if (wanted != null && !wanted.contains(e.key)) continue;
-        attempted++;
+      if (!await acquireLease()) {
+        // Name the holder and its age, or four iterations of "busy" evidence cannot tell a foreground run
+        // that is legitimately still working from a cancelled background isolate that never released
+        // (C F-44). `status()` re-reads the row, so a lease released in the microseconds since the refusal
+        // reports free — which is itself the answer, and better than naming a holder that has gone.
+        final held = await status();
+        diagnosticLog(
+            _log,
+            held.leaseKind == null
+                ? 'sync: another sync holds the lease; skipping this run (it was released before this line, '
+                    'so the next run should get it) kind=${kind.name}'
+                : 'sync: another sync holds the lease; skipping this run '
+                    'holder=${held.leaseKind} heldForMs=${held.leaseAgeMs} refused=${kind.name}');
+        return ValenceSyncResult([], 0, false, ValenceSyncReason.busy, held.pending);
+      }
+      _unauthorized = false;
+      _incomplete = false;
+      Object? primaryError;
+      StackTrace? primaryStack;
+      try {
+        final wanted = only?.toSet();
+        for (final e in readSchemas.entries) {
+          if (wanted != null && !wanted.contains(e.key)) continue;
+          attempted++;
+          try {
+            await _pullPair(e.key, e.value, onApplied: (n) => applied(e.key, n));
+            if (!touched.contains(e.key)) touched.add(e.key);
+          } on SocketException catch (err) {
+            offline = true;
+            _log('sync: offline pulling ${e.key} v${e.value}: $err');
+          } on http.ClientException catch (err) {
+            offline = true;
+            _log('sync: offline pulling ${e.key} v${e.value}: $err');
+          }
+        }
+        // Writable buckets are pulled too, at schema 1 (§5.4). They can never be in `readSchemas`: that is
+        // the active manifest's `requires.data`, and both check 5 and the CLI refuse a writable bucket
+        // there. Without this a user bucket is push-only — device B never sees device A's row, a reinstall
+        // comes back empty, and §5.5's "A writes 4, A syncs, B writes 7, A syncs leaves A holding 7" cannot
+        // happen at all. Pulled before the push, so the outbox skip in applyPullPage is what protects a
+        // write that has not been acknowledged yet.
+        for (final bucket in config.writableBuckets) {
+          if (wanted != null && !wanted.contains(bucket)) continue;
+          attempted++;
+          try {
+            await _pullPair(bucket, 1, onApplied: (n) => applied(bucket, n));
+            if (!touched.contains(bucket)) touched.add(bucket);
+          } on SocketException catch (err) {
+            offline = true;
+            _log('sync: offline pulling $bucket v1: $err');
+          } on http.ClientException catch (err) {
+            offline = true;
+            _log('sync: offline pulling $bucket v1: $err');
+          }
+        }
+        for (final bucket in await store.outboxBuckets()) {
+          if (wanted != null && !wanted.contains(bucket)) continue;
+          if (!config.writableBuckets.contains(bucket)) {
+            // Only a writable bucket can have an outbox row, so this means the config changed under us.
+            _incomplete = true;
+            _log('sync: outbox holds ops for "$bucket", which is not writable; leaving them alone');
+            continue;
+          }
+          attempted++;
+          try {
+            changed += await pushBucket(bucket);
+            if (!touched.contains(bucket)) touched.add(bucket);
+          } on SocketException catch (err) {
+            offline = true;
+            _log('sync: offline pushing $bucket: $err');
+          } on http.ClientException catch (err) {
+            offline = true;
+            _log('sync: offline pushing $bucket: $err');
+          }
+        }
+        // A scoped run whose buckets match nothing attempts nothing, and `buckets` is page-supplied
+        // (§5.6), so without this a page could turn a durable `unauthorized` into a reported success
+        // on demand by naming a bucket this bundle no longer has.
+        final nothingAttempted = only != null && attempted == 0;
+        if (nothingAttempted) {
+          _log('sync: scoped run matched no syncable bucket (${only.join(', ')}); '
+              'nothing was attempted and the stored outcome is left as it was');
+        }
+        // Classify while holding the lease, before another run can reset the attempt flags.
+        // Auth rejection outranks transport failure, which outranks an incomplete server response.
+        reason = _unauthorized
+            ? ValenceSyncReason.unauthorized
+            : offline
+                ? ValenceSyncReason.offline
+                : _incomplete || nothingAttempted
+                    ? ValenceSyncReason.failed
+                    : ValenceSyncReason.ok;
+        // Persist the outcome before releasing the lease: a later run must not be overwritten.
+        // A run that observed nothing writes nothing, so it cannot overwrite one that did.
+        if (!nothingAttempted) {
+          await databaseOperation(
+              'sync.observations',
+              () => store.db.transaction((txn) async {
+                    final observations = {
+                      'valence.sync.reason': reason.name,
+                      'valence.sync.offline': offline.toString(),
+                      if (!offline && !_unauthorized && !_incomplete && only == null)
+                        'valence.sync.lastSyncedAt': _now().millisecondsSinceEpoch.toString(),
+                    };
+                    for (final entry in observations.entries) {
+                      await txn.insert('prefs', {'key': entry.key, 'value': entry.value},
+                          conflictAlgorithm: ConflictAlgorithm.replace);
+                    }
+                  }),
+              _log);
+        }
+      } on Object catch (e, stack) {
+        primaryError = e;
+        primaryStack = stack;
+        rethrow;
+      } finally {
+        unauthorized = _unauthorized;
         try {
-          changed += await pullPair(e.key, e.value);
-          touched.add(e.key);
-        } on SocketException catch (err) {
-          offline = true;
-          _log('sync: offline pulling ${e.key} v${e.value}: $err');
-        } on http.ClientException catch (err) {
-          offline = true;
-          _log('sync: offline pulling ${e.key} v${e.value}: $err');
+          await releaseLease();
+        } on Object catch (cleanupError) {
+          // A cleanup lock must not turn a non-lock failure into a recovered result.
+          if (primaryError != null &&
+              (!isDatabaseLocked(primaryError) || isDatabaseLocked(cleanupError))) {
+            Error.throwWithStackTrace(primaryError, primaryStack!);
+          }
+          rethrow;
         }
       }
-      // Writable buckets are pulled too, at schema 1 (§5.4). They can never be in `readSchemas`: that is
-      // the active manifest's `requires.data`, and both check 5 and the CLI refuse a writable bucket
-      // there. Without this a user bucket is push-only — device B never sees device A's row, a reinstall
-      // comes back empty, and §5.5's "A writes 4, A syncs, B writes 7, A syncs leaves A holding 7" cannot
-      // happen at all. Pulled before the push, so the outbox skip in applyPullPage is what protects a
-      // write that has not been acknowledged yet.
-      for (final bucket in config.writableBuckets) {
-        if (wanted != null && !wanted.contains(bucket)) continue;
-        attempted++;
-        try {
-          changed += await pullPair(bucket, 1);
-          if (!touched.contains(bucket)) touched.add(bucket);
-        } on SocketException catch (err) {
-          offline = true;
-          _log('sync: offline pulling $bucket v1: $err');
-        } on http.ClientException catch (err) {
-          offline = true;
-          _log('sync: offline pulling $bucket v1: $err');
-        }
-      }
-      for (final bucket in await store.outboxBuckets()) {
-        if (wanted != null && !wanted.contains(bucket)) continue;
-        if (!config.writableBuckets.contains(bucket)) {
-          // Only a writable bucket can have an outbox row, so this means the config changed under us.
-          _incomplete = true;
-          _log('sync: outbox holds ops for "$bucket", which is not writable; leaving them alone');
-          continue;
-        }
-        attempted++;
-        try {
-          changed += await pushBucket(bucket);
-          if (!touched.contains(bucket)) touched.add(bucket);
-        } on SocketException catch (err) {
-          offline = true;
-          _log('sync: offline pushing $bucket: $err');
-        } on http.ClientException catch (err) {
-          offline = true;
-          _log('sync: offline pushing $bucket: $err');
-        }
-      }
-      // A scoped run whose buckets match nothing attempts nothing, and `buckets` is page-supplied
-      // (§5.6), so without this a page could turn a durable `unauthorized` into a reported success
-      // on demand by naming a bucket this bundle no longer has.
-      final nothingAttempted = only != null && attempted == 0;
-      if (nothingAttempted) {
-        _log('sync: scoped run matched no syncable bucket (${only.join(', ')}); '
-            'nothing was attempted and the stored outcome is left as it was');
-      }
-      // Classify while holding the lease, before another run can reset the attempt flags.
-      // Auth rejection outranks transport failure, which outranks an incomplete server response.
-      reason = _unauthorized
+    } on Object catch (e) {
+      if (kind == ValenceSyncKind.foreground || !isDatabaseLocked(e)) rethrow;
+      // Keep committed progress even if a later page, observation write or lease release locks.
+      // A lock does not erase an earlier authentication or network failure either (contracts 5.6).
+      reason = unauthorized
           ? ValenceSyncReason.unauthorized
           : offline
               ? ValenceSyncReason.offline
-              : _incomplete || nothingAttempted
-                  ? ValenceSyncReason.failed
-                  : ValenceSyncReason.ok;
-      // Persist the outcome before releasing the lease: a later run must not be overwritten.
-      // A run that observed nothing writes nothing, so it cannot overwrite one that did.
-      if (!nothingAttempted) {
-        await databaseOperation(
-            'sync.observations',
-            () => store.db.transaction((txn) async {
-                  final observations = {
-                    'valence.sync.reason': reason.name,
-                    'valence.sync.offline': offline.toString(),
-                    if (!offline && !_unauthorized && !_incomplete && only == null)
-                      'valence.sync.lastSyncedAt': _now().millisecondsSinceEpoch.toString(),
-                  };
-                  for (final entry in observations.entries) {
-                    await txn.insert('prefs', {'key': entry.key, 'value': entry.value},
-                        conflictAlgorithm: ConflictAlgorithm.replace);
-                  }
-                }),
-            _log);
-      }
-    } finally {
-      await releaseLease();
+              : ValenceSyncReason.failed;
+      diagnosticLog(
+          _log,
+          'sync: the database was locked mid-run, so this background run stopped short '
+          'kind=${kind.name} pid=$pid');
     }
+    // If this authoritative read also fails, propagate it rather than fabricate an empty outbox.
     return ValenceSyncResult(touched, changed, offline, reason, await store.pendingWrites());
   }
 
@@ -503,11 +541,15 @@ final class ValenceSync {
   /// every resume and every periodic check, for ever.
   ///
   /// Returns the rows applied. Stops early and logs when [byteBudget] is exhausted.
-  Future<int> pullPair(String bucket, int schema, {int? byteBudget}) async {
+  Future<int> pullPair(String bucket, int schema, {int? byteBudget}) =>
+      _pullPair(bucket, schema, byteBudget: byteBudget);
+
+  Future<int> _pullPair(String bucket, int schema,
+      {int? byteBudget, void Function(int)? onApplied}) async {
     budgetExhausted = false;
     if (config.syncMode == ValenceSyncMode.staticChunks &&
         !config.writableBuckets.contains(bucket)) {
-      return _pullStatic(bucket, schema, byteBudget: byteBudget);
+      return _pullStatic(bucket, schema, byteBudget: byteBudget, onApplied: onApplied);
     }
     var applied = 0;
     var spent = 0;
@@ -554,13 +596,15 @@ final class ValenceSync {
         _log('sync: pull $bucket v$schema claimed more rows but sent none; stopping');
         return applied;
       }
-      applied += await store.applyPullPage(
+      final count = await store.applyPullPage(
         bucket: bucket,
         schema: schema,
         rows: page.rows,
         maxUsnAfter: cursor,
         complete: !page.more,
       );
+      applied += count;
+      onApplied?.call(count);
       // §5.6: renew after every applied page, so a long pull cannot let a second sync start.
       await renewLease();
       if (!page.more) return applied;
@@ -575,7 +619,8 @@ final class ValenceSync {
   }
 
   /// The CDN-only variant: an index of chunk ranges, then the chunks above `max_usn` (§5.3).
-  Future<int> _pullStatic(String bucket, int schema, {int? byteBudget}) async {
+  Future<int> _pullStatic(String bucket, int schema,
+      {int? byteBudget, void Function(int)? onApplied}) async {
     final base = '${config.syncBase}/$bucket/v$schema';
     final indexRes = await _client.get(Uri.parse('$base/index.json'));
     if (indexRes.statusCode != 200) {
@@ -640,13 +685,15 @@ final class ValenceSync {
         _log('sync: static chunk ${chunk.file} has a body this host cannot decode');
         return applied;
       }
-      applied += await store.applyPullPage(
+      final count = await store.applyPullPage(
         bucket: bucket,
         schema: schema,
         rows: page.rows,
         maxUsnAfter: chunk.to,
         complete: false,
       );
+      applied += count;
+      onApplied?.call(count);
       await renewLease();
       if (byteBudget != null && spent >= byteBudget && chunks.any((c) => c.to > chunk.to)) {
         _incomplete = true;
