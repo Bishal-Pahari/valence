@@ -8,6 +8,8 @@ extends `AppLink`. `initial` is true for the `link.initial` launch mailbox's rep
 pending launch reply; it simply did not say so, and §6.3's cross-source "latest event wins" rule is the
 page's to enforce. Existing handlers typed `(link: AppLink) => void` still compile and can ignore the
 field. Nothing on the wire changed, so no schema moves and no `has()` gate applies.
+`valence codegen` re-exports `AppLink` and `ReceivedLink` from your generated `bridge.g.ts`, so a named
+router function can state its parameter type without importing from this package directly.
 [Deep links](https://getvalence.pages.dev/docs/guides/deep-links/).
 
 ## Unreleased: a busy sync can say who is holding it

@@ -1,5 +1,45 @@
 # Changelog
 
+## Unreleased: a ready() cannot commit a bundle that never rendered
+
+Two ways that was reachable, found in the same day's review of the fix below.
+
+**A bundle promoted mid-session by `bundle.applyUpdate`.** Applying sets the activation state and then
+*awaits* loading the new bundle, so across that await the host's own state says "this release is on
+trial" while the document on screen is still the previous one — alive, and still able to call bridge
+methods. A second `app.ready()` from it matched every check and committed a release that had never
+rendered: no trial left, no strike to spend, and no rollback if it white-screens. An SPA re-mounting its
+root is one ordinary way to send that second call, because a client-side route change starts no page.
+The host now commits only while the running document belongs to the bundle its state names.
+
+**A trial promoted while the host was rolling back another one.** Giving up on a trial takes several
+asynchronous steps, and the page being given up on keeps running through them. An `applyUpdate` landing
+in that window used to hand the new trial the strike the old one had earned — leaving the release that
+actually missed its window with none — and could reopen the commit path the fix below had just closed.
+The strike is now counted and saved in the same step that decides to give up, against the seq that
+earned it.
+
+**Nothing to change in your app.** One `app.ready()` per page load, on every path that paints, is still
+the whole contract. If you ship OTA updates with `bundle.applyUpdate`, this is the difference between a
+release being proved by running and being proved by being promoted.
+
+## Unreleased: a sync that meets a locked database says which kind of stop it was
+
+Refines the entry below after review. Where the lock lands decides the answer, and only the run itself
+knows:
+
+- **taking the sync lease — `reason: "busy"`.** The lease is the first write any run makes, so no lease
+  means no pull, no push and nothing observed, which is exactly what `busy` has always promised.
+- **once the run is going — `reason: "failed"`,** carrying the buckets and `changed` count it had
+  already earned rather than zeros, so a freshness line still learns what moved before the lock stopped
+  it.
+- **anything that is not a lock still throws,** so a real bug still reaches your worker.
+
+Also: a lease the host cannot release no longer throws away the run's result, and says in the log that
+the row stands until it expires. And the update check's "who holds the lease" line is best effort — the
+holder is writing, which is why we are asking, so a lock meeting that read no longer takes the whole
+stop with it.
+
 ## Unreleased: a late `ready()` can no longer commit a release the host gave up on
 
 When a bundle misses its ready window, the host gives up on it: it stops the timer, drops the trial's

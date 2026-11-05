@@ -157,6 +157,10 @@ test('pre-9 custom links survive migration without rewriting the shipped schema'
   const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
   assert.match(ts, /'link.initial': \{ params: Record<string, never>; returns: string \| null \}/);
   assert.match(ts, /'link.opened': \{\s+url: string;/);
+  // The link types are re-exported, so a page can *name* onLink's parameter without importing from
+  // '@getvalence/bridge' directly -- the one import the app layer is told it should not need (K F-79).
+  // An inline arrow handler infers the type and never noticed; a named router function cannot.
+  assert.match(ts, /export type \{ AppLink, ReceivedLink \} from '@getvalence\/bridge';/);
   bundle({ root, cfg, key, store: true, now: NOW });
   assert.deepEqual(JSON.parse(readFileSync(baselineFile, 'utf8')).storeSchema, shipped);
   const pristine = readFileSync(schemaFile(root), 'utf8');

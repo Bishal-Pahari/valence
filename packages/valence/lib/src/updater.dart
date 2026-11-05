@@ -595,8 +595,17 @@ final class ValenceUpdater {
       // failing, when what happened is a collision that the next launch resolves by taking over a lease
       // whose process is gone. Without the kind and the age, K F-80's fourteen seconds and its skipped
       // OTA are one unexplained line each.
-      final held = await sync.status();
-      _log(held.leaseKind == null
+      // Best effort, because this is a diagnostic on a path that has already decided its outcome. The
+      // holder is writing, which is why we are here, so `status`'s own reads can meet the lock it is
+      // holding — and a throw escaping here would take the whole stop with it: no log line, no
+      // `_reason = busy`, and `bundle.status` left reporting the previous check.
+      ValenceSyncStatus? held;
+      try {
+        held = await sync.status();
+      } on Object catch (e) {
+        _log('update: step 7 could not read who holds the lease: $e');
+      }
+      _log(held == null || held.leaseKind == null
           ? 'update: step 7 stopped, another sync holds the lease after a 5-second wait (released before '
               'this line, so the next check should get it); the next check retries'
           : 'update: step 7 stopped, another sync holds the lease after a 5-second wait '
@@ -888,22 +897,53 @@ final class ValenceUpdater {
 
   /// Counts one failed start of the trial, in the one place that may do so.
   ///
-  /// Runs from the UI-start crash check or from a ready timeout. **If `trial` is null there is nothing to
-  /// count:** a ready timeout on a `current` page means the app is slow, not that a release is bad.
-  /// `async` only for the cache drop. Everything that decides the outcome runs synchronously first, so a
-  /// caller that cannot await still gets the state transition; what it would lose is the eviction.
+  /// Runs from the UI-start crash check, which reaches it with nothing awaited in front of it. The ready
+  /// timeout cannot: it has to drain admitted `data.cache` writes before the overlays are dropped (§5.5.1),
+  /// and the page it is giving up on keeps dispatching across that drain. So it calls [giveUpOnTrial] and
+  /// [dropGivenUpCaches] instead — the same two halves, with the decision taken and persisted *before* the
+  /// drain rather than after it.
   ///
-  /// Clearing `serving` here is for the UI-start callers, which reach this with no await in front of them.
-  /// It is **not** what protects the ready-timeout path: that one clears `serving` itself, before it awaits
-  /// anything, because by the time this runs a late `app.ready()` has had the whole drain to commit in
-  /// (§2.4, "Giving up clears `serving` before the host awaits anything"). Harmless to repeat, and not
-  /// something to move back here.
+  /// **If `trial` is null there is nothing to count:** a ready timeout on a `current` page means the app is
+  /// slow, not that a release is bad.
   Future<void> countFailure() async {
     final trial = state.trial;
     if (trial == null) {
       _log('update: no trial, so nothing to count as a failure and nothing to mark bad');
       return;
     }
+    _countFailureFor(trial);
+    await store.clearCaches();
+  }
+
+  /// The ready timeout's half of [countFailure]: decide, and persist the decision, synchronously.
+  ///
+  /// Synchronous and saving is the whole point (§2.4, "giving up clears `serving` before the host awaits
+  /// anything"). `serving == trial` is the only thing between a late `app.ready()` and a commit, and an
+  /// unrelated `save()` from another trigger would otherwise persist a cleared `serving` with no strike
+  /// counted — read on the next launch as a trial that owed nothing, so a bundle that white-screens could
+  /// be retried for ever without reaching two strikes.
+  void giveUpOnTrial(int trial) {
+    if (state.trial != trial) {
+      _log('update: trial $trial is no longer the trial; counting nothing against ${state.trial}');
+      return;
+    }
+    _countFailureFor(trial);
+  }
+
+  /// The other half: drop the overlays the given-up bundle wrote, once its writes have drained.
+  ///
+  /// Takes the seq because this runs two awaits after [giveUpOnTrial], and `bundle.applyUpdate` from the
+  /// still-dispatching page can promote a different trial in between. Dropping the cache is safe either
+  /// way — an overlay is disposable by construction — but the log must not name the wrong bundle.
+  Future<void> dropGivenUpCaches(int trial) async {
+    if (state.trial != trial && state.trial != null) {
+      _log('update: the trial changed to ${state.trial} under the rollback of $trial; '
+          'dropping overlays anyway, because the given-up bundle wrote them');
+    }
+    await store.clearCaches();
+  }
+
+  void _countFailureFor(int trial) {
     state.trialFails += 1;
     state.serving = null;
     if (state.trialFails >= 2) {
@@ -924,9 +964,6 @@ final class ValenceUpdater {
       _log('update: trial $trial failed once; it gets one more UI start');
     }
     save();
-    // Both strikes, not only the second: one strike also puts `current` back on screen, and the overlay
-    // the trial wrote would be read by it either way (§5.5.1, "given up on").
-    await store.clearCaches();
   }
 
   /// Commits the trial that is on screen, after `app.ready` arrived from it.

@@ -372,7 +372,19 @@ final class ValenceSync {
       _log('sync: no syncBase configured, nothing to do');
       return ValenceSyncResult([], 0, false, ValenceSyncReason.ok, await store.pendingWrites());
     }
-    if (!await acquireLease()) {
+    final bool took;
+    try {
+      took = await acquireLease();
+    } on Object catch (e) {
+      // A lock *here* is the one case `busy` describes exactly: no lease, no pull, no push, nothing
+      // observed. The UI isolate is writing and is itself about to sync, so this is the same answer the
+      // locked store open gives, for the same reason (§5.6).
+      if (!isDatabaseLocked(e)) rethrow;
+      _log('sync: the database was locked taking the lease, so this run never started '
+          'kind=${kind.name}');
+      return const ValenceSyncResult([], 0, false, ValenceSyncReason.busy);
+    }
+    if (!took) {
       // Name the holder and its age, or four iterations of "busy" evidence cannot tell a foreground run
       // that is legitimately still working from a cancelled background isolate that never released
       // (C F-44). `status()` re-reads the row, so a lease released in the microseconds since the refusal
@@ -486,8 +498,34 @@ final class ValenceSync {
                 }),
             _log);
       }
+    } on Object catch (e) {
+      // Past the lease, so `busy` is no longer available: buckets may already have been pulled and the
+      // cursors moved. `failed` is what §5.6 gives a run that was attempted and left incomplete, and the
+      // counters below are the ones this run actually earned rather than zeros — a background isolate
+      // reports this to its job instead of throwing a WorkManager FAILURE (K F-80), and a page's
+      // freshness line still learns what moved before the lock stopped it.
+      if (!isDatabaseLocked(e)) rethrow;
+      _log('sync: the database was locked mid-run, so this run stopped short '
+          'kind=${kind.name} pulled=${touched.length} changed=$changed');
+      var pending = 0;
+      try {
+        pending = await store.pendingWrites();
+      } on Object {
+        // The same lock, most likely. An unknown outbox count is better than losing the whole result.
+      }
+      return ValenceSyncResult(touched, changed, offline, ValenceSyncReason.failed, pending);
     } finally {
-      await releaseLease();
+      try {
+        await releaseLease();
+      } on Object catch (e) {
+        // A failed release must not discard the result above: the run happened, and its reason is the
+        // only thing the caller can act on. Nor can it be retried into success — the row stands until
+        // §5.6's TTL expires it, which is what the TTL is for, and a launch that is gone has its lease
+        // taken over by the foreign-pid rule. Logged because "took" with no "released" otherwise reads
+        // as a torn-down isolate (S9), and this is the other way to produce that pair.
+        _log('sync: could not release the lease, so it stands until it expires '
+            'kind=${kind.name}: $e');
+      }
     }
     return ValenceSyncResult(touched, changed, offline, reason, await store.pendingWrites());
   }

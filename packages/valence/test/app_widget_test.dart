@@ -917,6 +917,56 @@ void main() {
   });
 
   testWidgets(
+      'a ready() between an applyUpdate swap and the new document commits nothing',
+      (tester) async {
+    // The state identifies the trial by *seq*, and `applyUpdate` sets it while the document that called
+    // it is still on screen and still dispatching -- a swap sets the state and the manifest, then awaits
+    // the load. A second `ready()` from that outgoing page (an SPA re-mounting its root starts no page,
+    // which is one way to send one) matches every seq check and would otherwise commit a bundle that has
+    // never rendered: no trial left, no strike to spend, and no rollback if it white-screens. The ready
+    // timer cannot answer this, because it is still armed for the trial being replaced.
+    await mount(tester, pending: true);
+    final controller = webview.controller;
+    await tester.runAsync(
+        () async => controller.navigation.started(runtime.server!.origin));
+    expect(runtime.state.serving, trial.seq);
+
+    // A second bundle, promoted mid-session by the page, as `bundle.updateReady` invites.
+    final next = await signBundle(key, seq: 30);
+    next.writeTo(
+        manifestsDir: Directory('${runtime.dir.path}/manifests'),
+        casDir: Directory('${runtime.dir.path}/cas'));
+    runtime.state.pending = next.seq;
+    await tester.runAsync(runtime.applyUpdate);
+    expect(runtime.state.trial, next.seq);
+    expect(runtime.state.serving, next.seq,
+        reason: 'promoted and served, but no document has started on it');
+    expect(controller.loads, hasLength(2),
+        reason: 'the swap asked for one: ${log.lines}');
+
+    // The outgoing page speaks. Every seq check passes; only "does this document belong to it" does not.
+    await tester.runAsync(runtime.appReady);
+    expect(runtime.state.current, builtin.seq,
+        reason: 'seq 30 never rendered, so it cannot be committed: ${log.lines}');
+    expect(runtime.state.trial, next.seq, reason: 'it is still on trial');
+    expect(runtime.state.trialFails, 0, reason: 'and it has spent no strike');
+    expect(
+        log.lines.where((l) => l.contains('predates its swap')), hasLength(1),
+        reason: '${log.lines}');
+
+    // Once its own document starts, the same call commits normally.
+    await tester.runAsync(
+        () async => controller.navigation.started(runtime.server!.origin));
+    await tester.runAsync(runtime.appReady);
+    expect(runtime.state.current, next.seq, reason: '${log.lines}');
+    expect(runtime.state.trial, isNull);
+    await io(tester);
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 1200)));
+    await io(tester);
+  });
+
+  testWidgets(
       'a rollback refuses the given-up page cache writes until its replacement starts',
       (tester) async {
     await mount(tester, pending: true);

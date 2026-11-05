@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased: handleReady requires the running document to belong to the trial
+
+`ValenceApp.handleReady` tested `trial != null && serving == trial && manifest.seq == trial` — all by
+seq, all set by `ValenceUpdater.applyUpdate` before `reloadPage()` awaits the load. The outgoing
+document dispatches across that await, so a `ready()` from it committed a bundle that never rendered.
+`_onPageStarted` now records the bundle-swap count the document started at, and `handleReady` commits
+only while it still matches `_swaps` — the same mechanism §5.5.1 already uses to recognise a rollback's
+own document. The ready timer cannot serve as that signal: it is armed for the trial being replaced and
+nothing stops it in between.
+
+`countFailure` is split so the ready timeout can take and **persist** its decision before the §5.5.1
+drain rather than after it: `giveUpOnTrial(seq)` is the synchronous half, `dropGivenUpCaches(seq)` the
+asynchronous one. Both take the seq, because `applyUpdate` can promote a different trial across the
+drain and must not inherit the strike. The UI-start callers keep calling `countFailure` unchanged.
+
+## Unreleased: ValenceSync classifies a locked database itself
+
+`run` now answers `busy` for a lock taking the lease (nothing attempted) and `failed` for one after it,
+with the real `buckets`/`changed` counters, instead of letting either escape. `Valence.backgroundSync`
+keeps a narrow backstop for a lock around the run — releasing the lease, reading the outbox count — and
+no longer guesses at a classification only `run` can make. A `releaseLease` that throws no longer
+discards the result, and logs that the row stands until the §5.6 TTL expires it.
+`ValenceUpdater`'s step-7 holder lookup is best effort, so a lock meeting it does not swallow the stop.
+
 ## Unreleased: giving up on a trial clears `serving` before it awaits anything
 
 `ValenceApp._onReadyTimeout` cleared `serving` only once `ValenceUpdater.countFailure` ran, which is

@@ -1374,6 +1374,10 @@ export function genTs(s) {
   o.push("import { createBridge } from '@getvalence/bridge';", '');
   o.push("import type { Json, Shim } from '@getvalence/bridge';", '');
   o.push("export { BridgeError, MAX_MESSAGE_BYTES, inHost } from '@getvalence/bridge';", '');
+  // The link types too, or a page that wants to *name* `onLink`'s parameter has to import from
+  // '@getvalence/bridge' directly, which is the one import the app layer is told not to need (rule 4).
+  // Inline arrow handlers infer it and never noticed; a named router function cannot.
+  o.push("export type { AppLink, ReceivedLink } from '@getvalence/bridge';", '');
   o.push('export type { Json };', '');
   o.push(`export const BRIDGE_VERSION = ${s.version};`, '');
   for (const t of s.types) o.push(t.fields.length ? `export interface ${t.name} ${tsFields(t.fields, 0)}` : `export type ${t.name} = Record<string, never>;`, '');

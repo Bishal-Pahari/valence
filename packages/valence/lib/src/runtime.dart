@@ -1316,16 +1316,15 @@ final class Valence {
     try {
       return await sync.run(readSchemas: config.dataSchemas);
     } on Object catch (e) {
-      // The same argument the locked *open* above makes, for the lock that surfaces once the run is
-      // already going: an isolate that collides with the UI's writes has met a condition that clears in
-      // seconds, and a throw makes it a WorkManager FAILURE — exponential backoff, and on Android a
-      // periodic job that has already been rescheduled anyway. A launch replaying an unfinished job is
-      // when this is most likely, because that is when the UI isolate is reading hardest (K F-80).
-      // `failed` rather than `busy`: the lease was taken and buckets may have been pulled before the
-      // lock, so "nothing was attempted" would be a claim this path cannot make. The caller still sees a
-      // run that did not fully succeed and can retry on its own terms.
+      // A backstop, not the classifier. `run` decides between `busy` and `failed` itself, because only it
+      // knows whether the lease was taken and what had already been pulled — a distinction this frame
+      // cannot make and must not guess at. What is left for here is the lock that escapes *around* the
+      // run: releasing the lease, or reading the outbox count on the way out. Work was done by then, so
+      // `failed` is the honest answer, and reporting beats throwing for the same reason the locked open
+      // above reports: a WorkManager FAILURE buys an exponential backoff for a condition that clears in
+      // seconds, on a job Android has already rescheduled (K F-80). Non-locks still reach the job.
       if (!isDatabaseLocked(e)) rethrow;
-      log('sync: the database was locked mid-run, so this background run stopped short '
+      log('sync: the database was locked finishing this background run, so its result is incomplete '
           'kind=${kind.name} pid=$pid');
       return const ValenceSyncResult([], 0, false, ValenceSyncReason.failed);
     } finally {

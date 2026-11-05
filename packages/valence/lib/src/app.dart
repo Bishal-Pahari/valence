@@ -367,6 +367,10 @@ class _ValenceAppState extends State<ValenceApp>
     _valence.restoration.observe(url, _origin);
     _log('webview started $url');
     _pageLoaded = false;
+    // Which bundle the running document belongs to, for `handleReady` (§2.4). A swap sets the state and
+    // the manifest and *then* awaits the load, so between those two the fields say "trial X is serving"
+    // while the document on screen is still the previous bundle's.
+    _startedAtSwap = _swaps;
     // §5.5.1: the cache reopens for the document the rollback's own swap asked for, and for no other.
     // A same-origin navigation the given-up page starts itself — `location.replace('/login')`, say —
     // arrives here too, and releasing on that would hand the page it is protecting against an open
@@ -495,14 +499,16 @@ class _ValenceAppState extends State<ValenceApp>
     }
     _log(
         'ready: app.ready did not arrive within ${_valence.config.readyTimeout.inSeconds}s for trial $trial');
-    // The decision to give up is made by the guard above, so the state says so here, with no `await`
-    // in between. `serving == trial` is the one thing `handleReady` tests, and every path below yields:
+    // The decision to give up is made by the guard above, so the whole state transition happens here,
+    // with no `await` in between, and it is **persisted** here. Everything below yields:
     // `blockCacheWrites` is `async` and so returns to the event loop even with nothing to drain, while
-    // the given-up page is still alive and still dispatching. Clearing this in `countFailure` instead
-    // left that gap open, and an `app.ready()` landing in it committed the expired trial and raised the
-    // floor — the exact opposite of a rollback. Not saved yet on purpose: a process death during the
-    // drain should still be read by §2.4 step 2 as dying while serving a trial, which it did.
-    _valence.state.serving = null;
+    // the given-up page is still alive and still dispatching. Leaving any of this to `countFailure`
+    // opened two gaps across that window. An `app.ready()` landing in it passed `handleReady`'s
+    // `serving == trial` and committed the expired trial, raising the floor. And an unrelated `save()`
+    // from another trigger — step 8 of a 30-minute check, a port reclaim — persisted `serving: null`
+    // with `trialFails` still 0, so a process death there was read by §2.4 step 2 as a launch that
+    // owed no strike, and a bundle that white-screens could be retried for ever without reaching two.
+    _valence.updater.giveUpOnTrial(trial);
     // §5.5.1: up before the overlays are dropped and down when the document *this swap asked for*
     // starts. The given-up page is alive and dispatching through both awaits below — and it can also
     // navigate itself, which is one plausible reason a page never calls `app.ready()`, so the release
@@ -510,7 +516,11 @@ class _ValenceAppState extends State<ValenceApp>
     // loads no page, and §5.5.1 says such a launch leaves the cache **closed** rather than open.
     await _valence.blockCacheWrites();
     _cacheBlockedBeforeSwap = _swaps;
-    await _valence.updater.countFailure();
+    // The drain sits between the decision and the drop so an admitted write cannot land after it. The
+    // seq is passed because this is two awaits after the decision, and the page can promote a *new*
+    // trial through `bundle.applyUpdate` in that window — which would otherwise take the strike this
+    // one earned, and leave the bundle that actually missed its window with none.
+    await _valence.updater.dropGivenUpCaches(trial);
     try {
       await _reloadCurrent();
     } on Object catch (e) {
@@ -530,6 +540,12 @@ class _ValenceAppState extends State<ValenceApp>
   /// The value of [_swaps] when the rollback block went up, or null when no block is up.
   int? _cacheBlockedBeforeSwap;
 
+  /// The value of [_swaps] when the document now on screen started, or null before any has.
+  ///
+  /// Equal to [_swaps] exactly when no bundle swap has happened since the running document started —
+  /// which is what makes it "the document belongs to the bundle the state is talking about".
+  int? _startedAtSwap;
+
   @override
   Future<void> handleReady() async {
     if (_devMode) {
@@ -540,11 +556,25 @@ class _ValenceAppState extends State<ValenceApp>
     final trial = state.trial;
     // It commits only if app.ready comes from the page that is serving the trial. A ready() from a
     // `current` page never commits anything, and neither does a late ready() from a page whose trial has
-    // already been given up on — by then `trial` is null, and without the guard `null == null` would
-    // commit `current = null`.
+    // already been given up on — by then `serving` is null, and `trial` as well once a second strike has
+    // marked the bundle bad. Without the `trial != null` half, `null == null` would commit `current = null`.
     if (trial == null || state.serving != trial) {
       _log(
           'ready: app.ready from a page that is not serving a trial; nothing to commit');
+      return;
+    }
+    // And only from a document belonging to the bundle those fields name. They identify the trial by
+    // *seq*, which the state carries from the moment `applyUpdate` promotes it — and the swap it triggers
+    // sets the state and the manifest, then *awaits* the load. The document that called `applyUpdate` is
+    // still on screen and still dispatching across that await, so a second `ready()` from it (an SPA
+    // re-mounting its root starts no page, which is one way to send one) matches every field above and
+    // would commit a bundle that has never rendered: no trial left, no strike to spend and no rollback
+    // if it white-screens. The ready timer cannot answer this — it is armed for the *previous* trial and
+    // nothing stops it in between — so the swap counter does, which is the same mechanism §5.5.1 uses to
+    // tell a rollback's own document from any other page start.
+    if (_startedAtSwap != _swaps) {
+      _log('ready: app.ready for trial $trial from a document that predates its swap; '
+          'nothing to commit until the bundle is on screen');
       return;
     }
     final manifest = _valence.manifest;

@@ -1481,12 +1481,13 @@ void main() {
     });
 
     test(
-        'a lock that surfaces after the open also reports instead of failing the job (K F-80)',
+        'a lock taking the lease reports busy, because nothing was attempted (K F-80)',
         () async {
       // The open path's promise was only ever half the story: a launch replaying an unfinished periodic
-      // job collides with the UI isolate *while the run is going*, which is where K F-80's SQLITE_BUSY
-      // came from. A throw there is a WorkManager FAILURE and an exponential backoff on a condition that
-      // clears in seconds, so the run reports a result it did not finish rather than dying.
+      // job collides with the UI isolate *after* the open, which is where K F-80's SQLITE_BUSY came
+      // from. A throw there is a WorkManager FAILURE and an exponential backoff on a condition that
+      // clears in seconds. Where the lock lands decides the reason, and this is the early case: the
+      // lease is the first write any run makes, so no lease means no pull, no push and nothing observed.
       final log = LogSpy();
 
       final result = await Valence.backgroundSync(
@@ -1500,19 +1501,57 @@ void main() {
         databaseFactory: _LockedAfterOpenFactory(),
       );
 
-      expect(result.reason, ValenceSyncReason.failed,
-          reason: 'not `busy`: that one claims nothing was attempted');
+      expect(result.reason, ValenceSyncReason.busy,
+          reason: 'nothing was attempted, so this is what busy means: ${log.lines}');
       expect(result.changed, 0);
-      expect(log.has('the database was locked mid-run'), isTrue,
-          reason: '${log.lines}');
+      expect(log.has('locked taking the lease'), isTrue, reason: '${log.lines}');
       expect(log.has('sync: background isolate left'), isTrue,
           reason: 'the bracket still closes: ${log.lines}');
     });
 
-    test('a mid-run failure that is not a lock still reaches the job',
+    test('a lock once the run is going reports failed, with what it had already done',
         () async {
-      // The catch above is for locks only. Anything else is a bug the job should record, so a host
-      // reading WorkManager failures is not blinded to it by the lock handling.
+      // The other case, and the one `busy` may not claim: the lease was taken and a pair was pulled
+      // before the lock arrived, so "nothing was attempted" would be false. The counters are the ones
+      // the run earned rather than zeros, because a page's freshness line still has to learn what moved.
+      final log = LogSpy();
+      final store = await ValenceStore.open(
+          '${support.path}${Platform.pathSeparator}valence.db',
+          factory: databaseFactoryFfi,
+          log: log.call);
+      final sync = ValenceSync(
+        store: store,
+        config: testConfig(key, dataSchemas: {'plants': 1}),
+        log: log.call,
+        client: MockClient((_) async => http.Response(
+            '{"rows":[{"k":"a","v":{"n":1},"u":1}],"max":1,"more":false}', 200)),
+      );
+
+      // Let the pull land, then take the database away before the run writes its observations.
+      final result = await sync.run(readSchemas: const {'plants': 1});
+      expect(result.reason, ValenceSyncReason.ok, reason: '${log.lines}');
+      expect(result.changed, 1);
+
+      ValenceStore.resetCacheForTests();
+      final locked = await ValenceStore.open('locked-run-path',
+          factory: _LockedAfterOpenFactory.afterReads(), log: log.call);
+      final lockedSync = ValenceSync(
+        store: locked,
+        config: testConfig(key, dataSchemas: {'plants': 1}),
+        log: log.call,
+        client: MockClient(
+            (_) async => http.Response('{"rows":[],"max":0,"more":false}', 200)),
+      );
+      final stopped = await lockedSync.run(readSchemas: const {'plants': 1});
+      expect(stopped.reason, ValenceSyncReason.failed,
+          reason: 'past the lease, so busy is no longer available: ${log.lines}');
+      expect(log.has('locked mid-run'), isTrue, reason: '${log.lines}');
+      ValenceStore.resetCacheForTests();
+    });
+
+    test('a failure that is not a lock still reaches the job', () async {
+      // Both catches are for locks only. Anything else is a bug the job should record, so a host reading
+      // WorkManager failures is not blinded to it by the lock handling.
       await expectLater(
         Valence.backgroundSync(
           testConfig(key, dataSchemas: {'plants': 1}),
@@ -1857,14 +1896,22 @@ final class _WatchedSecureStorage extends TestFlutterSecureStoragePlatform {
 /// `flutter_test` can hold a real exclusive lock across isolates, which is the same reason
 /// [LockingDatabaseFactory] exists for the open path.
 final class _LockedAfterOpenFactory implements DatabaseFactory {
-  _LockedAfterOpenFactory({this.lock = true});
+  _LockedAfterOpenFactory({this.lock = true}) : allowed = 0;
+
+  /// Lets the lease be taken first, so the lock lands once the run is already going.
+  _LockedAfterOpenFactory.afterReads()
+      : lock = true,
+        allowed = 1;
 
   /// False to throw a constraint failure instead, so a test can show the handling is lock-only.
   final bool lock;
 
+  /// How many transactions succeed before the refusals start.
+  final int allowed;
+
   @override
   Future<Database> openDatabase(String path, {OpenDatabaseOptions? options}) =>
-      Future.value(_LockedAfterOpenDatabase(lock: lock));
+      Future.value(_LockedAfterOpenDatabase(lock: lock, allowed: allowed));
 
   @override
   Future<String> getDatabasesPath() async => '.';
@@ -1877,16 +1924,20 @@ final class _LockedAfterOpenFactory implements DatabaseFactory {
 }
 
 final class _LockedAfterOpenDatabase implements Database {
-  _LockedAfterOpenDatabase({required this.lock});
+  _LockedAfterOpenDatabase({required this.lock, this.allowed = 0});
 
   final bool lock;
+  final int allowed;
+  int _transactions = 0;
 
   @override
   Future<T> transaction<T>(Future<T> Function(Transaction txn) action,
-          {bool? exclusive}) =>
-      Future.error(lock
-          ? LockedDatabaseException()
-          : NotLockedDatabaseException('UNIQUE constraint failed', 'x'));
+      {bool? exclusive}) async {
+    if (_transactions++ < allowed) return action(_EmptyTransaction());
+    throw lock
+        ? LockedDatabaseException()
+        : NotLockedDatabaseException('UNIQUE constraint failed', 'x');
+  }
 
   @override
   Future<List<Map<String, Object?>>> rawQuery(String sql,
@@ -1896,7 +1947,44 @@ final class _LockedAfterOpenDatabase implements Database {
       ];
 
   @override
+  Future<List<Map<String, Object?>>> query(String table,
+          {bool? distinct,
+          List<String>? columns,
+          String? where,
+          List<Object?>? whereArgs,
+          String? groupBy,
+          String? having,
+          String? orderBy,
+          int? limit,
+          int? offset}) async =>
+      [];
+
+  @override
   Future<void> execute(String sql, [List<Object?>? arguments]) async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Enough of a transaction for `sync.acquireLease` to find no lease row and write one.
+final class _EmptyTransaction implements Transaction {
+  @override
+  Future<List<Map<String, Object?>>> query(String table,
+          {bool? distinct,
+          List<String>? columns,
+          String? where,
+          List<Object?>? whereArgs,
+          String? groupBy,
+          String? having,
+          String? orderBy,
+          int? limit,
+          int? offset}) async =>
+      [];
+
+  @override
+  Future<int> insert(String table, Map<String, Object?> values,
+          {String? nullColumnHack, ConflictAlgorithm? conflictAlgorithm}) async =>
+      1;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
