@@ -503,9 +503,12 @@ final class ValenceSync {
         unauthorized = _unauthorized;
         try {
           await releaseLease();
-        } on Object {
+        } on Object catch (cleanupError) {
           // A cleanup lock must not turn a non-lock failure into a recovered result.
-          if (primaryError != null) Error.throwWithStackTrace(primaryError, primaryStack!);
+          if (primaryError != null &&
+              (!isDatabaseLocked(primaryError) || isDatabaseLocked(cleanupError))) {
+            Error.throwWithStackTrace(primaryError, primaryStack!);
+          }
           rethrow;
         }
       }

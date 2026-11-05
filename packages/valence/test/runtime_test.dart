@@ -1631,6 +1631,16 @@ void main() {
       });
     }
 
+    test('a work lock cannot hide a non-lock cleanup error', () async {
+      final failure = StateError('cleanup failed');
+      final factory = _SyncFaultFactory(failRelease: true, releaseError: failure);
+      await expectLater(Valence.backgroundSync(
+        testConfig(key, dataSchemas: {'plants': 1}), log: LogSpy().call,
+        client: MockClient((_) async => throw LockedDatabaseException()),
+        supportDir: support, documentsDir: support, secure: testSecure({}), databaseFactory: factory,
+      ), throwsA(same(failure)));
+    });
+
     test('unreadable final pending count throws instead of fabricating zero', () async {
       final log = LogSpy();
       await expectLater(Valence.backgroundSync(
@@ -2068,7 +2078,8 @@ final class _UnreadableAccount extends TestFlutterSecureStoragePlatform {
 
 /// Real SQLite with explicit faults at the next transaction or lease cleanup write.
 final class _SyncFaultFactory implements DatabaseFactory {
-  _SyncFaultFactory({this.failRelease = false});
+  _SyncFaultFactory({this.failRelease = false, this.releaseError});
+  final Object? releaseError;
   final bool failRelease;
   bool lockNextTransaction = false;
   @override
@@ -2107,7 +2118,7 @@ final class _SyncFaultDatabase implements Database {
   @override
   Future<int> delete(String table, {String? where, List<Object?>? whereArgs}) {
     if (faults.failRelease && table == 'prefs' && whereArgs?.first == 'valence.sync.lease') {
-      return Future.error(LockedDatabaseException());
+      return Future.error(faults.releaseError ?? LockedDatabaseException());
     }
     return inner.delete(table, where: where, whereArgs: whereArgs);
   }
