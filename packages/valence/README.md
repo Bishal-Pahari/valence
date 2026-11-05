@@ -296,3 +296,11 @@ the grant and the missing ceiling. See the [REST cache guide](https://getvalence
 Response size grants: compiled `http.maxBodyBytes` raises the decompressed response cap (default 65536, range 1..262144); requests remain 64 KiB and escaped replies remain capped at 256 KiB. Regenerate and ship a store build. [Limits and adoption](https://getvalence.pages.dev/docs/guides/http-response-limits/).
 
 Revision 19 adds explicit `bundle.check` through the attached host policy path and schema-opted `bundle.checked` for completed checks, including `needsStoreUpdate`. It never auto-applies. [Usage and host migration](https://getvalence.pages.dev/docs/guides/bundle-checks/).
+
+
+Background SQLite lock recovery keeps committed page counts, touched buckets and the
+remaining outbox count, including pages committed before a later page or lease renewal
+fails. Authorization and offline outcomes keep their precedence. A throwing diagnostic
+sink cannot fail recovery. If the final outbox-count read also fails, that error reaches
+the job rather than returning a fabricated zero. A cleanup lock cannot hide an earlier
+non-lock work error. Lease ownership, expiry and pre-emption rules are unchanged.
