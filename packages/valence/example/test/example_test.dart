@@ -432,7 +432,8 @@ void main() {
     () async {
       final h = await handlers();
       final info = (await dispatch(h, 'app.info'))['v']! as Map;
-      expect(info['builtins'], 19);
+      // This test checks generated marshalling; the runtime suite pins the capability revision.
+      expect(info['builtins'], h.valence.appInfo().builtins);
       expect(info['bridge'], hostBridgeVersion);
       expect(
         ((await dispatch(h, 'sync.status'))['v']! as Map)['reason'],
