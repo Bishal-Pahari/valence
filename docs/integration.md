@@ -1,3 +1,731 @@
+# Integration with current packages - 2026-11-06
+
+In plain terms: every must-have is already done, but packages moved. Rebuilt both
+integrations from the newest packages, retained the example capability assertion
+correction, and fixed a result-reporting defect found during the scoped review.
+Background lock recovery now keeps committed rows and queued-write counts visible;
+it does not pre-empt a lease holder or claim the startup collision is solved.
+
+## Bases, order and exact tips
+
+Started fresh from code packages `1deebf9b31fabe9b37194ea4f4e9907c448671de`
+and site packages `64d92fea3f9d1f55dcd914109a46e0e974e2fa44`.
+Previous integrations are preserved at `codex/integration-before-20261106-refresh`.
+Checked/merged the original queue in its mandated order, then the later branches
+in the recorded order below. Tips 1-38 were already ancestors of packages in both
+repos, so their merge commands were no-ops. Tip 39 merged without conflicts as
+code `055b8e25c194d918f10d14c78a6f27331eeaf123` / site
+`492e57da67aaf4da35f40a23f681a80a9ba06e29`. The correction at tip 40 merged
+without conflicts as code `5e0dfccf843e422707c9c35a2e0f3a5c199b935f` / site
+`606d08801207d7d6c8ed5d1ed171e591ecaf2dc8`. All exact tips and current refs
+were checked against both integrations. Reserved schema numbers, built-in revision
+20 and package versions remain unchanged.
+
+| Order | Branch | Code tip | Site tip |
+| --- | --- | --- | --- |
+| 1 | codex/r8 | 91589a47cb80a4b2f2ba8cf1a6d1ce3dc5a4eb4e | 072552f08d626d2915e63e7fda2c4c183c4380e3 |
+| 2 | codex/r7 | 969b1a4fb03d76d2af85c69987c4ed5eeb0eb840 | 965b8eb83a7412a9ec601919f227c2c0005a9252 |
+| 3 | codex/r6 | 5b64e06051fab10e0a01d8b3215c17f45d81c980 | 388cd9d3c0fd6043cfa21b0a6440916232847742 |
+| 4 | codex/r3 | db669ddd75ffeb97588fd62304122a58c242f3b0 | f45ccf28d741a2c6e05c766eeb6bff059900bcc5 |
+| 5 | codex/r4 | 588f8761807b1893933303533a04fa14c9975a6f | d8e5dd775dfaf902e206bc2f195c30537f797ba4 |
+| 6 | codex/r5 | 3cc1c0f4d062d13919adcfe5343434e00098fdea | 57a44b50dfd82800f151823ff1563d8a73340678 |
+| 7 | codex/r9 | 0c1b0fb01a48494991cdae4ab32369fb6a2af7b2 | 2913b4d0a743188808a66bd5b7db416ca870c52f |
+| 8 | codex/r10 | f3fcd0dac875fc30af226c7f1bf70750942c0550 | b905b742ab9d90984d513cdf7b99977eabd929f2 |
+| 9 | codex/r14 | fa6e16c55d84bb9a3162514a9c09b65cb634fd54 | fa5e8164a968bd74d943b8a50590dfbd010e08ca |
+| 10 | codex/r11 | 4347872fd95b0a213b99774c3e758c7d60f047d5 | 797224cf3cab016866ecbb56213210ca4fe6556f |
+| 11 | codex/r12 | de783ae9a9f04052cfc2eb7c07ae992c980ccc42 | a57ca8f05358b0bd6cd050c3a475e2aa51b1ecce |
+| 12 | codex/r15 | 2951ac8b84ff2e0935dbb719b749ebbd8839f51f | 87695bbf61a1a647bec692416cacdb3a611a07ac |
+| 13 | codex/r16 | dba50d483f95b724bc10869b460e7774e63cc8de | bb1775d3801e9bc6032523327ce502eb7c7383eb |
+| 14 | codex/r17 | a9922853bb751ac75590cb262d2d732cbed967d1 | 971e5a93d6ff7e910c1c5640fc856940ea0861a4 |
+| 15 | codex/r19 | ebbd5e051f08661adbdc0e485cc5cf1bba32b352 | 7c31ed431453f1df73a494bb2b24d0a7a5603fb4 |
+| 16 | codex/r20 | f8f3f1f9b79117e73d30917f65ed2a281b57a070 | 98cbad0d516db52225dd593fe72dea76b4800df0 |
+| 17 | codex/r21 | 92221ea7682259d7fea49b4f8afbb98d5d735610 | d3d0e2b226196d871d53c47224bcf491bc44a444 |
+| 18 | codex/r22 | b2e5a4009b44ea8729eafb208ee0be4a5aad876a | e84efa7a38d0858491632e429bc659b8252ffb55 |
+| 19 | codex/r23 | 373d29fca370bb03e2f49f148606bda8283950fa | 0bcc4407a44cc260677dce499efad0cbfe4a6690 |
+| 20 | codex/r24 | 23a2783f5c1bb8e68db2f6712a66b6caee542617 | fcb04f2a5690a22dbf75cbdf1de2f06982aa1440 |
+| 21 | codex/r25 | 52fd6e5c382df6582d5955b02586f77c80383c4c | 9f614ee0a44a9a4c98e5d07d16cba243151df60c |
+| 22 | codex/r26 | 7c43658637da1f97a6fe3e80c2669ab83ec347ad | 14376728046b8ba6f6c062154d41fa1b41399176 |
+| 23 | codex/r27 | 8296d4e68753185c132c39da3c94369989818f27 | c4a8fad9bc2dc04f9b8033080608e1250785e08e |
+| 24 | codex/r28 | 8d42a82d96ad124c3cbe122280b64a00f43371bb | 0cbadc71c2f2d40aa11b5aa6b21cf114ab8ece65 |
+| 25 | codex/r29 | 6e250677b3bc6510f7ef2ea3e7c2ddb4ab1a509f | d5a98a85ea9e9c41aa3c2cde461e0e92de1aa555 |
+| 26 | codex/r31 | 44de344c92e0122f3361dacef1acc0788ff312c2 | 1dfdc0a50ed78b2103dfe3ce15b8461c588332cb |
+| 27 | codex/link-compat | 48d1a8a0a71a5e0d06f3d1ecac2057514598e45c | f494813c716882cfab8161c1edfdbddaaaef85d9 |
+| 28 | codex/notify-event-compat | 8a69b5da422eb403014d907f66154aea17469af9 | 094697cfb948d466c6d25dabfd7351ddac6664e2 |
+| 29 | codex/sync-fixes | aa025cfdf795e6c3caa941d4dda2701e12d2c381 | dc223e8ec5d3e85e8d02cf9a99bfe547fc3e3e64 |
+| 30 | codex/renderer-diagnostics | dc53ba05fcfc5108e88896ab9cd6218bdbcb0f25 | d3fd0d95cc232e26ae8e3e739da2e96d0db05887 |
+| 31 | codex/s7 | f28a562c9f61b205b650de7dc11919ed13110667 | 5f774d8805a10251947435d3f1a58e5368d1876a |
+| 32 | codex/r32 | 3d1fa7f53ed9f61ff12295cb53e7bb4d991813de | cc7831bcbee4f3c63972bcaa8e9a904313eba53f |
+| 33 | codex/r33 | ea9e63cf96f1b459672b2e58cf986567f7996c8c | 0e23509e1d98efba98feae7a126ded919cd88daf |
+| 34 | codex/s8 | 3f444554f0482046b4e09dbddf4da9d581e5ad87 | 05943aaf49d460554dd70105579bc3ee8f9f7d67 |
+| 35 | codex/pendingids-adoption | 886a9f92a21228c14e33c290796f522accb5f6c3 | 99a8bf76b3d1d32f4080782b0fd8b58f696cd90e |
+| 36 | codex/permissions-adoption | 3e7231a3e8d6d842f61ce876ceede20fd69e4d66 | ee4292ce5d60a907457d696abbf318f1c81738cf |
+| 37 | codex/dependency-baseline | 700da56f6362ababdbca2f2f65a2a222a9cb8be3 | 6a7bfd5ffb00e476345b2dd9c0c230ea2874072b |
+| 38 | codex/cache-adoption | 77853b3964f88d471036bd61340f7c9172057f5f | 04edf8276501f9ec02531aff326389fb6ffc44b7 |
+| 39 | codex/example-revision | 4540577f131fcaf3e92eeec7960c72471ba3bdcb | 3ddda8499bfdaea3ff6af510951f3baf4a9016f5 |
+| 40 | codex/background-lock-result | 8c6d18673c4d6cc0aefcc393b8ac685f0162922b | 053b6bb75db7aa988ee74b440be20db08fe106c3 |
+
+## Decision, correction and review
+
+Security and users data first: preserve canonical signature verification, nonce
+and navigation checks, atomic state, outbox/account boundaries and compile-time
+dev-mode exclusion. Do not displace a holder in a live transaction. The new
+packages already fixes the late-ready rollback window and labels onLink arrivals;
+those changes and the matching site documentation are retained.
+
+The scoped review found that the new outer background lock catch discarded
+completed progress and reported an empty outbox. It also called an unprotected
+logger. Recovering inside the sync driver preserves page counts immediately after
+commit (before lease renewal), retains error precedence, and reads the remaining
+outbox rather than supplying zero. The review then caught both directions of
+primary/cleanup error masking; non-lock errors now stay visible. An unreadable
+final count propagates because the existing integer field has no honest unknown
+value. No migration, new retry budget, wire change, codegen/template behavior
+change or version bump is needed. Ten targeted regressions cover HTTP partial
+pairs, completed pairs, static chunks, push unauthorized/offline precedence,
+throwing diagnostics, cleanup and unreadable status. Earlier failed attempts and
+the deterministic-injection limits are recorded in
+[the correction note](background-lock-result.md).
+
+Final scoped reviewer inspection reported no confirmed unresolved findings.
+This is not a fresh exhaustive security audit or device acceptance.
+
+## Latest app evidence, read-only
+
+Read both VALENCE_FINDINGS.md inventories and the newest completed reports:
+Kundalini 21 and App C 127, both November 6. Kundalini confirms adoption of F-77
+retention guidance and F-78 method/event warnings, fixes its own Back-history and
+cache-retention bugs, and reports F-79 link-source ambiguity plus F-80 launch
+contention. Incoming packages addresses F-79 source labels and two F-80 aspects;
+actual user tap order across independent mailboxes and safe live pre-emption
+remain unavailable. This correction does not close the device contention finding.
+
+App C reports 92 saved artifact checks passing and scoped acceptance=true.
+Settings returned painted in PID 5080; historical reliability findings stay open.
+Independently verified both archived APKs:
+
+| Artifact | Bytes | SHA256 |
+| --- | --- | --- |
+| release APK | 54711468 | 15ad501d5c7192896a4395420fbba3d3778143971f796172ffe92db2b3397058 |
+| debug APK | 193189904 | 6502f55ed01b2d1e12fba145ed2252d8fdb4d92657573e2a83f685a9d530317e |
+
+Both raw worker-phase activation files independently hash to
+`4837dc66fd5975220cbae4bac3fe4e227c4a5d85406b595f8ec6a5da1f9049a4`:
+current 1793907478, pending 1793907488, no trial. Matched all seven callback,
+lease and native SUCCESS proof lines against raw logcat, PID 8467:
+begin 01:28:24.339; isolate entry 24.479; lease take 24.523; release 25.666;
+isolate exit 25.669; callback complete 25.670; SUCCESS 25.678. Saved stable
+SQLite receipts report outbox 2/inbound absent before isolation and bidirectional
+effects/outbox 0 before foreground. Ready=true and elapsed earliest time preceded
+an explicit registered-job trigger. One run proves neither natural cadence nor
+cancelled-isolate cleanup or lease-expiry correctness.
+
+App C observed retained paint at 27473 ms after two unsuccessful observations,
+fresh paint at 20088 ms and Valence.open completion at 574 ms; these are separate
+boundaries, not exact first-paint latency or causal evidence. Initial share PNG
+preceded chooser animation; the settled capture is a separate local-only repeat.
+Raw evidence whitespace status 2 remains distinct from the passing app/tooling/docs
+check. Original fields/photo retained, fixtures cleaned, airplane off, app and owned
+mocks stopped are saved receipts, not replayed here. Retained metadata
+757068 KiB / 7448 files does not prove a leak or growth rate.
+
+Sources: App C evidence/iteration-127 saved audit, binary-delivery state, raw
+activation pair, worker logcat/completion/lease proofs, SQLite receipts, runner
+notes, Settings and retention reports; both apps inventories and iteration reports.
+No app repository writes, fresh emulator run or iOS acceptance occurred. iOS
+remains experimental and untested. S1 stays parked, S2 needs a Play account and
+S10 remains deferred to 0.5. No eligible must-have remains to start.
+
+## Gates on the combined implementation
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 118 passed, zero skipped; generated Dart and strict TS checks ran |
+| Core flutter test --no-pub --concurrency=1 | 645 passed |
+| Core dart analyze --fatal-infos . | No issues |
+| Core flutter pub publish --dry-run | 0 warnings |
+| Push flutter test / fatal-info analysis | 2 passed / no issues |
+| Push publication dry-run | 0 warnings, existing local-override hint; override excluded |
+| Bridge node --test test/*.test.ts | 37 passed, zero skipped |
+| Bridge strict/verbatim TypeScript / npm pack --dry-run | Passed / passed |
+| Example flutter test --no-pub | 29 passed |
+| Example codegen --check | Passed, written: [] |
+| Example flutter build apk --debug | Built; Gradle 123.8 seconds, command 128.2 seconds |
+| Standalone Windows py Firebase audit | PASS: core graph, manifest and all 19 DEX files |
+| Site npm run build and SEO | 50 pages passed |
+| Both repo whitespace, all 40 exact-tip refs/ancestry and unchanged versions | Passed |
+
+Root, core and other Flutter commands ran sequentially. Bridge and website checks
+ran independently. The APK retains the existing app_badge_plus Kotlin-plugin
+migration warning; both pub dry runs have zero warnings. APK SHA256:
+`5428de307f48aed48023bba1b5fd7fc4952735e6536af5997c0606d991055da8`.
+The initial gate script used one too many parent traversals for codegen and
+failed before loading the CLI. The corrected path passed with no stale files;
+that failed orchestration is retained separately, not counted as a product test.
+No other gate was rerun merely to replace a failing result.
+
+Logs: TEMP/valence-nov6-final-*.log, final-results.json, corrected-*.log and
+corrected-results.json. The final results file preserves the wrong-path attempt;
+the corrected results file records codegen, APK and Firebase audit success.
+New regression development failures remain separately named in the correction
+note. Ten new regressions accompany this fix; no skipped test is counted as passed.
+
+
+Only mirrored notes are committed after the validated implementation heads above.
+The packages refs must still match the recorded bases at handoff. No protected
+branch changes, pushes or publication. Roadmap item Status cells are unchanged.
+
+## Earlier integration records
+
+# Integration with current packages - 2026-11-05
+
+## November 6: iteration-126 evidence refresh
+
+In plain terms: App C's newest completed report is iteration 126, which began
+November 5 and crossed midnight into November 6. Its saved artifact audit has
+92 passing checks and scoped acceptance=true; Settings returned painted in the
+same PID 5382. Kundalini's newest completed report remains iteration 20. Read
+both findings inventories and newest reports read-only. This successful run
+does not close historical startup, process-loss, task-recovery, retained-file
+or F-44 lease findings.
+
+### Decision and queue
+
+Preserve security, users' data and the frozen candidate. These observations
+establish no new runtime defect; changing lease timing or migrating the database
+without a reproduced cause would risk durable state. Every must-have and the
+original rebase queue are done. S1 stays deliberately parked, S2 requires a Play
+account and S10's cache ceiling remains deferred to 0.5. Kundalini F-78's
+methods/events warning is already implemented in the current CLI and spec.
+
+Packages bases remain code 0ad023ed2861d6754cb1c7e27fdad3b6fed90b5b /
+site 13828ac0a1f05faf5f1e50d3bfbefb454a02b022. Independently checked all 39
+exact recorded feature tips against current branch refs and inclusion in both
+integrations, plus packages ancestry. No integration reconstruction is needed
+on unchanged bases and feature tips.
+
+### Evidence and limits
+
+Independently rehashed the iteration-126 archived APKs against the saved binary
+delivery receipt:
+
+| Artifact | Bytes | SHA256 |
+| --- | --- | --- |
+| release APK | 54711468 | 30f6efa44b49f3d1827194f8fc42fde8ed7a0b67d76ee493f67549eb65783573 |
+| debug APK | 193189904 | ec26c0200cc1970aad945e370c8773cbdbe9f7487a85509a154d39cdb5461e2d |
+
+Both raw worker-phase activation files independently hash to
+d595f928dd7455cc6632cf30a759b6cdede2ee33e13243de164f238837fc8756:
+current 1793902122, pending 1793902131, no trial. Matched all seven saved
+completion and lease-proof lines against raw logcat: PID 9208 callback begin
+00:00:25.706, background isolate entry 00:00:25.859, lease acquisition
+00:00:25.899, release 00:00:26.911, isolate exit/callback completion
+00:00:26.916 and native WorkManager SUCCESS 00:00:26.925, all November 6.
+Saved stable SQLite receipts report outbox 2 and the inbound fixture absent
+before isolation, then bidirectional effects and outbox 0 before foreground
+resume. Readiness and elapsed earliest time preceded an explicit scheduler
+trigger. One such execution proves neither sustained natural cadence nor
+cancelled-isolate cleanup or lease-expiry correctness.
+
+Runner notes preserve raw evidence whitespace status 2 separately from the
+passing application/tooling/docs whitespace check. Retained accessibility paint
+was observed at 16008 ms after two unsuccessful observations; the first current
+bounded fresh observation painted at 14986 ms, while Valence.open completed at
+692 ms. These are separate boundaries, not exact first-paint latency or causal
+evidence. Saved receipts accept a stopped 722049536-byte backup and report
+matching restore transfer hashes, original inspection fields and photo hash
+preserved, fixtures cleaned, airplane off, app and owned mocks stopped.
+Metadata 750196 KiB / 7380 regular files measures retained history, not proof
+of a leak or a growth rate.
+
+Sources: both VALENCE_FINDINGS.md inventories, Kundalini ITERATION_20_REPORT.md,
+App C ITERATION_126_REPORT.md and iteration-126 saved audit, binary delivery,
+Settings outcome, raw activation pair, raw worker logcat/completion/lease proofs,
+stable SQLite receipts, runner notes, backup/restore, retention, cleanup and
+storage metadata. Saved audits were read, not rerun. No fresh emulator or iOS
+acceptance is claimed.
+
+### Validation scope
+
+Only mirrored integration notes change. Checked their equality, all 39 exact
+tips and packages ancestry, unchanged implementation trees since full-gate
+candidates 5289bce / 49dc10a and diff whitespace. Earlier November 5 full gates
+retain their original scope; no fresh full-gate run or runtime/security review
+is claimed. Contracts, runtime, codegen, schemas, package versions and public
+feature pages are unchanged. Roadmap item Status cells remain untouched.
+
+## November 5: iteration-125 evidence refresh
+
+In plain terms: App C's latest completed report is iteration 125. Its saved
+artifact audit passes 92 checks and records scoped acceptance=true. Settings
+returned painted in the same PID 5781. Kundalini's latest completed report
+remains iteration 20. Reviewed both findings inventories and the newest reports
+read-only. This success does not close historical startup, process-loss,
+task-recovery, retained-file or F-44 lease findings.
+
+### Decision and queue
+
+Preserve security, users' data and the frozen candidate. These observations
+establish no new runtime defect to fix; changing lease timing or migrating the
+database without a reproduced cause would risk durable state. Every must-have
+and original queue item is done. S1 remains deliberately parked, S2 requires a
+Play account and S10's cache ceiling stays deferred to 0.5. Kundalini F-78's
+methods/events warning is already implemented in the current CLI.
+
+Packages bases remain code 0ad023ed2861d6754cb1c7e27fdad3b6fed90b5b /
+site 13828ac0a1f05faf5f1e50d3bfbefb454a02b022. Independently checked all 39
+exact recorded feature tips against current branch refs and ancestry in both
+integrations. No new integration reconstruction is needed on these unchanged
+bases and feature tips.
+
+### Evidence and limits
+
+Independently rehashed the iteration-125 archived APKs against the saved binary
+delivery receipt:
+
+| Artifact | Bytes | SHA256 |
+| --- | --- | --- |
+| release APK | 54711468 | 8ab71d1b6cea005634aa1a97c78878eba410c8f62a722199f77c07bf25c7e717 |
+| debug APK | 193189904 | b88da9060d87482885f29d81effc6842b7e43d8b4bf36faad519754551ceb969 |
+
+Both raw worker-phase activation files independently hash to
+7cfb301dbf247d072b0ae6acac5eb80c00cbcd0f54084aa156c7386197aff852:
+current 1793900317, pending 1793900328, no trial. Every saved callback completion
+and lease-proof line matches the raw worker log: PID 9006 callback begin
+23:29:24.847, background isolate entry 23:29:24.965, lease acquisition
+23:29:25.004, release 23:29:25.958, isolate exit/callback completion
+23:29:25.962 and native WorkManager SUCCESS 23:29:25.971. Saved stable SQLite
+receipts report bidirectional effects and outbox 0 before foreground resume.
+Readiness and elapsed earliest time preceded an explicit scheduler trigger.
+One such execution proves neither sustained natural cadence nor cancelled-isolate
+cleanup or lease-expiry correctness.
+
+Runner notes preserve raw evidence whitespace status 2 separately from the
+passing application/tooling/docs whitespace check. Retained accessibility paint
+was observed at 20890 ms after two unsuccessful observations; the first current
+bounded fresh observation painted at 20357 ms, while Valence.open completed at
+936 ms. These are separate boundaries, not exact first-paint latency or causal
+evidence. Saved receipts accept a stopped 715174912-byte backup, report original
+inspection fields and photo hash preserved, and record fixtures cleaned,
+airplane off, app and owned mocks stopped. Metadata 743876 KiB / 7322 regular
+files is a retained-history footprint, not proof of a leak or growth rate.
+
+Sources: both VALENCE_FINDINGS.md inventories, Kundalini ITERATION_20_REPORT.md,
+App C ITERATION_125_REPORT.md and iteration-125 saved audit, binary-delivery
+receipt, Settings outcome, raw activation pair, raw worker logcat/completion/
+lease proofs, stable SQLite receipt, runner notes, backup, retention, cleanup
+and storage metadata. Saved audits were read, not rerun. No fresh emulator or
+iOS acceptance is claimed.
+
+### Validation scope
+
+Only mirrored integration notes change. Checked their equality, all 39 exact
+tips and packages ancestry, unchanged implementation trees since full-gate
+candidates 5289bce / 49dc10a and diff whitespace. Earlier November 5 full gates
+retain their original scope; this evidence-only update does not claim a fresh
+full-gate run or runtime/security review. Contracts, runtime, codegen, schemas,
+package versions and public feature pages are unchanged. Roadmap item Status
+cells remain untouched.
+
+## November 5: iteration-124 evidence refresh
+
+In plain terms: App C's newest completed report is iteration 124. Its saved
+artifact audit records 94 passing checks and scoped acceptance=true; Settings
+returned painted in the same PID 5170. Iteration 123 also records scoped
+acceptance=true (92 checks). Neither success reverses iteration 121 or closes
+historical startup, process-loss, task-recovery, retained-file or F-44 findings.
+Kundalini's newest completed report remains iteration 20. Both findings
+inventories and the newest reports were reviewed read-only.
+
+### Decision and queue
+
+Preserve security, users' data and the frozen candidate. These successful runs
+establish no newly attributed runtime defect. Changing lease timing or adding a
+database migration without a reproduced cause would risk durable state. S1 stays
+parked, S2 requires a Play account and S10's cache ceiling remains deferred to
+0.5. Every must-have and original rebase-queue item is done; no eligible feature
+item remains. Kundalini F-78's methods/events warning is already addressed in the
+current CLI; its older snapshot report is not a new outstanding implementation.
+
+Packages bases remain code `0ad023ed2861d6754cb1c7e27fdad3b6fed90b5b` /
+site `13828ac0a1f05faf5f1e50d3bfbefb454a02b022`. Independently checked all 39
+exact recorded feature tips against their current branch refs and inclusion in
+both integrations, plus packages ancestry. No integration rebuild is needed
+while these bases and feature tips remain unchanged.
+
+### Evidence and limits
+
+Independently rehashed both iteration-124 archived APKs against the saved binary
+delivery receipt:
+
+| Artifact | Bytes | SHA256 |
+| --- | --- | --- |
+| release APK | 54711468 | 2496d92acb50abc50e13ce7f680fcd215b899a13cb7ffe6fcaa22b9c0baa3a4d |
+| debug APK | 193189904 | c8dd0fcc2cd278d1a750697214384078d3fadb3fc843e3f43bdbe47662d61cc7 |
+
+Both raw worker-phase activation files independently hash to
+`5aeba9be4506e3a3735ddcf96132e0f5320b33b607f1e5f58e0dde4ffe3db3be`:
+current 1793898590, pending 1793898600, no trial. Matched every saved completion
+and lease-proof line against the raw log: PID 8687 callback begin 22:59:32.495,
+background isolate entry 22:59:32.610, lease acquisition 22:59:32.647, release
+22:59:33.783, isolate exit/callback completion 22:59:33.787 and native
+WorkManager SUCCESS 22:59:33.796. Saved stable SQLite receipts report the
+bidirectional effects and outbox 0 before foreground. The registered job was
+explicitly triggered after observed readiness and elapsed earliest time. One
+execution proves neither sustained natural cadence nor cancelled-isolate cleanup
+or lease-expiry correctness.
+
+Preserve unsuccessful runner attempts separately: initial permission-stage ADB
+TCP5037 connection failure and navigation pidof timeout precede the passing
+retries. The initial signature invocation used an invalid positional argument;
+corrected --manifest/--files verification passed. A mistaken --help invocation of
+the device-only WebView helper also failed. None establishes a Valence defect.
+The raw evidence whitespace check failed separately from the passing scoped
+application/tooling/docs whitespace check; raw logs remain unchanged.
+
+Saved retained accessibility observations include two null roots before paint
+at 27856 ms. The first current bounded fresh observation painted at 15219 ms;
+Valence.open completed at 663 ms. These are separate boundaries, not exact
+first-paint latency or causal evidence. The saved stopped-backup receipt accepts
+707867648 bytes and the restore receipt matches local/remote transfer hashes.
+Retention receipts report original inspection fields and photo hash preserved;
+cleanup reports fixtures removed, airplane off, app and owned mocks stopped.
+Metadata 733160 KiB / 7216 regular files measures retained history, not a leak or
+a per-session growth rate. Saved doctor is 17 PASS / 10 WARN / 0 FAIL.
+
+Sources: both VALENCE_FINDINGS.md inventories, Kundalini ITERATION_20_REPORT.md,
+App C ITERATION_123_REPORT.md and ITERATION_124_REPORT.md, plus iteration-124
+saved audit, APK delivery, Settings outcome, raw activation pair, raw worker
+logcat/completion/lease proofs, SQLite receipt, runner notes, backup/restore,
+retention, cleanup and storage metadata. Saved audits were read, not rerun.
+No fresh emulator or iOS acceptance.
+
+### Validation scope
+
+Only mirrored integration notes change. Checked equality, exact-tip ancestry,
+unchanged implementation trees since full-gate candidates 5289bce / 49dc10a,
+and diff whitespace. Earlier November 5 full-gate results retain their original
+scope; no fresh full-gate run or runtime/security review is claimed. Contracts,
+runtime, codegen, schemas, package versions and public feature pages are unchanged.
+Roadmap item Status cells remain untouched.
+
+## November 5: iteration-122 evidence refresh
+
+In plain terms: App C's saved artifact audit passes all 93 checks and records
+scoped acceptance=true. Settings returned painted in the same PID 4870. This
+successful attempt does not reverse iteration 121 or close historical process,
+startup, task-recovery, retained-file or F-44 lease findings. Kundalini's newest
+completed report remains iteration 20. Both findings inventories and both newest
+reports were read without writing to the test apps.
+
+### Decision and queue
+
+Preserve security, users' data and the frozen candidate. No newly attributed
+Valence runtime defect is established by iteration 122. Changing lease timing or
+renderer recovery based on one successful run would add risk without resolving
+the earlier failures. S1 stays parked, S2 needs a Play account and S10's database
+migration remains deferred to 0.5. Every must-have and original rebase-queue item
+is done; no eligible new item exists.
+
+Packages bases remain code `0ad023ed2861d6754cb1c7e27fdad3b6fed90b5b` /
+site `13828ac0a1f05faf5f1e50d3bfbefb454a02b022`. Checked all 39 exact recorded
+feature tips against their current refs and inclusion in both integrations.
+Both packages bases are ancestors too. No integration rebuild is needed while
+these bases and feature tips remain unchanged.
+
+### Evidence and limits
+
+Independently rehashed both archived APKs against binary-delivery-state.json:
+
+| Artifact | Bytes | SHA256 |
+| --- | --- | --- |
+| release APK | 54711468 | 906e1e4e27377aa76dbad625aa79c27e5c0c25eafbfad00b88dfbe4df0cecb2d |
+| debug APK | 193189904 | 757fddd32bc952e8d7a81276aaaa128a8bc3b877a1313b30bddc6a1ccca0aca2 |
+
+Both raw worker-phase activation files independently hash to
+`6989c3d699b627f203d84b0e1b152de9176885da1bae9275e3f263faffc8000f`:
+current 1793895036, pending 1793895045, no trial. Raw PID 7927 logcat records
+callback begin at 22:01:25.605, background isolate entry and lease acquisition,
+release at 22:01:26.643, isolate exit and callback completion at 22:01:26.646,
+then native WorkManager SUCCESS at 22:01:26.655. Saved stable SQLite receipts
+record bidirectional effects and outbox 0 before foreground. The job was
+explicitly triggered after observed readiness and elapsed earliest time.
+This proves one registered execution, neither sustained natural cadence nor
+cancelled-isolate teardown or lease-expiry correctness.
+
+Preserve the runner failures separately: the first stopped backup transfer
+exceeded its 120-second budget and was rejected before data clearing; the
+600-second retry validated and restored a 693983232-byte archive. The first
+signature invocation omitted --manifest and was corrected. Input pruning removed
+rollback.mjs and interrupted orchestration after broken apply; its failed
+receipt/log survive, and a separate continuation restored the canonical runner
+and proved the same trial rollback. None establishes a Valence defect.
+
+Retained-release accessibility initially returned a null root before a later
+16758 ms paint observation. The first bounded fresh attempt painted at 14922 ms,
+with Valence.open complete at 363 ms. These are separate observations, not exact
+startup latency. Saved doctor reports 17 PASS / 10 WARN / 0 FAIL. Retention and
+cleanup receipts report the original inspection/photo preserved and test fixtures
+removed. Current scoped success leaves historical findings open.
+
+Sources: both VALENCE_FINDINGS.md inventories, Kundalini ITERATION_20_REPORT.md,
+App C ITERATION_122_REPORT.md and its evidence/iteration-122/ audit,
+binary-delivery-state, settings-outcome, raw background-state pair,
+worker-full-logcat, worker-completion-proof, worker-lease-diagnostics,
+background-sqlite-before-resume and runner-notes. The saved audit was read,
+not re-executed. No fresh emulator or iOS acceptance.
+
+### Validation scope
+
+This refresh changes only mirrored integration notes. Checked note equality,
+exact-tip ancestry, unchanged implementation trees and diff whitespace.
+The earlier November 5 full-gate results below retain their original scope;
+no fresh full-gate run or runtime/security audit is claimed. Runtime, contracts,
+schema numbers, package versions and public feature documentation are unchanged.
+No protected-branch changes, pushes or publication. Roadmap item Status cells
+remain untouched.
+
+## November 5: iteration-121 evidence refresh
+
+In plain terms: App C's latest artifact audit passes all 93 checks, but scoped
+acceptance is false. Settings survival failed again. Later recovered native,
+OTA and worker successes do not erase that failure. Kundalini's newest completed
+report remains iteration 20; both findings inventories were read without writing
+to either app repository.
+
+### Decision and queue
+
+Preserve security, users' data and the frozen candidate. Android's direct
+low-memory kills do not establish a Valence memory leak, an unhandled Chromium
+renderer-loss path or a lease-expiry defect. A speculative runtime change would
+risk durable data and update behavior without an attributed cause. S1 stays
+parked, S2 needs a Play account, and S10's migration remains deferred to 0.5.
+Every must-have and original rebase-queue item is done; no eligible new item
+exists.
+
+Packages bases remain code `0ad023ed2861d6754cb1c7e27fdad3b6fed90b5b` /
+site `13828ac0a1f05faf5f1e50d3bfbefb454a02b022`. Independently checked all 39
+current branch tips in the table below against their refs and confirmed each is
+an ancestor of its integration. Both packages bases are ancestors too.
+No integration rebuild is required while those bases and feature tips are
+unchanged.
+
+### Latest evidence and limits
+
+Raw Settings logcat records lowmemorykiller killing renderer 5937 at
+21:06:52.235 and host 5785 at 21:06:52.266. Both exit-info entries say LOW_MEMORY;
+host RSS is 522 MB. Return PID 7020 failed the saved painted-page/same-PID check.
+This is F-50 recurring, not a fresh reproduction of F-36's Chromium termination
+path. Historical reliability findings, including F-44, remain open.
+
+Independently rehashed both archived APKs:
+
+| Artifact | Bytes | SHA256 |
+| --- | --- | --- |
+| release APK | 54711468 | 3182e3545906a45ae4b5890af80fc55f1c764512ccf7aec1353eda47cab74a19 |
+| debug APK | 193189904 | d4c7c262c7e19e72ea9d1fdeffd11ca4a62c09379ecf2cef77afcfa2fcd4f118 |
+
+Both raw worker-phase activation files hash to
+`a50a666231cf9e51ad8f29ea25754fcca8e327b0f31bc7e3e53f1aec51f4bc6e`:
+current 1793892668, pending 1793892678, no trial. Raw PID 9715 logs corroborate
+callback begin 21:21:05.158, background isolate entry and lease take/release,
+isolate exit, callback complete 21:21:06.270 and native WorkManager SUCCESS
+21:21:06.276. Saved stable SQLite receipts record bidirectional effects and
+outbox 0 before foreground. The worker was explicitly triggered after observed
+readiness and elapsed earliest time: this proves one execution, no natural
+cadence or cancelled-isolate/expiry correctness.
+
+The initial worker observer failed with Windows UNKNOWN while opening its log
+during a concurrent checkpoint. Its failed execution JSON and observer/job
+snapshots survive; the full failed orchestration text was overwritten by the
+continuation redirect before copying. Only a labelled terminal excerpt survives.
+The later proof continued the same isolated setup without foreground/data
+recovery; it cannot restore that missing log or turn the first observer into a
+pass.
+
+Retained-release accessibility returned two null roots before a later 24563 ms
+paint observation. First bounded fresh paint was 14598 ms; Valence.open completed
+at 989 ms. These are separate observations, not exact startup latency or a cause.
+Saved retention receipts match the original inspection fields and photo hash.
+Metadata 713952 KiB / 7026 regular files measures retained stress history, not a
+leak or per-session growth rate. Saved doctor reports 17 PASS / 10 WARN / 0 FAIL.
+
+Sources: both findings inventories, Kundalini `ITERATION_20_REPORT.md`, App C
+`ITERATION_121_REPORT.md` and its `evidence/iteration-121/` audit, binary-delivery,
+Settings logcat/exit-info/outcome, raw background-state pair, worker logcat,
+completion/lease/SQLite receipts, startup, retention and runner notes. The saved
+audit was read, not re-executed. No fresh emulator or iOS acceptance.
+
+### Validation scope
+
+This refresh changes only the mirrored integration notes. Checked their equality,
+current-tip ancestry, unchanged implementation trees and diff whitespace.
+The earlier November 5 full-gate results below retain their original scope;
+no new full-gate run or runtime/security audit is claimed. Runtime, contracts,
+schema numbers, package versions and public feature documentation are unchanged.
+No protected-branch changes, pushes or publication. Roadmap item Status cells
+remain untouched.
+
+## November 5: current packages, example wiring correction and app evidence
+
+In plain terms: refreshed both integrations to the newest packages, preserving all
+38 existing feature tips, then included the example wiring correction as tip 39.
+Every must-have is done; no queue item needs a refresh. S1 remains deliberately
+parked, S2 needs a Play account, and S10's database migration is deferred to 0.5.
+No new runtime feature is justified by the latest app evidence.
+
+Code base: `0ad023ed2861d6754cb1c7e27fdad3b6fed90b5b`.
+Site base: `13828ac0a1f05faf5f1e50d3bfbefb454a02b022`.
+Both integrations fast-forwarded to these bases without conflicts. The required
+queue inclusion order is R8, R7, R6, R3, R4, R5, R9, R10, R14; all those tips and
+all later tips below are already ancestors of packages, except the final example
+correction. That correction is code `4540577f131fcaf3e92eeec7960c72471ba3bdcb` /
+site `3ddda8499bfdaea3ff6af510951f3baf4a9016f5`, fast-forwarded last.
+The table records exact current tips and checked inclusion, not newly created
+merge commits for features already merged upstream.
+
+### The correction and the decision
+
+An additional example-suite run failed its R17 dispatch test with
+`Expected: 19 / Actual: 20`; the same isolated test reproduced it. S9 correctly
+advanced the runtime's built-in capability revision to 20, and the core runtime
+test already asserts 20 independently of an app schema at 41. The example's
+marshalling test now compares the dispatched value with the runtime's public
+`appInfo().builtins`, while retaining `bridge == hostBridgeVersion`. The isolated
+case and the full 29-test example suite then passed. The website testing guide
+now distinguishes these two responsibilities. See [the correction note](example-revision.md).
+
+Decision, security first, then users' data: correct the stale assertion; do not
+lower the advertised runtime capability or rewrite a frozen app declaration.
+Relative to these packages bases, only the example test and documentation change.
+Signing, canonical check order, nonce, strict decoding, navigation, atomic state,
+lease timing, cache rollback protection and release-only dev exclusion are
+unchanged. No contract, generator or template behavior change is needed for a
+test correction. Built-in revision 20 and every reserved schema number remain
+unchanged. No package version changes, protected-branch writes, pushes or
+publication. This is a scoped delta review, not a new independent runtime audit.
+
+### Latest app evidence, read-only
+
+Reviewed both `VALENCE_FINDINGS.md` inventories and the newest completed reports
+at read time: Kundalini 20 and App C 120. No test-app files were written.
+
+Kundalini reports adoption of F-75/F-76 cache declaration and sync-endpoint guidance,
+F-74 refused-offer delivery through `bundle.checked`, event capability gates, lease
+diagnostics and rollback clearing one overlay while retaining 21,010 synced rows.
+These are the app's device receipts, not replayed here. Its F-78 pinned-event
+warning is already fixed upstream (`fb10274`, site `d33f36b`); its report does not
+establish adoption of that later fix. F-77 retention warnings/doctor reporting are
+already upstream; a host cache ceiling remains explicitly deferred under S10.
+
+App C's saved audit has 92 passing artifact checks, zero failures and scoped
+`acceptancePassed=true`. Settings returned painted in the same PID 5832. Retained
+release accessibility dumps initially failed before a later 26950ms observation;
+the first bounded fresh observation painted at 15691ms with store open 682ms.
+Those measurements are distinct and do not diagnose startup latency. The
+image-free-list media probe failed its precondition, not an endpoint; successful
+photo-detail probes are separate. Initial npm --force no-op and the missing
+helper-help receipt are retained in the runner's qualifications. Historical
+retention/startup/task/process findings, including F-44 and F-50, remain open.
+
+Independently rehashed App C's archived artifacts:
+
+| Artifact | Bytes | SHA256 |
+| --- | --- | --- |
+| release APK | 54711468 | bc2d1a916eb0a703f4516f2d2be3fe2a47888214bd45b1b2f92024171f63efa7 |
+| debug APK | 193189904 | f7abddbfbc723dd1eb0c3f157d3d1ffe4933933d75708eb0a84d9c277737ad53 |
+
+Both raw worker-phase activation files hash to
+`1c801524352c196e4226f4891b2bee1ceb52a4bce96041c259078ec9d1f7eeb0`:
+current 1793878919, pending 1793878929, no trial. Raw PID 9986 logs corroborate
+callback begin 17:32:55.380, background lease take/release, isolate exit, callback
+complete 17:32:56.861 and native WorkManager SUCCESS 17:32:56.869. The saved
+SQLite receipt records bidirectional effects and outbox 0 before foreground.
+Worker execution was explicitly triggered after observed readiness and elapsed
+earliest time; this proves one successful run, neither natural cadence nor
+cancelled-isolate/lease-expiry correctness. Final retention records preserve the
+original inspection and matching photo hash. Metadata 707424 KiB / 6966 regular
+files measures retained stress history, not a leak or per-session growth rate.
+
+Sources: the two app reports/inventories and App C's read-only
+`evidence/iteration-120/`, including `evidence-audit.json`,
+`binary-delivery-state.json`, raw activation files, `worker-full-logcat.txt`,
+`worker-completion-proof.json`, `worker-lease-diagnostics.json`,
+`background-sqlite-before-resume.json`, `settings-outcome.json`,
+`final-native-retention.json` and `runner-notes.md`. Saved app acceptance concerns
+its prescribed snapshots; it is not device acceptance of this newly rebuilt
+example APK. No fresh emulator run; iOS remains experimental and untested.
+
+### Combined gates - 2026-11-05
+
+| Gate | Result |
+| --- | --- |
+| Root `npm test` | 118 passed, zero failures/skips; generated Dart and TS ran |
+| Core `flutter test` | 633 passed |
+| Core `dart analyze --fatal-infos .` | no issues |
+| Core `flutter pub publish --dry-run` | zero warnings |
+| Bridge `node --test test/*.test.ts` | 36 passed, zero skips |
+| Bridge `npx -y -p typescript tsc -p tsconfig.json --strict` | passed |
+| Bridge `npm pack --dry-run` | passed, prepack rebuilt dist |
+| Push `flutter test` / fatal-info analysis | 2 passed / no issues |
+| Push publication dry run | zero warnings; existing local-override hint |
+| Example `flutter test` | 29 passed after the preserved stale-assertion failure |
+| Example `flutter build apk --debug` | built, Gradle 106.4s; existing Kotlin plugin compatibility warning |
+| Standalone Windows `py example/tool/check_no_firebase.py` | PASS: core graph, manifest and all 19 DEX files |
+| Site `npm run build` | 50 pages; SEO gate passed after the guide edit |
+
+Root and core suites ran sequentially, and Flutter test/build commands did not
+overlap. Final core analysis includes the corrected example test. The built
+example APK SHA256 is
+`ca4d51cc4ecbdd91476168ff4293cf45e576d12c63d7c63154ddd5928fa66b34`.
+The initial failing example test is retained as evidence of the correction;
+it is not counted as a passing run. No new native-device acceptance is claimed.
+
+### Current exact tips, checked in both integrations
+
+| Order | Branch | Code tip | Site tip |
+| --- | --- | --- | --- |
+| 1 | codex/r8 | 91589a47cb80a4b2f2ba8cf1a6d1ce3dc5a4eb4e | 072552f08d626d2915e63e7fda2c4c183c4380e3 |
+| 2 | codex/r7 | 969b1a4fb03d76d2af85c69987c4ed5eeb0eb840 | 965b8eb83a7412a9ec601919f227c2c0005a9252 |
+| 3 | codex/r6 | 5b64e06051fab10e0a01d8b3215c17f45d81c980 | 388cd9d3c0fd6043cfa21b0a6440916232847742 |
+| 4 | codex/r3 | db669ddd75ffeb97588fd62304122a58c242f3b0 | f45ccf28d741a2c6e05c766eeb6bff059900bcc5 |
+| 5 | codex/r4 | 588f8761807b1893933303533a04fa14c9975a6f | d8e5dd775dfaf902e206bc2f195c30537f797ba4 |
+| 6 | codex/r5 | 3cc1c0f4d062d13919adcfe5343434e00098fdea | 57a44b50dfd82800f151823ff1563d8a73340678 |
+| 7 | codex/r9 | 0c1b0fb01a48494991cdae4ab32369fb6a2af7b2 | 2913b4d0a743188808a66bd5b7db416ca870c52f |
+| 8 | codex/r10 | f3fcd0dac875fc30af226c7f1bf70750942c0550 | b905b742ab9d90984d513cdf7b99977eabd929f2 |
+| 9 | codex/r14 | fa6e16c55d84bb9a3162514a9c09b65cb634fd54 | fa5e8164a968bd74d943b8a50590dfbd010e08ca |
+| 10 | codex/r11 | 4347872fd95b0a213b99774c3e758c7d60f047d5 | 797224cf3cab016866ecbb56213210ca4fe6556f |
+| 11 | codex/r12 | de783ae9a9f04052cfc2eb7c07ae992c980ccc42 | a57ca8f05358b0bd6cd050c3a475e2aa51b1ecce |
+| 12 | codex/r15 | 2951ac8b84ff2e0935dbb719b749ebbd8839f51f | 87695bbf61a1a647bec692416cacdb3a611a07ac |
+| 13 | codex/r16 | dba50d483f95b724bc10869b460e7774e63cc8de | bb1775d3801e9bc6032523327ce502eb7c7383eb |
+| 14 | codex/r17 | a9922853bb751ac75590cb262d2d732cbed967d1 | 971e5a93d6ff7e910c1c5640fc856940ea0861a4 |
+| 15 | codex/r19 | ebbd5e051f08661adbdc0e485cc5cf1bba32b352 | 7c31ed431453f1df73a494bb2b24d0a7a5603fb4 |
+| 16 | codex/r20 | f8f3f1f9b79117e73d30917f65ed2a281b57a070 | 98cbad0d516db52225dd593fe72dea76b4800df0 |
+| 17 | codex/r21 | 92221ea7682259d7fea49b4f8afbb98d5d735610 | d3d0e2b226196d871d53c47224bcf491bc44a444 |
+| 18 | codex/r22 | b2e5a4009b44ea8729eafb208ee0be4a5aad876a | e84efa7a38d0858491632e429bc659b8252ffb55 |
+| 19 | codex/r23 | 373d29fca370bb03e2f49f148606bda8283950fa | 0bcc4407a44cc260677dce499efad0cbfe4a6690 |
+| 20 | codex/r24 | 23a2783f5c1bb8e68db2f6712a66b6caee542617 | fcb04f2a5690a22dbf75cbdf1de2f06982aa1440 |
+| 21 | codex/r25 | 52fd6e5c382df6582d5955b02586f77c80383c4c | 9f614ee0a44a9a4c98e5d07d16cba243151df60c |
+| 22 | codex/r26 | 7c43658637da1f97a6fe3e80c2669ab83ec347ad | 14376728046b8ba6f6c062154d41fa1b41399176 |
+| 23 | codex/r27 | 8296d4e68753185c132c39da3c94369989818f27 | c4a8fad9bc2dc04f9b8033080608e1250785e08e |
+| 24 | codex/r28 | 8d42a82d96ad124c3cbe122280b64a00f43371bb | 0cbadc71c2f2d40aa11b5aa6b21cf114ab8ece65 |
+| 25 | codex/r29 | 6e250677b3bc6510f7ef2ea3e7c2ddb4ab1a509f | d5a98a85ea9e9c41aa3c2cde461e0e92de1aa555 |
+| 26 | codex/r31 | 44de344c92e0122f3361dacef1acc0788ff312c2 | 1dfdc0a50ed78b2103dfe3ce15b8461c588332cb |
+| 27 | codex/link-compat | 48d1a8a0a71a5e0d06f3d1ecac2057514598e45c | f494813c716882cfab8161c1edfdbddaaaef85d9 |
+| 28 | codex/notify-event-compat | 8a69b5da422eb403014d907f66154aea17469af9 | 094697cfb948d466c6d25dabfd7351ddac6664e2 |
+| 29 | codex/sync-fixes | aa025cfdf795e6c3caa941d4dda2701e12d2c381 | dc223e8ec5d3e85e8d02cf9a99bfe547fc3e3e64 |
+| 30 | codex/renderer-diagnostics | dc53ba05fcfc5108e88896ab9cd6218bdbcb0f25 | d3fd0d95cc232e26ae8e3e739da2e96d0db05887 |
+| 31 | codex/s7 | f28a562c9f61b205b650de7dc11919ed13110667 | 5f774d8805a10251947435d3f1a58e5368d1876a |
+| 32 | codex/r32 | 3d1fa7f53ed9f61ff12295cb53e7bb4d991813de | cc7831bcbee4f3c63972bcaa8e9a904313eba53f |
+| 33 | codex/r33 | ea9e63cf96f1b459672b2e58cf986567f7996c8c | 0e23509e1d98efba98feae7a126ded919cd88daf |
+| 34 | codex/s8 | 3f444554f0482046b4e09dbddf4da9d581e5ad87 | 05943aaf49d460554dd70105579bc3ee8f9f7d67 |
+| 35 | codex/pendingids-adoption | 886a9f92a21228c14e33c290796f522accb5f6c3 | 99a8bf76b3d1d32f4080782b0fd8b58f696cd90e |
+| 36 | codex/permissions-adoption | 3e7231a3e8d6d842f61ce876ceede20fd69e4d66 | ee4292ce5d60a907457d696abbf318f1c81738cf |
+| 37 | codex/dependency-baseline | 700da56f6362ababdbca2f2f65a2a222a9cb8be3 | 6a7bfd5ffb00e476345b2dd9c0c230ea2874072b |
+| 38 | codex/cache-adoption | 77853b3964f88d471036bd61340f7c9172057f5f | 04edf8276501f9ec02531aff326389fb6ffc44b7 |
+| 39 | codex/example-revision | 4540577f131fcaf3e92eeec7960c72471ba3bdcb | 3ddda8499bfdaea3ff6af510951f3baf4a9016f5 |
+
+## Previous integration records (historical)
+
 # Integration with current packages - 2026-11-04
 
 ## November 4: iteration 102 evidence review
