@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased: retain committed sync pages across a later database lock
+
+A sync interrupted after committing a page now reports that page in its changed
+count and buckets, even if the next page or lease renewal locks. Locks taking the
+lease remain `busy`; locks during work remain incomplete results, with earlier
+authentication and offline outcomes retaining precedence. Cleanup preserves a
+primary non-lock error and its stack; a non-lock cleanup error still surfaces.
+A release-only lock retains the completed result. No lease timing, schema,
+package version or host migration changes.
+
 ## Unreleased: `doctor` says what it is doing, and a killed command is no longer a failing test
 
 `valence doctor` wrote nothing at all until every check had finished, so a run stopped by a CI

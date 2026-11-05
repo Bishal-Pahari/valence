@@ -296,3 +296,9 @@ the grant and the missing ceiling. See the [REST cache guide](https://getvalence
 Response size grants: compiled `http.maxBodyBytes` raises the decompressed response cap (default 65536, range 1..262144); requests remain 64 KiB and escaped replies remain capped at 256 KiB. Regenerate and ship a store build. [Limits and adoption](https://getvalence.pages.dev/docs/guides/http-response-limits/).
 
 Revision 19 adds explicit `bundle.check` through the attached host policy path and schema-opted `bundle.checked` for completed checks, including `needsStoreUpdate`. It never auto-applies. [Usage and host migration](https://getvalence.pages.dev/docs/guides/bundle-checks/).
+
+Sync results retain each committed HTTP page or static chunk even if a later
+page or lease renewal locks. Acquisition locks remain `busy`. A release-only
+lock retains the completed outcome; cleanup cannot hide a primary non-lock
+error. Background final-read lock fallback retains its existing limits. See
+[the integration correction](../../docs/background-lock-result.md).
