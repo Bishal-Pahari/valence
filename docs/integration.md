@@ -1,5 +1,74 @@
 # Integration review correction - 2026-11-06
 
+## November 6: iteration 131 evidence review
+
+In plain terms: no eligible must-have or queue refresh remains. Packages bases
+remain code 0fe3391faf2ba25e69ccae3079382be2179be4be and site
+0c468908a7ed412ce13c6b2899efdc50dbd37d6b. Checked all 39 current recorded exact
+feature tips as ancestors of both integrations. Read both findings inventories
+and newest reports: Kundalini 21 and App C 131. S1 remains deliberately parked,
+S2 requires a Play account, and S10 is deferred.
+
+App C's saved artifact audit passes 96 checks with scoped acceptance=true.
+The saved Settings receipt records PID 6397 before and after, samePid=true and
+pagePainted=true. This current success does not reverse iteration 130's F-36
+renderer loss or iteration 129's F-33 COMMIT failure. Kundalini's F-80 contention
+and historical reliability findings remain open. Startup observations of retained
+paint at 23090ms and first fresh paint at 15009ms are separate from fresh open
+completion at 427ms; they establish neither exact first-paint latency nor cause.
+
+The restore command exited 1 after extraction when airplane-disable could not
+connect to ADB TCP5037. Read the original failure and its execution receipt.
+The first postrestore reply was offline/pending0; a later explicit reply was
+ok/pending0. Preserve these as distinct attempts. The report records recovery
+without another data clear or archive extraction; daemon cause is unknown.
+This orchestration interruption is not evidence of a Valence transaction defect.
+
+Independently rehashed both archived iteration131 APKs:
+release 54777012 bytes, SHA256
+38e684ef3a9195582a52122c194a3546923412a13e002e8c45f8ea4ea0c90e18;
+debug 193194989 bytes, SHA256
+7f60b4e8450524fbf6fe7eaf3d28a2bc8613ae42eebf5610ffe35c39a72606d3.
+Both match saved delivery receipts. Embedded-manifest receipts record signed
+builtin 1793917610 in both APKs; that comparison was read, not independently rerun.
+Independently compared worker-phase activation bytes: identical SHA256
+e10a7691fa7118459fdc55bb0b12cf3fad766586d168f9a0cc71107d10ac8032,
+pending 1793918406, no trial. Matched all seven raw PID 10448 proof lines:
+callback begin 04:31:58.502, background entry .635, lease take .674,
+release 04:31:59.784, background exit and callback complete .789, native SUCCESS
+.796. Exact callback begin/complete/SUCCESS lines are absent from the pre-worker
+capture. The receipt records forced=true; the report qualifies readiness and
+elapsed earliest time before the explicit trigger. One successful execution
+proves neither natural cadence nor cancellation/expiry correctness. Saved SQLite
+effects, final retention and cleanup were read, not independently replayed.
+
+Runner notes retain raw-log whitespace status 2 separately from the passing
+application/tooling/docs check. Doctor records 17 PASS / 10 WARN / 0 FAIL;
+timeout paths remain unexercised. The first local ancestry reader mistakenly
+included historical tables and refused its expected count; the corrected reader
+selected the current 39-row table and verified every tip. A Windows wildcard
+search also failed before directory-scoped discovery; neither attempt is counted
+as successful verification.
+
+Decision: security first, then users' data. One passing scoped run and an ADB
+interruption provide no safe basis to change transaction ownership or lease
+policy. Preserve the frozen implementation and the unresolved failures. No
+behavior, schema, package version or host migration changes. Only mirrored
+integration evidence notes and the roadmap top note change; item Status cells
+remain untouched. Existing November 6 full gates retain their recorded scope;
+no fresh full gates, emulator acceptance or independent runtime review is claimed.
+iOS remains experimental and untested. Test apps stayed read-only; no protected
+branch commit/merge, push or publication.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_21_REPORT.md};
+valence-test-app-c/{VALENCE_FINDINGS.md,ITERATION_131_REPORT.md}; App C
+evidence/iteration-131/{evidence-audit.json,settings-outcome.json,restore.txt,
+restore-execution.json,initial-postrestore-outcome.json,postrestore-outcome.json,
+binary-delivery-state.json,embedded-both-manifests.json,
+background-state-before-raw.json,background-state-after-raw.json,
+worker-execution.json,worker-completion-proof.json,worker-lease-diagnostics.json,
+worker-full-logcat.txt,background-full-log-before.txt,runner-notes.md}.
+
 ## November 6: iteration 130 evidence review
 
 In plain terms: no eligible must-have or queue refresh remains. Packages bases
