@@ -1,5 +1,70 @@
 # Integration review correction - 2026-11-06
 
+## November 6: iteration 130 evidence review
+
+In plain terms: no eligible must-have or queue refresh remains. Packages bases
+remain code 0fe3391faf2ba25e69ccae3079382be2179be4be and site
+0c468908a7ed412ce13c6b2899efdc50dbd37d6b. Independently checked all 39 recorded
+exact feature tips as ancestors of the current integration in both repositories.
+Read both findings inventories and newest reports: Kundalini 21 and App C 130.
+S1 remains deliberately parked, S2 requires a Play account, and S10 is deferred.
+
+App C's saved audit has 95 passing artifact checks but scoped acceptance=false.
+Independently matched raw Settings logs: lowmemorykiller kills renderer 5557 at
+03:45:50.232; Chromium in host 5482 reports the unhandled renderer termination at
+03:45:50.287; ActivityManager records host death at 03:45:50.369. Exit-info names
+renderer LOW_MEMORY and host SIGNALED/status9. Saved Settings outcome records
+replacement PID 7415, samePid=false and pagePainted=false before explicit recovery.
+This is the F-36 signature, not evidence that Android directly killed the host for
+low memory (F-50). No Valence leak or trial-loss cause is established. Later
+native successes are recovery evidence. The current postrestore reply is
+ok/pending0, which does not explain or close iteration 129's F-33 COMMIT failure.
+Kundalini's F-80 contention and historical reliability findings remain open.
+
+Independently rehashed both archived iteration130 APKs:
+release 54777012 bytes, SHA256
+be3020231cab0cd6ed154b763cbe2afe963ba033081acf2a0d4978a3d372955b;
+debug 193194989 bytes, SHA256
+f1251436bd9ecf35ad123c1a3ebf02fc6bb729741833da0b263e0016d962700d.
+Both match saved delivery receipts. Embedded-manifest receipts record signed
+builtin 1793915757 in both APKs; that comparison was read, not independently rerun.
+Independently compared worker-phase activation bytes: identical SHA256
+3e4e48185a6d45b626fbaeedfb9c0d23ddd4eff175907b4e9e747d19596c36b1,
+pending 1793916569, no trial. Matched raw PID 10035 callback begin 04:00:20.531,
+background entry .630, lease take .667, lease release 04:00:21.960,
+background exit .963, callback complete .964 and native SUCCESS .974. The exact
+callback begin/complete/SUCCESS lines are absent from the pre-worker capture.
+The receipt explicitly records forced=true after readiness and elapsed earliest
+time. One successful explicit execution proves neither natural cadence nor
+cancellation/expiry correctness. Saved SQLite effects and final retention/cleanup
+were read, not independently replayed.
+
+Runner notes preserve an initial missing-input ENOENT qualification failure before
+the ordered retry, a receipt rename rather than a second uninstall, and raw-log
+whitespace failures separately from the application/tooling/docs check. Doctor
+records 17 PASS / 10 WARN / 0 FAIL with progress/durations; timeout paths remain
+unexercised. An initial local reader requested nonexistent binary-hashes.json;
+the actual binary-delivery-state.json and both APKs were then read and verified.
+No failed read is counted as successful verification.
+
+Decision: preserve security, then users' data. A correlated renderer-loss signature
+and one recovered sync do not justify changing transaction ownership, lease policy
+or the frozen runtime. No behavior, schema, package version or host migration
+changes. Only mirrored integration evidence notes and the roadmap top note change;
+item Status cells remain untouched. Existing November 6 full gates retain their
+recorded scope; no fresh full gates, emulator acceptance or independent runtime
+review is claimed. iOS remains experimental and untested. Test apps stayed
+read-only; no protected-branch commit/merge, push or publication.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_21_REPORT.md};
+valence-test-app-c/{VALENCE_FINDINGS.md,ITERATION_130_REPORT.md}; App C
+evidence/iteration-130/{evidence-audit.json,settings-outcome.json,
+settings-return-full-logcat.txt,settings-return-exit-info.txt,
+postrestore-outcome.json,binary-delivery-state.json,embedded-both-manifests.json,
+background-state-before-raw.json,background-state-after-raw.json,
+worker-execution.json,worker-completion-proof.json,worker-lease-diagnostics.json,
+worker-full-logcat.txt,background-full-log-before.txt,runner-notes.md}.
+
 ## November 6: iteration 129 evidence review
 
 In plain terms: the must-have list and rebase queue are done; there is no eligible
