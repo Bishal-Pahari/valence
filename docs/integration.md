@@ -1,5 +1,66 @@
 # Integration review correction - 2026-11-06
 
+## November 6: iteration 136 evidence review
+
+In plain terms: every must-have and rebase-queue item remains done; no eligible
+feature or queue refresh remains. Packages bases remain code
+0fe3391faf2ba25e69ccae3079382be2179be4be and site
+0c468908a7ed412ce13c6b2899efdc50dbd37d6b. Verified all 39 recorded exact feature
+tips as ancestors of both integrations. Reviewed both findings inventories and
+newest reports, Kundalini 21 and App C 136. S1 stays parked, S2 requires a Play
+account and S10 stays deferred.
+
+App C's saved audit records 98 passing artifact checks but scoped
+acceptance=false. The initial bounded CDP paint probe failed with null
+document.body; its raw error survives only in session output, not a persisted
+receipt. Later readiness passed without restart or data clear. Separately, a
+retained-release accessibility observation failed; install-release.txt preserves
+the exit137/null-root diagnostic. The same-launch continuation succeeded.
+No app crash, database lock or Valence cause is established by these observations.
+Retained paint at 4606ms is measured from that continuation, excluding the failed
+observation. First fresh paint at 15057ms and fresh open completion at 647ms
+have separate boundaries; none establishes exact first-paint latency.
+
+Settings records painted return in PID5419, and explicit postrestore sync is
+ok/pending0. These successes do not close historical F-33/F-36, or Kundalini
+F-79/F-80. Kundalini's replayed background job, database wait and skipped update
+remain observations requiring diagnosis; pre-empting a lease without identifying
+transaction ownership would put users' data at risk.
+
+Independently rehashed the archived APKs against delivery receipts:
+release 54777012 bytes, SHA256
+e186d34cb907a715af6aa221b43701516d4217721d6eb54b63da1fe2372ae765;
+debug 193194989 bytes, SHA256
+e6eb58f7d5668437a12910abc3556bb583ae28102eb48613b22a4e7ab12138a0.
+The report records signed builtin 1793926534 in both APKs; embedded manifests
+were not independently extracted. Worker-phase activation bytes independently
+compare identical, SHA256
+915e41076a1958e2d357d187cf1e5e93480afe4e086d43e9df3e6cdf03d4c3f8,
+pending 1793927380, no trial. All seven PID8772 callback/lease/native SUCCESS
+lines match raw worker logs and are absent from the pre-worker capture:
+begin 07:01:00.103, background entry .224, lease take .259, release
+07:01:01.253, background exit/callback complete .256, SUCCESS .263.
+Execution records forced=true. One explicitly triggered execution proves neither
+natural cadence nor cancellation/expiry correctness. SQLite, retention and
+cleanup receipts were read, not independently replayed.
+
+Decision: security first, then users' data. Preserve the frozen runtime and
+failed acceptance evidence. No behavior, schema, package version or migration
+changes. Only mirrored integration evidence notes and the roadmap top note
+change; item Status cells remain untouched. Earlier November 6 full gates retain
+their scope; this evidence review ran no fresh full gates, emulator session,
+independent runtime review or iOS acceptance. Test apps stayed read-only.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_21_REPORT.md};
+valence-test-app-c/{VALENCE_FINDINGS.md,ITERATION_136_REPORT.md}; App C
+evidence/iteration-136/{evidence-audit.json,runner-notes.md,
+initial-startup-probe-qualification.json,install-release.txt,
+retained-observation-continuation-execution.json,settings-outcome.json,
+postrestore-outcome.json,binary-delivery-state.json,
+background-state-before-raw.json,background-state-after-raw.json,
+worker-execution.json,worker-completion-proof.json,worker-lease-diagnostics.json,
+worker-full-logcat.txt,background-full-log-before.txt}.
+
 ## November 6: iteration 135 evidence review
 
 In plain terms: no eligible must-have or queue refresh remains. Packages bases
