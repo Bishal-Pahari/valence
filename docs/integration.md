@@ -1,5 +1,71 @@
 # Integration review correction - 2026-11-06
 
+## November 6: iteration 135 evidence review
+
+In plain terms: no eligible must-have or queue refresh remains. Packages bases
+remain code 0fe3391faf2ba25e69ccae3079382be2179be4be and site
+0c468908a7ed412ce13c6b2899efdc50dbd37d6b. Verified all 39 current recorded exact
+feature tips as ancestors of both integrations. Read both findings inventories
+and newest reports: Kundalini 21 and App C 135. S1 stays deliberately parked,
+S2 requires a Play account, and S10 stays deferred.
+
+App C's saved audit records 98 passing artifact checks but scoped
+acceptance=false. Independently matched the preserved Camera ANR in lastanr and
+raw logcat: com.android.camera2/CaptureActivity, PID6612, input-dispatch timeout
+at 06:18:33 after waiting 5003ms for MotionEvent. The earlier null-root UI dump,
+whose lastanr reported none, is a separate failed observation. Successful
+camera/gallery decoding after closing the Camera dialog is recovery, not a fix;
+no Valence cause is established. Settings records painted return in the same
+PID5224; explicit postrestore sync is ok/pending0 and restore execution status 0.
+Current recovery does not close F-33/F-36 or Kundalini F-79/F-80.
+
+Retained paint was observed at 38598ms after four unsuccessful observations;
+first fresh paint at 15527ms is separate from fresh open completion at 961ms.
+These are observation boundaries, not exact first-paint latency or causal proof.
+The inherited fresh-retry filename names the first current bounded observation.
+
+Independently rehashed archived iteration135 APKs against delivery receipts:
+release 54777012 bytes, SHA256
+a3a59cfee4a2fc47561f04f45684da890686e5e0f381e53c05fbb2713ce3f5f1;
+debug 193194989 bytes, SHA256
+d2f5c853398d09d1a60718e8a70884c21246ec89e4487cace03f3f164143a0b5.
+The report records signed builtin 1793924850 in both APKs; embedded-manifest
+comparison was not independently rerun. Independently compared identical
+worker-phase activation bytes, SHA256
+66bac31633ee9c3baf3dcc3b50abc1045f3b4286234c6cd1913ca01b5c1d4e8c,
+pending 1793925705, no trial. All seven PID8926 callback/lease/native SUCCESS
+lines match raw worker logs and are absent from the pre-worker capture:
+begin 06:31:14.609, background entry .720, lease take .757, release
+06:31:15.826, background exit/callback complete .829, SUCCESS .837.
+Execution records forced=true. Reported scheduler readiness and elapsed earliest
+time preceded the explicit trigger; one execution proves neither natural cadence
+nor cancellation/expiry correctness. SQLite effects, retention and final cleanup
+receipts were read, not independently replayed.
+
+Runner notes preserve an initial nonexistent-test invocation, raw whitespace
+capture ENOBUFS and the streamed status-2 retry separately from the passing
+application/tooling/docs whitespace check. Doctor records 17 PASS / 10 WARN /
+0 FAIL; timeout paths remain unexercised. Findings record 812096 KiB / 7988
+retained files; that footprint alone proves neither a leak nor a growth rate.
+
+Decision: security first, then users' data. Preserve the frozen runtime and the
+failed acceptance evidence; these observations do not justify lease pre-emption
+or a transaction-ownership change. No behavior, schema, package version or host
+migration changes. Only mirrored integration evidence notes and the roadmap top
+note change; item Status cells remain untouched. Earlier November 6 full gates
+retain their scope; no fresh full gates, emulator acceptance, independent runtime
+review or iOS acceptance is claimed. Test apps stayed read-only.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_21_REPORT.md};
+valence-test-app-c/{VALENCE_FINDINGS.md,ITERATION_135_REPORT.md}; App C
+evidence/iteration-135/{evidence-audit.json,runner-notes.md,
+camera-retry-lastanr.txt,camera-retry-full-logcat.txt,settings-outcome.json,
+postrestore-outcome.json,restore-execution.json,binary-delivery-state.json,
+background-state-before-raw.json,background-state-after-raw.json,
+worker-execution.json,worker-completion-proof.json,worker-lease-diagnostics.json,
+worker-full-logcat.txt,background-full-log-before.txt,cleanup.json}.
+
+
 ## November 6: iteration 134 evidence review
 
 In plain terms: no eligible must-have or queue refresh remains. Packages bases
