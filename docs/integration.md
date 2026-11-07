@@ -1,5 +1,72 @@
 # Integration review correction - 2026-11-06
 
+## November 7: iteration 137 incomplete evidence review
+
+In plain terms: no eligible must-have or queue refresh remains. Packages bases
+remain code 0fe3391faf2ba25e69ccae3079382be2179be4be and site
+0c468908a7ed412ce13c6b2899efdc50dbd37d6b. Verified all 39 recorded exact feature
+tips as ancestors of both integrations. Read both findings inventories and newest
+reports, Kundalini 21 and App C 137. App C's session began November 6 and ended
+November 7; preserve those evidence dates. S1 stays parked, S2 requires a Play
+account and S10 stays deferred.
+
+The saved audit records 41 passing artifact checks, acceptance=false and
+regressionComplete=false. Corrected native/media/reminder/link/widget results
+are recovery results, not a completed regression. Independently matched raw
+system_server PID684 Invalid IntRange exceptions at November 6 07:21:05.933,
+App C ANR at November 7 16:00:38.161, renderer PID5623 LOW_MEMORY exit at
+16:04:03.134, Chromium's host PID4204 termination diagnostic at .212 and
+host SIGNALED/status9 exit at .858. Keep the system-service loss, startup ANR,
+renderer loss, SystemUI overlay, orphan permission task and runner sequencing
+failures separate. No Valence cause, leak or blocking frame is established.
+The first raw-log extraction assumed UTF-8 and failed; BOM-aware UTF-16 decoding
+then matched the native lines and exit records. This was an evidence-reader
+failure, not an app failure.
+
+Settings later returned painted in the same PID8040. The saved stopped-native
+receipt records original inspection fields and photo retained, matching photo
+SHA256 and outbox0; these database/media checks were read, not replayed.
+Neither recovery nor the current checks close historical F-33/F-35/F-36 or
+Kundalini F-79/F-80. In particular, a replayed job holding a database lease does
+not justify pre-empting its transaction without ownership evidence.
+
+Independently rehashed both archived APKs and extracted their embedded builtin
+manifests: both name seq1793928368. Release: 54777012 bytes, SHA256
+bf7f28a2eb7a6007fbb8ca25801c5eca8018573eeb9753e4370215a96189807e.
+Debug: 193194989 bytes, SHA256
+af405ac42bd1e8ce29042ceaa42832fc9d03d7cf767d830a9a90cde051a194d8.
+These checks establish archive/receipt agreement and embedded seq, not a fresh
+signature verification, APK build or device installation.
+
+Saved final activation state has current1794047614, trial1794047625,
+trialFails1, pending=null. Despite its filename, rollback-confirmed.json still
+contains that one-strike trial; it is not rollback proof. Another app became
+foreground during the second-strike observation, so the test is inconclusive.
+Recovery offer1794047841 is locally verified in a saved receipt only; device
+download/apply remains false. Isolated worker regression was not begun, and no
+new worker execution or cadence claim is available. Final notification queue
+reads failed. Cleanup receipts record only App C/owned mocks stopped, its two
+recorded forwards removed and airplane mode observed off without mutation.
+
+Decision: security first, then users' data. Preserve the frozen runtime,
+transaction ownership, signed activation state and failed/incomplete acceptance
+evidence. No speculative runtime fix, schema, version or migration change.
+Only mirrored integration evidence notes and the roadmap top note change;
+item Status cells remain untouched. Earlier November 6 full gates retain their
+scope. This evidence-only review ran ancestry, archive hashes, embedded-seq,
+saved-audit and diff checks; no fresh full gates, emulator session, independent
+runtime review or iOS acceptance. Both test-app repositories stayed read-only.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_21_REPORT.md};
+valence-test-app-c/{VALENCE_FINDINGS.md,ITERATION_137_REPORT.md}; App C
+evidence/iteration-137/{evidence-audit.json,runner-notes.md,
+system-service-interruption.json,second-basic-logcat.txt,
+f35-current-anr.json,after-systemui-full-logcat.txt,after-systemui-exit-info.txt,
+settings-outcome.json,final-native-retention.json,archived-release.json,
+archived-debug.json,embedded-both-manifests.json,partial-final-state.json,
+rollback-confirmed.json,recovery-good-offer.json,partial-cleanup.json,
+partial-owned-forward-cleanup.json}.
+
 ## November 6: iteration 136 evidence review
 
 In plain terms: every must-have and rebase-queue item remains done; no eligible
