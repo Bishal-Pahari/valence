@@ -407,14 +407,18 @@ void main() {
     runtime.state.pending = 20;
     final before = runtime.state.toJson();
     respond = (_) async => http.Response('', 404);
-    await tester.pumpWidget(MaterialApp(
+    // Startup arms sync even while the native blocker is visible. Keep its real SQLite I/O
+    // outside fake time, as mount() does, and drain it after disposal before closing the DB.
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(
         home: ValenceApp(
             valence: runtime,
             log: log.call,
             dispatch: (raw, nonce) async =>
-                throw StateError('must not dispatch'))));
-    addTearDown(
-        () async => tester.runAsync(() => tester.pumpWidget(const SizedBox())));
+                throw StateError('must not dispatch')))));
+    addTearDown(() async {
+      await tester.runAsync(() => tester.pumpWidget(const SizedBox()));
+      await io(tester);
+    });
     await io(tester);
     expect(find.text('Update required'), findsOneWidget);
     expect(webview.controllers, isEmpty);
