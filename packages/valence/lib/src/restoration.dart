@@ -60,6 +60,17 @@ final class ValenceRestoration extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Drops the restored route, and only the route, for a launch that carries its own destination.
+  ///
+  /// The blob stays: a half-finished draft is the user's work, and nothing about tapping a reminder
+  /// says to throw it away. What the tap does say is where to go, which makes the saved route a stale
+  /// third answer to a question §6.3 already gives the page two (§4.8).
+  void preemptRoute() {
+    if (_route == '/') return;
+    _route = '/';
+    notifyListeners();
+  }
+
   /// Drops UI state across an update/rollback, while leaving OTA state untouched.
   void activate(int seq) {
     if (_seq == seq) return;

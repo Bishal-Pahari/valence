@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased: a launch destination pre-empts the restored route
+
+`prepareRestoration` loaded whatever route the OS snapshot carried, so a cold start that *also* carried
+a launch intent — a pending link, a tapped notification captured by `Valence.open`, or a tapped push
+message — rendered the stale screen before the page could apply the destination the user chose. §6.3
+makes the page the arbiter across launch sources, and the restored route was a third source it could not
+see, applied by the host before it ran.
+
+It now checks the three mailboxes between `activate` and the first `loadRequest` and, when one holds a
+destination, drops the route and logs the source:
+
+```
+restoration: a <link|notification|push> launch destination pre-empts the restored route <route>; starting at / and keeping the saved draft
+```
+
+New API, all additive: `ValenceRestoration.preemptRoute()`, `Valence.launchDestination`,
+`ValenceLinks.hasPending`, `ValenceNotifications.hasInitial` and `ValencePush.hasInitial`. The three
+peeks read without consuming, so `link.initial()` and `notify.initial()` still answer the page once
+each. **Only the route goes:** `state.restore()` keeps returning the saved blob, since nothing about a
+tap says to discard the user's draft. The account and seq rules in §4.8 run first and still drop both
+halves on their own terms, and a start with no launch destination restores its route unchanged.
+
 ## Unreleased: the lease age is measured from acquisition, not from the last renewal
 
 `ValenceSyncStatus.leaseAgeMs`, and the `heldForMs=` a refused run logs, were computed from the

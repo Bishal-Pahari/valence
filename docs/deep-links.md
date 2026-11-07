@@ -67,6 +67,12 @@ target. Pass over a pending initial reply once a live event has superseded it, r
 await order decide. App-c reproduced the failure in an isolated scheduler before it ever saw it on a
 device, which is the cheap way to find it.
 
+**The third destination your page could not see is fixed in the host.** If Android had reclaimed the
+task, a cold start also restored the route the user was last on, loaded before your page existed — so a
+correct arbiter could still be looking at a screen neither mailbox chose. A launch destination in any
+mailbox now pre-empts that route: the host opens `/`, keeps the saved draft, and logs which source did
+it. See [state restoration](state-restoration.md).
+
 For manual integration, subscribe to `link.opened` before calling
 `call('link.initial')`. The call consumes the latest pending accepted link once;
 it returns `null` on later calls unless a new page has started. Each WebView page start re-arms the mailbox, retaining pending links without replaying consumed ones. Until that call,
