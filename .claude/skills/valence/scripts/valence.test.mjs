@@ -1264,6 +1264,7 @@ test('doctor preserves a failed Windows Flutter discovery instead of reporting a
       { status: null, signal: 'SIGTERM', error: { code: 'ETIMEDOUT' } },
       { status: 1, signal: 'SIGKILL' },
       { status: null, error: { code: 'EACCES' } },
+      { status: null, error: { code: 'ENOENT' } },
       { status: 2 },
       { status: 1 },
       { status: 0 },
