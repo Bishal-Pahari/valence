@@ -1,5 +1,62 @@
 # Integration review correction - 2026-11-06
 
+## November 7-8: iteration 143 incomplete startup regression
+
+In plain terms: every must-have and original queue item remains done. No eligible
+queue refresh or new item remains. Packages bases are unchanged: code d037f23,
+site d14ece8. Independently verified all 39 recorded exact tips and each packages
+base as ancestors of the corresponding integration. Reviewed both findings
+inventories and newest reports: Kundalini 22 / App C 143. Kundalini still lacks
+complete release acceptance and dedicated post-fix F-81/F-82/cold-tap acceptance.
+App C began November 7 and ended November 8; its current regression is incomplete.
+
+Independently checked all 22 report evidence links. Counted the mechanical doctor
+stream: 14 PASS, 11 WARN, 2 FAIL. The signing-key scan timed out at 187484ms and
+Flutter dependency child at 191265ms; neither ran an assertion. The dependency
+check overlapped an APK build, a runner limitation, not an isolated package defect.
+Independent successful checks do not erase those failed checks or explain F-54.
+The twelve-test Flutter result is a manual console-outcome receipt, explicitly
+without a saved standalone raw console; preserve that weaker evidence boundary.
+
+Independently rehashed archived release and debug APKs and extracted both embedded
+manifests: seq1794075529, five files each. Release SHA256
+6832f30b95311840ffb2cd3082a43010c65efe8415ee062b2a489ceacf916e57;
+debug SHA256
+12b7f14914af884632a4cf5d1058d77fa3c33cfe750645c18fa830c76a04eb57.
+Saved signature verification was reviewed, not rerun. The interrupted R27 phase
+supplies no current binary Firebase exclusion pass.
+
+Startup capture names were reused: continuation captures cannot diagnose the
+initial absent PID/CDP failures. Harness recovery timed out; direct recovery
+records boot=1, then readiness status1 and adb screencap ETIMEDOUT. Crucially,
+postdirect-initial-exit-info.txt is empty: its existence supplies no exit cause or
+PID proof. No current meaningful paint, native/offline/OTA/isolated-worker or
+retention acceptance follows. No crash, leak or Valence root cause is established.
+Saved cleanup records airplane0/App C absent; the first mock-stop timeout remains
+separate from corrected identity-scoped stop and bindable-port receipts. No current
+outbox-zero, queue-empty or activation-byte comparison is supplied.
+
+Decision: security first, then users' data. Keep the frozen runtime, rollback
+checks, transaction ownership and lease policy intact; preserve failures and
+missing evidence instead of treating APK completion as device acceptance. S1
+stays parked, S2 needs Play, S10/P1 stay deferred. Item Status cells are unchanged.
+Only mirrored integration evidence notes and the roadmap top note change. Earlier
+November 7 full gates retain their implementation scope; no fresh full gates,
+emulator session or iOS acceptance in this evidence-only review. Verified ancestry,
+report links, APK hashes/manifests, doctor counts, mirrored text and whitespace.
+Both test-app repositories stayed read-only; no versions, protected branches,
+pushes or releases changed.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_22_REPORT.md};
+valence-test-app-c/{VALENCE_FINDINGS.md,ITERATION_143_REPORT.md}; App C
+evidence/iteration-143/{doctor-mechanical.txt,doctor-current-summary.json,
+archived-release.json,archived-debug.json,embedded-both-manifests.json,
+verify-builtin.txt,flutter-console-outcome.json,runner-notes.md,
+postdirect-initial-boot.txt,postdirect-initial-wait-execution.json,
+postdirect-initial-screenshot-execution.json,postdirect-initial-exit-info.txt,
+scoped-cleanup.json,mock-stop-corrected.json,final-mock-ports.json,
+final-forward-inventory.json}.
+
 ## November 7: iteration 142 qualified regression evidence
 
 In plain terms: every must-have and original queue item is marked done; no
