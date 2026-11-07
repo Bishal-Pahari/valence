@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased: failed Windows SDK discovery stays a failed doctor check
+
+A timeout or failure while locating Flutter no longer becomes a warning that Flutter
+is unavailable. Doctor preserves the failed check and its configured timeout, exits
+nonzero, and never starts Flutter after failed discovery. A completed lookup with no
+match still reports an absent SDK. Update the vendored CLI; no host rebuild is needed.
+
 ## Unreleased: `doctor --timeout <seconds>` for a checkout the 180-second default is wrong for
 
 Every child command `doctor` spawns is bounded at 180 seconds, and the Git private-key scan walks every

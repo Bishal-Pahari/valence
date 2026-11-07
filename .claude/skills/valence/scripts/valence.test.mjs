@@ -1245,6 +1245,53 @@ test('doctor --timeout moves every child budget, the timeout row names the bound
     assert.deepEqual(phases, [], bad);
   }
 });
+test('doctor preserves a failed Windows Flutter discovery instead of reporting an absent SDK', async () => {
+  const { root, cfg } = fixture({ latest: true });
+  codegen({ root, cfg });
+  mkdirSync(join(root, '.valence'), { recursive: true });
+  mkdirSync(join(root, cfg.host.dir, 'test'), { recursive: true });
+  writeFileSync(join(root, cfg.host.dir, 'test', 'wiring_test.dart'), 'void main() {}');
+  writeFileSync(join(root, '.valence', 'test-matrix.json'), JSON.stringify({ bridge: ['test/wiring_test.dart'] }));
+  writeFileSync(join(root, cfg.host.dir, 'pubspec.yaml'), 'name: host\n');
+  writeFileSync(join(root, cfg.host.dir, 'pubspec.lock'), 'packages:\n');
+  // Execute the shipped wrapper with a simulated Windows process: no dead PATH entry, SDK
+  // subprocess or new production injection seam is needed to exercise the actual probe branch.
+  for (const cli of [join(import.meta.dirname, 'valence.mjs'), join(import.meta.dirname, '../../../../packages/valence/example/valence/valence.mjs')]) {
+    const source = readFileSync(cli, 'utf8');
+    const wrapper = source.slice(source.indexOf('function runFlutter('), source.indexOf('\nexport async function diagnose('));
+    assert.ok(wrapper.startsWith('function runFlutter('));
+    for (const probe of [
+      { status: null, signal: 'SIGTERM', error: { code: 'ETIMEDOUT' } },
+      { status: 1, signal: 'SIGKILL' },
+      { status: null, error: { code: 'EACCES' } },
+      { status: 2 },
+      { status: 1 },
+      { status: 0 },
+    ]) {
+      const calls = [];
+      const run = runInNewContext(`${wrapper}\nrunFlutter`, {
+        process: { platform: 'win32' }, DEFAULT_CHILD_TIMEOUT_MS: 180_000,
+        spawnSync(command, args, options) {
+          calls.push({ command, args, options });
+          return command === 'where.exe' ? probe : { status: 0, stdout: JSON.stringify({ packages: [{ name: 'valence' }, { name: 'path_provider_android', version: '2.2.23' }] }) };
+        },
+      });
+      const rows = await diagnose({ root, cfg, tests: true, timeout: '45', run, git: () => ({ status: 128 }) });
+      const absent = probe.status === 1 && !probe.signal && !probe.error;
+      const success = probe.status === 0;
+      for (const name of ['Flutter dependencies', '§8 bridge']) {
+        const row = rows.find(([, n]) => n === name);
+        assert.equal(row[0], success ? 'PASS' : absent ? 'WARN' : 'FAIL', `${cli}: ${JSON.stringify(probe)}: ${row}`);
+        if (probe.error?.code === 'ETIMEDOUT') assert.match(row[2], /killed by its own 45s timeout; no assertion ran/);
+        if (!absent) assert.doesNotMatch(row[2], /Flutter unavailable/);
+      }
+      assert.equal(calls.filter(({ command }) => command === 'cmd.exe').length, success ? 2 : 0);
+      assert.ok(calls.every(({ options }) => options.timeout === 45_000));
+      assert.throws(() => run(['test', 'x&echo'], root, 45_000), /unsafe Flutter argument/);
+    }
+  }
+});
+
 test('doctor reports absent evidence as warnings, compatibility errors as failures and mapped execution honestly', async () => {
   const { root, cfg, key } = fixture({ latest: true });
   codegen({ root, cfg });
