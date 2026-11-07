@@ -26,7 +26,8 @@ both bases into this branch. Retained upstream policy and corrections, with one
 post-query clock sample and these additional transaction-queue regressions.
 This is an S9 correctness follow-up, not a new optional feature.
 No other roadmap Status cell changes. There is one new follow-up branch;
-the integration still needs refreshing because packages moved under rule 0b.
+the integration is refreshed on the new packages bases under rule 0b; see
+docs/integration.md for source tips, merge order and validation.
 
 ## Reproduction and regression
 
@@ -105,7 +106,33 @@ r29-device-proof.json,scoped-cleanup.json,install-debug-no-streaming-execution.j
 
 ## Gates
 
-Full validation is in progress; this branch is not yet marked ready.
+Final merged-tree gates passed 2026-11-08:
+
+- Root npm test: 121 passed, zero skips; generated Dart analyzed and executed,
+  generated TypeScript checked with strict/verbatimModuleSyntax.
+- Core flutter test --no-pub --concurrency=1: 664 passed, including both new
+  transaction-queue regressions. dart analyze --fatal-infos .: no issues.
+- Core flutter pub publish --dry-run: zero warnings. An earlier invocation
+  warned about the uncommitted package README; committed it and reran. A
+  wrong-root invocation had no pubspec and validated nothing. Only the final
+  correct-directory, zero-warning run counts.
+- Push flutter test: 2 passed; fatal-info analysis clean; pub dry run zero
+  warnings and one existing local dependency-override hint.
+- Bridge node --test test/*.test.ts: 37 passed, zero skips; strict TypeScript
+  and npm pack --dry-run passed.
+- Example codegen --check: no files written; flutter test: 29 passed.
+  flutter build apk --debug passed (Gradle 198.7s). Existing app_badge_plus KGP
+  compatibility warning retained; no dependency change made for it.
+- Standalone Windows py tool/check_no_firebase.py after the APK build:
+  PASS: core graph and 19 DEX files / manifest contain no Firebase SDK references.
+- Site npm run build: 50 pages; SEO/link/anchor checks passed.
+- Whitespace checks clean; all 39 historical exact code/site tips verified as
+  ancestors in both branches; mirrored validation notes match.
+
+The tested runtime is the merged packages baseline plus this branch's post-query
+clock sample and queue regressions. Subsequent validation/integration notes do
+not change that runtime. No gate result from the earlier baseline is substituted
+for the merged-tree results above.
 
 No fresh emulator acceptance is claimed. iOS remains experimental and untested.
 No test-app writes, protected-branch commits, version changes, pushes or releases.
