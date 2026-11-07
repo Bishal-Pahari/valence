@@ -1,5 +1,93 @@
 # Integration review correction - 2026-11-06
 
+## November 7: Kundalini 22 and App C 138 evidence review
+
+In plain terms: all must-haves and the original rebase queue remain done. No
+eligible item is available. Code packages remains
+0fe3391faf2ba25e69ccae3079382be2179be4be; site packages remains
+0c468908a7ed412ce13c6b2899efdc50dbd37d6b. Independently verified all 39 recorded
+exact feature tips and the packages bases as ancestors of both integrations.
+Read both findings inventories and newest reports, Kundalini 22 and App C 138.
+S1 remains deliberately parked, S2 requires a Play account, S10 is deferred.
+No shared roadmap cells or top-line gate date changed.
+
+Kundalini reports successful F-79 adoption: the onLink initial flag replaces its
+handwritten link subscription/mailbox wrapper. It reports a fresh store build,
+offline seed launch, good OTA commitment and two-strike rollback, but its final
+release check remains incomplete: cold notification routing is unresolved,
+widget/share/haptics were not rerun, and F-81 is major. Its reminder-window bug
+was app wiring and is reported fixed there. The wrong-day cold tap remains an
+unreproduced observation, not an established framework defect. Saved doctor
+rows independently total 21 PASS, 6 WARN, zero FAIL.
+
+F-81 is a concrete diagnostic mismatch in the current source, not evidence for
+lease pre-emption. In packages/valence/lib/src/sync.dart, renewLease rewrites
+the row timestamp after applied pages; _heldLease computes ageMs from that
+renewable timestamp. releaseLease instead computes heldForMs from the driver's
+acquisition-time _leaseTakenAt. Thus status and refusal ages can drop after a
+renewal while the release duration continues from acquisition. The app's report
+of 28/58 ms during an approximately 100-second hold is consistent with this
+source behavior; no raw lease trace is archived in its it22 evidence directory,
+so those timings were not independently replayed or verified. Contracts 4.3/5.6
+call this the holder's age; an eventual correction needs an acquisition timestamp
+visible across isolates, separate from the TTL renewal timestamp, with a test
+covering renewal inside one hold. Do not stop renewal, infer a leak from these
+numbers, or weaken acquisition/expiry to make diagnostics look correct.
+F-82 separately reports a stale bridge package after CLI refresh; reinstalling
+the bridge resolved the generated ReceivedLink type error in the app. No new
+dependency check or runtime fix is claimed by this review.
+
+App C's saved audit has 82 passing artifact checks, acceptancePassed=false.
+The initial retained-release observation exhausted its polls under Android
+service dialogs; the initial mixed-link CDP read timed out. Later recovered
+checks remain separate. Settings returned painted in the same PID5937.
+Postrestore sync initially returned busy/pending0; that receipt is not ok.
+No new Valence cause, lease-expiry violation or historical finding closure is
+established.
+
+Independently rehashed both archived APKs against their delivery receipts:
+release 54777012 bytes, SHA256
+5638d9397aae55f889406346f79f353621e027c02738eee001977fe872d7ddce;
+debug 193194989 bytes, SHA256
+e6c016e5facfbc4ca54ce3852be5413de7f2a0a54ceca4b9b5b0aea44c3e48ad.
+These checks establish archive/receipt agreement, not a fresh build, signature
+verification or device installation. Saved rollback state now really records
+current1794054650, trial=null and broken1794054661 in bad; the second-start
+ownership receipt identifies App C. This is current evidence, not retroactive
+acceptance of iteration137's interrupted rollback.
+
+Independently matched all seven callback/lease/SUCCESS lines for PID9401 in raw
+worker logs and their absence from the pre-worker capture: begin18:12:54.843,
+background entry18:12:55.003, lease take.052, release18:12:56.021, background
+exit/callback complete.025, WorkManager SUCCESS.035. Saved execution records
+forced=false: one scheduler-started execution without an explicit trigger,
+not sustained cadence or cancellation/expiry acceptance. Saved native SQLite
+receipt records outbox0 and incoming/outgoing fixture rows before foreground;
+those database effects were read, not replayed. Independently compared raw
+activation bytes: equal, SHA256
+1cfb20b14a25a585d01f49f5c4fb85e5be1ebe3ed0e6d03c3db670248bff3a42,
+current1794054721/pending1794054731/no trial. Cleanup records stopped App C and
+owned mocks, airplane0 and scoped forwards removed.
+
+Decision: security first, then users' data. Preserve transaction ownership and
+the frozen runtime; record F-81 for a focused corrective item rather than taking
+a parked feature or assigning a new shared roadmap item outside this queue.
+This change contains mirrored integration evidence notes only. No behavior,
+schema, version or migration change; no fresh full gates, emulator session,
+independent runtime review or iOS acceptance. Earlier gate results retain their
+original scope. Both test-app repositories stayed read-only.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_22_REPORT.md,
+test-evidence/it22/doctor.json}; valence-test-app-c/{VALENCE_FINDINGS.md,
+ITERATION_138_REPORT.md}; App C evidence/iteration-138/{evidence-audit.json,
+archived-release.json,archived-debug.json,settings-outcome.json,
+postrestore-outcome.json,rollback-confirmed.json,
+rollback-second-start-ownership.json,worker-execution.json,
+worker-completion-proof.json,worker-lease-diagnostics.json,
+worker-full-logcat.txt,background-full-log-before.txt,
+background-sqlite-before-resume.json,background-state-before-raw.json,
+background-state-after-raw.json,cleanup.json}.
+
 ## November 7: iteration 137 incomplete evidence review
 
 In plain terms: no eligible must-have or queue refresh remains. Packages bases
