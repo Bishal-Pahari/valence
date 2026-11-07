@@ -1907,6 +1907,9 @@ function runFlutter(args, cwd, timeoutMs = DEFAULT_CHILD_TIMEOUT_MS) {
   const probe = spawnSync('where.exe', ['flutter.bat'], { encoding: 'utf8', timeout: timeoutMs });
   // A failed discovery is not evidence that Flutter is absent. Preserve timeout, signal and
   // execution errors so diagnose keeps this check FAIL; only a completed no-match is ENOENT.
+  if (probe.error?.code === 'ENOENT') {
+    return { ...probe, error: new Error('where.exe is unavailable; Flutter discovery did not run') };
+  }
   if (probe.error || probe.signal) return probe;
   if (probe.status === 1) return { error: { code: 'ENOENT' } };
   if (probe.status !== 0) return probe;
