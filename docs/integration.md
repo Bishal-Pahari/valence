@@ -1,5 +1,62 @@
 # Integration review correction - 2026-11-06
 
+## November 8: queued lease regression and refreshed integration
+
+In plain terms: K F-83 was reproducible against the previous candidate: a queued
+lease read compared a sibling renewal with a pre-wait clock and took a live lease.
+The transaction-queue regression failed with written -11000ms ago and a second
+successful acquisition. Current packages moved during validation and independently
+corrected F-83 plus cleanup, startup-routing diagnostics and F-84 wording. Merged
+those changes, preserved their bounded same-process future-row policy, and kept
+one clock sample after the lease query, with two additional queue regressions.
+Security checklist review found no correctness/security blocker. Clarified the
+exact TTL boundary in the spec and guides without changing the predicate.
+
+Assembly order on both codex/integration branches:
+
+1. Newest packages: code 74ea9bf88f34aabb23361501578a3869fd8bb1a6;
+   site b877d979d4d3fa70972eec71576bfef0e67f0be7.
+2. codex/lease-clock-read: code cdecefbfe6bb18481fcdc19d08ff0c6b2e6c02b7;
+   site f311337cee94f56db94c5adc2456ffd9c3be8b6f.
+
+Both steps fast-forwarded. The original 39 exact tips below were independently
+checked as ancestors in both trees and are already in packages; their historical
+order and schema numbers remain intact. The new follow-up is source 40. Conflicts
+had been resolved on the item branch: retained upstream spec/policy and public
+README links, retained the queued-read requirement and tests, and removed the
+automatically duplicated pre-query clock sample. No package/schema version change.
+
+Fresh gates after the packages merge passed November 8: root 121, zero skips,
+generated Dart executed; core 664 serially, clean fatal-info analysis and pub dry
+run zero warnings; push 2, clean analysis, pub dry run zero warnings/one local
+override hint; bridge 37 plus strict TS and pack dry run; example codegen check
+(no writes), 29 tests, debug APK (Gradle 198.7s), standalone Windows py Firebase
+PASS over 19 DEX files/manifest/core graph; site 50 pages with SEO/link checks.
+The combined runtime and tests were gated before fast-forward assembly; assembly
+retained those exact sources. Only validation/integration notes followed.
+Nonfatal app_badge_plus KGP build warning remains. Initial uncommitted-README pub
+warning was corrected by committing it and rerunning; the final dry run counts.
+
+Reviewed both findings inventories and newest reports, Kundalini 23 / App C 144.
+Kundalini reports F-81 fixed and cold link/reminder restoration correct; F-83
+requires a native rebuild and device recheck. Clean-install offline and haptics
+acceptance remain qualified. Independently counted its doctor 21 PASS/6 WARN.
+App C remains acceptance-incomplete: checked 22 report links, both APK hashes and
+five embedded files per manifest (builtin1794082626); doctor16PASS/10WARN/1FAIL
+is a key-scan timeout without assertions. Its R29 open completion is not paint;
+nonstreamed install success does not erase readiness failures. No new framework
+startup cause, native/offline/OTA/worker or retention acceptance established.
+Its iteration143 release archive was overwritten before the runner corrected the
+iteration144 destination, so the older receipt does not preserve that older binary.
+
+Decision: security and users' data first; retain upstream recovery and cleanup,
+add deterministic queue coverage and preserve incomplete evidence. S1 stays parked,
+S2 needs Play, S10/P1 stay deferred. Only S9's follow-up Status cell changes.
+No fresh emulator or iOS acceptance. Test-app repos remained read-only; no protected
+branch writes, version changes, pushes or releases. Full commands, outcomes and
+scope: [queued lease validation](lease-clock-read.md).
+
+
 ## November 7-8: iteration 143 incomplete startup regression
 
 In plain terms: every must-have and original queue item remains done. No eligible
@@ -1110,6 +1167,7 @@ There were no conflicts or competing sync implementations to reconcile.
 | 37 | codex/dependency-baseline | 700da56f6362ababdbca2f2f65a2a222a9cb8be3 | 6a7bfd5ffb00e476345b2dd9c0c230ea2874072b |
 | 38 | codex/cache-adoption | 77853b3964f88d471036bd61340f7c9172057f5f | 04edf8276501f9ec02531aff326389fb6ffc44b7 |
 | 39 | codex/background-lock-result | 47c862e350cde63afb305fe558100c78e1722185 | f37c05a6922b3cf0a473ee77ff0422fc4093c5c6 |
+| 40 | codex/lease-clock-read | cdecefbfe6bb18481fcdc19d08ff0c6b2e6c02b7 | f311337cee94f56db94c5adc2456ffd9c3be8b6f |
 
 ## Decision and review
 
