@@ -180,6 +180,13 @@ final class ValencePush {
     }
   }
 
+  /// Whether a launch tap is waiting for the page to drain it (§4.8).
+  ///
+  /// Read, never consumed, and it does not await [_starting] or set [_live]: the host asks between
+  /// `Valence.open` — which awaits `start` — and the first page load, to decide whether a restored
+  /// route is still the destination the user asked for.
+  bool get hasInitial => _pendingTap != null;
+
   /// Consumes the initial tap after subscriptions have been installed by the page.
   Future<ValencePushMessage?> initial() async {
     await _starting;

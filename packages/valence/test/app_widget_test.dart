@@ -96,6 +96,9 @@ void main() {
               cacheBuckets: {'days'})
           .copyWith(
         bundleCheckedEvent: true,
+        // Off-device `links.start()` is skipped (§6.3), so this only lets a test hand the mailbox an
+        // intent the allowlist accepts; nothing else in the host reads it.
+        linkOrigins: {'myapp://app'},
         readyTimeout: const Duration(milliseconds: 80),
         updateInterval: const Duration(seconds: 5),
       ),
@@ -689,6 +692,68 @@ void main() {
         webview.controller.scripts
             .where((s) => s.contains('bundle.updateReady')),
         isEmpty);
+  });
+
+  testWidgets(
+      'a launch destination pre-empts the restored route and keeps the draft',
+      (tester) async {
+    // The whole §4.8/§6.3 collision: the OS reclaimed the task while the user was on one screen, and
+    // they came back by tapping something that names another. Restoring the first one would put a
+    // stale third destination on screen in front of a page whose §6.3 arbiter can only see two.
+    //
+    // `prepareRestoration` is called rather than the widget tree restarted, because an in-process
+    // restart is not the launch under test: `ValenceApp.dispose` closes the link mailbox, which a real
+    // cold start refills in `Valence.open` before the first frame. This is the host's own call, with
+    // the host's own objects, at the point the cold start makes it. The load it feeds is the startup
+    // `loadRequest` above and the device row in §8.
+    await mount(tester);
+    await io(tester);
+    final origin = runtime.server!.origin;
+    webview.controller.navigation
+        .urlChanged(UrlChange(url: '$origin/day/2026-11-13'));
+    runtime.stateSave({'draft': 'half-written'});
+    expect(runtime.restoration.route, '/day/2026-11-13');
+
+    runtime.links.receive('myapp://app/day/2026-11-07');
+    expect(runtime.launchDestination, 'link');
+    await tester
+        .runAsync(() => runtime.prepareRestoration(runtime.manifest!.seq));
+
+    expect(runtime.restoration.route, '/',
+        reason: 'the tap is the destination the user chose; the saved route is '
+            'a stale third answer the page cannot arbitrate');
+    expect(runtime.stateRestore(), {'draft': 'half-written'},
+        reason: "the route is pre-empted; the draft is the user's own work");
+    expect(runtime.links.hasPending, isTrue,
+        reason: 'the host reads the mailbox and never consumes it');
+    expect(
+        log.lines.where((l) =>
+            l.startsWith('restoration: a link launch destination pre-empts')),
+        hasLength(1));
+
+    // The model is what the host navigates to, so a reload after the pre-emption goes to the root page
+    // and not to the route that was pre-empted.
+    await tester.runAsync(
+        () async => webview.controller.navigation.resourceError(contentProcessGone));
+    await io(tester);
+    expect(webview.controller.loads.last.toString(), '$origin/');
+  });
+
+  testWidgets('a start that carries no launch tap still restores its route',
+      (tester) async {
+    await mount(tester);
+    await io(tester);
+    final origin = runtime.server!.origin;
+    webview.controller.navigation
+        .urlChanged(UrlChange(url: '$origin/day/2026-11-13'));
+    expect(runtime.launchDestination, isNull);
+    await tester
+        .runAsync(() => runtime.prepareRestoration(runtime.manifest!.seq));
+    expect(runtime.restoration.route, '/day/2026-11-13',
+        reason: 'R7 is unchanged for the launch it was written for');
+    expect(log.lines.where((l) => l.contains('launch destination pre-empts')),
+        isEmpty);
+    await io(tester);
   });
 
   testWidgets('URL changes record only safe local restoration routes',

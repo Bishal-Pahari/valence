@@ -117,6 +117,20 @@ void main() {
     expect(model.restore(), {'draft': 'retained task'});
   });
 
+  test('pre-empting the route keeps the draft and the snapshot that carries it', () {
+    final model = ValenceRestoration()..activate(7);
+    model.observe('http://127.0.0.1:1/day/2026-11-13', 'http://127.0.0.1:1');
+    model.save({'draft': 'half-written'});
+    var notified = 0;
+    model.addListener(() => notified++);
+    model.preemptRoute();
+    expect(model.route, '/');
+    expect(model.restore(), {'draft': 'half-written'});
+    expect(notified, 1, reason: 'the OS snapshot is rewritten, so the next restart agrees');
+    model.preemptRoute();
+    expect(notified, 1, reason: 'already at the root page: nothing to rewrite');
+  });
+
   test('a replacement envelope is checked against the bound account and sequence', () {
     final alice = ValenceRestoration()
       ..activate(7)

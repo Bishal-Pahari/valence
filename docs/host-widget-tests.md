@@ -26,6 +26,13 @@ The cases cover:
   replayed from a stale queue.
 - A ready trial commits; a foreground timeout counts one strike and loads current without consuming
   the next launch's retry. Background time counts nothing. Current and late-ready pages do not commit.
+- A launch destination waiting in a mailbox pre-empts the restored route: the host ends up at `/` with
+  the saved draft intact, the mailbox unconsumed and the source named in the log, and a reload after
+  that goes to `/` too. A start with no launch tap restores its route unchanged. The decision is driven
+  through `prepareRestoration`, which is the host's own call, rather than by restarting the widget
+  tree — a restart in one process is not the launch under test, because `ValenceApp.dispose` closes the
+  link mailbox that a real cold start refills before its first frame. The cold start itself is a device
+  check.
 - A dead WebView content process reloads the same manifest at the same route and spends no trial
   strike; one that keeps dying stops after three recoveries, drops the controller and clears `serving`
   on disk so the next UI start spends none either. A resume that reclaims the same port reloads the

@@ -34,6 +34,34 @@ verified bundle with a different seq (including rollback) discards both route an
 The new page must still call `ready()` after painting; restoration never commits an OTA.
 Only the current URL is restored, not the browser's full Back stack.
 
+## A tap beats the saved route
+
+Tapping a reminder, a deep link or a push notification tells the host where to go, and the saved route
+only guesses. Both arrive together on a cold start — Android restores the task *and* delivers the
+intent — so a host that loads the saved route first shows the screen the user left, then lets the page
+correct it: a flash at best, and the wrong screen for good if your router reads the initial URL once at
+mount.
+
+So when any launch mailbox holds a destination, the host opens `/` and leaves the destination to your
+page, which is the only place that can see all of them (see [deep links](deep-links.md) for the rule
+across sources). The log says so:
+
+```
+restoration: a link launch destination pre-empts the restored route /shelf/fern?mode=draft#edit; starting at / and keeping the saved draft
+```
+
+**Your draft is not dropped.** Only the route goes: `state.restore()` still returns what you saved, so a
+half-written form survives a reminder tap. Nothing changes for an ordinary return to a reclaimed task —
+no tap, no pre-emption, the route restores as before. Reading the mailbox does not consume it, so
+`link.initial()` and `notify.initial()` still answer your page exactly once.
+
+**Two things to know if you use both halves.** This is the one case where the blob outlives its route:
+a draft saved at `/day/X` is still returned after a tap sends you to `/day/Y`, so **if your blob only
+makes sense at one route, put that route inside the blob and check it against `location` before you
+apply it.** And a tap counts as a destination whether or not your payload names one — the host never
+parses your payload, so a "backup complete" notification pre-empts the route too, and you land on `/`
+with nothing to route to. If your notifications do not name destinations, expect that.
+
 Snapshots also follow the native account: switching accounts or signing out clears the route and draft. Same-account refresh and first-account adoption keep the live draft. Startup checks an account fingerprint against secure storage before restoring, so a stale OS snapshot cannot expose the previous user's UI state. The page must redraw its own live account UI after switching; restoration does not erase the DOM.
 
 For custom native hosts, use the Flutter restoration APIs to preserve the runtime's
@@ -44,6 +72,10 @@ for the background snapshot, then `adb shell am kill com.getvalence.valence_exam
 the PID is gone and reopen its existing task from Recents. Expect
 `/shelf/fern?mode=draft#edit` and the saved draft. Repeat with force-stop, removal from
 Recents, and Back from a fresh root: those should show `/` and null.
+
+For the pre-emption, do the same up to the kill and then come back by the link instead of from Recents:
+`adb shell am start -a android.intent.action.VIEW -d 'valence-example://app/'`. Expect `/`, the
+`pre-empts the restored route` line in logcat, and the draft still there.
 
 iOS is experimental and untested. Assign a restoration identifier to the
 `FlutterViewController` in `ios/Runner/Base.lproj/Main.storyboard`; the example has

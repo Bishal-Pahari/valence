@@ -106,6 +106,22 @@ void main() {
     expect(events.single, contains('warm'));
   });
 
+  test('hasInitial reports the cold tap without consuming or going live', () async {
+    await start(const ValencePushMessage(
+        hasNotification: false, id: 'cold', data: {'screen': '/shelf'}));
+    // §4.8: the host reads this between `Valence.open` and the first page load, to decide whether a
+    // restored route still applies. Awaiting `_starting` or setting `_live` here is the tempting
+    // "make it match initial()" edit, and it would emit every later tap to a page that has not
+    // subscribed — losing it. So this asserts the two things the getter must *not* do.
+    expect(push.hasInitial, isTrue);
+    transport.taps
+        .add(const ValencePushMessage(hasNotification: false, id: 'later'));
+    expect(events, isEmpty, reason: 'reading the mailbox must not open the live path');
+    expect((await push.initial())?.id, 'later',
+        reason: 'the mailbox was never drained, so the page still gets the latest tap');
+    expect(push.hasInitial, isFalse);
+  });
+
   test('newer tap during initial lookup wins over stale cold tap', () async {
     final starting = push.start(emit: events.add, sync: () async {});
     transport.taps

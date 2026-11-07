@@ -176,6 +176,31 @@ void main() {
     expect(view.scripts.last, contains('legacy-99'));
   });
 
+  test('a tapped notification is a launch destination and pre-empts a restored route', () async {
+    final native = FakeNotifications()..launch = response();
+    final log = LogSpy();
+    final v = await Valence.open(
+        ValenceConfig(appId: 'com.example.notify', keyring: const {},
+            bridgeVersion: 16, notificationsEnabled: true),
+        supportDir: support, secure: testSecure({}), log: log.call,
+        notificationPlatform: native);
+    expect(v.launchDestination, 'notification',
+        reason: 'open() awaits initialize(), so the tap is captured before the first page load');
+    // The same bundle the snapshot was taken under: a seq change drops route *and* draft on its own
+    // (§4.8), and the point of this test is the route going without the draft.
+    v.restoration.activate(7);
+    v.restoration.observe('http://127.0.0.1:1/day/2026-11-13', 'http://127.0.0.1:1');
+    v.stateSave({'draft': 'half-written'});
+    await v.prepareRestoration(7);
+    expect(v.restoration.route, '/');
+    expect(v.stateRestore(), {'draft': 'half-written'});
+    expect(log.lines.where((l) => l.contains('a notification launch destination pre-empts')),
+        hasLength(1));
+    expect(v.launchDestination, 'notification', reason: 'reading it never consumes the mailbox');
+    expect((await v.notifications.initial() as Map)['id'], 42);
+    expect(v.launchDestination, isNull, reason: 'the page has drained it');
+  });
+
   group('startup diagnostics', () {
     test('phase order and elapsed times distinguish open from page readiness', () async {
       final log = LogSpy();

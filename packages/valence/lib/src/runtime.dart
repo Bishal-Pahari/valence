@@ -213,6 +213,31 @@ final class Valence {
           'restoration: account could not be checked; starting with an empty task snapshot');
     }
     restoration.activate(seq);
+    final launch = launchDestination;
+    if (launch != null && restoration.route != '/') {
+      _log('restoration: a $launch launch destination pre-empts the restored route '
+          '${restoration.route}; starting at / and keeping the saved draft');
+      restoration.preemptRoute();
+    }
+  }
+
+  /// Which launch mailbox still holds a tap no page has drained, or null (§4.8).
+  ///
+  /// The three are checked in a fixed order and the name is for the log only — the host does not
+  /// route on any of them. Which destination to *apply* stays the page's decision, across sources,
+  /// exactly as §6.3 describes; what this answers is the narrower question the host has to answer
+  /// before the page exists, which is whether the route the OS handed back is still the one the user
+  /// asked for. All three mailboxes are filled inside `Valence.open`, so this is already settled by
+  /// the time the first page loads.
+  ///
+  /// A link carries a path; a notification or push payload is opaque app data this cannot parse, so
+  /// a tap that names no destination at all counts as one. §4.8 states that trade and why the
+  /// alternative is worse.
+  String? get launchDestination {
+    if (links.hasPending) return 'link';
+    if (_notifications?.hasInitial ?? false) return 'notification';
+    if (push?.hasInitial ?? false) return 'push';
+    return null;
   }
 
   Valence._({

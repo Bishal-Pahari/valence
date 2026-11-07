@@ -114,6 +114,10 @@ if (has('notify.schedule') && await call('notify.permission', { request: true })
 }
 ```
 
+A tap that cold-starts the app after Android reclaimed the task no longer lands on the screen the user
+left: a waiting `notify.initial` makes the host open `/` instead of the restored route, and your handler
+routes from there. The saved draft is kept. See [state restoration](state-restoration.md).
+
 `notify.permission()` only checks. `{request: true}` prompts for notification authorization; it
 does not request Android exact-alarm special access. An exact request downgrades to `inexact` if
 access is absent or revoked during the call. Even `exact` means the OS accepted that mode, not that

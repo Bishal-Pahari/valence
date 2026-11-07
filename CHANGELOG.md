@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased: tapping a reminder takes the user to the reminder, not back to the screen they left
+
+**A cold start that carries a destination no longer opens the restored route.** When Android reclaims
+your app's task and the user comes back by tapping a reminder, a deep link or a push notification, the
+OS hands the host both things at once: the saved route *and* the intent. The host used to load the saved
+route — the screen the user was last on — before your page existed, and your page then had to correct
+it. At best that is a visible flash of the wrong screen; if your router reads the initial URL once when
+it mounts, which most do, the user stays on the wrong screen and the tap appears to have done nothing.
+Kundalini saw exactly that on a device: a tapped reminder cold-started the app on a day read forty
+minutes earlier.
+
+Now the host checks the three launch mailboxes before the first page load and, if any of them holds a
+destination, opens `/` and leaves the destination to your page — which is the only place that can see
+all of them, and the rule for choosing between them is unchanged. The log says which one it was:
+
+```
+restoration: a link launch destination pre-empts the restored route /day/2026-11-13; starting at / and keeping the saved draft
+```
+
+**Nothing you need to change, and your draft is safe.** `state.restore()` still returns what you saved,
+because a half-written form is the user's work and a reminder tap says nothing about discarding it —
+only the route is dropped. An ordinary return to a reclaimed task, with no tap involved, restores the
+route exactly as before. Reading the mailboxes does not consume them, so `link.initial()` and
+`notify.initial()` still answer your page once each. **If you wrote a workaround** — re-routing on mount
+because the first screen was wrong — it is now redundant, and you can delete it.
+
 ## Unreleased: retain committed sync pages across a later database lock
 
 A sync interrupted after committing a page now reports that page in its changed

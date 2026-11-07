@@ -133,6 +133,12 @@ final class ValenceLinks {
     }
   }
 
+  /// Whether a link is waiting for the page to drain it (§4.8).
+  ///
+  /// Read, never consumed: the host asks before the first page load, to decide whether a restored
+  /// route is still the destination the user asked for. The page still consumes the link itself.
+  bool get hasPending => _pending != null;
+
   /// Returns delivery to the mailbox while a new WebView page subscribes.
   /// Already consumed links are not replayed; a still-pending link is retained.
   void beginPage() {

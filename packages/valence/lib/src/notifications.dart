@@ -160,6 +160,14 @@ final class ValenceNotifications {
     }
   }
 
+  /// Whether a launch tap is waiting for the page to drain it (§4.8).
+  ///
+  /// Read, never consumed, and never awaits [initialize]: the host asks between `Valence.open` — which
+  /// has already awaited it — and the first page load, to decide whether a restored route is still the
+  /// destination the user asked for. False in a host whose notification service could not start, which
+  /// is correct: there is no tap to honour.
+  bool get hasInitial => _initial != null;
+
   /// The response that launched the process, consumed once. Does not also emit a warm event.
   Future<Object?> initial() async {
     await initialize();

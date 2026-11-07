@@ -1639,6 +1639,41 @@ envelope is then overwritten in the OS bucket. Without that comparison, restorin
 account A's saved envelope after a switch to B would serve A's route and draft
 through state.restore, and an older bundle's blob would bypass the seq check.
 
+**A launch that carries its own destination pre-empts the restored route.** The saved route is a guess
+about where the user wants to be — the screen they were last on — and a tap on a reminder, a deep link
+or a push notification is not a guess. Both arrive together: the OS restores the task *and* delivers the
+intent, so without a rule the host loads the stale screen first and the page then corrects it, which is
+a visible flash at best and, for a page whose router reads the initial URL, the wrong screen for good.
+So before the first page load the host checks the three launch mailboxes — `link.initial`,
+`notify.initial` and `push.initial`, all filled inside `Valence.open`, all **read and not consumed** —
+and if any holds a destination it loads `/` and logs
+`restoration: a <link|notification|push> launch destination pre-empts the restored route <route>`.
+**The blob is kept:** a half-written draft is the user's own work and nothing about tapping a reminder
+says to discard it, so only the route goes, and `state.restore()` still returns what was saved. The
+check runs *after* the account and seq rules above, which still drop both halves on their own terms.
+This is not the host choosing a destination — which destination to apply across sources stays the
+page's decision under §6.3 — it is the host declining to supply a third one the page cannot see.
+
+**This is the one case where the blob outlives its route, and a route-scoped blob must say so itself.**
+Everywhere else in this section the two travel together or are dropped together, so a page could read
+`state.restore()` knowing it belonged to the route it was loaded at. After a pre-emption it does not:
+a draft saved at `/day/X` is still returned on a page the tap sent to `/day/Y`, and a page that
+pre-fills an editor from it writes one day's text into another. **A blob that only makes sense at one
+route must record that route inside itself and compare it with `location` before applying it** — the
+host cannot do that, because the blob is opaque app data it never parses.
+
+**"A launch destination" means a launch mailbox that still holds something, which for the notification
+and push mailboxes is as close as the host can get.** A link carries a path the host can read; a
+notification or push payload is opaque app data, so a tap on a notification that names no destination
+at all — "backup complete" — pre-empts the route exactly like one that does, and the page lands on `/`
+with nothing to route to. That is the deliberate trade: the host cannot inspect the payload without
+parsing app data, and the alternative, treating every notification tap as destination-free, restores
+the stale screen in the case this rule exists for. An app whose notifications do not name destinations
+should expect `/` on such a cold start. Note also that a mailbox is held until **a page** drains it, so
+the trigger is an undrained launch tap rather than a tap that has just happened: a page that never
+calls `notify.initial()` leaves it pending for the life of the process, and any later
+`prepareRestoration` — the store-update withdrawal path, or a remounted host — pre-empts again.
+
 The state lives only in the OS task restoration snapshot, not prefs or state.json.
 A fresh task (including Android force-stop or removal from Recents) starts at /
 with null. Backgrounding alone retains the current page. state.restore returns the
@@ -2286,6 +2321,12 @@ be the older tap. Closing that needs an arrival timestamp on both initial replie
 is not in 0.4. Until then the rule is followed to the limit of what a page can observe, and this
 paragraph is the limit.
 
+**What was closed is the third claim the page could not see at all.** The restored route (§4.8) is also
+a destination, it is also delivered by a cold start, and the host used to apply it by loading it before
+the page existed — so a page arbitrating two sources correctly could still be looking at a screen
+chosen by neither. A launch destination in any of the three mailboxes now pre-empts that route; §4.8
+states the rule and owns its log line. Two claims a page can order beats three it cannot.
+
 The path is the URL's path (empty becomes `/`), query and fragment; the authority of
 a custom link is an allowlisted host, not a route segment. At most 8 KiB UTF-8 per URL.
 Reject malformed escapes, control characters, backslashes, encoded path separators,
@@ -2712,8 +2753,20 @@ routes (including encoded /_host/), rotated loopback port, unchanged trial check
 **a replacement envelope handed to a running scope is refused unless its account fingerprint and seq
 match the ones startup checked — after an account switch, after an update, and with no account bound —
 while a matching one still restores**;
+**a launch destination pre-empts the restored route and keeps the draft** — a pending link in the
+mailbox and a tapped notification captured by `Valence.open` each take the host to `/` with
+`state.restore()` still answering, with the log line naming the source and the mailbox left unconsumed,
+a reload after the pre-emption going to `/` and not to the route that was dropped, and a start carrying
+no launch tap restoring its route unchanged. The decision is asserted at the host's own
+`prepareRestoration` call, not through a widget-tree restart, because a restart in one process is not
+the launch under test: `ValenceApp.dispose` closes the link mailbox that a cold start refills before its
+first frame. The cold start itself is the device row below;
 Android Home → am kill → retained-task reopen restores path/query/hash and blob,
-force-stop and explicit task removal start fresh.
+force-stop and explicit task removal start fresh, **and returning from that kill by a launch intent
+instead — a deep link, or a tapped reminder in an app that schedules one — opens `/` with the draft
+intact and the pre-emption line in the log, while the same kill without an intent restores its route**.
+The link half is exercised on the device by `packages/valence/example`; an app with a scheduled reminder
+owns the notification half.
 
 R3 permissions: unknown/unconfigured kinds and background/queued requests are
 denied before platform access; all five statuses and provisional normalization;
