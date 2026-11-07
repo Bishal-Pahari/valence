@@ -495,3 +495,5 @@ keys and discard in-flight API results when accounts change. Cache-only data
 does not satisfy OTA synced-pair readiness.
 
 Revision 19 reserves `bundle.check` (no params, void) and `bundle.checked` (`reason: string`, `requiredBridge: int?`). Declare new names at since >= 19 and above the recorded store schema, then regenerate and rebuild. Subscribe to completion before the mount read of bundle.status; await bundle.check for a Retry action. Never auto-apply or loop checks from completion. The completion event is opt-in, unbuffered state; updateReady retains pending-only meaning. Use the attached host coalesced policy path, never the updater alone, for explicit discovery. See contracts 4.6 and docs/bundle-checks.md.
+
+For K F-83, rebuild the native host with the corrected lease clock: acquisition samples time after its transactional lease read, so a queued read respects a sibling renewal and a new lease starts its TTL after the wait. No generated schema/template or CLI change is required. See contracts §5.6.

@@ -245,23 +245,14 @@ final class ValenceSync {
   /// Takes the lease, or returns false when another sync holds it.
   ///
   /// sqflite runs `transaction` as `BEGIN IMMEDIATE`, which is what makes the read-then-write atomic
-  /// across isolates. A lease time in the **future**, from clock skew or tampering, counts as expired —
-  /// but only when it is further ahead than the TTL, and never for a row this process wrote (K F-83).
+  /// across isolates. A same-process future row less than the TTL ahead stays held (K F-83);
+  /// a row at least the TTL ahead, or one from another process, can be recovered.
   Future<bool> acquireLease() async {
     var now = 0;
     var taken = false;
     await databaseOperation(
         'sync.acquireLease',
         () => store.db.transaction((txn) async {
-              // Sampled **inside** the transaction, after `BEGIN IMMEDIATE` has stopped waiting — not
-              // before the call (K F-83). The wait is the whole problem: a sibling isolate mid-pull holds
-              // the file, so this transaction can start seconds after the method was called, and a `now`
-              // from before the wait is older than the renewal it is about to read. The row then looks
-              // future-dated, the clock-moved branch below takes a *live* lease away from a run that is
-              // still working, and two syncs write one database — on a device whose clock never moved.
-              // It then writes that stale `now` back as its own take-time, so the next reader sees an age
-              // that is eleven seconds too old. Both numbers come from this one line.
-              now = _now().millisecondsSinceEpoch;
               final rows = await txn.query(
                 'prefs',
                 columns: ['value'],
@@ -269,6 +260,10 @@ final class ValenceSync {
                 whereArgs: [syncLeaseKey],
                 limit: 1,
               );
+              // The transaction and query can wait behind a sibling's page or renewal. A clock
+              // sampled before that wait can make its newer row look future-dated (K F-83),
+              // incorrectly displacing a live holder even though the clock only moved forwards.
+              now = _now().millisecondsSinceEpoch;
               final raw = rows.isEmpty ? null : rows.first['value'] as String;
               final (held, owner, leftBy, _) = _readLease(raw);
               final live = held != null && held > now - syncLeaseTtl.inMilliseconds && held <= now;
