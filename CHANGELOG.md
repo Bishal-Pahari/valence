@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased: a sibling isolate's live sync lease is no longer taken over as "future-dated"
+
+**Two syncs could run over one database.** The host read the clock *before* opening the transaction that
+takes the sync lease, and SQLite makes that transaction wait for whatever the other isolate is writing —
+so on a busy device it could start seconds after the call, and the lease renewal it then read was newer
+than its own idea of "now". The row looked future-dated, the clock-skew rule treated it as expired, and
+a foreground sync took the lease from a background sync that was still working, over the user's own
+rows. It also wrote that stale timestamp back as its take-time, so the next reader was told an age
+seconds too old.
+
+On a device this hit the first two launches after a clean install, logging
+`taking over a lease (kind=background, written -11080ms ago): dated in the future, so the clock moved`
+on a clock that never moved, and ending with both holders releasing the lease three milliseconds apart.
+
+Three changes, no API and no schema: the clock is sampled **inside** the transaction; a lease row *this
+process wrote* counts as held whichever side of "now" it falls, until it is further ahead than the
+two-minute expiry — so a clock that really moved back still frees it; and no number reported as an age
+can be negative any more.
+
+**If you were seeing this,** nothing in your app changes. If you added a retry or a guard around
+`sync.now()` because two runs seemed to overlap, you can drop it.
+
+## Unreleased: `update` names the files it refreshed, and the build digest says what it covers
+
+`valence version --build` digests `valence.mjs` and nothing else, so an unchanged digest and a rewritten
+`references/contracts.md` can land in the same snapshot — which happened on the day the spec changed
+what the host does on every cold start. The docs offered that digest as snapshot identity; they no
+longer do. `create-valence update` now **names every file it refreshed** and marks `contracts.md` and
+`SKILL.md` as the normative ones, which is the signal to re-read the spec:
+
+```
+✓ claude skill     .claude: 0 added, 2 updated, 0 replaced, 0 removed
+✓ updated          .claude/skills/valence/SKILL.md — this is the spec; read what changed
+```
+
+**Also:** codegen's convenience re-export of `AppLink` and `ReceivedLink` is now collision-safe. A
+schema that declares a type with one of those names keeps its own declaration and loses only that one
+re-export, instead of emitting the same name twice and breaking the web build on the next regeneration.
+
 ## Unreleased: tapping a reminder takes the user to the reminder, not back to the screen they left
 
 - Fix a queued sync lease acquisition mistaking a sibling renewal for clock rollback and starting a second sync. The native host must be rebuilt; no schema or web-app changes are needed.
@@ -35,7 +74,10 @@ count and buckets, even if the next page or lease renewal locks. Locks taking th
 lease remain `busy`; locks during work remain incomplete results, with earlier
 authentication and offline outcomes retaining precedence. Cleanup preserves a
 primary non-lock error and its stack; a non-lock cleanup error still surfaces.
-A release-only lock retains the completed result. No lease timing, schema,
+A release-only lock retains the completed result, and so does a lock on the
+final outbox read, which reports `0 pending` rather than throwing the whole
+result away — a page gets that too, not only a background run.
+No lease timing, schema,
 package version or host migration changes.
 
 ## Unreleased: the sync lease reports the holder's real age, and `update` says the npm half must move too

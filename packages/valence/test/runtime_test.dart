@@ -1755,6 +1755,93 @@ void main() {
       });
     }
 
+    for (final primaryLock in [true, false]) {
+      test('an unreleased lease is always explained in the log (primaryLock=$primaryLock)', () async {
+        // The two likeliest pairings both leave the catch that holds this line — a lock during work with
+        // a lock on the release, and a real bug with a lock on the release — so logging after the branch
+        // meant the one combination §5.6 wrote the line for never produced it. A `took` with no
+        // `released` and nothing else is indistinguishable from a torn-down isolate, which is the
+        // inference these diagnostics exist to remove.
+        final failure = StateError('primary work failed');
+        final factory = _SyncFaultFactory(failRelease: true);
+        final store = await ValenceStore.open('${support.path}/valence.db', factory: factory);
+        final log = LogSpy();
+        final work = Valence.backgroundSync(
+          testConfig(key, dataSchemas: {'plants': 1}),
+          log: log.call,
+          client: MockClient((_) async =>
+              throw primaryLock ? LockedDatabaseException() : failure),
+          supportDir: support,
+          documentsDir: support,
+          secure: testSecure({}),
+          databaseFactory: factory,
+        );
+        if (primaryLock) {
+          final result = await work;
+          expect(result.reason, ValenceSyncReason.failed);
+        } else {
+          await expectLater(work, throwsA(same(failure)));
+        }
+        expect(log.has('could not release the lease, so it stands until it expires'), isTrue);
+        expect(await store.hostPrefGet('valence.sync.lease'), isNotNull,
+            reason: 'a failed release never pretends the lease was freed');
+      });
+    }
+
+    test('a non-lock release failure dropped for a primary error is still logged', () async {
+      // Otherwise an unreported disk fault is invisible: the primary error wins, correctly, and the
+      // cleanup error is neither rethrown nor attached to it.
+      final failure = StateError('primary work failed');
+      final cleanup = StateError('release failed');
+      final factory = _SyncFaultFactory(failRelease: true, releaseError: cleanup);
+      final log = LogSpy();
+      await expectLater(
+          Valence.backgroundSync(
+            testConfig(key, dataSchemas: {'plants': 1}),
+            log: log.call,
+            client: MockClient((_) async => throw failure),
+            supportDir: support,
+            documentsDir: support,
+            secure: testSecure({}),
+            databaseFactory: factory,
+          ),
+          throwsA(same(failure)));
+      expect(log.has('releasing the lease failed, so it stands until it expires'), isTrue);
+    });
+
+    test('a lock on the final outbox read keeps the buckets and the changed count', () async {
+      // The outbox count is the last read a classified run needs, and it is taken after the lease is
+      // released — so a lock there used to throw the whole result away and leave only the caller's own
+      // backstop, which reports zeros. `changed` and `buckets` are what distinguishes the two: a run
+      // that committed a page must still say so on the contended device this rule is written for.
+      final faults = _SyncFaultFactory(failOutboxCount: true);
+      final store = await ValenceStore.open('${support.path}/valence.db', factory: faults);
+      final log = LogSpy();
+      final result = await Valence.backgroundSync(
+        testConfig(key, dataSchemas: {'plants': 1}),
+        log: log.call,
+        client: MockClient((_) async => http.Response(
+            '{"rows":[{"k":"kept","v":1,"u":1,"d":0}],"max":1,"more":false}', 200)),
+        supportDir: support,
+        documentsDir: support,
+        secure: testSecure({}),
+        databaseFactory: faults,
+      );
+      expect(result.changed, 1);
+      expect(result.buckets, ['plants']);
+      expect(result.pending, 0, reason: 'there is no way to say "unknown" in an int');
+      // Not `ok`: that plus `pending: 0` is rendered as "everything is saved", over an outbox this run
+      // could not read. `busy` and a locked open answer zero too, but they say nothing about the data.
+      expect(result.reason, ValenceSyncReason.failed);
+      expect(log.has('locked reading the outbox count'), isTrue);
+      // `run` returned this itself rather than throwing into the caller's backstop — which is how a page
+      // gets it too, since `sync.now` has no backstop of its own to fall into.
+      expect(log.has('locked finishing this background run'), isFalse);
+      expect(await store.get('plants', 1, 'kept'), 1);
+      // The persisted outcome is what the data sync actually did, so a later status() is not poisoned.
+      expect(await store.hostPrefGet('valence.sync.reason'), 'ok');
+    });
+
     test('a work lock cannot hide a non-lock cleanup error', () async {
       final failure = StateError('cleanup failed');
       final factory = _SyncFaultFactory(failRelease: true, releaseError: failure);
@@ -2228,10 +2315,14 @@ final class _UnreadableAccount extends TestFlutterSecureStoragePlatform {
 }
 
 final class _SyncFaultFactory implements DatabaseFactory {
-  _SyncFaultFactory({this.failRelease = false, this.failRenew = false, this.releaseError});
+  _SyncFaultFactory(
+      {this.failRelease = false, this.failRenew = false, this.releaseError, this.failOutboxCount = false});
   final bool failRenew;
   final Object? releaseError;
   final bool failRelease;
+
+  /// Locks `store.pendingWrites` — the one read a classified run still needs after the lease is gone.
+  final bool failOutboxCount;
   bool lockNextTransaction = false;
   @override
   Future<Database> openDatabase(String path, {OpenDatabaseOptions? options}) async =>
@@ -2258,7 +2349,9 @@ final class _SyncFaultDatabase implements Database {
   Future<void> execute(String sql, [List<Object?>? arguments]) => inner.execute(sql, arguments);
   @override
   Future<List<Map<String, Object?>>> rawQuery(String sql, [List<Object?>? arguments]) =>
-      inner.rawQuery(sql, arguments);
+      faults.failOutboxCount && sql.contains('COUNT(*)') && sql.contains('outbox')
+          ? Future.error(LockedDatabaseException())
+          : inner.rawQuery(sql, arguments);
   @override
   Future<List<Map<String, Object?>>> query(String table,
           {bool? distinct,

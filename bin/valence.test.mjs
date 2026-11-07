@@ -52,6 +52,19 @@ const quiet = async (fn) => {
   }
 };
 
+/** Like `quiet`, but hands back what was printed. */
+const captured = async (fn) => {
+  const log = console.log;
+  const lines = [];
+  console.log = (...a) => lines.push(a.join(' '));
+  try {
+    await fn();
+  } finally {
+    console.log = log;
+  }
+  return lines.join('\n');
+};
+
 test('dev options before the command pass through to the CLI', async () => {
   await assert.doesNotReject(() => quiet(() => run(['--web-dir', 'web', '--port', '5173', '--device-host', 'localhost', 'dev', '--help'])));
 });
@@ -297,7 +310,10 @@ test('update: hash-tracked installs, safe pruning, backups only for files the us
   }));
   writeFileSync(join(root, '.gitattributes'), '');
 
-  await quiet(() => run(['update', '--root', root]));
+  const said = await captured(() => run(['update', '--root', root]));
+  // The count alone let an unchanged `version --build` digest and a rewritten spec land in one update
+  // (K F-84), so every refreshed file is named and the normative two are marked.
+  assert.match(said, /updated\s+\S*\/skills\/valence\/SKILL\.md — this is the spec; read what changed/);
   assert.ok(!existsSync(join(skillDir, 'old-untouched.md')), 'untouched dropped file is removed');
   assert.equal(readFileSync(join(skillDir, 'old-edited.md.bak'), 'utf8'), 'v1 plus my notes', 'edited dropped file is kept as .bak');
   assert.ok(!existsSync(join(skillDir, 'SKILL.md.bak')), 'untouched older file is updated without a backup');

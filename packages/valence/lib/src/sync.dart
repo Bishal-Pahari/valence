@@ -241,7 +241,8 @@ final class ValenceSync {
   /// Takes the lease, or returns false when another sync holds it.
   ///
   /// sqflite runs `transaction` as `BEGIN IMMEDIATE`, which is what makes the read-then-write atomic
-  /// across isolates. A lease time in the **future**, from clock skew or tampering, counts as expired.
+  /// across isolates. A same-process future row less than the TTL ahead stays held (K F-83);
+  /// a row at least the TTL ahead, or one from another process, can be recovered.
   Future<bool> acquireLease() async {
     var now = 0;
     var taken = false;
@@ -262,6 +263,13 @@ final class ValenceSync {
               final raw = rows.isEmpty ? null : rows.first['value'] as String;
               final (held, owner, leftBy, _) = _readLease(raw);
               final live = held != null && held > now - syncLeaseTtl.inMilliseconds && held <= now;
+              // The mirror of the foreign-pid rule below, and the belt to its braces: a pid that is *mine*
+              // means a sibling isolate that is running, so the TTL is not the instrument for it. A row
+              // ahead of us by less than the TTL is therefore held, not expired, and the clock is not
+              // consulted about it. Beyond the TTL the clock really has moved and the row is freed, which
+              // is what keeps this self-healing rather than a two-minute block that a backwards clock
+              // could extend indefinitely.
+              final mine = held != null && owner == pid && held > now && held - now < syncLeaseTtl.inMilliseconds;
               // A lease recorded by **another process** cannot be held by anything running now. The lease exists to
               // keep the UI isolate and the background isolate apart, and those share this process (§5.6), so the
               // only way to see a foreign pid is a launch that is gone: a crash, a force-stop, or Android reclaiming
@@ -271,21 +279,29 @@ final class ValenceSync {
               //
               // ponytail: single-process assumption. A host that puts a service in its own `android:process` would
               // need the owner to be a token both processes agree on, written at launch.
-              if (live && owner == pid) return;
+              if ((live || mine) && owner == pid) return;
               // Every row we displace is named, not only the foreign-pid one: an expired or
               // future-dated takeover is otherwise byte-identical in the log to a clean acquisition, and
               // it is the state a developer chasing a leak most needs explained — `status()` reports it
               // free, correctly, so the log is the only place left to say a row was there.
               if (held != null) {
-                final leftFor = '(kind=${leftBy ?? 'unknown'}, written ${now - held}ms ago)';
-                diagnosticLog(
-                    _log,
-                    'sync: taking over a lease $leftFor: ${switch ((live, owner)) {
-                      (true, null) => 'written by an older host, which records no owner',
-                      (true, _) => 'left by process $owner, which is gone',
-                      (false, _) when held > now => 'dated in the future, so the clock moved',
-                      (false, _) => 'past its ${syncLeaseTtl.inMinutes}-minute expiry',
-                    }}');
+                // Never a negative "written ... ago": a number that reads as an age and is not one sends a
+                // developer looking for the wrong fault, which is how K F-83 spent a day being a clock bug.
+                final age = now - held;
+                final when = age < 0 ? 'dated ${-age}ms in the future' : 'written ${age}ms ago';
+                // The expiry is named first when it applies, because it is what freed the row whoever wrote
+                // it; a foreign pid is the reason only for a row that would otherwise be live, or one ahead
+                // of us — where the clock is *not* the reason, since the pid already settled it. Only a row
+                // of our own can get here ahead of `now`, and only by more than the TTL, which is the one
+                // case where "the clock moved" is a claim worth making (K F-83).
+                final why = held <= now - syncLeaseTtl.inMilliseconds
+                    ? 'past its ${syncLeaseTtl.inMinutes}-minute expiry'
+                    : owner == null
+                        ? 'written by an older host, which records no owner'
+                        : owner != pid
+                            ? 'left by process $owner, which is gone'
+                            : 'further ahead than its ${syncLeaseTtl.inMinutes}-minute expiry, so the clock moved';
+                diagnosticLog(_log, 'sync: taking over a lease (kind=${leftBy ?? 'unknown'}, $when): $why');
               }
               await txn.insert(
                 'prefs',
@@ -355,15 +371,19 @@ final class ValenceSync {
   /// happens to have — reports `unknown` rather than reading as free.
   static _HeldLease? _heldLease(String? raw, int now) {
     final (held, owner, kind, takenAt) = _readLease(raw);
-    if (held == null || held > now || held <= now - syncLeaseTtl.inMilliseconds) return null;
-    if (owner != pid) return null;
+    if (held == null || owner != pid) return null;
+    // One predicate with `acquireLease`, including the ahead-of-us case: a row this process wrote is a
+    // sibling that is running, so it is held whichever side of `now` its timestamp falls, and only a move
+    // bigger than the TTL frees it (K F-83). Reporting such a row free while `acquireLease` refuses on it
+    // is the drift this doc comment exists to forbid — it would answer `busy` with no holder to name.
+    if (held <= now - syncLeaseTtl.inMilliseconds || held - now >= syncLeaseTtl.inMilliseconds) return null;
     // Liveness is the renewal's question and the age is acquisition's, so they read different fields.
     // A take-time in the future — a row from before the clock moved back, or one an older host wrote
-    // without the field — falls back to the renewal, which the predicate above has already proved is
-    // not in the future. Never a negative age: §5.6 asks a developer to compare this against "is the
-    // holder stuck?", and a negative number answers a different question (K F-81).
+    // without the field — falls back to the renewal. Never a negative age: §5.6 asks a developer to
+    // compare this against "is the holder stuck?", and a negative number answers a different question
+    // (K F-81), so a renewal that is itself ahead of us floors at zero rather than going backwards.
     final from = (takenAt != null && takenAt <= now) ? takenAt : held;
-    return (ageMs: now - from, kind: kind ?? 'unknown');
+    return (ageMs: from > now ? 0 : now - from, kind: kind ?? 'unknown');
   }
 
   /// Releases the lease.
@@ -543,14 +563,26 @@ final class ValenceSync {
         try {
           await releaseLease();
         } on Object catch (cleanupError) {
+          // Logged *before* either branch below, because every one of them leaves this block: the two
+          // likeliest pairings — a lock during work with a lock on the release, and a real bug with a lock
+          // on the release — both rethrow, and §5.6 asks for this line precisely because the row then
+          // stands until the TTL expires it. Without it, "took" with no "released" is indistinguishable
+          // from a torn-down isolate, which is the inference S9's diagnostics exist to remove. A cleanup
+          // failure that is *not* a lock gets a line too when it is about to be dropped for a primary
+          // error: an unreported disk fault is the kind of thing that is only ever found in a log.
+          diagnosticLog(
+              _log,
+              isDatabaseLocked(cleanupError)
+                  ? 'sync: could not release the lease, so it stands until it expires '
+                      'kind=${kind.name}: $cleanupError'
+                  : 'sync: releasing the lease failed, so it stands until it expires '
+                      'kind=${kind.name}: $cleanupError');
           // A cleanup lock must not turn a non-lock failure into a recovered result.
           if (primaryError != null &&
               (!isDatabaseLocked(primaryError) || isDatabaseLocked(cleanupError))) {
             Error.throwWithStackTrace(primaryError, primaryStack!);
           }
           if (!isDatabaseLocked(cleanupError)) rethrow;
-          diagnosticLog(_log, 'sync: could not release the lease, so it stands until it expires '
-              'kind=${kind.name}: $cleanupError');
         }
       }
     } on Object catch (e) {
@@ -562,13 +594,41 @@ final class ValenceSync {
           : offline
               ? ValenceSyncReason.offline
               : ValenceSyncReason.failed;
+      // The counters stay in the line. Where the caller's own backstop answers instead of this result —
+      // the background isolate's does, with zeros — this is the only surviving record of what was
+      // applied, because a successful `applyPullPage` logs nothing.
       diagnosticLog(
           _log,
           'sync: the database was locked mid-run, so this run stopped short '
-          'kind=${kind.name} pid=$pid');
+          'kind=${kind.name} pid=$pid pulled=${touched.length} changed=$changed');
     }
-    // The background caller retains its existing lock backstop if this final read also fails.
-    return ValenceSyncResult(touched, changed, offline, reason, await store.pendingWrites());
+    // A lock on the last read must not discard a classified result. The whole point of the paragraph
+    // above is that a run which committed pages reports them, and the outbox count is the one field that
+    // still needs the database after the lease is gone — so losing the result to *that* read would undo
+    // the fix on exactly the contended device it was written for. `run` is also called by a page, which
+    // the background isolate's backstop cannot help: that frame returns zeros, and only here are the
+    // buckets and the `changed` count still in hand. An unknown count reads as 0, which is what the
+    // `busy` and open-failure paths already return, and the log line is what distinguishes them.
+    // Non-locks still throw, so a real bug reaches the caller.
+    var pending = 0;
+    try {
+      pending = await store.pendingWrites();
+    } on Object catch (e) {
+      if (!isDatabaseLocked(e)) rethrow;
+      // An unknown count reads as zero, which is what `busy` and a locked open already answer — but those
+      // two say nothing about the data, and `ok` does. `ok` with `pending: 0` is rendered as "everything
+      // is saved", over an outbox this run could not read, so the outcome degrades to `failed`: the run
+      // was attempted and is incomplete, which is exactly what §5.6 gives that word to. The buckets and
+      // the `changed` count are still the ones it earned. The *persisted* outcome is left as it was: the
+      // data sync really did complete, and poisoning `sync.status` for every later read because one count
+      // was unreadable for a few seconds would be the opposite of this rule.
+      if (reason == ValenceSyncReason.ok) reason = ValenceSyncReason.failed;
+      diagnosticLog(
+          _log,
+          'sync: the database was locked reading the outbox count, so this result says 0 pending '
+          'and reports $reason kind=${kind.name} pid=$pid');
+    }
+    return ValenceSyncResult(touched, changed, offline, reason, pending);
   }
 
   // ---------------------------------------------------------------------------

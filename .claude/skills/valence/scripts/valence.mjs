@@ -1377,7 +1377,13 @@ export function genTs(s) {
   // The link types too, or a page that wants to *name* `onLink`'s parameter has to import from
   // '@getvalence/bridge' directly, which is the one import the app layer is told not to need (rule 4).
   // Inline arrow handlers infer it and never noticed; a named router function cannot.
-  o.push("export type { AppLink, ReceivedLink } from '@getvalence/bridge';", '');
+  //
+  // A name the schema itself declares is left alone. `AppLink` and `ReceivedLink` are legal type names
+  // and always have been, so a convenience re-export that collided with one would break the web build of
+  // an app that regenerated — a rename of a shipped type, which §4.1 forbids (CR-20261107-2). The app's
+  // own declaration wins and the re-export quietly drops that name.
+  const linkTypes = ['AppLink', 'ReceivedLink'].filter((n) => !s.types.some((t) => t.name === n));
+  if (linkTypes.length) o.push(`export type { ${linkTypes.join(', ')} } from '@getvalence/bridge';`, '');
   o.push('export type { Json };', '');
   o.push(`export const BRIDGE_VERSION = ${s.version};`, '');
   for (const t of s.types) o.push(t.fields.length ? `export interface ${t.name} ${tsFields(t.fields, 0)}` : `export type ${t.name} = Record<string, never>;`, '');
@@ -1913,7 +1919,8 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
   await check('CLI build', () => ({
     msg: `${VALENCE_VERSION}, build ${cliBuild()} (sha256 of valence.mjs, first 12) at ${cliPath()}; ` +
       'a different build with the same version generates different code, so compare this line between runs ' +
-      'and run "npx create-valence update" when it moves',
+      'and run "npx create-valence update" when it moves. It digests this file only: contracts.md and ' +
+      'SKILL.md can change while it does not, so read the files "update" says it refreshed (K F-84)',
   }), 'run "npx create-valence update" to replace the vendored CLI with the published one');
   await check('generated code', () => codegen({ root, cfg, check: true }).warnings.join(' ') || undefined);
   await check('native plugin registration', () => {
@@ -2389,8 +2396,9 @@ async function dev(options) {
 
 const HELP = `Valence CLI ${VALENCE_VERSION} (spec: references/contracts.md)
 
-  valence version [--build]              print the CLI version; --build appends the digest of this file,
-                                    which is what tells two copies at the same version apart (K F-48)
+  valence version [--build]              print the CLI version; --build appends the digest of this file
+                                    *only*, which tells two copies of the generator at the same version
+                                    apart (K F-48); the spec is not in it, and "update" names what moved
   valence keygen                         new Ed25519 key in ~/.valence/keys, public key into valence/keyring.json
   valence codegen [--check]              bridge.schema.json -> bridge.g.ts, bridge.g.dart, config.g.dart
   valence bundle [--builtin | --store [--rebaseline]] [--floor N] [--requires-bridge N] [--min-host N] [--urgent] [--key file]

@@ -177,6 +177,22 @@ test('pre-9 custom links survive migration without rewriting the shipped schema'
   }
 });
 
+test('a schema that declares a link type keeps its own and drops only that re-export', () => {
+  // `AppLink` and `ReceivedLink` are legal schema type names and always have been, so the convenience
+  // re-export above cannot be unconditional: two exports of one name is a TypeScript error, and an app
+  // that had legally used the name could not regenerate at all. Renaming its type instead would be a
+  // rename of a shipped type, which §4.1 forbids — so the app's declaration wins (CR-20261107-2).
+  for (const [mine, theirs] of [['AppLink', 'ReceivedLink'], ['ReceivedLink', 'AppLink']]) {
+    const { root, cfg } = fixture();
+    editSchema(root, (s) => { s.types[mine] = { label: 'string' }; });
+    codegen({ root, cfg });
+    const ts = readFileSync(join(root, cfg.web.lib, 'bridge.g.ts'), 'utf8');
+    assert.equal(ts.match(new RegExp(`\\b${mine}\\b`, 'g')).length, 1);
+    assert.match(ts, new RegExp(`export interface ${mine} \\{\\n  label: string;\\n\\}`));
+    assert.match(ts, new RegExp(`export type \\{ ${theirs} \\} from '@getvalence/bridge';`));
+  }
+});
+
 test('schema-9 links delegate while misplaced built-ins and modern redefinitions are refused', () => {
   const { root, cfg } = fixture({ latest: true });
   codegen({ root, cfg });

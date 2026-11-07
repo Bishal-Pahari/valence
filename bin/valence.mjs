@@ -266,7 +266,7 @@ const shippedFiles = () =>
 // Untouched files are updated silently. With prune, files a previous install recorded that this version no longer
 // ships are removed if untouched, or renamed to .bak if edited. Files the user added are never in the record.
 function installSkill(base, force, prune) {
-  const r = { written: 0, same: 0, updated: 0, replaced: [], kept: [], removed: [], backedUp: [] };
+  const r = { written: 0, same: 0, updated: [], replaced: [], kept: [], removed: [], backedUp: [] };
   const manifestPath = join(base, MANIFEST);
   let prevRaw;
   try {
@@ -294,7 +294,7 @@ function installSkill(base, force, prune) {
     }
     if (prev[rel] === sha(disk)) {
       writeFileSync(dst, bytes); // untouched copy of an older version
-      r.updated++;
+      r.updated.push(shown);
     } else if (force) {
       writeFileSync(`${dst}.bak`, disk);
       writeFileSync(dst, bytes);
@@ -443,7 +443,7 @@ async function init(o) {
 
     const base = o.global ? join(homedir(), '.claude') : join(root, '.claude');
     const s = installSkill(base, o.force, false);
-    ok('claude skill', `${base === join(homedir(), '.claude') ? '~/.claude' : '.claude'}/skills/valence + agents (${s.written + s.updated + s.replaced.length} written, ${s.same} unchanged)`);
+    ok('claude skill', `${base === join(homedir(), '.claude') ? '~/.claude' : '.claude'}/skills/valence + agents (${s.written + s.updated.length + s.replaced.length} written, ${s.same} unchanged)`);
     if (s.manifestBroken) warn('manifest', `${s.manifestBroken} was unreadable (merge conflict?); rewrote it`);
     for (const k of s.kept) warn('kept', `${k} (edited locally; --force replaces it and saves yours as .bak)`);
     for (const k of s.replaced) warn('replaced', `${k} (your version saved as ${k.split('/').pop()}.bak)`);
@@ -555,7 +555,12 @@ function update(o) {
   const gen = codegen({ root, cfg });
   console.log(`\n${bold('Valence update')}`);
   ok('valence.mjs', `${before} → ${VALENCE_VERSION}`);
-  ok('claude skill', `${base === join(homedir(), '.claude') ? '~/.claude' : '.claude'}: ${s.written} added, ${s.updated} updated, ${s.replaced.length} replaced, ${s.removed.length + s.backedUp.length} removed`);
+  ok('claude skill', `${base === join(homedir(), '.claude') ? '~/.claude' : '.claude'}: ${s.written} added, ${s.updated.length} updated, ${s.replaced.length} replaced, ${s.removed.length + s.backedUp.length} removed`);
+  // Named, not just counted. `version --build` digests the generator only, so an unchanged build digest
+  // and a rewritten `contracts.md` can land in the same `update` — and did, on the day §4.8 changed what
+  // the host does on every cold start (K F-84). The count said "2 updated" and nothing said which two,
+  // so the one file that is normative went unread. These names are the signal that the spec moved.
+  for (const f of s.updated) ok('updated', `${f}${/contracts\.md$|SKILL\.md$/.test(f) ? ' — this is the spec; read what changed' : ''}`);
   if (s.manifestBroken) warn('manifest', `${s.manifestBroken} was unreadable (merge conflict?); nothing was pruned, and changed files were backed up`);
   for (const f of s.replaced) warn('replaced', `${f} (you had edited it; your version saved as ${f.split('/').pop()}.bak)`);
   for (const f of s.removed) warn('removed', `${f} (no longer shipped)`);
