@@ -1,5 +1,103 @@
 # Integration review correction - 2026-11-06
 
+## November 7: refreshed integration with cold-launch route precedence
+
+In plain terms: every must-have and original queue item is marked done, including
+R34; there is no eligible new item. Refreshed both integrations on code packages
+d037f233f8ffbdd0a72d22a42715974deb50287c and site packages
+d14ece8ea97e17f9b753b31e52d15843db40abdd. Implementation merge heads are code
+922d4ced61ed9d5fa8014a7459236d82877e8f18 and site
+fe087394a836249436acf59bad32822613e8f408.
+
+Assembly: retained all 39 exact code/site tips in the ordered table below,
+beginning R8, R7, R6, R3, R4, R5, R9, R10, R14 and ending background-lock-result,
+then merged the newest packages into each integration. Checked every recorded
+tip and both packages bases as ancestors. Only the two code changelogs conflicted;
+kept both entries, with the new launch-routing entry first. Runtime, tests, spec
+and site docs merged automatically. Schema reservations, example schema 20,
+built-in revision 20 and package versions remain unchanged.
+
+Decision, security first, then users' data: honor an undrained launch destination
+before restoring a stale route, while retaining the saved draft. Account and
+bundle checks still run first; mailbox peeks do not consume delivery. Opaque
+notification payloads also pre-empt the route, even if the page cannot route them;
+a route-specific draft must record and check its own route. Those tradeoffs are
+already stated in the spec and both restoration guides. Keep the existing
+committed-sync-progress handling, acquisition-based lease age and stale bridge
+import diagnostics. No lease pre-emption, expiry, transaction-cancellation or
+schema change is introduced.
+
+Security-path checklist: inspected the combined changes against signature/appId/
+sequence/floor/requires/file verification order, nonce and strict decoding,
+navigation/subframe locks, atomic activation writes, key isolation, account and
+outbox ownership, and release-build dev exclusion. These protections remain in
+place. This is a local integration review, not an independent security review.
+
+Fresh gates on those implementation merge heads, 2026-11-07:
+- npm test: 120 passed, zero failures/skips; generated Dart analyzed and executed.
+- Core flutter test --concurrency=1: 655 passed on the first run; fatal-info
+  analysis clean; publish dry run: zero warnings.
+- Push: 2 tests passed; fatal-info analysis clean; publish dry run: zero warnings,
+  one local pubspec_overrides dependency hint.
+- Bridge: 37 tests passed, zero skips; strict/verbatim TypeScript clean;
+  npm pack --dry-run passed.
+- Site: 50-page build and SEO checks passed.
+- Example: 29 tests passed; debug APK built (assembleDebug 272.1 seconds).
+  Standalone Windows py audit printed PASS for the resolved core graph, manifest
+  and all 19 DEX files. The existing plugin Kotlin migration advisory remains;
+  it did not fail the build.
+No assertions, timeouts or gates were weakened. Package tests and these build
+checks do not establish test-app acceptance or natural worker cadence.
+
+Read both findings inventories and newest reports: Kundalini 22 / App C 140.
+Kundalini's release acceptance remains incomplete: cold notification routing was
+unresolved, widget/share/haptics were not rerun and F-81 lacks dedicated post-fix
+renewal-age device acceptance. R34's upstream example-device check covers the
+link mailbox; it does not establish notification or push device acceptance.
+Its doctor artifact records 21 PASS, 6 WARN, zero FAIL. Preserve F-81/F-82's
+historical evidence despite their upstream fixes.
+
+App C's saved audit has 84 passing artifact checks and scoped acceptance=false.
+Independently matched the system_server728 fatal NullPointerException at
+20:00:06 in AppCompatCameraDisplayRotationPolicy. The report also retains
+post-reboot App C2323 startup ANR and external photo-picker5923 ANR; no Valence
+cause is established. Restored-ready initially failed after extraction; the
+successful same-launch continuation is separate. Settings later returned painted
+in PID3667 and explicit postrestore sync is ok/pending0. Doctor records 16 PASS,
+10 WARN and 1 FAIL: its 180-second Git scan timed out. A separate equivalent
+extended scan passed; it does not replace that FAIL or the initial 300-second
+outer-wrapper timeout. Historical startup/process/storage findings stay open.
+
+Independently rehashed the archived App C release APK (54777012 bytes,
+52eb23e7a4c24e2d8d8f62396c0a2a7fd97954d1468f96e2eb8685d0a61a7d5d) and debug
+APK (193198547 bytes,
+e60ea6e7bf2dbbc164dfb1c749807660e1f58bbf1f094c90977ed41191a36af6).
+Both embedded manifests name builtin1794059919. These are archive/receipt checks,
+not fresh App C builds or signature verification. Saved rollback has
+current1794062590/no trial/broken1794062600 in bad.
+
+Matched all seven PID8026 callback/lease/SUCCESS lines against raw worker logs
+and their absence from the before capture. Raw activation bytes are identical,
+SHA256 5be18ff1015fc07b074af386b7404936c9904a31ad612680110d9e43f149afbc,
+current1794062661/pending1794062671/no trial. Native SQLite receipts record
+bidirectional effects and outbox0 before foreground. Execution explicitly records
+forced=true: one scheduler trigger after Ready/earliest-time checks proves
+neither sustained natural cadence nor cancellation/expiry correctness.
+
+S1 stays parked, S2 needs a Play account, S10 stays deferred. Item Status cells
+unchanged. Both test-app repos stayed read-only. No protected-branch commits or
+merges, package-version changes, pushes or publications. No fresh emulator or
+iOS acceptance; iOS remains experimental and untested.
+
+Evidence: both VALENCE_FINDINGS.md files and newest iteration reports;
+Kundalini test-evidence/it22/doctor.json; App C evidence/iteration-140/
+{evidence-audit.json,runner-notes.md,archived-release.json,archived-debug.json,
+native-failure-logcat.txt,settings-outcome.json,postrestore-outcome.json,
+rollback-confirmed.json,worker-execution.json,worker-completion-proof.json,
+worker-lease-diagnostics.json,worker-full-logcat.txt,background-full-log-before.txt,
+background-state-before-raw.json,background-state-after-raw.json,
+background-sqlite-before-resume.json,doctor-warnings.md}.
+
 ## November 7: refreshed integration on the lease-age and bridge-diagnostic fixes
 
 In plain terms: every must-have and original rebase-queue item is marked done;
