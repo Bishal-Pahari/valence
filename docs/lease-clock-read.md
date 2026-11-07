@@ -8,8 +8,9 @@ host; apps need no schema, web code, generated code or configuration change.
 ## Decision and scope
 
 Security first, then users' data: fix the demonstrated comparison error while
-preserving the two-minute TTL, real clock-rollback handling, foreign-process
-recovery and existing lease row format. Do not make same-process leases immortal:
+preserving current packages' two-minute TTL, bounded same-process clock tolerance,
+foreign-process recovery and existing lease row format. A same-process future
+row less than the TTL ahead stays held; at least the TTL ahead remains recoverable. Do not make same-process leases immortal:
 a cancelled isolate can leave one behind, and that would remove its recovery path.
 The read, decision and write remain inside the existing transaction. Both new
 lease timestamps use the same post-read sample. Diagnostics measure acquisition
@@ -19,9 +20,13 @@ give every app its own runtime again.
 
 All must-have items and the original rebase queue are done. Both worktrees started
 this follow-up on codex/lease-clock-read from current packages: code 84e0dec,
-site 9afafc0. This is an S9 correctness follow-up, not a new optional feature.
-No other roadmap Status cell changes. There is one new unmerged branch, so the
-two-or-more-branches integration rule does not yet apply.
+site 9afafc0. During gates packages moved to code 74ea9bf / site b877d97,
+including another F-83 fix, cleanup corrections and F-84 documentation. Merged
+both bases into this branch. Retained upstream policy and corrections, with one
+post-query clock sample and these additional transaction-queue regressions.
+This is an S9 correctness follow-up, not a new optional feature.
+No other roadmap Status cell changes. There is one new follow-up branch;
+the integration still needs refreshing because packages moved under rule 0b.
 
 ## Reproduction and regression
 
@@ -48,13 +53,19 @@ after the holder releases. A second test queues an empty acquisition for three
 minutes, then verifies its new timestamps start after the wait, age is zero and
 a second driver is refused. Existing sync tests retain the expiry, future-row,
 foreign-owner, renewal, failed-run cleanup and diagnostics coverage.
-Focused tests: 75 passed (both new regressions plus sync_test.dart).
+Initial focused tests before the concurrent packages merge: 75 passed (both new
+regressions plus sync_test.dart). The final merged core gate below supersedes
+that narrower result.
 
-Independent valence-reviewer checklist: no correctness/security blocker. Reviewed
+Independent security checklist: no correctness/security blocker. Reviewed
 transaction boundaries, refusal writes, both new timestamps, TTL/rollback/owner
 recovery, call sites, cleanup and test barriers. A documentation section-symbol
 typo was corrected. The review was static; its observed focused test result is
-not a second independent execution.
+not a second independent execution. A second review of the merged delta found
+no correctness/security blocker; it identified the inherited exact-TTL wording
+ambiguity, now corrected to match the existing at-least-TTL recovery boundary.
+The queue regressions cover transaction waiting, not a distinction between
+transaction-entry and post-query sampling; static inspection verifies the latter.
 
 ## Test-app evidence, read only
 
@@ -66,7 +77,7 @@ page-age correction matters: log delivery time is not status-read time. Its
 release checklist still has partial first-install-offline and unconfirmable
 haptics scope; F-83 has no app-layer workaround. Doctor artifact independently
 counts 21 PASS / 6 WARN / 0 FAIL. F-84 is a separate minor CLI-versus-snapshot
-identity documentation finding; this lease patch does not claim to resolve it.
+identity documentation finding, addressed by the merged packages changes.
 
 App C 144 remains an incomplete Android regression. Independently checked all 22
 report evidence links, counted doctor 16 PASS / 10 WARN / 1 FAIL, and rehashed
