@@ -1,5 +1,101 @@
 # Integration review correction - 2026-11-06
 
+## November 7: refreshed integration on the lease-age and bridge-diagnostic fixes
+
+In plain terms: every must-have and original rebase-queue item is marked done;
+there is no eligible new item. Refreshed both integrations on code packages
+0857097fef8556d8152a2f4de6169b6078aeea54 and site packages
+768eacff586478f656253b6b4bb28633f63dffd5. The tested merge heads are code
+020d7555ca52edc096ead8e43a3c0a5292edb892 and site
+e49896199a76ee622c74ab14102aa927d5b19d47. This note adds documentation only.
+
+Assembly: retained the 39 exact tips in the ordered table below, beginning R8,
+R7, R6, R3, R4, R5, R9, R10, R14 and ending background-lock-result, then merged
+the newest packages into each integration. Independently checked all 39 exact
+code/site tips and both new packages heads as ancestors. The only conflicts
+were the two code changelogs: kept both the partial-progress entry and the new
+lease-age entry. Runtime and site-guide merges were automatic; inspected their
+combined behavior rather than replacing either side. Reserved schema/since
+numbers, example schema 20, built-in revision 20 and package versions stay put.
+
+Decision, security first, then users' data: preserve the pending branch's
+committed-page/chunk accounting, auth/offline precedence and primary-error stack
+handling. Preserve upstream's additive fourth lease-row field for acquisition
+time: renewal still moves the original timestamp that controls the TTL.
+The acquisition-age test reads through another driver and checks renewal,
+continued liveness and agreement with the release diagnostic. No lease
+pre-emption, transaction cancellation or expiry change is introduced.
+The new wizard warning compares generated import names with installed published
+declarations; it does not install dependencies or establish shape compatibility.
+Spec, runtime, generated delegation and the matching site docs remain consistent.
+
+Security-path checklist: the combined diff leaves signature/appId/sequence/
+floor/requires/file verification order, nonce, strict decoding, navigation and
+subframe locks, atomic activation writes, key isolation, account/outbox ownership
+and release-build dev exclusion intact. This was a local integration review,
+not an independent security review or a WorkManager cancellation reproduction.
+
+Fresh gates on those implementation heads, 2026-11-07:
+- npm test: 120 passed, zero failures/skips; generated Dart executed.
+- Core flutter test: 650 passed on the first run; fatal-info analysis clean;
+  publish dry run: zero warnings.
+- Push: 2 tests passed; fatal-info analysis clean; publish dry run: zero
+  warnings, one local pubspec_overrides dependency hint.
+- Bridge: 37 tests passed, zero skips; strict/verbatim TypeScript clean;
+  npm pack --dry-run passed.
+- Site: 50-page build and SEO checks passed.
+- Example: 29 tests passed; debug APK built (assembleDebug 30.3 seconds).
+  Standalone Windows py audit printed PASS for the resolved core graph,
+  manifest and all 19 DEX files. Build emits the existing plugin Kotlin
+  migration advisory; no build failure.
+No assertions, timeouts or gates were weakened. No fresh emulator session,
+remote-push acceptance, sustained worker-cadence test or iOS acceptance.
+
+Read both findings inventories and newest reports: Kundalini 22 / App C 139.
+Kundalini reports F-79 adoption, signed store/OTA/rollback and offline seed
+checks; cold notification routing remains unresolved and widget/share/haptics
+were not rerun. Its doctor artifact totals 21 PASS, 6 WARN, zero FAIL.
+F-81/F-82 now have upstream fixes and passing package regressions; the app has
+not yet supplied dedicated post-fix renewal-age device acceptance. Do not close
+its findings on the strength of App C's unrelated successful worker.
+
+App C's saved audit records 82 checks and scoped acceptance=true. Independently
+rehashed release APK (54777012 bytes,
+78eb224a60070702ad6c00045fc428a0772a45056bb59746c70d0fec62fc4163) and debug
+APK (193194989 bytes,
+39a9a9e1f1a917a32edd309443cda8a16c3629144cebade01c3d5cca2721358f);
+both embedded manifests name builtin1794056348. These are archive/receipt
+checks, not fresh App C builds or signature verification. Settings returned
+painted in PID5575; explicit postrestore sync is ok/pending0, separately from
+the earlier offline/pending0 receipt. Saved rollback has current1794057279,
+no trial and broken1794057289 in bad.
+
+Independently matched all seven new PID9121 worker callback/lease/SUCCESS
+lines against raw logs and their absence from the before capture. Raw activation
+bytes are identical, SHA256
+e92693acce3f70bef95e08b5c10d6f3ae876bf27b775f6d60e4719348f33205d,
+current1794057347/pending1794057357/no trial. Native SQLite receipts record
+bidirectional effects/outbox0 before foreground; those effects were read,
+not replayed. Execution records forced=true after Ready/earliest-time checks:
+one explicit scheduler trigger proves neither natural cadence nor cancellation.
+Initial cleanup failed on a stale forward belonging to Settings PID5575;
+cleanup-only continuation removed it without replaying worker/OTA/data actions.
+Historical startup/process/storage findings remain open.
+
+S1 stays parked, S2 needs a Play account, S10 stays deferred; R34 is already
+marked done and is not available to this builder. Item Status cells unchanged.
+Both test-app repos stayed read-only. No protected-branch commits/merges,
+version changes, pushes or publications.
+
+Evidence: both apps' VALENCE_FINDINGS.md and ITERATION reports; Kundalini
+test-evidence/it22/doctor.json; App C evidence/iteration-139/{evidence-audit.json,
+archived-release.json,archived-debug.json,settings-outcome.json,
+postrestore-outcome.json,rollback-confirmed.json,worker-execution.json,
+worker-completion-proof.json,worker-lease-diagnostics.json,worker-full-logcat.txt,
+background-full-log-before.txt,background-state-before-raw.json,
+background-state-after-raw.json,background-sqlite-before-resume.json,
+initial-cleanup.json,cleanup.json,runner-notes.md}.
+
 ## November 7: Kundalini 22 and App C 138 evidence review
 
 In plain terms: all must-haves and the original rebase queue remain done. No
