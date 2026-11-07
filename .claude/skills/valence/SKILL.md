@@ -323,6 +323,10 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
 
 ### Mechanical checks
 
+On Windows, a timed-out or failed `where.exe flutter.bat` discovery is a FAIL,
+not evidence that Flutter is unavailable. Only a completed lookup with no match
+reports an absent SDK. Preserve the timeout row and its selected budget.
+
 Both CLI doctors fail with a `Fix:` line on schema/generated bridge drift, invalid store baselines,
 verified local OTA requirements above the store bridge, database paths instead of file names,
 PEM signing keys in tracked or non-ignored Git files, invalid browser/native origins, and a declared
