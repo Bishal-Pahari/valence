@@ -1,5 +1,66 @@
 # Integration review correction - 2026-11-06
 
+## November 7: iteration 141 incomplete regression evidence
+
+In plain terms: every must-have and original queue item is marked done; no
+eligible new feature or queue refresh remains. Packages bases remain code
+d037f233f8ffbdd0a72d22a42715974deb50287c and site
+d14ece8ea97e17f9b753b31e52d15843db40abdd. Independently checked all 39 recorded
+exact code/site tips and both packages bases as ancestors of the integrations.
+Read both findings inventories and newest reports: Kundalini 22 / App C 141.
+Kundalini's release acceptance remains incomplete; the upstream F-81/F-82 and
+cold-launch routing fixes do not replace dedicated post-fix app acceptance.
+
+App C's saved audit has 46 passing receipt-consistency checks, acceptance=false.
+Independently checked all 21 evidence links in its latest report. Official offline
+CLI refresh, bridge integrity, web build, three Node tests, twelve Flutter tests
+and Dart analysis have successful saved receipts. Builtin verification records
+seq1794068533/five files; this review did not rerun signature verification.
+Release build timed out after 900009ms; debug build was not reached. Neither is
+a completed APK delivery. No current native/offline/OTA/isolated-worker acceptance.
+
+Doctor records 15 PASS, 10 WARN, 2 FAIL. The signing-key scan timed out at
+180366ms; the separate extended scan also timed out at 901741ms. Its zero
+matchingFiles field is not a clean scan. The mapped bridge test failed after
+3052ms with only a generic diagnostic. Independently matched both failures in
+the doctor output and the separate full Flutter run's twelve-test success.
+The latter does not explain or erase the earlier failure. New minor finding
+F-54 requests bounded child-test diagnostics, with credentials excluded; no
+speculative runtime change or historical finding closure follows from it.
+
+Independently matched two activity-service 10000ms dump timeouts and widespread
+system-app ANRs in raw startup logs. F-53 records this external startup/service
+failure, not an established App C crash or Valence cause. The saved direct boot
+probe reports booted=false, ending at 295126ms with device offline. Harness
+recovery and direct-launch observations remain separate from build results.
+Initial CLI timeout and overlapping pub-get failure remain separate from the
+successful offline retry and later pub-get. Copied unexecuted device runners
+are inputs, not execution evidence.
+
+Source/cleanup receipts record unchanged app-owned source, no device data clear
+or restore, owned mock stopped and emulator absent. Original data retention was
+not reverified, and final airplane-setting read was unavailable; no retention
+or final device-setting success is inferred. No APK archive, worker execution,
+activation-byte comparison or natural-cadence proof exists for this iteration.
+
+Decision: security first, then users' data. Keep the frozen runtime, transaction
+ownership and failed/incomplete evidence intact. S1 stays parked, S2 requires a
+Play account and S10 stays deferred. No eligible item is claimed or reassigned.
+Only mirrored integration evidence notes and the roadmap top note change; item
+Status cells remain unchanged. Earlier November 7 full gates retain their original
+implementation scope. This evidence-only review checked ancestry, saved receipts,
+raw diagnostics, report links, mirrored text and whitespace; it ran no fresh full
+gates, emulator session or iOS acceptance. Both test-app repositories stayed
+read-only; no package-version changes, protected-branch writes, pushes or releases.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_22_REPORT.md};
+valence-test-app-c/{VALENCE_FINDINGS.md,ITERATION_141_REPORT.md}; App C
+evidence/iteration-141/{evidence-audit.json,runner-notes.md,doctor-current.txt,
+doctor-rows.json,extended-key-scan.json,flutter-tests.txt,iteration-outcome.json,
+build-release-execution.json,verify-builtin.txt,startup-full-logcat.txt,
+startup-exit-info.txt,direct-boot-observation.json,bridge-integrity.json,
+snapshot-end-check.json,application-review.json,device-cleanup.json,mock-stopped.json}.
+
 ## November 7: refreshed integration with cold-launch route precedence
 
 In plain terms: every must-have and original queue item is marked done, including
