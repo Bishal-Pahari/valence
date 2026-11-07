@@ -1901,7 +1901,10 @@ function runFlutter(args, cwd, timeoutMs = DEFAULT_CHILD_TIMEOUT_MS) {
   if (args.some((arg) => !/^[A-Za-z0-9_./-]+$/.test(arg))) throw new Error('unsafe Flutter argument');
   const options = { cwd, encoding: 'utf8', timeout: timeoutMs };
   if (process.platform !== 'win32') return spawnSync('flutter', args, options);
-  if (spawnSync('where.exe', ['flutter.bat'], { encoding: 'utf8' }).status !== 0) {
+  // The probe is bounded like the command it is probing for: a PATH holding a dead mapped drive or a
+  // stale UNC entry blocks `where.exe` in name resolution, and an unbounded child here is one
+  // `--timeout` cannot move — the same unattributable hang, one spawn earlier.
+  if (spawnSync('where.exe', ['flutter.bat'], { encoding: 'utf8', timeout: timeoutMs }).status !== 0) {
     return { error: { code: 'ENOENT' } };
   }
   return spawnSync('cmd.exe', ['/d', '/c', `flutter ${args.join(' ')}`], options);
@@ -1912,6 +1915,10 @@ export async function diagnose({ root, cfg, tests = false, timeout, run = runFlu
   // a caller must not be able to hand a child an unbounded or absurd budget, and a run that is going to
   // reject its own flag must not first spend three minutes establishing something it then throws away.
   const childMs = childTimeoutMs(timeout);
+  // Named in the stream before anything runs, because a saved doctor artifact that carries a timeout row
+  // has to say which budget produced it — app-c's reports are read days later, from the capture alone —
+  // and because it is the one place both entry points can be *seen* to have forwarded the flag.
+  onPhase(`child budget ${childMs / 1000}s`);
   const rows = [];
   const fixes = {
     'generated code': 'run valence codegen; restore incompatible shipped schema changes before regenerating',
@@ -2205,7 +2212,10 @@ export async function diagnose({ root, cfg, tests = false, timeout, run = runFlu
     // rather than with the app, and it is bounded like the Flutter commands are. A scan that could not
     // finish must never read as "no key found": it stays a FAIL that says what did not happen.
     if (killedByTimeout(result)) throw timeoutError('the Git private-key scan', 'rerun in a smaller checkout, or scan for PEM headers separately before shipping; a scan that did not finish is not a clean result', childMs);
-    if (result.error || ![0, 1].includes(result.status)) throw new Error('Git private-key scan failed');
+    // `result.signal` as well as the status: on Windows a terminated process reports exit code 1, which
+    // is exactly `git grep`'s "no match", so a kill arriving from outside `spawnSync` — a parent that
+    // signalled the group, a session teardown — would otherwise read as a clean scan.
+    if (result.signal || result.error || ![0, 1].includes(result.status)) throw new Error('Git private-key scan failed');
     if (result.status === 0) throw new Error('PEM private key found in tracked or non-ignored files (contents withheld)');
   }, 'move signing keys outside Git, remove exposed files from the index and rotate exposed keys; audit history separately');
   await check('connection origins', () => {

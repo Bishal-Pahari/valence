@@ -359,12 +359,12 @@ check prints `running <name>` before it starts and `<status> <name> (<ms> ms) <d
 finishes there, while stdout stays one JSON document whose rows each end with their elapsed
 milliseconds. If a wrapper or a session timeout kills the run, the trailing `running <name>` with no
 result after it is the only thing that names the check that was still going, and stdout is empty.
-Every child command is bounded at 180 s — one `flutter test` per mapped layer, `flutter pub deps
+Every child command is bounded at 180 s by default — one `flutter test` per mapped layer, `flutter pub deps
 --json`, and the whole-checkout Git private-key scan — so `--tests` costs the sum of those bounds in a
 large checkout. **A timeout row is not a failing test and must not be reported as one:** it names the
 bound and says no assertion ran, and a private-key scan that did not finish is never a clean scan.
 `--timeout <seconds>` (1 to 3600, per child command, refused outside that range before the first check
-runs) moves the bound when 180 s is wrong for the checkout rather than wrong about the app — the
+runs, and echoed as the stream's first line `child budget <n>s`) moves the bound when 180 s is wrong for the checkout rather than wrong about the app — the
 private-key scan grows with the repository — and then the row names the bound you set. Raising it and
 rerunning is a legitimate way to turn a timeout row into a result; reporting the timeout as a pass is
 not. Do not run a second Flutter command concurrently; doctor runs one at a time, and a concurrent run is the

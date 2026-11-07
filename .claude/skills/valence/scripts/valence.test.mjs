@@ -1181,12 +1181,16 @@ test('doctor --timeout moves every child budget, the timeout row names the bound
   const budgets = (timeout) => {
     const flutter = [];
     const git = [];
+    const phases = [];
     return diagnose({
       root, cfg, tests: true, timeout,
+      onPhase: (line) => phases.push(line),
       run: (_args, _cwd, ms) => (flutter.push(ms), timedOut),
       git: (args, ms) => (git.push(ms), args[0] === 'rev-parse' ? { status: 0, stdout: `${root}\n` } : timedOut),
-    }).then((rows) => ({ rows, flutter, git }));
+    }).then((rows) => ({ rows, flutter, git, phases }));
   };
+  // The scan is two children; this drives the first one on its own.
+  const scan = (timeout, git) => diagnose({ root, cfg, timeout, git, run: () => timedOut }).then((rows) => rows.find(([, n]) => n === 'signing keys in Git'));
 
   // The number the flag names is the number every child actually gets — `flutter test`, `pub deps` and
   // both halves of the Git scan — and it is the number the row reports, because a row naming 180 while
@@ -1197,6 +1201,18 @@ test('doctor --timeout moves every child budget, the timeout row names the bound
   assert.match(raised.rows.find(([, n]) => n === '§8 bridge')[2], /killed by its own 600s timeout/);
   assert.match(raised.rows.find(([, n]) => n === 'Flutter dependencies')[2], /killed by its own 600s timeout/);
   assert.match(raised.rows.find(([, n]) => n === 'signing keys in Git')[2], /killed by its own 600s timeout/);
+  // `rev-parse` had no test, and its fallthrough is a *WARN* saying "not a Git work tree" about a
+  // directory that is one. Reorder or drop that one guard and a security check exits 0 over a scan that
+  // never ran, which is the single thing section 7 forbids of this row.
+  const early = await scan('45', () => timedOut);
+  assert.equal(early[0], 'FAIL');
+  assert.match(early[2], /git rev-parse --show-toplevel was killed by its own 45s timeout/);
+  assert.doesNotMatch(early[2], /not a Git work tree/);
+  // A kill that did not come through `spawnSync` leaves no ETIMEDOUT, and on Windows a terminated
+  // process reports exit code 1 — which is `git grep`'s "no match". It must not read as a clean scan.
+  const signalled = await scan('45', (args) => (args[0] === 'rev-parse' ? { status: 0, stdout: `${root}\n` } : { status: 1, signal: 'SIGKILL' }));
+  assert.equal(signalled[0], 'FAIL');
+  assert.match(signalled[2], /Git private-key scan failed/);
   // Every timeout row carries the knob, so the fix is in the row rather than in the help text.
   for (const name of ['§8 bridge', 'Flutter dependencies', 'signing keys in Git']) {
     assert.match(raised.rows.find(([, n]) => n === name)[2], /raise the budget with doctor --timeout <seconds>/);
@@ -1207,6 +1223,11 @@ test('doctor --timeout moves every child budget, the timeout row names the bound
   assert.deepEqual([...new Set(dflt.flutter)], [180_000]);
   assert.deepEqual([...new Set(dflt.git)], [180_000]);
   assert.match(dflt.rows.find(([, n]) => n === '§8 bridge')[2], /killed by its own 180s timeout/);
+  // The budget is named in the stream before anything runs: a saved artifact has to be able to explain
+  // its own timeout rows days later, and this is the only externally visible proof that the caller
+  // forwarded the flag at all.
+  assert.equal(raised.phases[0], 'child budget 600s');
+  assert.equal(dflt.phases[0], 'child budget 180s');
 
   // Refused, and refused *first*. `0` is `spawnSync`'s "no timeout" — the unattributable hang the bound
   // exists to prevent — and over an hour is a budget handed over in milliseconds. A run that is going to

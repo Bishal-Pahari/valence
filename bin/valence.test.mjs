@@ -183,6 +183,11 @@ test('both doctor entry points exit nonzero with a fix for a broken mechanical s
     // own fast checks ahead of the shared ones, so nothing may stream before the flag is rejected.
     assert.doesNotMatch(bad.stderr, /doctor: running /);
     assert.equal(bad.stdout, '');
+    // And an *accepted* budget has to be seen to reach the shared checks. Without this, dropping the
+    // forward from this entry point leaves a run that validates 600 and then bounds every child at 180:
+    // consistent, silent, and the row reports the wrong number.
+    const ok = spawnSync(process.execPath, [cli, 'doctor', '--root', root, '--timeout', '600'], { encoding: 'utf8' });
+    assert.match(ok.stderr, /doctor: child budget 600s/);
   }
 });
 

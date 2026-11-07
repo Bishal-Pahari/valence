@@ -12,6 +12,13 @@ means "no timeout" to Node, which is the unattributable hang the bound exists to
 one-hour ceiling catches a budget typed in milliseconds. Both entry points take it, and an out-of-range
 value is refused before the first check runs rather than after three minutes of work.
 
+Doctor's stderr stream now opens with `child budget <n>s`, so a capture you read days later can
+explain its own timeout rows. Two smaller things found while reviewing this: on Windows the
+`where.exe flutter.bat` probe that runs before every Flutter command was itself unbounded, so one child
+was outside the budget entirely; and a private-key scan killed by a *signal* rather than by the timeout
+reported exit code 1 on Windows, which is `git grep`'s own "no match" — it now fails rather than
+reading as a clean scan.
+
 **Nothing to change in your host.** Without the flag, the bound is what it was.
 
 ## Unreleased: a failing `doctor` check says what the child command said
