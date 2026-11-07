@@ -243,7 +243,7 @@ final class ValenceSync {
   /// sqflite runs `transaction` as `BEGIN IMMEDIATE`, which is what makes the read-then-write atomic
   /// across isolates. A lease time in the **future**, from clock skew or tampering, counts as expired.
   Future<bool> acquireLease() async {
-    final now = _now().millisecondsSinceEpoch;
+    var now = 0;
     var taken = false;
     await databaseOperation(
         'sync.acquireLease',
@@ -255,6 +255,10 @@ final class ValenceSync {
                 whereArgs: [syncLeaseKey],
                 limit: 1,
               );
+              // The transaction and query can wait behind a sibling's page or renewal. A clock
+              // sampled before that wait can make its newer row look future-dated (K F-83),
+              // incorrectly displacing a live holder even though the clock only moved forwards.
+              now = _now().millisecondsSinceEpoch;
               final raw = rows.isEmpty ? null : rows.first['value'] as String;
               final (held, owner, leftBy, _) = _readLease(raw);
               final live = held != null && held > now - syncLeaseTtl.inMilliseconds && held <= now;
