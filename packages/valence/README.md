@@ -302,3 +302,6 @@ page or lease renewal locks. Acquisition locks remain `busy`. A release-only
 lock retains the completed outcome; cleanup cannot hide a primary non-lock
 error. Background final-read lock fallback retains its existing limits. See
 [the integration correction](../../docs/background-lock-result.md).
+
+
+Lease acquisition samples its clock after the lease query returns inside the transaction. A queued database read cannot mistake a sibling's newer renewal for clock rollback, and waiting for the database does not consume a new lease's TTL. The two-minute TTL, genuine future-timestamp recovery and foreign-process recovery retain their existing rules (K F-83). No schema change or app code adoption is needed; rebuild the native host.
