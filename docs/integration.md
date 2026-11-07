@@ -1,5 +1,113 @@
 # Integration review correction - 2026-11-06
 
+## November 8: doctor discovery correction and integration refresh
+
+In plain terms: all must-have and original queue items remain done. Refreshed
+both integrations on packages code c091bee15ac0cbb0d46139438460acbb46f72578
+and site 5c17a0d940a07cba81a305ea4522d9fd250e7ac6. Kept the queued-lease
+regressions and the upstream busy-result handling, doctor budgets and failure
+output. Review found a Windows discovery timeout becoming a missing-SDK warning;
+that is corrected on its own branch. The full core gate also exposed a
+timing-sensitive cached-blocker fixture teardown; its separate branch mirrors
+the existing real-I/O mounting helper without changing production behavior.
+
+Assembly started afresh from those packages heads in both repositories:
+
+1. Original recorded tips 1-39, beginning R8, R7, R6, R3, R4, R5, R9, R10,
+   R14, were already ancestors of packages; each ordered merge was a no-op.
+2. R31 follow-up codex/widget-startup-drain: implementation code 1477884 /
+   site 9ee8607; final validation tips code baadeff / site 5c87208.
+3. S9 follow-up codex/lease-clock-read: code cdecefb / site f311337.
+4. S11 follow-up codex/doctor-probe-timeout: implementation code 8725b83 /
+   site 4fbb8bd; final validation tips code abee488 / site eea7f1d.
+5. Retained previous integration history/notes, then merged validation-only
+   follow-up commits in R31, S11 order. All 42 exact source tips are included.
+
+Only contracts section 5.6 conflicted. Kept the reviewed post-query single clock
+sample, exact TTL boundary and upstream worst-case recovery bound (TTL plus skew,
+less than twice the TTL). Restored the exact tested resolution; runtime code
+merged without conflict. No package version, schema number or signed asset changed.
+
+The rebuilt source trees at code 1ce6670 / site 83d090d exactly matched the gated
+code e7a349a / site 7306744 trees, including tests and public site content.
+Only validation notes were added after that comparison. These are fresh combined
+gates; separate standalone follow-up branch gate runs are not claimed.
+
+Final combined-tree gates passed 2026-11-08:
+
+- Root `npm test`: 123 passed, zero skips; generated Dart analyzed/executed.
+- Core `flutter test --no-pub --concurrency=1`: 665 passed; fatal-info analysis clean.
+- Core pub dry run: zero warnings.
+- Push: 2 tests passed, fatal-info analysis clean, pub dry run zero warnings/one local override hint.
+- Bridge: 37 tests passed, strict/verbatim TypeScript and pack dry run passed.
+- Example: codegen check wrote nothing, 29 tests passed, debug APK built (Gradle 46.7s).
+- Windows `py example/tool/check_no_firebase.py`: PASS over the core graph, manifest and 19 DEX files.
+- Site: 50-page build and SEO/link checks passed.
+
+These are combined integration results, not separate standalone branch gate runs.
+The rebuilt integration trees matched the tested trees byte for byte before
+validation-only notes: code a391e2e7fd8586eaf992076639abe1bfe191492b;
+site 747192c12e59e219ff13f860c6643dcd0b76c1d8.
+
+The initial core run had 664 passes/one pending-timer failure in the cached-policy
+case. Unmodified isolated and 31-case widget retries passed, so the record does
+not claim a deterministic runtime leak. The corrected fixture mounts in
+runAsync and drains I/O after disposal; its policy assertions are unchanged.
+The final full run passed all 665 cases. The discovery timeout and missing-utility
+regressions each failed before their correction and pass in both shipped CLI
+copies. Final read-only review found no remaining concrete finding. Existing
+app_badge_plus KGP build warning remains; the push pub hint is its local override.
+An initial gate-launch redirection error executed no gate and is excluded.
+
+Read both findings inventories and newest reports, Kundalini 23 / App C 145.
+Kundalini still needs a rebuilt-host F-83 device recheck; clean-install-offline
+and felt haptics remain qualified. Its report confirms corrected cold launch
+routing and F-81 age diagnostics, not acceptance of the later F-83 correction.
+
+App C's saved audit has 88 passing consistency checks with acceptance=false.
+Independently checked 49 current Markdown report links (the report says 50),
+rehashed both archives and verified five embedded files per manifest at
+builtin1794087098:
+
+- release SHA256 d2110c4367281c378ce1b9c5effa3b08b2b6ff65229fb7ef4e306aaf733c02f2
+- debug SHA256 23ed90820a8ef66c8e59002682d9badab9f2516e4648549ddf36799301e00b28
+
+Doctor independently counts 17 PASS/10 WARN/zero FAIL. Raw exit-info confirms
+initial PID3221 BIND APPLICATION ANR. Initial debug readiness and Settings blank/
+task-detach failures remain distinct from recovered paint and scoped feature
+passes; no Valence root cause is established. Reviewed saved offline/native/
+media/notification/link/widget/two-strike OTA and cleanup receipts without
+rerunning those device checks. Keystore reset after destructive pm-clear/archive
+restore means retained database/photo evidence does not establish previous token,
+account, secure-value, cookie or authenticated-session continuity.
+
+Matched seven raw PID10862 worker callback/lease/SUCCESS lines and compared the
+exact activation bytes: SHA256
+f3f27a30a6e3dfb6d50348e44062769864a006b0ef5ba496263d264ce05c09ab,
+pending1794089309/no trial unchanged. The registered job was explicitly triggered
+after readiness/earliest time. This proves neither sustained natural cadence nor
+cancellation/expiry correctness. Saved final state commits1794089309; saved
+retention/cleanup reports original inspection/photo preserved and fixtures,
+queues and outbox empty. Those successes do not close historical findings.
+
+Decision: security first, then users' data. Keep failed diagnostics as failures,
+retain bounded lease recovery and production timing, and correct the test harness
+instead of deleting the diagnostic timer. S1 remains parked, S2 needs Play,
+S10/P1 remain deferred. Only R31/S11 follow-up Status cells and the roadmap top
+handoff note change. No fresh emulator or iOS acceptance. Test-app repositories
+remained read-only; no protected branch writes, version changes, pushes or releases.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_23_REPORT.md};
+valence-test-app-c/{VALENCE_FINDINGS.md,ITERATION_145_REPORT.md,
+evidence/iteration-145/{evidence-audit.json,archived-release.json,
+archived-debug.json,embedded-file-integrity.json,doctor.txt,
+initial-exit-after-death.txt,settings-outcome.json,current-failure-correlated.txt,
+background-state-before-raw.json,background-state-after-raw.json,
+worker-full-logcat.txt,worker-completion-proof.json,worker-execution.json,
+final-state.json,final-native-retention.json,cleanup.json}}.
+Follow-up validation: [Windows discovery](doctor-probe-timeout.md),
+[cached-blocker fixture](widget-startup-drain.md).
+
 ## November 8: queued lease regression and refreshed integration
 
 In plain terms: K F-83 was reproducible against the previous candidate: a queued
@@ -1168,6 +1276,8 @@ There were no conflicts or competing sync implementations to reconcile.
 | 38 | codex/cache-adoption | 77853b3964f88d471036bd61340f7c9172057f5f | 04edf8276501f9ec02531aff326389fb6ffc44b7 |
 | 39 | codex/background-lock-result | 47c862e350cde63afb305fe558100c78e1722185 | f37c05a6922b3cf0a473ee77ff0422fc4093c5c6 |
 | 40 | codex/lease-clock-read | cdecefbfe6bb18481fcdc19d08ff0c6b2e6c02b7 | f311337cee94f56db94c5adc2456ffd9c3be8b6f |
+| 41 | codex/widget-startup-drain | baadeff27970ab57cbd9af2c1b67ca8505069741 | 5c8720803af3678060879506bc656f9246f4cdb0 |
+| 42 | codex/doctor-probe-timeout | abee4888223ecd45ffd2992b05679fc461b8c87d | eea7f1dd7af027b0c0b85a0e27a67a43ee94d65e |
 
 ## Decision and review
 
