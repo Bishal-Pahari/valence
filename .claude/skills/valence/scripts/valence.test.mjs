@@ -1126,6 +1126,22 @@ test('doctor streams named check boundaries with durations, and reports a killed
   assert.equal(failed[0], 'FAIL');
   assert.match(failed[2], /flutter test failed for bridge/);
   assert.doesNotMatch(failed[2], /timeout/);
+  // ...and it says what the child said, because "flutter test failed" on its own names a failure and
+  // withholds the only thing that explains it: app-c read that row, ran the tests by hand, got twelve
+  // passes, and had nothing left to reconcile them with (C F-54). Bounded: the last 8 lines at 200
+  // characters, and the exit status, which is null when a signal killed it. On **one** line, because the
+  // row formatter keeps the message's first line only — a tail joined with newlines arrives as the word
+  // "said:" and nothing after it, which is how the first version of this was caught.
+  assert.match(failed[2], /\(exit 1\) with no output/);
+  const noisy = (await diagnose({
+    root, cfg, tests: true,
+    run: () => ({ status: 1, stdout: `${'x'.repeat(260)}\n${[...Array(30).keys()].map((i) => `line ${i}`).join('\n')}`, stderr: '  Expected: <2>\n' }),
+  })).find(([, n]) => n === '§8 bridge');
+  assert.match(noisy[2], /Expected: <2>/);
+  assert.match(noisy[2], /line 29/);
+  assert.doesNotMatch(noisy[2], /line 9\b/, 'bounded to the tail');
+  assert.doesNotMatch(noisy[2], new RegExp('x'.repeat(220)), 'long lines are clipped');
+  assert.doesNotMatch(noisy[2], /\n/, 'a doctor row is one line');
   // ...and a command killed by its own bound says so, names the bound, refuses to claim anything about
   // the app, and carries a fix that is not "correct the failing test".
   const timedOut = (await diagnose({ root, cfg, tests: true, run: () => ({ status: null, signal: 'SIGTERM', error: { code: 'ETIMEDOUT' } }) })).find(([, n]) => n === '§8 bridge');

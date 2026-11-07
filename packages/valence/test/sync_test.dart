@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:valence/valence.dart';
 
 import 'helpers.dart';
@@ -1125,4 +1126,90 @@ void main() {
       expect(asked.any((p) => p.endsWith('/plants')), isFalse, reason: 'only scoped it out');
     });
   });
+
+  test('the lease row is written from the clock after the wait, not before it (K F-83)', () async {
+    // The root cause, pinned on its own. `BEGIN IMMEDIATE` waits for the sibling isolate, so a clock read
+    // before the call is older than the row the transaction then writes — and the `mine` predicate covers
+    // the *data* half of K F-83 independently, which means the sample could be hoisted back out of the
+    // transaction and every other test here would still pass. What would silently come back is the
+    // reported age: the row would carry a take-time from before the wait, so the next reader is told a
+    // hold is seconds older than it is, which is K F-81's symptom arriving by a second route.
+    var now = DateTime(2026, 11, 8, 0, 42, 57);
+    // Eleven seconds is what the device log showed between the two readings.
+    final waiting = await ValenceStore.open(await freshDbPath('waited.db'),
+        factory: _WaitingFactory(() => now = now.add(const Duration(seconds: 11))));
+    final s = ValenceSync(
+      store: waiting,
+      config: testConfig(key, dataSchemas: {'plants': 1}),
+      client: MockClient((_) async => fail('must not reach the network')),
+      log: LogSpy().call,
+      clock: () => now,
+    );
+    expect(await s.acquireLease(), isTrue);
+    final afterTheWait = now.millisecondsSinceEpoch;
+    final raw = (await waiting.hostPrefGet('valence.sync.lease'))!.split(':');
+    expect(raw.first, '$afterTheWait', reason: 'the renewal the TTL is judged against');
+    expect(raw.last, '$afterTheWait', reason: 'and the take-time every reported age is measured from');
+  });
+}
+
+/// A database whose every transaction costs time, which is what `BEGIN IMMEDIATE` does when the other
+/// isolate holds the file. Nothing in `flutter_test` can hold a real cross-isolate lock, so the wait is
+/// modelled as the test clock moving while the transaction starts.
+final class _WaitingFactory implements DatabaseFactory {
+  _WaitingFactory(this.wait);
+  final void Function() wait;
+  @override
+  Future<Database> openDatabase(String path, {OpenDatabaseOptions? options}) async =>
+      _WaitingDatabase(await databaseFactoryFfi.openDatabase(path, options: options), wait);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _WaitingDatabase implements Database {
+  _WaitingDatabase(this.inner, this.wait);
+  final Database inner;
+  final void Function() wait;
+  @override
+  Future<T> transaction<T>(Future<T> Function(Transaction txn) action, {bool? exclusive}) {
+    wait();
+    return inner.transaction(action, exclusive: exclusive);
+  }
+
+  @override
+  Future<void> execute(String sql, [List<Object?>? arguments]) => inner.execute(sql, arguments);
+  @override
+  Future<List<Map<String, Object?>>> rawQuery(String sql, [List<Object?>? arguments]) =>
+      inner.rawQuery(sql, arguments);
+  @override
+  Future<List<Map<String, Object?>>> query(String table,
+          {bool? distinct,
+          List<String>? columns,
+          String? where,
+          List<Object?>? whereArgs,
+          String? groupBy,
+          String? having,
+          String? orderBy,
+          int? limit,
+          int? offset}) =>
+      inner.query(table,
+          distinct: distinct,
+          columns: columns,
+          where: where,
+          whereArgs: whereArgs,
+          groupBy: groupBy,
+          having: having,
+          orderBy: orderBy,
+          limit: limit,
+          offset: offset);
+  @override
+  Future<int> insert(String table, Map<String, Object?> values,
+          {String? nullColumnHack, ConflictAlgorithm? conflictAlgorithm}) =>
+      inner.insert(table, values,
+          nullColumnHack: nullColumnHack, conflictAlgorithm: conflictAlgorithm);
+  @override
+  Future<int> delete(String table, {String? where, List<Object?>? whereArgs}) =>
+      inner.delete(table, where: where, whereArgs: whereArgs);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

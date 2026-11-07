@@ -118,12 +118,16 @@ final class ValenceSyncStatus {
   /// the renewal is what [syncLeaseTtl] is judged against — so a row-dated age falls back towards zero
   /// every page and a reader watching one hold sees it decrease. An age that goes backwards is not an
   /// age, and this is the one instrument §5.6 offers for a lease it declines to pre-empt (K F-80).
-  /// A row written before this field was recorded has no take-time, so it reports the row's age.
+  /// A row written before this field was recorded has no take-time, so it reports the row's age. The
+  /// number never goes negative: a row dated ahead of now reports zero (K F-83).
   ///
-  /// Non-null on exactly the same condition as [leaseKind]: the lease is live by [syncLeaseTtl] *and*
-  /// owned by this process, which is the predicate [ValenceSync.acquireLease] refuses on. A lease this
-  /// host would take over — expired, future-dated, or left by a launch that is gone — reports free,
-  /// because it is not what a `busy` answer is about. The log names those cases instead.
+  /// Non-null on exactly the same condition as [leaseKind]: the lease is within [syncLeaseTtl] of now
+  /// **on either side** *and* owned by this process, which is the predicate
+  /// [ValenceSync.acquireLease] refuses on. A lease this host would take over — expired, further ahead
+  /// than the TTL, or left by a launch that is gone — reports free, because it is not what a `busy`
+  /// answer is about. The log names those cases instead. A row *this process wrote* that reads as
+  /// future-dated reports **held**, with an age of zero: a matching pid means a sibling isolate that is
+  /// running, and the clock is not the instrument for that question (K F-83).
   final int? leaseAgeMs;
 }
 
@@ -441,15 +445,27 @@ final class ValenceSync {
       // that is legitimately still working from a cancelled background isolate that never released
       // (C F-44). `status()` re-reads the row, so a lease released in the microseconds since the refusal
       // reports free — which is itself the answer, and better than naming a holder that has gone.
-      final held = await status();
+      // And the read is guarded, because it is only a *diagnostic*: the answer is already decided. The
+      // single state that reaches this branch is a sibling mid-pull holding the file, which is exactly
+      // when this read can lock — so throwing here would answer a bridge error where §5.6 promises
+      // `busy`, on the one path where "nothing was attempted" is unambiguously true.
+      ValenceSyncStatus? held;
+      try {
+        held = await status();
+      } on Object catch (e) {
+        if (!isDatabaseLocked(e)) rethrow;
+      }
       diagnosticLog(
           _log,
-          held.leaseKind == null
+          held == null
+          ? 'sync: another sync holds the lease; skipping this run (the database was locked reading who '
+              'holds it, which is the holder still writing) kind=${kind.name}'
+          : held.leaseKind == null
           ? 'sync: another sync holds the lease; skipping this run (it was released before this line, '
               'so the next run should get it) kind=${kind.name}'
           : 'sync: another sync holds the lease; skipping this run '
               'holder=${held.leaseKind} heldForMs=${held.leaseAgeMs} refused=${kind.name}');
-      return ValenceSyncResult([], 0, false, ValenceSyncReason.busy, held.pending);
+      return ValenceSyncResult([], 0, false, ValenceSyncReason.busy, held?.pending ?? 0);
     }
     final touched = <String>[];
     var changed = 0;

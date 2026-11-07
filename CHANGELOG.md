@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased: a failing `doctor` check says what the child command said
+
+`valence doctor --tests` reported `flutter test failed for bridge` and nothing else — no failing test,
+no compiler error, no exit code. Running the suite by hand afterwards and watching it pass left two
+facts and no way to reconcile them. The row now carries the exit status and the last 8 lines of the
+child's own output, clipped and joined onto the row's single line. `flutter pub deps --json` too.
+Nothing is written to disk; for the whole output, run the command yourself.
+
 ## Unreleased: a sibling isolate's live sync lease is no longer taken over as "future-dated"
 
 **Two syncs could run over one database.** The host read the clock *before* opening the transaction that

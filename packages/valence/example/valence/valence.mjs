@@ -1849,6 +1849,31 @@ const CHILD_TIMEOUT_MS = 180_000;
 // that asserted and failed, and app-c spent an iteration hunting a mapped bridge-test failure that never
 // happened (C F-43). Classify it, and say in the row that nothing asserted.
 const killedByTimeout = (r) => r.error?.code === 'ETIMEDOUT';
+
+/// What the child said, bounded, for a row that reports a child command failing.
+///
+/// "flutter test failed" with nothing else is a row that names a failure and withholds the only thing
+/// that explains it: app-c read one for a mapped bridge test, then ran `flutter test` by hand and got
+/// twelve passes, which cannot explain the earlier failure and left the row unexplainable (C F-54). The
+/// exit status and the tail of the child's own output are what turn it into a diagnosis.
+///
+/// One line, because a `doctor` row **is** one line: the formatter keeps `e.message.split('\n')[0]` and
+/// appends the fix, so a tail joined with newlines arrives as the word "said:" and nothing else. The
+/// child's own line breaks become ` | `, which is the separator a reader of these rows already knows.
+///
+/// ponytail: the last 8 lines at 200 characters each, which is a `flutter test` failure summary and the
+/// expectation above it. Nothing is kept on disk; re-run the command for the whole thing.
+const childTail = (r, lines = 8) => {
+  // `${}` rather than concatenation: `error` may be an Error, and `status` is null when a signal killed it.
+  const head = ` (exit ${r.status ?? 'none'}${r.signal ? `, signal ${r.signal}` : ''}${r.error ? `, ${r.error.code ?? r.error.message}` : ''})`;
+  const said = `${r.stdout ?? ''}\n${r.stderr ?? ''}`
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(-lines)
+    .map((l) => (l.length > 200 ? `${l.slice(0, 200)}…` : l));
+  return said.length ? `${head}, which said: ${said.join(' | ')}` : `${head} with no output`;
+};
 const timeoutError = (what, fix) => {
   const e = new Error(`${what} was killed by its own ${CHILD_TIMEOUT_MS / 1000}s timeout; no assertion ran, so this says nothing about whether the app is correct`);
   e.fix = fix;
@@ -2262,7 +2287,7 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
     const r = run(['pub', 'deps', '--json'], host);
     if (r.error?.code === 'ENOENT') return 'Flutter unavailable; dependency resolution not checked';
     if (killedByTimeout(r)) throw timeoutError('flutter pub deps --json', 'run flutter pub get in the host and rerun; a cold pub cache or a second concurrent Flutter command is the usual cause');
-    if (r.error || r.status !== 0) throw new Error('flutter pub deps --json failed; run flutter pub get in the host');
+    if (r.error || r.status !== 0) throw new Error(`flutter pub deps --json failed; run flutter pub get in the host${childTail(r)}`);
     const deps = JSON.parse(r.stdout).packages;
     if (!Array.isArray(deps) || !deps.some((d) => d.name === 'valence')) throw new Error('resolved host does not depend on valence');
     const android = deps.find((d) => d.name === 'path_provider_android');
@@ -2298,7 +2323,7 @@ export async function diagnose({ root, cfg, tests = false, run = runFlutter, key
       const r = run(['test', ...files], host);
       if (r.error?.code === 'ENOENT') return 'Flutter unavailable; tests not run';
       if (killedByTimeout(r)) throw timeoutError(`flutter test for ${id}`, `run "flutter test ${files.join(' ')}" in host.dir yourself; doctor runs one Flutter command at a time and a second concurrent run is the usual cause`);
-      if (r.error || r.status !== 0) throw new Error(`flutter test failed for ${id}`);
+      if (r.error || r.status !== 0) throw new Error(`flutter test failed for ${id}${childTail(r)}`);
     });
   }
   return rows;
