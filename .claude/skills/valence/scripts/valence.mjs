@@ -1904,9 +1904,12 @@ function runFlutter(args, cwd, timeoutMs = DEFAULT_CHILD_TIMEOUT_MS) {
   // The probe is bounded like the command it is probing for: a PATH holding a dead mapped drive or a
   // stale UNC entry blocks `where.exe` in name resolution, and an unbounded child here is one
   // `--timeout` cannot move — the same unattributable hang, one spawn earlier.
-  if (spawnSync('where.exe', ['flutter.bat'], { encoding: 'utf8', timeout: timeoutMs }).status !== 0) {
-    return { error: { code: 'ENOENT' } };
-  }
+  const probe = spawnSync('where.exe', ['flutter.bat'], { encoding: 'utf8', timeout: timeoutMs });
+  // A failed discovery is not evidence that Flutter is absent. Preserve timeout, signal and
+  // execution errors so diagnose keeps this check FAIL; only a completed no-match is ENOENT.
+  if (probe.error || probe.signal) return probe;
+  if (probe.status === 1) return { error: { code: 'ENOENT' } };
+  if (probe.status !== 0) return probe;
   return spawnSync('cmd.exe', ['/d', '/c', `flutter ${args.join(' ')}`], options);
 }
 

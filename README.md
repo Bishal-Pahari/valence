@@ -1,5 +1,9 @@
 # Valence
 
+On Windows, `doctor` keeps a failed Flutter discovery as a failed check. A lookup
+timeout names the selected `--timeout` budget; only a completed no-match reports
+Flutter unavailable. Update the vendored CLI to receive this correction.
+
 **Keep the core. Swap the shell.** Your web app becomes your mobile app's interface. A small Flutter core ships through the stores once; every UI release after that is signed, tried on each phone and rolled back on its own if it fails. Data lives in native SQLite, so it works offline.
 
 > **Android today · iOS experimental.** Everything here has been built and run on Android, on real devices and emulators. The iOS paths are specified and implemented but **nobody has run them**: there is no Apple hardware on the machines Valence is developed and tested on. Treat iOS as experimental and untested until that changes.
