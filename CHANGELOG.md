@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased: the sync lease reports the holder's real age, and `update` says the npm half must move too
+
+**`SyncStatus.leaseAgeMs` and the `heldForMs=` in a refusal are now the holder's age.** They were
+measured from the lease row, which the host rewrites after every applied page to keep the lease alive —
+so the number fell back towards zero on each page and two reads during one continuous hold could
+*decrease*. One hold on a device reported 628, 69, 81, 785 and 1060 ms while its real age ran 301 to
+2054 ms, and two refusals against a lease about 100 seconds old reported 28 ms and 58 ms. The lease row
+now carries the acquisition time as a fourth field and the renewal passes it through, so the age only
+ever increases while one run holds the lease, and it matches the `released the lease ... heldForMs=`
+line, which was always right. **If you read `leaseAgeMs` to decide whether a holder is stuck, it now
+answers that question;** if you worked around the old number by timing the holder yourself from your
+page, you can delete that. A lease row written by an older host has no acquisition time and reports the
+row's age, as before. Nothing about acquisition, expiry or the two-minute TTL changes: the TTL is still
+judged against the renewal.
+
+**`create-valence update` now warns when the installed `@getvalence/bridge` is behind the code it just
+generated.** `update` refreshes the vendored generator and re-runs codegen, but it cannot install the
+npm package, so a clean run could hand you a `bridge.g.ts` importing a type the installed build has
+never exported — and the first `tsc` blamed the generated file rather than the stale dependency. It now
+compares the names the generated code imports against the installed build's published declarations and
+names any that are missing, with the install command. It compares names rather than versions on purpose:
+the mismatch that actually happens is a rebuilt package at an unchanged version, which no version range
+can see.
+
 ## Unreleased: `doctor` says what it is doing, and a killed command is no longer a failing test
 
 `valence doctor` wrote nothing at all until every check had finished, so a run stopped by a CI

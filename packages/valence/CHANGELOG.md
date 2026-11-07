@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased: the lease age is measured from acquisition, not from the last renewal
+
+`ValenceSyncStatus.leaseAgeMs`, and the `heldForMs=` a refused run logs, were computed from the
+`valence.sync.lease` row's timestamp. `renewLease` rewrites that row after every applied page, so the
+reported age fell back towards zero on each page and two reads during one continuous hold could
+decrease — while `releaseLease`, which measures from an in-memory take-time, was correct. A reader in
+the other isolate has no such take-time, so the row now carries it: `valence.sync.lease` grows a fourth
+field (`<epoch ms>:<pid>:<kind>:<taken at>`), `renewLease` passes it through unchanged, and the first
+field keeps its old meaning as the last renewal, which is what the TTL is judged against. The reported
+age and the release line are now the same measurement.
+
+Additive, like the fields before it: a row written by an earlier host reads back with the take-time
+absent and reports the row's age, which is the previous behaviour. A take-time the device clock has
+moved past does the same, so the age is never negative. Acquisition, expiry, the takeover rules and the
+two-minute TTL are unchanged.
+
 ## Unreleased: handleReady requires the running document to belong to the trial
 
 `ValenceApp.handleReady` tested `trial != null && serving == trial && manifest.seq == trial` — all by

@@ -499,6 +499,50 @@ async function init(o) {
   }
 }
 
+/**
+ * Names the generated TS takes from @getvalence/bridge that the installed build does not export.
+ *
+ * `update` refreshes the generator and regenerates against it, but it cannot install the npm half of
+ * the same snapshot (see `addBridgeDependency`) — so a clean run can hand back a `bridge.g.ts` that
+ * imports something the installed package has never heard of, and the first `tsc` blames the generated
+ * file rather than the stale dependency (K F-82). Comparing *names* rather than versions is what
+ * catches it: the two artifacts are version-locked in principle, so the mismatch that actually
+ * happens is a rebuilt package at an unchanged version, which no range can see.
+ *
+ * Silent when the package is not installed at all: codegen does not depend on the install having
+ * happened, and `update` already prints the install command for that case.
+ *
+ * ponytail: names only, so a changed *shape* at an unchanged name (a new field on an existing type)
+ * still reaches tsc. The regex over the published `.d.ts` is the whole check; a real resolver here
+ * would mean parsing TypeScript inside a zero-dependency wizard.
+ */
+export function staleBridgeExports(root, cfg) {
+  const pkgFile = webPackageJson(root, cfg);
+  const dirs = [pkgFile === undefined ? root : dirname(pkgFile), root];
+  const dts = dirs
+    .map((d) => join(d, 'node_modules', ...BRIDGE_PKG.split('/'), 'dist', 'index.d.ts'))
+    .find((f) => existsSync(f));
+  const ts = join(root, cfg.web.lib, 'bridge.g.ts');
+  if (dts === undefined || !existsSync(ts)) return [];
+  const wanted = new Set();
+  for (const m of readFileSync(ts, 'utf8').matchAll(/(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s+from\s+'@getvalence\/bridge'/g)) {
+    for (const name of m[1].split(',')) {
+      const bare = name.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0].trim();
+      if (bare) wanted.add(bare);
+    }
+  }
+  const body = readFileSync(dts, 'utf8');
+  const has = new Set();
+  for (const m of body.matchAll(/^export\s+(?:declare\s+)?(?:abstract\s+)?(?:type|interface|class|const|function|enum|let|var)\s+(\w+)/gm)) has.add(m[1]);
+  for (const m of body.matchAll(/^export\s+(?:type\s+)?\{([^}]*)\}/gm)) {
+    for (const name of m[1].split(',')) {
+      const bare = name.trim().replace(/^type\s+/, '').split(/\s+as\s+/).pop().trim();
+      if (bare) has.add(bare);
+    }
+  }
+  return [...wanted].filter((n) => !has.has(n));
+}
+
 function update(o) {
   const root = resolve(o.root);
   if (!existsSync(join(root, 'valence', 'valence.config.json'))) throw new Error(`Valence is not set up here yet; run "${NPX}" first`);
@@ -521,6 +565,12 @@ function update(o) {
   // `update` is the fix for a generator older than the runtime, so it is also the best place to say a
   // name still looks unrecognised — if one survives this run, updating was not what the schema needed.
   for (const w of gen.warnings) warn('codegen', w);
+  // The npm package is the other half of this snapshot, and the one `update` cannot install (K F-82).
+  const stale = staleBridgeExports(root, cfg);
+  if (stale.length) {
+    const pm = packageManager(root, webPackageJson(root, cfg));
+    warn('web bridge', `the installed ${BRIDGE_PKG} does not export ${stale.join(', ')}, which the regenerated code now imports; reinstall it to match this snapshot ("${pm} install", with --force if it is already at this version)`);
+  }
   console.log(`\n  Review the diff, run your tests, and commit. ${dim('Then: claude "/valence doctor"')}\n`);
 }
 

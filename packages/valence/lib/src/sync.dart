@@ -113,6 +113,13 @@ final class ValenceSyncStatus {
 
   /// How long the current holder has held the lease, in milliseconds, or null when it is free.
   ///
+  /// Measured from when the holder **took** the lease, not from its last renewal (K F-81). Those are
+  /// different numbers because [ValenceSync.renewLease] rewrites the row after every applied page, and
+  /// the renewal is what [syncLeaseTtl] is judged against — so a row-dated age falls back towards zero
+  /// every page and a reader watching one hold sees it decrease. An age that goes backwards is not an
+  /// age, and this is the one instrument §5.6 offers for a lease it declines to pre-empt (K F-80).
+  /// A row written before this field was recorded has no take-time, so it reports the row's age.
+  ///
   /// Non-null on exactly the same condition as [leaseKind]: the lease is live by [syncLeaseTtl] *and*
   /// owned by this process, which is the predicate [ValenceSync.acquireLease] refuses on. A lease this
   /// host would take over — expired, future-dated, or left by a launch that is gone — reports free,
@@ -249,7 +256,7 @@ final class ValenceSync {
                 limit: 1,
               );
               final raw = rows.isEmpty ? null : rows.first['value'] as String;
-              final (held, owner, leftBy) = _readLease(raw);
+              final (held, owner, leftBy, _) = _readLease(raw);
               final live = held != null && held > now - syncLeaseTtl.inMilliseconds && held <= now;
               // A lease recorded by **another process** cannot be held by anything running now. The lease exists to
               // keep the UI isolate and the background isolate apart, and those share this process (§5.6), so the
@@ -278,7 +285,7 @@ final class ValenceSync {
               }
               await txn.insert(
                 'prefs',
-                {'key': syncLeaseKey, 'value': _leaseValue(now)},
+                {'key': syncLeaseKey, 'value': _leaseValue(now, now)},
                 conflictAlgorithm: ConflictAlgorithm.replace,
               );
               taken = true;
@@ -299,30 +306,40 @@ final class ValenceSync {
   /// Pushes the lease forward. Call after every applied page, so a long `since = 0` pull keeps it.
   ///
   /// Renewing rewrites the kind too, so the holder a refused run is told about is the holder as of the
-  /// last page rather than as of acquisition.
-  Future<void> renewLease() =>
-      store.hostPrefSet(syncLeaseKey, _leaseValue(_now().millisecondsSinceEpoch));
+  /// last page rather than as of acquisition. It **carries the take-time through unchanged**, because
+  /// that is the only field a renewal must not move: it is what [ValenceSyncStatus.leaseAgeMs] is
+  /// measured from, and rewriting it is what made the reported age fall towards zero every page
+  /// (K F-81). Zero means this driver never took the lease — the §4.4 account switch renews nothing,
+  /// so the only reader of that branch is a test — and the renewal then starts the age here.
+  Future<void> renewLease() {
+    final now = _now().millisecondsSinceEpoch;
+    return store.hostPrefSet(syncLeaseKey, _leaseValue(now, _leaseTakenAt == 0 ? now : _leaseTakenAt));
+  }
 
-  String _leaseValue(int millis) => '$millis:$pid:${kind.name}';
+  String _leaseValue(int millis, int takenAt) => '$millis:$pid:${kind.name}:$takenAt';
 
-  /// Reads the lease row as `(millis, pid, kind)`.
+  /// Reads the lease row as `(millis, pid, kind, takenAt)`.
   ///
-  /// `<millis>:<pid>:<kind>` since §5.6's diagnostics. A 0.4 host before them wrote `<millis>:<pid>`
-  /// and a 0.3 host wrote `<millis>`; both read back with the trailing fields null, and a null owner
-  /// never matches this process — so the first launch after an upgrade clears it.
+  /// `<millis>:<pid>:<kind>:<takenAt>` since K F-81; `<millis>` is the last renewal, which is what the
+  /// TTL is judged against, and `<takenAt>` is acquisition, which is what the reported age is measured
+  /// from. The fields are appended, never redefined: §5.6's first diagnostics wrote
+  /// `<millis>:<pid>:<kind>`, a 0.4 host before them wrote `<millis>:<pid>` and a 0.3 host wrote
+  /// `<millis>`. All of them read back with the trailing fields null, and a null owner never matches
+  /// this process — so the first launch after an upgrade clears it.
   ///
   /// **A host older than this one reads a three-field row as live with no owner**, because its parser
   /// took everything after the first colon as the pid and `int.tryParse` refuses `4893:foreground`. It
   /// therefore takes the row over, which is the right action — a downgrade means the writer is gone — but
   /// it loses the pid and its log line calls a newer row an older one. Mutual exclusion is unaffected:
   /// two hosts of different versions can never run at once.
-  static (int?, int?, String?) _readLease(String? raw) {
-    if (raw == null) return (null, null, null);
+  static (int?, int?, String?, int?) _readLease(String? raw) {
+    if (raw == null) return (null, null, null, null);
     final parts = raw.split(':');
     return (
       int.tryParse(parts[0]),
       parts.length > 1 ? int.tryParse(parts[1]) : null,
       parts.length > 2 && parts[2].isNotEmpty ? parts[2] : null,
+      parts.length > 3 ? int.tryParse(parts[3]) : null,
     );
   }
 
@@ -333,10 +350,16 @@ final class ValenceSync {
   /// A held row with no kind — written before this revision, by a launch whose pid this process
   /// happens to have — reports `unknown` rather than reading as free.
   static _HeldLease? _heldLease(String? raw, int now) {
-    final (held, owner, kind) = _readLease(raw);
+    final (held, owner, kind, takenAt) = _readLease(raw);
     if (held == null || held > now || held <= now - syncLeaseTtl.inMilliseconds) return null;
     if (owner != pid) return null;
-    return (ageMs: now - held, kind: kind ?? 'unknown');
+    // Liveness is the renewal's question and the age is acquisition's, so they read different fields.
+    // A take-time in the future — a row from before the clock moved back, or one an older host wrote
+    // without the field — falls back to the renewal, which the predicate above has already proved is
+    // not in the future. Never a negative age: §5.6 asks a developer to compare this against "is the
+    // holder stuck?", and a negative number answers a different question (K F-81).
+    final from = (takenAt != null && takenAt <= now) ? takenAt : held;
+    return (ageMs: now - from, kind: kind ?? 'unknown');
   }
 
   /// Releases the lease.

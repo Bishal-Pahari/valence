@@ -183,6 +183,67 @@ void main() {
         expect((await s.status()).leaseKind, isNull);
       });
 
+      test('the age belongs to the holder, and a renewal does not reset it (K F-81)', () async {
+        // The renewal rewrites the lease row after every applied page, so an age dated from the row
+        // falls back towards zero each page: on a device one continuous hold reported 628, 69, 81, 785
+        // and 1060 ms while its real age ran 301 to 2054 ms, and two refusals against a 100-second
+        // lease reported 28 ms and 58 ms. Section 5.6 declines to pre-empt a holder and makes this
+        // number the instrument instead (K F-80), so an age that decreases points away from the cause.
+        // Monotonic across a renewal is the cheap property that catches it.
+        var now = DateTime(2026, 11, 7, 16, 27);
+        final s = syncWith(MockClient((_) async => http.Response('{}', 200)), clock: () => now);
+        // Read through a *different* driver throughout: the refusals that report this are in the other
+        // isolate, which has no in-memory take-time and can only read the row.
+        final reader = syncWith(MockClient((_) async => fail('must not reach the network')),
+            clock: () => now);
+        expect(await s.acquireLease(), isTrue);
+        now = now.add(const Duration(seconds: 1));
+        expect((await reader.status()).leaseAgeMs, 1000);
+        await s.renewLease();
+        now = now.add(const Duration(milliseconds: 500));
+        expect((await reader.status()).leaseAgeMs, 1500,
+            reason: 'the renewal must carry the take-time through, not restart it');
+        // The renewal still moves the TTL, which is the thing it exists for: this lease is live two
+        // minutes past acquisition because it was renewed 90 seconds in.
+        now = now.add(const Duration(milliseconds: 88500));
+        await s.renewLease();
+        now = now.add(const Duration(seconds: 30));
+        expect((await reader.status()).leaseKind, 'foreground');
+        expect((await reader.status()).leaseAgeMs, 120000);
+        // And the release line now measures the same thing the refusals reported, which is what made
+        // the device evidence unreadable: only `released` was right before this.
+        final log = LogSpy();
+        final paired = syncWith(MockClient((_) async => http.Response('{}', 200)),
+            log: log, clock: () => now);
+        await store.hostPrefSet('valence.sync.lease', null);
+        expect(await paired.acquireLease(), isTrue);
+        now = now.add(const Duration(seconds: 3));
+        await paired.renewLease();
+        final reported = (await reader.status()).leaseAgeMs;
+        await paired.releaseLease();
+        expect(log.has('heldForMs=$reported'), isTrue, reason: '${log.lines}');
+      });
+
+      test('a renewal by a driver that never took the lease dates the age from itself', () async {
+        // Section 4.4's account switch releases without acquiring, so a zero take-time is reachable;
+        // a row claiming a 56-year-old holder is the shape these diagnostics exist to stop.
+        var now = DateTime(2026, 11, 7, 16, 27);
+        final s = syncWith(MockClient((_) async => http.Response('{}', 200)), clock: () => now);
+        await s.renewLease();
+        now = now.add(const Duration(seconds: 2));
+        expect((await s.status()).leaseAgeMs, 2000);
+      });
+
+      test('a take-time the clock moved past reports the row age, never a negative one', () async {
+        // A row written before the device clock went backwards. Section 5.6 asks a developer to compare
+        // this against "is the holder stuck?", which a negative number cannot answer.
+        final now = DateTime(2026, 11, 7, 16, 27);
+        final at = now.millisecondsSinceEpoch;
+        final s = syncWith(MockClient((_) async => http.Response('{}', 200)), clock: () => now);
+        await store.hostPrefSet('valence.sync.lease', '${at - 5000}:$pid:foreground:${at + 60000}');
+        expect((await s.status()).leaseAgeMs, 5000);
+      });
+
       test('the kind is the holder\'s, so a background run is distinguishable', () async {
         final now = DateTime(2026, 11, 4, 9);
         final bg = ValenceSync(

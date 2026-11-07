@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   writeFileSync,
+  rmSync,
 } from 'node:fs';
 import test from 'node:test';
 import { tmpdir } from 'node:os';
@@ -14,9 +15,11 @@ import { createHash } from 'node:crypto';
 import { execSync, spawnSync } from 'node:child_process';
 
 import { VALENCE_VERSION } from '../.claude/skills/valence/scripts/valence.mjs';
-import { run, doctor, detectWeb, detectHost, detectAppId } from './valence.mjs';
+import { run, doctor, detectWeb, detectHost, detectAppId, staleBridgeExports } from './valence.mjs';
 
 const PKG = join(import.meta.dirname, '..');
+// Real line endings, because the check reads a .d.ts line by line.
+const EOL = String.fromCharCode(10);
 const write = (file, text = '') => {
   mkdirSync(join(file, '..'), { recursive: true });
   writeFileSync(file, text);
@@ -343,4 +346,46 @@ test('an edited vendored valence.mjs is kept and codegen is skipped rather than 
   await quiet(() => run(['--root', root, '--yes', '--no-launch', '--key-dir', keyDir]));
   assert.ok(readFileSync(valencePath, 'utf8').endsWith('// local patch\n'));
   assert.equal(readFileSync(ts, 'utf8'), 'stale');
+});
+
+// K F-82: `update` refreshes the generator and regenerates against it, but it cannot install the npm
+// half of the same snapshot — so a clean run could hand back a bridge.g.ts importing a name the
+// installed build has never exported, and the first tsc blamed the generated file. Names, not
+// versions: the mismatch that actually happens is a rebuilt package at an unchanged version.
+test('update names what the installed bridge does not export, not what version it claims', () => {
+  const root = mkdtempSync(join(tmpdir(), 'mrw-stale-'));
+  const cfg = { web: { lib: 'web/src/lib' } };
+  write(join(root, 'web', 'package.json'), JSON.stringify({ name: '@acme/trail-log' }));
+  write(join(root, 'web', 'src', 'lib', 'bridge.g.ts'), [
+    "import { createBridge } from '@getvalence/bridge';",
+    "import type { Json, Shim } from '@getvalence/bridge';",
+    "export { BridgeError, inHost } from '@getvalence/bridge';",
+    "export type { AppLink, ReceivedLink } from '@getvalence/bridge';",
+  ].join(EOL));
+  const dts = join(root, 'web', 'node_modules', '@getvalence', 'bridge', 'dist', 'index.d.ts');
+
+  // Not installed at all is silent: codegen does not depend on the install, and `update` already
+  // prints the install command for that case.
+  assert.deepEqual(staleBridgeExports(root, cfg), []);
+
+  // The exact F-82 build: everything but the two link types the F-79 fix added.
+  const base = [
+    'export type Json = null | boolean;',
+    'export type Shim<M> = { [K in keyof M]: unknown };',
+    'export declare class BridgeError extends Error {}',
+    'export declare const inHost: () => boolean;',
+    'export declare function createBridge<M, E>(): void;',
+  ];
+  write(dts, base.join(EOL));
+  assert.deepEqual(staleBridgeExports(root, cfg).sort(), ['AppLink', 'ReceivedLink']);
+
+  // And the matching build is silent, including names published through an `export { }` list.
+  write(dts, [...base, 'interface AppLink { url: string }', 'export type { AppLink };',
+    'export interface ReceivedLink extends AppLink { initial: boolean }'].join(EOL));
+  assert.deepEqual(staleBridgeExports(root, cfg), []);
+
+  // A hoisted install at the repo root is found too, which is what a workspace gives you.
+  rmSync(join(root, 'web', 'node_modules'), { recursive: true });
+  write(join(root, 'node_modules', '@getvalence', 'bridge', 'dist', 'index.d.ts'), base.join(EOL));
+  assert.deepEqual(staleBridgeExports(root, cfg).sort(), ['AppLink', 'ReceivedLink']);
 });

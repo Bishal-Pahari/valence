@@ -57,7 +57,9 @@ Urgency can change wording or prominence, and never bypasses trial/ready/rollbac
 ## Revision 20: who holds the sync lease
 
 Two more nullable returned fields, on `SyncStatus`: `leaseKind` and `leaseAgeMs`.
-`reason` says a run was refused; these say by what, and for how long. `leaseKind`
+`reason` says a run was refused; these say by what, and for how long — `leaseAgeMs`
+counting from when the holder took the lease, so it only increases while one run
+holds it. `leaseKind`
 is `foreground`, `background`, `push`, or `unknown` for a held lease written by an
 older host — an open set, so treat an unrecognised value as "something holds it".
 Both are null whenever a run starting now would **not** be refused, including a
