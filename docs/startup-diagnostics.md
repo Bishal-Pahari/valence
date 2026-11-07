@@ -65,6 +65,15 @@ apart, read the trigger lines immediately above (`sync: connectivity came back`,
 `update: ...`) and match the refused run's `heldForMs` against the timestamp of
 the `took the lease` line.
 
+Every `heldForMs` — on a refusal and on a release alike — is measured from when
+the holder took the lease, so subtracting it from its own line's timestamp lands on
+the `took the lease` line. Before `0.4.0-beta.0` the refusal lines measured from
+the host's internal lease renewal, which happens after every applied page, so
+during a long sync the number counted up from zero again on each page and a
+refusal could report tens of milliseconds for a lease minutes old (K F-81). Only
+the release line was right. In logs from an older build, date the holder from its
+`took the lease` line and ignore the refusals' number.
+
 **The pair of lines is the signal.** A `took the lease` with no matching
 `released the lease` is a run torn down while holding it — a cancelled WorkManager
 job runs no cleanup — and the background isolate brackets its whole run too:

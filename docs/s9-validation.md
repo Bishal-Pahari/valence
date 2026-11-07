@@ -156,3 +156,30 @@ behaviour change a run on it would exercise that the unit suite does not, and th
 test apps.
 
 iOS remains experimental and untested.
+
+---
+
+## Correction, 2026-11-07: the age this item shipped was not the holder's age (K F-81)
+
+`leaseAgeMs` and the `heldForMs=` on a refusal were computed from the lease row's timestamp, and
+`renewLease` rewrites that row after every applied page — so both fell back towards zero on each page,
+and two reads during one continuous hold could *decrease*. Only `releaseLease`, which measures from an
+in-memory take-time, was right.
+
+The device capture above did not show it because that hold applied no page between the refusal and the
+release. Kundalini's iteration 22 did: one hold reported 628, 69, 81, 785 and 1060 ms while its real age
+ran 301 to 2054 ms, and on an airplane-mode run two refusals reported 28 ms and 58 ms for a lease about
+100 seconds old, whose release then correctly reported 106506 ms.
+
+So the sentence in "What is claimed" that the refused run's `heldForMs` **dates the holder's row against
+the `took the lease` line** was only true for a hold that renewed nothing. It is true now: the lease row
+carries the acquisition time as a fourth appended field (`<epoch ms>:<pid>:<kind>:<taken at>`), the
+renewal passes it through unchanged, and the first field keeps its meaning as the last renewal, which is
+what the TTL is judged against. A reader in the other isolate has no in-memory take-time, which is why
+the field had to go in the row.
+
+This is the reason the gap mattered more than an ordinary diagnostics bug: K F-80 declined to pre-empt a
+holder and made this number the obligation instead, so two of the three places that report it were
+pointing away from the cause. Covered by three tests in `sync_test.dart` — monotonic across a renewal,
+a renewal by a driver that never acquired, and a take-time the clock has moved past — and by the
+extended §8 S9 row.
