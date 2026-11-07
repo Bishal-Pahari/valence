@@ -75,3 +75,6 @@ is a missing line. See [Sync outcomes](sync-outcomes.md).
 
 Source of truth: contracts, "Schema 15 returned-field additions (R17)" and
 "Revision 20 returned-field additions (S9)".
+
+
+Lease acquisition samples its clock after the lease query returns inside the transaction. A queued database read cannot mistake a sibling's newer renewal for clock rollback, and waiting for the database does not consume a new lease's TTL. The two-minute TTL, genuine future-timestamp recovery and foreign-process recovery retain their existing rules (K F-83). No schema change or app code adoption is needed; rebuild the native host.
