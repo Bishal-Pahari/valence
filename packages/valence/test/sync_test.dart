@@ -102,10 +102,56 @@ void main() {
     });
 
     test('a lease time in the future counts as expired', () async {
-      // Clock skew or tampering must not be able to park every sync for ever.
+      // Clock skew or tampering must not be able to park every sync for ever. This row records no owner,
+      // so the K F-83 rule below does not apply to it: nothing running now can be holding it.
       await store.hostPrefSet('valence.sync.lease', '${DateTime(2030).millisecondsSinceEpoch}');
       final s = syncWith(MockClient((_) async => http.Response('{}', 200)));
       expect(await s.acquireLease(), isTrue);
+    });
+
+    test('a sibling isolate keeps a lease the acquirer reads as future-dated (K F-83)', () async {
+      // `BEGIN IMMEDIATE` waits behind the sibling's writes, so a clock sampled before the transaction
+      // starts is older than the renewal the transaction then reads: the row looks future-dated, the
+      // clock-moved branch takes a *live* lease away from a run that is still working, and two syncs
+      // write one database — on a device whose clock never moved, which is how this was filed as a clock
+      // bug. The acquisition now samples inside the transaction; the stale clock here is that wait, in
+      // the only form a test can hold still. A pid that is mine means a sibling that is running.
+      final taken = DateTime(2026, 11, 8, 0, 43, 18);
+      final holder = syncWith(MockClient((_) async => http.Response('{}', 200)), clock: () => taken);
+      expect(await holder.acquireLease(), isTrue);
+      final log = LogSpy();
+      final late = syncWith(MockClient((_) async => fail('must not reach the network')),
+          clock: () => taken.subtract(const Duration(seconds: 11)), log: log);
+      expect(await late.acquireLease(), isFalse, reason: 'two syncs over one database is what the lease prevents');
+      expect(log.has('taking over a lease'), isFalse);
+      // The refusal's own number is what §5.6 offers in place of the pre-emption it declines, so it may
+      // not go negative either: `status` and `acquireLease` read one predicate and must agree the row is
+      // held, and "written -11080ms ago" is not an age.
+      final status = await late.status();
+      expect(status.leaseKind, 'foreground');
+      expect(status.leaseAgeMs, 0);
+      expect(log.has('written -'), isFalse);
+    });
+
+    test('a clock that really moved back still frees the lease (K F-83)', () async {
+      // The other side of the same rule: ahead of us by *more* than the TTL is a clock that moved, not a
+      // sibling, and it must not park sync for as long as the clock stays behind.
+      final taken = DateTime(2026, 11, 8, 0, 43, 18);
+      final holder = syncWith(MockClient((_) async => http.Response('{}', 200)), clock: () => taken);
+      expect(await holder.acquireLease(), isTrue);
+      final log = LogSpy();
+      final after = syncWith(MockClient((_) async => http.Response('{}', 200)),
+          clock: () => taken.subtract(const Duration(minutes: 3)), log: log);
+      expect(await after.acquireLease(), isTrue);
+      expect(log.has('further ahead than its 2-minute expiry, so the clock moved'), isTrue);
+      expect(log.has('dated 180000ms in the future'), isTrue, reason: 'the magnitude, with its direction');
+    });
+
+    test('a row written now reads as an age of about zero, never a negative one (K F-83)', () async {
+      final now = DateTime(2026, 11, 8, 1, 46, 21);
+      final s = syncWith(MockClient((_) async => http.Response('{}', 200)), clock: () => now);
+      expect(await s.acquireLease(), isTrue);
+      expect((await s.status()).leaseAgeMs, 0);
     });
 
     test('a non-numeric lease value does not wedge sync', () async {
@@ -261,14 +307,17 @@ void main() {
       });
 
       test('a lease this host would take over reports free, not held', () async {
-        // Expired, future-dated and foreign-pid leases are all ones `acquireLease` ignores, so reporting
+        // Expired, far-future and foreign-pid leases are all ones `acquireLease` ignores, so reporting
         // them as holders would send a developer hunting a leak that the next run resolves by itself.
+        // A row of *ours* dated inside the TTL on either side is a sibling that is running and reports
+        // held, which is the K F-83 test above; the one here is ahead by more than the TTL, where the
+        // clock really did move and the row is freed.
         final now = DateTime(2026, 11, 4, 9);
         final at = now.millisecondsSinceEpoch;
         final s = syncWith(MockClient((_) async => http.Response('{}', 200)), clock: () => now);
         for (final raw in [
           '${at - 120001}:$pid:foreground',
-          '${at + 60000}:$pid:foreground',
+          '${at + 120001}:$pid:foreground',
           '$at:${pid + 1}:background',
         ]) {
           await store.hostPrefSet('valence.sync.lease', raw);
@@ -346,7 +395,10 @@ void main() {
         final at = now.millisecondsSinceEpoch;
         for (final (raw, expected) in [
           ('${at - 180000}:${pid + 1}:background', 'past its 2-minute expiry'),
-          ('${at + 60000}:$pid:foreground', 'dated in the future'),
+          ('${at + 180000}:$pid:foreground', 'further ahead than its 2-minute expiry, so the clock moved'),
+          ('${at + 180000}:$pid:foreground', 'dated 180000ms in the future'),
+          // Ahead of us but not ours: the pid settled it, so the clock is not the reason given.
+          ('${at + 60000}:${pid + 1}:push', 'which is gone'),
           ('${at - 1000}:${pid + 1}:push', 'which is gone'),
           ('${at - 1000}', 'records no owner'),
         ]) {

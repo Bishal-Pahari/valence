@@ -297,8 +297,6 @@ Response size grants: compiled `http.maxBodyBytes` raises the decompressed respo
 
 Revision 19 adds explicit `bundle.check` through the attached host policy path and schema-opted `bundle.checked` for completed checks, including `needsStoreUpdate`. It never auto-applies. [Usage and host migration](https://getvalence.pages.dev/docs/guides/bundle-checks/).
 
-Sync results retain each committed HTTP page or static chunk even if a later
-page or lease renewal locks. Acquisition locks remain `busy`. A release-only
-lock retains the completed outcome; cleanup cannot hide a primary non-lock
-error. Background final-read lock fallback retains its existing limits. See
-[the integration correction](../../docs/background-lock-result.md).
+Sync results retain each committed HTTP page or static chunk even if a later page or lease renewal locks. Acquisition locks remain `busy`. A release-only lock retains the completed outcome, and so does a lock on the final `pendingWrites` read, which reports `0 pending`; cleanup cannot hide a primary non-lock error. [Sync outcomes](https://getvalence.pages.dev/docs/guides/sync-outcomes/).
+
+A sync lease row this process wrote is held whichever side of `now` its timestamp falls, until it is further ahead than the two-minute TTL. Before this, the clock was sampled before the lease transaction's wait, so a renewal read as future-dated and a foreground run could take a live lease from a background sync. No reported lease age is ever negative. [Startup diagnostics](https://getvalence.pages.dev/docs/guides/startup-diagnostics/).

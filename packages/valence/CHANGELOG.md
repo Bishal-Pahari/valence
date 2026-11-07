@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased: a sibling isolate's live sync lease is no longer taken over as "future-dated"
+
+**Two syncs could run over one database.** `acquireLease` sampled the clock *before* opening its
+transaction, and `BEGIN IMMEDIATE` waits for whatever the other isolate is writing — so on a contended
+device the transaction could start seconds after the call, and the lease renewal it then read was newer
+than its own `now`. The row looked future-dated, §5.6's clock-skew rule treated it as expired, and a
+foreground run took the lease from a background sync that was still working. It also wrote that stale
+`now` back as its own take-time, so the next reader was told an age seconds too old. Both numbers came
+from one line.
+
+On a device this hit the first two launches after a clean install, logging
+`taking over a lease (kind=background, written -11080ms ago): dated in the future, so the clock moved`
+against a clock sampled every four seconds for 48 seconds that never moved backwards, and ending with
+both holders logging `released the lease` three milliseconds apart.
+
+Three changes. No API, no schema, no change to acquisition, renewal, release or the TTL itself:
+
+- the clock is sampled **inside** the transaction, after the wait — `store`'s `waiting` line for
+  `sync.acquireLease` is how long that wait was;
+- a lease row **this process wrote** counts as held on either side of `now`, until it is further ahead
+  than the two-minute TTL. A pid that is ours means a sibling isolate that is running, so the TTL is not
+  the instrument for it; beyond the TTL the clock really has moved and the row is freed, so a backwards
+  clock cannot park sync indefinitely. `ValenceSyncStatus` and `acquireLease` still read one predicate;
+- nothing reported as an age can be negative. A displaced row ahead of `now` logs
+  `dated <n>ms in the future` and names the TTL it exceeded; `ValenceSyncStatus.leaseAgeMs` floors at 0.
+
+**Hosts need no change.** If you added a retry or a guard around a foreground sync because two runs
+appeared to overlap, you can drop it.
+
 ## Unreleased: a launch destination pre-empts the restored route
 
 `prepareRestoration` loaded whatever route the OS snapshot carried, so a cold start that *also* carried
@@ -29,7 +58,11 @@ count and buckets, even if the next page or lease renewal locks. Locks taking th
 lease remain `busy`; locks during work remain incomplete results, with earlier
 authentication and offline outcomes retaining precedence. Cleanup preserves a
 primary non-lock error and its stack; a non-lock cleanup error still surfaces.
-A release-only lock retains the completed result. No lease timing, schema,
+A release-only lock retains the completed result, and so does a lock on the
+final `pendingWrites` read, which reports `0 pending` rather than discarding the
+classified result — `ValenceSync.run` does this itself, so a page gets it as
+well as `Valence.backgroundSync`, whose own backstop reports zeros.
+No lease timing, schema,
 package version or host migration changes.
 
 ## Unreleased: the lease age is measured from acquisition, not from the last renewal
