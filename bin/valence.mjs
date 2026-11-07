@@ -27,6 +27,7 @@ import {
   loadConfig,
   main as cli,
   verifyBundle,
+  childTimeoutMs,
   VALENCE_VERSION,
 } from '../.claude/skills/valence/scripts/valence.mjs';
 
@@ -581,6 +582,10 @@ function update(o) {
 
 export async function doctor(o) {
   const root = resolve(o.root);
+  // The child budget is validated before the first check, not when `diagnose` finally reaches a child:
+  // this entry point runs its own fast checks first, and printing a table and then throwing the run away
+  // over a flag it could have refused in a millisecond is not a diagnostic.
+  childTimeoutMs(o.timeout);
   const rows = [];
   // Both entry points narrate themselves on stderr, so stdout stays the table a person reads and a run
   // killed by a CI timeout still names the check it was on (C F-43). This one's own checks are fast; the
@@ -633,7 +638,7 @@ export async function doctor(o) {
       if (missing.length) throw new Error(`missing: ${missing.join(' | ')} (${NPX} update adds them)`);
     });
   }
-  if (cfg) rows.push(...await diagnose({ root, cfg, tests: o.tests, keyDir: o.keyDir, onPhase }));
+  if (cfg) rows.push(...await diagnose({ root, cfg, tests: o.tests, timeout: o.timeout, keyDir: o.keyDir, onPhase }));
   for (const row of rows) {
     if (row[0] === 'FAIL' && !row[2].includes('Fix:')) row[2] += ' | Fix: correct the reported input, then rerun valence doctor';
   }
@@ -649,7 +654,8 @@ const HELP = `${bold('Valence')} ${VALENCE_VERSION}
   ${NPX} [init]    detect your project, set up config, keys, bridge code and the Claude skill,
                                     then launch Claude Code to build the Flutter host
   ${NPX} update    update the vendored CLI, skill and agents to this version
-  ${NPX} doctor    quick health check (full audit: claude "/valence doctor")
+  ${NPX} doctor [--tests] [--timeout <seconds>]
+                  quick health check (full audit: claude "/valence doctor")
   ${NPX} <command> dev | keygen | codegen | bundle | verify | pointer | seed | version | assetlinks | aasa
 
 Options for init
@@ -662,6 +668,11 @@ Options for init
   --global           install the Claude skill and agents into ~/.claude instead of ./.claude
   --force            replace locally edited skill, agent and valence.mjs files
   --no-launch        don't offer to start Claude Code
+  --root <dir>       project root (default: current directory)
+
+Options for doctor
+  --tests            also run the mapped Flutter unit tests
+  --timeout <s>      budget for each child command, in seconds, 1..3600, default 180
   --root <dir>       project root (default: current directory)`;
 
 export async function run(argv) {
@@ -684,6 +695,7 @@ export async function run(argv) {
       global: { type: 'boolean', default: false },
       force: { type: 'boolean', default: false },
       tests: { type: 'boolean', default: false },
+      timeout: { type: 'string' },
       launch: { type: 'boolean', default: true },
       'key-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },

@@ -1164,6 +1164,66 @@ test('doctor streams named check boundaries with durations, and reports a killed
   assert.match(scan[2], /the Git private-key scan was killed by its own 180s timeout/);
   assert.match(scan[2], /a scan that did not finish is not a clean result/);
 });
+// The other half of C F-43, asked for again in app-c's iterations 143 to 145: the bound is right for an
+// app-sized checkout and wrong for a 25,962-file one, where the private-key scan and `pub deps` hit 180 s
+// three iterations running and produced FAIL rows that had run no assertion. A fixed bound makes those
+// rows unavoidable; the flag makes them answerable.
+test('doctor --timeout moves every child budget, the timeout row names the bound in effect, and an unbounded or absurd budget is refused before any check runs', async () => {
+  const { root, cfg } = fixture({ latest: true });
+  codegen({ root, cfg });
+  mkdirSync(join(root, '.valence'), { recursive: true });
+  mkdirSync(join(root, cfg.host.dir, 'test'), { recursive: true });
+  writeFileSync(join(root, cfg.host.dir, 'test', 'wiring_test.dart'), 'void main() {}');
+  writeFileSync(join(root, '.valence', 'test-matrix.json'), JSON.stringify({ bridge: ['test/wiring_test.dart'] }));
+  writeFileSync(join(root, cfg.host.dir, 'pubspec.yaml'), 'name: host\n');
+  writeFileSync(join(root, cfg.host.dir, 'pubspec.lock'), 'packages:\n');
+  const timedOut = { status: null, signal: 'SIGTERM', error: { code: 'ETIMEDOUT' } };
+  const budgets = (timeout) => {
+    const flutter = [];
+    const git = [];
+    return diagnose({
+      root, cfg, tests: true, timeout,
+      run: (_args, _cwd, ms) => (flutter.push(ms), timedOut),
+      git: (args, ms) => (git.push(ms), args[0] === 'rev-parse' ? { status: 0, stdout: `${root}\n` } : timedOut),
+    }).then((rows) => ({ rows, flutter, git }));
+  };
+
+  // The number the flag names is the number every child actually gets — `flutter test`, `pub deps` and
+  // both halves of the Git scan — and it is the number the row reports, because a row naming 180 while
+  // the child was killed at 600 sends a reader to the wrong explanation.
+  const raised = await budgets('600');
+  assert.deepEqual([...new Set(raised.flutter)], [600_000]);
+  assert.deepEqual([...new Set(raised.git)], [600_000]);
+  assert.match(raised.rows.find(([, n]) => n === '§8 bridge')[2], /killed by its own 600s timeout/);
+  assert.match(raised.rows.find(([, n]) => n === 'Flutter dependencies')[2], /killed by its own 600s timeout/);
+  assert.match(raised.rows.find(([, n]) => n === 'signing keys in Git')[2], /killed by its own 600s timeout/);
+  // Every timeout row carries the knob, so the fix is in the row rather than in the help text.
+  for (const name of ['§8 bridge', 'Flutter dependencies', 'signing keys in Git']) {
+    assert.match(raised.rows.find(([, n]) => n === name)[2], /raise the budget with doctor --timeout <seconds>/);
+  }
+  // Omitting it keeps 180 s, and keeps it where the children can see it: hoist the default back out of
+  // the plumbing and this fails rather than silently bounding nothing.
+  const dflt = await budgets(undefined);
+  assert.deepEqual([...new Set(dflt.flutter)], [180_000]);
+  assert.deepEqual([...new Set(dflt.git)], [180_000]);
+  assert.match(dflt.rows.find(([, n]) => n === '§8 bridge')[2], /killed by its own 180s timeout/);
+
+  // Refused, and refused *first*. `0` is `spawnSync`'s "no timeout" — the unattributable hang the bound
+  // exists to prevent — and over an hour is a budget handed over in milliseconds. A run that is going to
+  // reject its own flag must not first spend three minutes establishing something it then throws away,
+  // so nothing streams and no child is spawned.
+  for (const bad of ['0', '-1', '1.5', '3601', 'soon', '']) {
+    const phases = [];
+    let spawned = false;
+    await assert.rejects(
+      diagnose({ root, cfg, tests: true, timeout: bad, run: () => (spawned = true, timedOut), git: () => (spawned = true, timedOut), onPhase: (l) => phases.push(l) }),
+      (e) => e.message === `--timeout must be an integer in [1, 3600], got ${bad}`,
+      bad,
+    );
+    assert.equal(spawned, false, bad);
+    assert.deepEqual(phases, [], bad);
+  }
+});
 test('doctor reports absent evidence as warnings, compatibility errors as failures and mapped execution honestly', async () => {
   const { root, cfg, key } = fixture({ latest: true });
   codegen({ root, cfg });

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased: `doctor --timeout <seconds>` for a checkout the 180-second default is wrong for
+
+Every child command `doctor` spawns is bounded at 180 seconds, and the Git private-key scan walks every
+tracked and non-ignored file — so it grows with your repository, not with your app. In a large,
+long-lived checkout that bound was reached on a perfectly healthy app, three test iterations running,
+and the result was a `FAIL` row that had run no assertion and so said nothing about anything.
+`--timeout <seconds>` moves the bound. It applies to each child command rather than to the run, the
+timeout row names the bound you set, and it takes an integer from 1 to 3600 — `0` is rejected because it
+means "no timeout" to Node, which is the unattributable hang the bound exists to prevent, and the
+one-hour ceiling catches a budget typed in milliseconds. Both entry points take it, and an out-of-range
+value is refused before the first check runs rather than after three minutes of work.
+
+**Nothing to change in your host.** Without the flag, the bound is what it was.
+
 ## Unreleased: a failing `doctor` check says what the child command said
 
 `valence doctor --tests` reported `flutter test failed for bridge` and nothing else — no failing test,

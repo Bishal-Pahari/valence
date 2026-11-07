@@ -173,6 +173,17 @@ test('both doctor entry points exit nonzero with a fix for a broken mechanical s
     assert.ok(result.stderr.split('\n').some((l) => l.startsWith('doctor: FAIL database directory (') && l.includes(' ms) host.database must be a plain file name')), result.stderr);
     assert.doesNotMatch(result.stdout, /doctor: running /);
   }
+  // Both entry points take the child budget too, and both refuse one that bounds nothing: `0` is
+  // `spawnSync`'s "no timeout", which is the unattributable hang the bound exists to prevent (C F-43).
+  for (const cli of [join(PKG, 'bin', 'valence.mjs'), join(root, 'valence', 'valence.mjs')]) {
+    const bad = spawnSync(process.execPath, [cli, 'doctor', '--root', root, '--timeout', '0'], { encoding: 'utf8' });
+    assert.equal(bad.status, 1);
+    assert.ok(`${bad.stdout}${bad.stderr}`.includes('--timeout must be an integer in [1, 3600], got 0'), bad.stderr);
+    // And refused before the first check, not after a table's worth of them: this entry point runs its
+    // own fast checks ahead of the shared ones, so nothing may stream before the flag is rejected.
+    assert.doesNotMatch(bad.stderr, /doctor: running /);
+    assert.equal(bad.stdout, '');
+  }
 });
 
 test('the runtime version the wizard declares matches all runtime packages in this repo', () => {
