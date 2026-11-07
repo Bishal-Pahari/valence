@@ -1,5 +1,75 @@
 # Integration review correction - 2026-11-06
 
+## November 7: iteration 142 qualified regression evidence
+
+In plain terms: every must-have and original queue item is marked done; no
+eligible feature or queue refresh remains. Packages bases remain code
+d037f233f8ffbdd0a72d22a42715974deb50287c and site
+d14ece8ea97e17f9b753b31e52d15843db40abdd. Independently checked all 39 recorded
+exact code/site tips and both packages bases as ancestors of the integrations.
+Reviewed both findings inventories and newest reports: Kundalini 22 / App C 142.
+Kundalini's release acceptance remains incomplete; dedicated post-fix acceptance
+of F-81/F-82 and cold notification routing is not supplied by that report.
+
+App C's saved audit has 93 passing receipt-consistency checks, acceptance=false.
+Independently checked all 36 evidence links in its report and counted doctor's
+17 PASS, 10 WARN and zero FAIL. That successful invocation does not explain or
+erase iteration 141's mapped-test failure or key-scan timeouts; F-54 stays open.
+The report preserves Pixel Launcher/System UI startup ANRs, failed initial CDP
+discovery, incorrect resized-image taps and later UI-label recovery separately.
+Raw startup logcat corroborates both external packages' ANRs.
+
+Independently matched five renderer-loss lines against full raw logcat and
+correlated exit-info: renderer6516 LOW_MEMORY at 22:54:04, followed by Chromium's
+unhandled-loss termination of host6110, SIGNALED/status9. Initial Settings
+continuity failed (6110 to 7550, no painted page); recovered same-PID7550 paint
+is a separate successful attempt. This is the Android limitation already stated
+in contracts section 3, not evidence of a package memory leak or a new cause.
+Initial unequal passive snapshots and later stable capture remain separate;
+neither establishes database corruption.
+
+Independently rehashed both archived APKs and extracted their embedded manifests:
+builtin seq1794070804, five files each. Release SHA256
+5d9e929d4ef110fd58e49536dbcfdd5c47af17f746d3f7eb17ba9ad8a456f407;
+debug SHA256
+688b20169676c1307849859d0412a37133b7d9514cc2d966d7557fdf21fd3eb9.
+Saved CLI signature verification and native/offline/notification/link/widget/
+two-strike rollback receipts were reviewed, not rerun in this worktree.
+
+The worker baseline records two queued objects and no inbound fixture; its
+stable before-resume SQLite receipt records bidirectional effects and outbox0.
+Independently matched seven raw PID10658 callback, lease and WorkManager SUCCESS
+lines. Compared exact before/after activation bytes: SHA256
+d99b7db0de8d9f9ec15e2d8d87dde999996dca28f826e32d4d69d3eee672d003,
+pending1794072019/no trial. Readiness and elapsed-earliest-time receipts precede
+an explicit registered-job trigger. One execution proves neither sustained natural
+cadence nor cancellation/expiry correctness. Final OTA commit, original inspection/
+photo retention and stopped-resource cleanup have saved receipts. Retained-history
+metadata (860024 KiB, 8454 files) establishes no leak or per-session growth rate.
+
+Decision: security first, then users' data. Preserve rollback checks, transaction
+ownership, lease policy and the frozen runtime; keep failed reliability acceptance
+separate from recovered feature success. No eligible item is claimed or reassigned.
+S1 stays parked, S2 requires a Play account, S10 and the post-beta P1 stay deferred.
+Only mirrored integration evidence notes and the roadmap top note change; item
+Status cells remain unchanged. Earlier November 7 gates retain their original
+implementation scope. This evidence-only review ran no fresh full gates,
+emulator session or iOS acceptance. Both test-app repositories stayed read-only;
+no package-version changes, protected-branch writes, pushes or releases.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_22_REPORT.md};
+valence-test-app-c/{VALENCE_FINDINGS.md,ITERATION_142_REPORT.md}; App C
+evidence/iteration-142/{evidence-audit.json,doctor.txt,archived-release.json,
+archived-debug.json,embedded-both-manifests.json,initial-settings-outcome.json,
+initial-settings-return-full-logcat.txt,initial-settings-return-exit-info.txt,
+renderer-loss-correlated.txt,settings-outcome.json,startup-logcat.txt,
+worker-full-logcat.txt,worker-completion-proof.json,worker-lease-diagnostics.json,
+worker-execution.json,background-force-qualification.json,
+background-sqlite-before-worker.json,background-sqlite-before-resume.json,
+background-state-before-raw.json,background-state-after-raw.json,
+background-state-comparison.json,final-native-retention.json,cleanup.json,
+snapshot-end-check.json,storage-metadata.json}.
+
 ## November 7: iteration 141 incomplete regression evidence
 
 In plain terms: every must-have and original queue item is marked done; no
