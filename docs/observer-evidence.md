@@ -92,19 +92,29 @@ schema numbers and additive compatibility remain intact.
 
 All combined gates passed on November 9. Flutter commands ran serially.
 
+Revalidated after packages advanced during final verification to code d0ce45f /
+site cdb30e5. Merged each base into the feature branch and integration. Resolved
+the spec and website debugging conflicts by retaining the upstream mandatory
+store-update drop diagnostic alongside the corrected trace/probe limits.
+Upstream lease timing, logger safety, MIME ownership and Windows discovery
+corrections are retained. The feature delta against those bases is still prose
+only. The intermediate refresh was stopped after root passed and before its
+core suite finished because the code base advanced; it supplies no core verdict.
+The final full run below completed against both newest bases.
+
 | Gate | Result |
 | --- | --- |
 | Root npm test | 123 passed, zero skips; generated Dart analysis/dispatch executed |
 | Core tests / fatal-info analysis / pub dry run | 666 passed / clean / zero warnings |
 | Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, one local-override hint |
 | Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
-| Example codegen / tests / debug APK | no writes / 29 passed / built, Gradle 37.4s |
+| Example codegen / tests / debug APK | no writes / 29 passed / built, Gradle 21.0s |
 | Standalone Windows py Firebase audit | PASS: core graph, manifest and 19 DEX files |
 | Website build / SEO | 50 pages passed; corrected debugging guidance in rendered HTML |
 
 The existing app_badge_plus Kotlin migration warning remains; the successful APK
-build is not a warning-free build. Logs: %TEMP%/valence-20261109-162-<gate>.log;
-summary: %TEMP%/valence-20261109-162-results.json. Read-only artifact audit:
+build is not a warning-free build. Logs: %TEMP%/valence-20261109-162-final-<gate>.log;
+summary: %TEMP%/valence-20261109-162-final-results.json. Read-only artifact audit:
 %TEMP%/valence-iteration162-readonly-audit.py. Only validation notes follow these
 gates. No new device acceptance, push, publication or protected-branch mutation.
 
