@@ -1,5 +1,36 @@
 # Integration review correction - 2026-11-06
 
+## November 8: host-file lifetime and iteration 156
+
+In plain terms: the spec, source guide, package README and website now explain
+that every host-file publication makes a durable copy, with no 0.4 deduplication,
+quota, expiry or public revocation/cleanup API. Reuse a publication's URL; source
+or row deletion does not revoke it. F-27 remains open. Decision: protect security
+and users' data rather than evict copies still referenced by durable rows.
+No executable runtime, generator, template, dependency, schema or version change.
+
+Read both findings inventories and newest reports, Kundalini 23 / App C 156.
+Independently checked 56 report links, both archived APK hashes and all five
+embedded files per APK (builtin 1794139244), plus the saved 79-check scoped audit.
+Inspected the canonical fresh-offline six-unit screenshot from the independent
+AVD. Initial startup/LOW_MEMORY failures remain separate from recovered runs;
+Kundalini F-83 still needs its rebuilt-host device recheck. No test-app writes.
+
+Reconstructed both integrations from unchanged packages c091bee / 5c17a0d,
+fast-forwarded the prior reviewed e648651 / 0dab7ba (retaining all 44 recorded
+source-tip pairs and their merge order), then merged codex/host-file-lifetime
+last: content 1b1885b / bb1f6f2, validation tips 0b4ea78 / 6908bd7.
+Content merge SHAs are 3681590 / 9f54c6d. All 45 recorded source pairs are included.
+
+Fresh combined gates pass: root123/zero skips/generated Dart executed; core665,
+push2, clean fatal-info analyses/zero-warning pub dry runs (push has one override
+hint); bridge37/strict-verbatim TypeScript/pack; example codegen no writes,
+29 tests/debug APK (130.0s); Windows py Firebase PASS over graph/manifest/19 DEX;
+site50/SEO and rendered guidance. Existing Kotlin migration warning remains.
+Only validation/handoff notes change after these gates. No fresh emulator
+acceptance; iOS experimental and untested. S1 parked, S2 needs Play, S10/P1
+deferred. No item Status cells changed. See [validation](host-file-lifetime-validation.md).
+
 ## November 8: app-owned startup timing and iteration 155
 
 In plain terms: no eligible must-have or original rebase-queue item remains.
@@ -212,6 +243,7 @@ emulator run, publication, push or protected-branch write was performed.
 | 42 | codex/doctor-probe-timeout | abee4888223ecd45ffd2992b05679fc461b8c87d | eea7f1dd7af027b0c0b85a0e27a67a43ee94d65e |
 | 43 | codex/migration-dependencies | 890a37ebf4bbe9a423bf84a39250b851df6e4fba | d340c660a8001c3b0002d12ac48192f28cab3b70 |
 | 44 | codex/app-startup-timing | f4c571767ecd5238a7dd7a0eddda6f7c1abecd63 | 71b24388db1ac116adc3f459423c8bf1d079e56e |
+| 45 | codex/host-file-lifetime | 0b4ea78ceb1d7a7017c3016f9b439c5206100778 | 6908bd775ff13cf6dd16b42789cf5322381530dc |
 
 ## November 8: iteration 152 qualified regression evidence
 
