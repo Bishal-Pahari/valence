@@ -1,5 +1,113 @@
 # Integration review correction - 2026-11-06
 
+## November 8: migration dependency correction and reconstructed integration
+
+In plain terms: every must-have and original rebase-queue item is already done.
+App C iteration 153 exposed a stale migration instruction: the website offered a
+dbus override for the historical notification 19.x conflict even though the
+current built-in reminder stack resolves without it. Corrected the source
+migration guide, contracts section 6, website migration page and host guide.
+Follow the current local-reminder setup; review app-owned 19.x calls before an
+upgrade, remove only an override introduced for that old conflict, and validate
+the complete app graph with flutter pub get.
+
+The correction is ready on codex/migration-dependencies: code 890a37e, site d340c66.
+Branch gates passed; see [validation](migration-dependencies.md). No item Status
+cell changed. Package versions, dependency constraints, schemas and behavior are
+unchanged. Decision: preserve security and users' data; correct contradictory
+instructions without altering a working runtime or suggesting a data reset.
+
+Read both findings inventories and newest reports, Kundalini 23 / App C 153.
+Independently resolved all 52 App C evidence links and counted its saved audit:
+102 passing checks with scopedAcceptance=false. App C's release accessibility
+failures and camera/host-gallery ANRs remain separate from successful retries.
+The isolated offline package does not establish canonical fresh-install or
+credential continuity. Kundalini F-83 still needs a rebuilt-host device recheck.
+This branch supplies no new emulator acceptance; iOS remains experimental and
+untested. S1 remains parked, S2 requires Play, and S10/P1 remain deferred.
+
+Reconstructed both codex/integration branches from newest packages c091bee /
+5c17a0d, replaying the source-tip order below. Then retained the previous reviewed
+integration (code 57d942e / site f9c6d3f) before merging the new documentation
+branch last. This retains historical validation and review corrections.
+Previous integration snapshots remain on codex/integration-before-migration-20261108.
+
+Two spec conflicts required retaining both reviewed intents: the lease clock is
+sampled after the transactional query; recovery is allowed at least the TTL ahead;
+the cancellation-plus-clock-skew worst case remains bounded at twice the TTL.
+Before applying the documentation correction, the resolved spec matched the
+previous reviewed integration. After reconstruction, the complete tree differs
+from that integration only by this correction and its validation note. All 43
+current source tips and both packages bases were verified as ancestors in both
+repos. Combined source merge commits: code 57b94d1 / site 7c778df.
+
+Fresh combined gates passed on November 8; Flutter commands ran serially:
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 123 passed, zero skips; generated Dart analysis/dispatch executed |
+| Core tests / fatal-info analysis / pub dry run | 665 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, one local-override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example tests / debug APK | 29 passed / built, Gradle 29.9s |
+| Windows py Firebase audit | PASS over core graph, manifest and all 19 DEX files |
+| Site build / SEO and links | 50 pages passed |
+| Diff hygiene / exact source ancestry | Passed / all 43 source pairs included |
+
+The existing app_badge_plus Kotlin migration warning remains; it does not make
+the successful APK build a warning-free build. Logs:
+%TEMP%/valence-migration-integration-20261108-*.log. Validation covers the final
+combined source; only this mirrored validation note follows the gates. No fresh
+emulator run, publication, push or protected-branch write was performed.
+
+### Exact source-tip inclusion order
+
+| Order | Branch | Code SHA | Site SHA |
+| --- | --- | --- | --- |
+| 1 | codex/r8 | 91589a47cb80a4b2f2ba8cf1a6d1ce3dc5a4eb4e | 072552f08d626d2915e63e7fda2c4c183c4380e3 |
+| 2 | codex/r7 | 969b1a4fb03d76d2af85c69987c4ed5eeb0eb840 | 965b8eb83a7412a9ec601919f227c2c0005a9252 |
+| 3 | codex/r6 | 5b64e06051fab10e0a01d8b3215c17f45d81c980 | 388cd9d3c0fd6043cfa21b0a6440916232847742 |
+| 4 | codex/r3 | db669ddd75ffeb97588fd62304122a58c242f3b0 | f45ccf28d741a2c6e05c766eeb6bff059900bcc5 |
+| 5 | codex/r4 | 588f8761807b1893933303533a04fa14c9975a6f | d8e5dd775dfaf902e206bc2f195c30537f797ba4 |
+| 6 | codex/r5 | 3cc1c0f4d062d13919adcfe5343434e00098fdea | 57a44b50dfd82800f151823ff1563d8a73340678 |
+| 7 | codex/r9 | 0c1b0fb01a48494991cdae4ab32369fb6a2af7b2 | 2913b4d0a743188808a66bd5b7db416ca870c52f |
+| 8 | codex/r10 | f3fcd0dac875fc30af226c7f1bf70750942c0550 | b905b742ab9d90984d513cdf7b99977eabd929f2 |
+| 9 | codex/r14 | fa6e16c55d84bb9a3162514a9c09b65cb634fd54 | fa5e8164a968bd74d943b8a50590dfbd010e08ca |
+| 10 | codex/r11 | 4347872fd95b0a213b99774c3e758c7d60f047d5 | 797224cf3cab016866ecbb56213210ca4fe6556f |
+| 11 | codex/r12 | de783ae9a9f04052cfc2eb7c07ae992c980ccc42 | a57ca8f05358b0bd6cd050c3a475e2aa51b1ecce |
+| 12 | codex/r15 | 2951ac8b84ff2e0935dbb719b749ebbd8839f51f | 87695bbf61a1a647bec692416cacdb3a611a07ac |
+| 13 | codex/r16 | dba50d483f95b724bc10869b460e7774e63cc8de | bb1775d3801e9bc6032523327ce502eb7c7383eb |
+| 14 | codex/r17 | a9922853bb751ac75590cb262d2d732cbed967d1 | 971e5a93d6ff7e910c1c5640fc856940ea0861a4 |
+| 15 | codex/r19 | ebbd5e051f08661adbdc0e485cc5cf1bba32b352 | 7c31ed431453f1df73a494bb2b24d0a7a5603fb4 |
+| 16 | codex/r20 | f8f3f1f9b79117e73d30917f65ed2a281b57a070 | 98cbad0d516db52225dd593fe72dea76b4800df0 |
+| 17 | codex/r21 | 92221ea7682259d7fea49b4f8afbb98d5d735610 | d3d0e2b226196d871d53c47224bcf491bc44a444 |
+| 18 | codex/r22 | b2e5a4009b44ea8729eafb208ee0be4a5aad876a | e84efa7a38d0858491632e429bc659b8252ffb55 |
+| 19 | codex/r23 | 373d29fca370bb03e2f49f148606bda8283950fa | 0bcc4407a44cc260677dce499efad0cbfe4a6690 |
+| 20 | codex/r24 | 23a2783f5c1bb8e68db2f6712a66b6caee542617 | fcb04f2a5690a22dbf75cbdf1de2f06982aa1440 |
+| 21 | codex/r25 | 52fd6e5c382df6582d5955b02586f77c80383c4c | 9f614ee0a44a9a4c98e5d07d16cba243151df60c |
+| 22 | codex/r26 | 7c43658637da1f97a6fe3e80c2669ab83ec347ad | 14376728046b8ba6f6c062154d41fa1b41399176 |
+| 23 | codex/r27 | 8296d4e68753185c132c39da3c94369989818f27 | c4a8fad9bc2dc04f9b8033080608e1250785e08e |
+| 24 | codex/r28 | 8d42a82d96ad124c3cbe122280b64a00f43371bb | 0cbadc71c2f2d40aa11b5aa6b21cf114ab8ece65 |
+| 25 | codex/r29 | 6e250677b3bc6510f7ef2ea3e7c2ddb4ab1a509f | d5a98a85ea9e9c41aa3c2cde461e0e92de1aa555 |
+| 26 | codex/r31 | 44de344c92e0122f3361dacef1acc0788ff312c2 | 1dfdc0a50ed78b2103dfe3ce15b8461c588332cb |
+| 27 | codex/link-compat | 48d1a8a0a71a5e0d06f3d1ecac2057514598e45c | f494813c716882cfab8161c1edfdbddaaaef85d9 |
+| 28 | codex/notify-event-compat | 8a69b5da422eb403014d907f66154aea17469af9 | 094697cfb948d466c6d25dabfd7351ddac6664e2 |
+| 29 | codex/sync-fixes | aa025cfdf795e6c3caa941d4dda2701e12d2c381 | dc223e8ec5d3e85e8d02cf9a99bfe547fc3e3e64 |
+| 30 | codex/renderer-diagnostics | dc53ba05fcfc5108e88896ab9cd6218bdbcb0f25 | d3fd0d95cc232e26ae8e3e739da2e96d0db05887 |
+| 31 | codex/s7 | f28a562c9f61b205b650de7dc11919ed13110667 | 5f774d8805a10251947435d3f1a58e5368d1876a |
+| 32 | codex/r32 | 3d1fa7f53ed9f61ff12295cb53e7bb4d991813de | cc7831bcbee4f3c63972bcaa8e9a904313eba53f |
+| 33 | codex/r33 | ea9e63cf96f1b459672b2e58cf986567f7996c8c | 0e23509e1d98efba98feae7a126ded919cd88daf |
+| 34 | codex/s8 | 3f444554f0482046b4e09dbddf4da9d581e5ad87 | 05943aaf49d460554dd70105579bc3ee8f9f7d67 |
+| 35 | codex/pendingids-adoption | 886a9f92a21228c14e33c290796f522accb5f6c3 | 99a8bf76b3d1d32f4080782b0fd8b58f696cd90e |
+| 36 | codex/permissions-adoption | 3e7231a3e8d6d842f61ce876ceede20fd69e4d66 | ee4292ce5d60a907457d696abbf318f1c81738cf |
+| 37 | codex/dependency-baseline | 700da56f6362ababdbca2f2f65a2a222a9cb8be3 | 6a7bfd5ffb00e476345b2dd9c0c230ea2874072b |
+| 38 | codex/cache-adoption | 77853b3964f88d471036bd61340f7c9172057f5f | 04edf8276501f9ec02531aff326389fb6ffc44b7 |
+| 39 | codex/background-lock-result | 47c862e350cde63afb305fe558100c78e1722185 | f37c05a6922b3cf0a473ee77ff0422fc4093c5c6 |
+| 40 | codex/lease-clock-read | cdecefbfe6bb18481fcdc19d08ff0c6b2e6c02b7 | f311337cee94f56db94c5adc2456ffd9c3be8b6f |
+| 41 | codex/widget-startup-drain | baadeff27970ab57cbd9af2c1b67ca8505069741 | 5c8720803af3678060879506bc656f9246f4cdb0 |
+| 42 | codex/doctor-probe-timeout | abee4888223ecd45ffd2992b05679fc461b8c87d | eea7f1dd7af027b0c0b85a0e27a67a43ee94d65e |
+| 43 | codex/migration-dependencies | 890a37ebf4bbe9a423bf84a39250b851df6e4fba | d340c660a8001c3b0002d12ac48192f28cab3b70 |
+
 ## November 8: iteration 152 qualified regression evidence
 
 In plain terms: no eligible must-have or original rebase-queue item remains.
