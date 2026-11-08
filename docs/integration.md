@@ -1,5 +1,45 @@
 # Integration review correction - 2026-11-06
 
+## November 8: app-owned startup timing and iteration 155
+
+In plain terms: no eligible must-have or original rebase-queue item remains.
+App C 155 requested timing for app initialization after Valence.open. Added a
+fixed-label Stopwatch helper and separate first Flutter frame marker to contracts
+section 5.1.1 and both startup guides. Preserve existing awaits, results and
+original errors; diagnostic logger failures cannot change startup. Flutter first
+frame does not prove meaningful web paint and never replaces ready().
+
+Decision: protect security and users' data by observing boundaries without a
+speculative runtime patch. No executable runtime, dependency, schema, template or
+package version changed. Read both findings inventories and newest reports,
+Kundalini 23 / App C 155. Rechecked saved worker raw lines, native SQLite,
+pending-state comparison, final owner retention, PNG MIME and doctor receipts;
+rehashing both APKs and all five embedded files per APK also passed.
+App C's saved audit has 25 passing checks and fullAcceptance=false. Its recovered
+native/OTA/forced-worker evidence does not erase initial startup/renderer/host
+low-memory failures or certify canonical fresh installation. Kundalini F-83 still
+needs its rebuilt-host device check. F-55's migration correction is already
+included; F-56 was repaired in the app; F-57 is harness feedback. Test app repos
+were read only.
+
+Reconstructed each integration from unchanged packages c091bee / 5c17a0d:
+first fast-forwarded the previous reviewed integrations bb653d2 / 34966a0,
+retaining the 43 source-tip pairs in the existing merge order, then merged
+codex/app-startup-timing last. Content merges: 54291c1 / 1abe747.
+Validation-note merges: fadaa66 / e921d4b. The new branch tips are code
+f4c5717 / site 71b2438. All 44 source-tip pairs are included.
+
+Fresh combined gates pass: root123, zero skips/generated Dart executed; core665,
+clean fatal-info analysis/zero-warning pub dry run; push2, clean analysis/
+zero-warning pub dry run with one local-override hint; bridge37, strict-verbatim
+TypeScript and pack dry run; extracted documentation helper analyzes cleanly;
+example codegen clean, 29 tests, debug APK (151.7s); standalone Windows py
+Firebase audit PASS over graph, manifest and 19 DEX files; site50/SEO pass.
+The existing Android Kotlin migration warning remains. Later edits add only
+validation notes. No fresh emulator acceptance; iOS remains experimental and
+untested. S1 parked, S2 needs Play, S10/P1 deferred.
+See [validation](app-startup-timing.md).
+
 ## November 8: iteration 154 incomplete Android regression
 
 In plain terms: every must-have and original rebase-queue item remains marked done.
@@ -171,6 +211,7 @@ emulator run, publication, push or protected-branch write was performed.
 | 41 | codex/widget-startup-drain | baadeff27970ab57cbd9af2c1b67ca8505069741 | 5c8720803af3678060879506bc656f9246f4cdb0 |
 | 42 | codex/doctor-probe-timeout | abee4888223ecd45ffd2992b05679fc461b8c87d | eea7f1dd7af027b0c0b85a0e27a67a43ee94d65e |
 | 43 | codex/migration-dependencies | 890a37ebf4bbe9a423bf84a39250b851df6e4fba | d340c660a8001c3b0002d12ac48192f28cab3b70 |
+| 44 | codex/app-startup-timing | f4c571767ecd5238a7dd7a0eddda6f7c1abecd63 | 71b24388db1ac116adc3f459423c8bf1d079e56e |
 
 ## November 8: iteration 152 qualified regression evidence
 
