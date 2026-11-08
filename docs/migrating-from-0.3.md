@@ -59,6 +59,15 @@ from your own `pubspec.yaml` **only if nothing else in your app uses them direct
 `workmanager` is not one of them. The package deliberately does not depend on it — it applies the Kotlin
 Gradle Plugin and warns on every Android build — so if you register background sync, keep it.
 
+**The old notification dependency conflict is historical.** The current built-in reminder stack uses
+`flutter_local_notifications` 22.3.2+ with `connectivity_plus` 7.3.2 and resolves without a `dbus`
+override. Follow the [current local-reminder setup](https://getvalence.pages.dev/docs/guides/local-notifications/).
+The conflict observed on 2026-10-17 involved the older 19.x notification plugin's Linux dependencies
+(`dbus ^0.7.8` versus `^0.8.0`). Do not copy that stack's override into a current host. If your app still
+pins 19.x directly, review its app-owned notification calls before upgrading. If you added a `dbus`
+override solely for this conflict, remove it and run `flutter pub get` to check the complete dependency
+graph; keep any unrelated constraints your app still needs.
+
 ## 3. Delete the generated runtime
 
 From your Flutter host:
