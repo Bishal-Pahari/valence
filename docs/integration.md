@@ -1,5 +1,77 @@
 # Integration review correction - 2026-11-06
 
+## November 8: iteration 152 qualified regression evidence
+
+In plain terms: no eligible must-have or original rebase-queue item remains.
+Both integrations contain packages c091bee / 5c17a0d and all 42 current exact
+source-tip pairs, checked against branch heads and ancestry. Read both findings
+inventories and newest reports, Kundalini 23 / App C 152. Item Status cells stay
+unchanged; this is an evidence refresh without runtime or version changes.
+
+Independently resolved all 51 App C report evidence links, rehashed both archived
+APKs and checked all five embedded files' hashes and sizes per APK, builtin
+1794113891. Release SHA256:
+654c42aac5adbdc80f408a1e40ae5cf8ff017b87a42dfe5003335f86f0f9d4fe;
+debug SHA256: 61039ed98d686c7cef05a355254e429b1ccee4f2619e35ea9e9666e4f1021d36.
+The saved audit has 98 passing artifact checks and scopedAcceptance=false.
+Doctor independently counts 17 PASS / 10 WARN / zero FAIL with a 360s child budget.
+
+Inspected the initial release spinner separately from the painted isolated
+fresh-offline page: six seed units, zero photos. The fresh probe receipt records
+an empty sandbox, airplane mode and 28204ms to paint. Its manifest, signature
+and five embedded files match the canonical APK byte for byte. Different package
+identity com.fieldnote.app.offlineprobe152 leaves canonical fresh installation
+and credential continuity unverified. R29 records store.open waiting at 10001ms
+and completing at 19426ms for PID 4630 / isolate 117133444 / operation 1; these
+pending-operation timings do not measure paint or identify a lock holder/cause.
+
+Preserved the excluded early launcher placeholder; separately inspected the
+placed Fieldnote widget changing seven to six. The cold-reminder receipt records
+strict PID absence before tapping. Native/media/reminder/link and signed rollback/
+rollforward results remain app-run device evidence, not a fresh device run here.
+Matched seven new PID 9023 worker callback/lease/SUCCESS lines to the full raw log
+and verified their absence from the baseline. Native SQLite receipts show outbox 2
+and inbound absent before isolation, then incoming/outgoing rows and outbox 0
+before foreground resume. Exact pending 1794114941 / no-trial activation bytes
+match, SHA256 99ab53cb50422178bd1add8eaedf0b8003420f7bfe20acdb0129150d6dc769c7.
+An explicit registered-job trigger followed Ready=true and elapsed earliest;
+natural cadence and cancellation/expiry correctness do not follow. Final state
+commits 1794114941; original/final inspection and photo metadata match. Install
+identity is not Keystore credential proof or a rehash of photo bytes. Cleanup
+records app/mocks stopped and airplane off; the report records probe removal.
+Read-only retained history records 9319 host files / 912420KiB, without leak or
+growth-rate attribution. No owner reset/archive restore was used.
+
+Kundalini 23 is unchanged. K F-83 still needs a rebuilt-host device recheck
+against the later correction. Decision: protect users' data and bounded lease
+recovery; this evidence supplies no new isolated cause for a runtime change.
+S1 stays parked, S2 needs Play, S10/P1 stay deferred. No schema/package version
+change or fresh emulator/iOS acceptance.
+
+Fresh gates on November 8: root 123 passed, zero skips, generated Dart executed;
+core 665 and push 2 passed; clean fatal-info analysis and zero-warning pub dry runs
+(push retains one local override hint); bridge 37 passed, strict/verbatim TS and
+pack passed; example 29 passed, codegen wrote nothing, debug APK built (Gradle
+137.7s); Windows py Firebase PASS over core graph, manifest and all 19 DEX files;
+site 50 pages passed build and SEO/link checks.
+Flutter commands ran serially. Existing app_badge_plus Kotlin migration warning
+remains. Logs: %TEMP%/valence-20261108-152-*.log and
+valence-20261108-152-results.json. Gate validation covers the unchanged source;
+only matching evidence notes follow it.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_23_REPORT.md};
+valence-test-app-c/{VALENCE_FINDINGS.md,ITERATION_152_REPORT.md,
+evidence/iteration-152/{audit.json,archived-release.json,archived-debug.json,
+embedded-file-integrity.json,doctor.txt,r29-device-proof.json,
+release-retained-airplane.png,fresh-probe-screen.png,fresh-probe-result.json,
+widget-observation152.md,widget-sync-incomplete.png,widget-sync-restored.png,
+cold-immediate-pre-card-absence.json,background-sqlite-before-worker.json,
+background-sqlite-before-resume.json,background-state-before-raw.json,
+background-state-after-raw.json,worker-full-logcat.txt,background-full-log-before.txt,
+worker-completion-proof.json,worker-lease-diagnostics.json,
+background-force-qualification.json,original-inspection.json,
+final-inspection-row.json,final-state.json,cleanup.json,storage-metadata.json}}.
+
 ## November 8: iteration 151 qualified regression evidence
 
 In plain terms: no eligible must-have or original rebase-queue item remains.
