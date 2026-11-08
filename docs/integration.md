@@ -1,5 +1,83 @@
 # Integration review correction - 2026-11-06
 
+## November 9: qualify observer evidence on current packages
+
+In plain terms: all must-haves and original queue items remain done. Read both
+findings inventories and newest reports, Kundalini 24 / App C 162. Corrected new
+diagnostic advice that treated a successful later read as proof the earlier
+dispatch path was never broken. Tracing records client refusals and shim calls
+as well as host results; host error logging precedes reply delivery. Missing
+output is inconclusive. Separate a known non-mutating probe from a replay of a
+possibly completed action. Decision: security and users' data first; preserve
+failed evidence without adding speculative retries or resetting owner data.
+
+The follow-up is ready on codex/observer-evidence: code 771b641 / site f190654.
+Spec, source startup guide and website debugging guide agree. No runtime,
+generator, template, dependency, schema or version change.
+[Decision, evidence and security checklist](observer-evidence.md).
+
+Both integrations start from the newest packages bases:
+code d0ce45f8ba50849b90e8892f6b5b462afdfdd161,
+site cdb30e5179bd9a4f1b659ad8e646dee9890e0e35.
+Initially fast-forwarded the prior integration to packages, which already
+contained all 45 exact recorded source-tip pairs. Their original merge order
+is retained in the Exact source-tip inclusion order table below (R8, R7, R6,
+R3, R4, R5, R9, R10, R14 first); the new observer follow-up is last.
+Both packages refs advanced again during final verification. Merged each into
+codex/observer-evidence, retaining all upstream reviewer fixes. Resolved the
+spec and website debugging conflicts by keeping the mandatory-store-update
+drop diagnostic alongside the stricter tracing/probe evidence limits.
+No schema renumbering was needed. Refreshed source merges b400708 / 129e674
+produced tested integrations 9c4aa451911a90b8b345f5262f5ff3d50e97c59c /
+7a4d376f93af685c047aed939c386de4b65b97b9. Merging their final validation tips
+produced 37a6ce6 / 5d8e4c6. All 46 current exact branch-tip pairs and both
+packages bases were checked as ancestors. The feature delta against these
+newest bases is documentation only.
+
+| Order | Branch | Code SHA | Site SHA |
+| --- | --- | --- | --- |
+| 46 | codex/observer-evidence | 771b641a63ba16d67bce787ea5167e76952f3626 | f1906543004823d7c26a778d3b053b1bbb439cd1 |
+
+Kundalini reports its rebuilt-host F-83 contention check passed and closes
+F-58/F-84; those are app-reported device results. Its new F-85 logging lag was
+subsequently corrected upstream in 08f072e; no post-fix device check is claimed.
+App C retains initial UI observer failures separately from painted continuation.
+Its R29 release open at 5705 ms has no paired named wait and establishes no paint
+latency or lock cause. Historical process-loss/observer findings remain open.
+
+Independently checked 45 report links, both archived APK hashes/five embedded
+file hashes and sizes each, doctor 17 PASS / 10 WARN, the saved 106-check scoped audit,
+four raw worker lease lines and identical pending 1794166220/no-trial activation
+bytes. Inspected canonical fresh-offline six-unit screenshot and separate
+retained-photo continuation. Worker execution was explicitly triggered while
+eligible; 806.112 s is observation time, not execution duration or natural cadence.
+F-27 lifetime remains open. See the linked note for hashes and receipt limits.
+S1 stays parked, S2 needs Play, S10/P1 deferred; no item Status cells changed.
+
+Fresh combined gates passed November 9; Flutter commands ran serially:
+
+The intermediate refresh was stopped after root passed, while its core run was
+incomplete, because code packages advanced. It supplies no core verdict. The
+complete final run below covers both newest bases and the resolved merge.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 123 passed, zero skips; generated Dart analysis/dispatch executed |
+| Core tests / fatal-info analysis / pub dry run | 666 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, one override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built, Gradle 21.0s |
+| Standalone Windows py Firebase audit | PASS over core graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed; corrected debugging HTML verified |
+
+Existing app_badge_plus Kotlin migration warning remains. Logs:
+%TEMP%/valence-20261109-162-final-<gate>.log and
+%TEMP%/valence-20261109-162-final-results.json. Only validation/handoff notes follow
+these gates. Canonical verification order, nonce, strict decoding, navigation
+lock, atomic state, key handling and release dev-mode exclusion are unchanged.
+Test apps stayed read only; no emulator session, iOS acceptance, push,
+publication or protected-branch mutation.
+
 ## November 8: iteration 161 retains the inner observer timeout
 
 In plain terms: every must-have and original queue item remains done. Read both
