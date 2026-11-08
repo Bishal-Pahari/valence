@@ -1,5 +1,92 @@
 # Integration review correction - 2026-11-06
 
+## November 8: iteration 147 qualified regression evidence
+
+In plain terms: every must-have and original rebase-queue item remains done.
+No eligible feature or queue refresh remains; packages heads are unchanged at
+code c091bee15ac0cbb0d46139438460acbb46f72578 and site
+5c17a0d940a07cba81a305ea4522d9fd250e7ac6. Independently verified all 42
+recorded exact source tips and both packages heads as integration ancestors.
+Read both findings inventories and newest reports: Kundalini 23 / App C 147.
+This update changes evidence notes only, with no runtime or public-site delta.
+
+App C's saved audit has 89 passing artifact checks and scopedAcceptance=false.
+Independently resolved all 51 report evidence links, rehashed both archived APKs,
+and checked the hashes and sizes of all five embedded files in each APK at
+builtin1794095872:
+
+- Release SHA256: ebc25ae2c33960e73ffe68fdb555e1faca78d9445f6d53d3478e05158e95662a.
+- Debug SHA256: 39f80178033a5766eab9d7e599395c616b0fe4a433723034a86cbc3d5553274d.
+
+Doctor independently counts 16 PASS / 11 WARN / zero FAIL, with a configured
+360-second child budget. Its current successful rows do not erase earlier failed
+or timed-out checks. The saved initial release screenshot shows Flutter splash;
+the separately inspected offline continuation shows the original inspection/photo
+page. PID4845 open completion at 16261ms and store.open waiting at 10003ms/completion at 15120ms establish neither exact paint
+latency nor a lock holder or cause. Fresh offline was not repeated because no
+working separate test identity exists. Owner install identity is retained without
+reset/archive restore; that comparison does not prove Keystore credential or
+authenticated-session continuity.
+
+The inspected system Camera ANR dialog and native lastanr MotionEvent timeout
+remain distinct from the separately successful capture/gallery retry and the
+initial accessibility-root failure. The Windows observer-file error
+interrupted the first worker observation; the continuation resumed observation
+against the existing baseline without duplicating writes or resuming the app.
+The install-release wrapper and inner receipt shared a filename, producing NUL
+padding; the runner preserves it and records independent package/UI evidence.
+These qualifications supply no new isolated Valence cause.
+
+Reviewed saved native/security, queue-cap, media, reminder, routing, widget and
+signed rollback/rollforward receipts as app-run evidence. Independently matched
+seven raw PID9184 callback/lease/SUCCESS log lines. Saved native SQLite receipts
+show outbox2/inbound absent before isolation and incoming/outgoing rows plus
+outbox0 before foreground resume. Independently compared exact activation bytes:
+SHA256 7bb4e0f045e9385446612bcf4ed7ad53a40feeda5724c4efe9d2e22d7e4eb822,
+pending1794097294 with no trial. The ready job was explicitly triggered after its
+earliest bound; no natural-cadence, cancellation or expiry acceptance follows.
+Saved final state commits1794097294; original and final inspection/photo metadata
+compare equal, and cleanup records empty fixtures/queues/outbox, airplane off and
+owned resources stopped. No independent photo-byte rehash is claimed here.
+
+Kundalini 23 remains unchanged: F-81 and cold launch routing have device evidence;
+F-83 still needs a rebuilt-host device recheck against the later correction.
+Clean-install offline and felt haptics retain their qualifications. F-84's CLI-only
+build identity wording is already corrected in packages.
+
+Decision: preserve security, users' data and failed evidence. Keep transaction
+ownership, lease recovery and rollback checks; do not change the runtime for an
+unisolated cause. S1 stays parked, S2 needs Play, S10/P1 stay deferred. No item
+Status cells change. No fresh emulator or iOS acceptance, test-app writes,
+protected-branch writes, schema/package version changes, pushes or publication.
+
+Fresh gates on November 8:
+
+- Root `npm test`: 123 passed, zero skips; generated Dart analyzed/executed.
+- Core: 665 tests passed serially, fatal-info analysis clean, pub dry run zero warnings.
+- Push: 2 tests passed, fatal-info analysis clean, pub dry run zero warnings/one local override hint.
+- Bridge: 37 tests passed, strict/verbatim TypeScript and pack dry run passed.
+- Site: 50-page build and SEO/link checks passed.
+- Example: codegen check wrote nothing, 29 tests passed, debug APK built (Gradle 122.5s).
+- Windows `py tool/check_no_firebase.py`: PASS over core graph, manifest and all 19 DEX files.
+- Both repository whitespace checks passed; integration notes are byte-identical.
+
+Logs: `%TEMP%/valence-20261108-147-*.log`. Flutter gates ran sequentially.
+The APK used process-local Gradle settings (2 GiB heap, two workers and
+ActiveProcessorCount=2); its existing app_badge_plus Kotlin migration warning
+remains. Only mirrored integration notes changed; app receipts remain read-only.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_23_REPORT.md};
+valence-test-app-c/{VALENCE_FINDINGS.md,ITERATION_147_REPORT.md,
+evidence/iteration-147/{audit.json,archived-release.json,archived-debug.json,
+embedded-file-integrity.json,doctor.txt,doctor-stderr.txt,r29-device-proof.json,
+isolated-fresh-qualification.json,owner-activation-identity.json,
+background-sqlite-before-worker.json,background-sqlite-before-resume.json,
+background-state-before-raw.json,background-state-after-raw.json,
+worker-full-logcat.txt,worker-lease-diagnostics.json,worker-completion-proof.json,
+worker-execution.json,original-inspection.json,final-inspection-row.json,
+final-state.json,cleanup.json}}.
+
 ## November 8: iteration 146 qualified regression evidence
 
 In plain terms: every must-have and original rebase-queue item is done. No new
