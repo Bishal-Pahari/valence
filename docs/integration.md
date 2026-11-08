@@ -1,5 +1,69 @@
 # Integration review correction - 2026-11-06
 
+## November 8: iteration 154 incomplete Android regression
+
+In plain terms: every must-have and original rebase-queue item remains marked done.
+Both integrations still contain packages c091bee / 5c17a0d and all 43 recorded
+exact source-tip pairs, checked against current branch heads and ancestry.
+Read both findings inventories and newest reports, Kundalini 23 / App C 154.
+No item Status cell changes. Decision: preserve security, users' data and failed
+evidence; no speculative runtime, dependency, schema or version change.
+
+Independently resolved all 47 App C report evidence links. Its saved audit has
+60 passing artifact-consistency checks and acceptance=false. Rehashed both APKs
+and checked the hashes and sizes of all five embedded files per APK, builtin
+1794121128. Release SHA256:
+a7fd089c4d96a4f233c01045d27a20066ac6bfbee947f333878ee9bb47b3b004;
+debug SHA256: 25d1f979bfa50e5ca9da95ea1e110901375908b50bd33b467157cfe25a21dc73.
+Doctor independently counts 17 PASS / 10 WARN / zero FAIL. Current receipts
+cover permissions/Settings, thirty native probes and the 64-ID queue; queue
+behavior does not establish actual notification delivery.
+
+Inspected retained offline inspection/photo, isolated fresh six-unit/zero-photo
+content and the final host-ANR screenshot separately. Initial empty accessibility
+and debug splash/readiness failure remain separate from later continuations.
+PID6258's store.open completes in 23817ms and Valence.open in 28114ms; neither
+measurement is first paint or proof of a lock holder. Raw logs identify the
+Android lowmemorykiller killing owner PID4091 under the temporary 2GiB guest.
+After restoring the standard 4GiB guest, Android reports an APPWIDGET_ENABLED
+receiver ANR. Sharing also has resolver/host/system ANRs. These observations do
+not establish a Valence root cause or a successful resource workaround for the
+owner host. The isolated package does not prove canonical fresh installation or
+credential continuity. Current OTA rollback/rollforward and isolated-worker
+transfer were not executed; older successes do not replace them.
+
+App C F-55 assigns a distinct ID to the migration dependency inconsistency
+previously filed under F-44. The correction is already in
+codex/migration-dependencies and both integrations; the report's captured docs
+predate that correction. No second dependency change is warranted. F-56 is an
+app-owned MIME/extension mismatch: the retained 216195-byte source is PNG while
+capture/resolve advertise JPEG. Original and final saved metadata agree on
+SHA256 0ec1c49d2c866e985dc405776138e138ad3963ad3ebca7dd1b44e37af82c650a.
+Preserve the source and durable URLs when the app fixes its metadata. No app
+repository was modified. Final saved SQLite proof records the original row
+unchanged, outbox zero and no iteration fixtures; activation has current
+1794121128 with pending/trial null. This is retention evidence, not a new OTA
+transition or a proof of Keystore credential continuity.
+
+Kundalini F-83 still requires a rebuilt-host device recheck. S1 stays parked,
+S2 requires Play, and S10/P1 remain deferred. No fresh emulator acceptance is
+claimed here; iOS remains experimental and untested.
+
+Fresh integration gates passed on November 8; Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 123 passed, zero skips; generated Dart analysis/dispatch executed |
+| Core tests / fatal-info analysis / pub dry run | 665 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, one local-override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen check / tests / debug APK | clean / 29 passed / built, Gradle 131.9s |
+| Standalone Windows py Firebase audit | PASS: core graph, manifest and 19 DEX files |
+| Website build and SEO | 50 pages passed |
+
+The existing Android Kotlin migration warning remains. These gates validate the
+integration tree; they do not recertify the test apps' device acceptance.
+
 ## November 8: migration dependency correction and reconstructed integration
 
 In plain terms: every must-have and original rebase-queue item is already done.
