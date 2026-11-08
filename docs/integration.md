@@ -1,5 +1,83 @@
 # Integration review correction - 2026-11-06
 
+## November 9: refresh after host-file revocation, App C iteration 163
+
+In plain terms: all must-haves and original queue items remain done. Read both
+findings inventories and newest reports, Kundalini 24 / App C 163. No eligible
+must-have remains. S1 stays deliberately parked, S2 needs Play, and S10/P1 remain
+deferred. No item Status cell changed.
+
+Rebuilt both integrations from current packages: code
+dd1c53dd9ce7a54588d22c54bf3c0183548b4a75, site
+bb0f34ce600dc73d3f27eae7d9f240ceac5ceb28. Preserved the previous integration
+tips on codex/integration-before-163-20261109, then merged those queues into the
+fresh bases. The merges are code ab8e689c44fca1e4e0d1bbdb1d7765a90d67e961 /
+site 3f60971be9b87bc70768e3d944f54e804b1346d1. All 46 exact source-tip pairs
+recorded below are ancestors of the refreshed results. Original queue order
+remains R8, R7, R6, R3, R4, R5, R9, R10, R14, with later follow-ups retained
+in their recorded order. No schema or release version changed.
+
+The new upstream API provides native-only revokeHostFile and listHostFiles;
+the spec, runtime, example, tests, source guide and website agree. Automatic
+collection remains absent. Decision: security first, then users' data: retain
+strict host-minted URL validation and native-only authority, and do not sweep
+files that durable rows may still reference. Preserve the observer guidance:
+a later successful request cannot establish that an earlier one was healthy,
+and an observer timeout does not authorize replaying a potentially completed
+action. No speculative runtime, dependency or migration change was added here.
+
+App C 163 predates the new revocation API. Its F-27 observation remains valid
+for its tested host: 993400 KiB / 10242 host files versus 224 KiB original source
+media, with removed fixture publications still returning HTTP 200. It supplies
+no adoption or device verdict on the new API. F-59 records a current Kotlin
+Gradle warning, with both APK builds passing; app_badge_plus is a core dependency,
+while home_widget/workmanager are app-owned. No future-version failure is proven.
+
+The failed permission observer contains an ok/denied bridge reply followed by
+an ETIMEDOUT removing an ADB forward. The separate successful retry is retained
+separately. Historical F-35/F-36/F-50 startup/process reliability and F-58 remain
+open. Kundalini's F-83 closure is app-reported device evidence; F-85's later
+upstream diagnostic correction has no fresh Kundalini device recheck here.
+
+Independently checked all 42 App C report links, both persisted APK hashes and
+five embedded payload hashes/sizes each. Release: 54858932 bytes,
+2df5e8afc84d2d2fa8314ca12db4ba1313523dc8de3ce6d9947b1fd329d7e240;
+debug: 193236383 bytes,
+c366278b86277e077ff3d0ca67568e41d2d2d0a08239a651fa939286d349bc01.
+Matched all four worker lease lines against raw logcat and compared the raw
+activation files byte-for-byte: pending 1794170486, no trial, SHA256
+a58685f9280c00d01d894d091f221e22c0ed7ba1feba174bfb8d645b41775a1c.
+The saved scoped audit contains 109 passing checks; it was inspected, not rerun.
+Inspected fresh-painted.png: six units, zero photos, widget absent, airplane icon.
+The explicitly triggered eligible worker's 832.82 seconds is observation time,
+not execution duration or proof of natural cadence. No fresh emulator session
+or iOS acceptance is claimed. Test repositories stayed read only.
+
+Security checklist: the integration delta against packages is documentation
+only. Signature/appId/sequence/floor/requires/path/hash verification order,
+bridge nonce and strict decoding, navigation/subframe locks, atomic state,
+key handling and release-build dev exclusion are unchanged. Host-file authority
+remains native-only, with path refusal and publication-isolation regressions
+covered by the core suite. No HTTP delete endpoint or automatic eviction added.
+
+Fresh combined gates passed November 9; Flutter commands ran serially. Only
+the complete post-merge run is counted.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 123 passed, zero skips; generated Dart analyzed and dispatched |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, one local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built, Gradle 31.8s |
+| Standalone Windows py Firebase audit | PASS over core graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+Existing app_badge_plus Kotlin migration warning remains. Only validation notes
+follow these gates. No publication, push or protected-branch mutation.
+Logs: %TEMP%/valence-20261109-163-<gate>.log and
+%TEMP%/valence-20261109-163-results.json.
+
 ## November 9: qualify observer evidence on current packages
 
 In plain terms: all must-haves and original queue items remain done. Read both
