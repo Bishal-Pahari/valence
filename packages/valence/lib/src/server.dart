@@ -14,6 +14,32 @@ import 'state.dart';
 /// The id shape the host generates for a `/_host/` file. Validated on the way back in.
 final _hostFileId = RegExp(r'^[0-9a-f]{24}$');
 
+/// The id inside a relative URL [ValenceServer.publishHostFile] returned, or null if [url] is not one.
+///
+/// The only way back from a caller's string to a path: the id is matched against the same pattern that
+/// produced it and the file path is rebuilt from the match, so nothing a caller wrote is ever joined to a
+/// directory (§3). A query, an upper-case id, a percent-encoded segment and a short id all fail here.
+String? _hostFileIdOf(String url) {
+  const prefix = '/_host/f/';
+  if (!url.startsWith(prefix)) return null;
+  final id = url.substring(prefix.length);
+  return _hostFileId.hasMatch(id) ? id : null;
+}
+
+/// One `/_host/` publication still on disk, as reported by [ValenceServer.listHostFiles] (§3).
+class HostFile {
+  const HostFile({required this.url, required this.sizeBytes, required this.modified});
+
+  /// The relative URL the page was handed, which is what the app's own rows hold.
+  final String url;
+
+  /// The published bytes' size on disk. The MIME sidecar's 32-odd bytes are not counted.
+  final int sizeBytes;
+
+  /// The bytes' last-modified time, which is the publication time unless something else touched them.
+  final DateTime modified;
+}
+
 /// Content types a WebView will not execute. A `/_host/` response may only carry one of these.
 ///
 /// These bytes are not ours — they come from a camera, a download or a remote server — and they are served
@@ -222,6 +248,73 @@ final class ValenceServer {
     await File('${_hostDir.path}${Platform.pathSeparator}$id').writeAsBytes(bytes, flush: true);
     await File('${_hostDir.path}${Platform.pathSeparator}$id.t').writeAsString(contentType, flush: true);
     return '/_host/f/$id';
+  }
+
+  /// Revokes a publication: deletes the bytes and MIME sidecar behind [url].
+  ///
+  /// [url] is the relative URL [publishHostFile] returned. Returns whether a copy was there to delete, so
+  /// revoking twice is not an error and a delete path can be re-run after a crash. Anything that is not
+  /// one of this host's publication URLs is an [ArgumentError], not a miss.
+  ///
+  /// Nothing collects these copies on its own and nothing can (§3): the URLs live in durable rows the host
+  /// cannot read, so a sweep by age or size would blank images the app still references. Call this in the
+  /// same operation that deletes the row or file that owned the URL.
+  Future<bool> revokeHostFile(String url) async {
+    final id = _hostFileIdOf(url);
+    if (id == null) {
+      throw ArgumentError.value(
+        url,
+        'url',
+        'not a /_host/f/<id> URL that publishHostFile returned (contracts §3)',
+      );
+    }
+    final file = File('${_hostDir.path}${Platform.pathSeparator}$id');
+    final typeFile = File('${_hostDir.path}${Platform.pathSeparator}$id.t');
+    final existed = file.existsSync() || typeFile.existsSync();
+    // The bytes go first, because a serve needs both files: a failure or a kill between the two deletes
+    // leaves a URL that already 404s rather than one that still serves.
+    if (file.existsSync()) {
+      try {
+        await file.delete();
+      } on FileSystemException {
+        // A real failure — a permission or I/O error — must reach the caller, who is about to tell a
+        // user the photo is gone. A concurrent revoke of the same URL is not one: the postcondition
+        // this method promises holds, so only a file that is still there is an error.
+        if (file.existsSync()) rethrow;
+      }
+    }
+    if (typeFile.existsSync()) {
+      try {
+        await typeFile.delete();
+      } on FileSystemException catch (e) {
+        // The publication is revoked either way — without its bytes the URL 404s — so this is a 32-byte
+        // leftover to log, not a failure to report to a caller who asked for the bytes gone.
+        _log('server: revoked /_host/f/$id but could not delete its type sidecar ($e)');
+      }
+    }
+    return existed;
+  }
+
+  /// Every `/_host/` publication still on disk, to reconcile against the app's own rows (§3).
+  ///
+  /// The case this exists for is a copy whose owning row never got written — a crash between the publish
+  /// and the insert — which no delete path can reach. It reads the directory and the entries' sizes, not
+  /// the sidecars, so it reports no content types; anything whose name is not a valid id, the `.t`
+  /// sidecars included, is skipped.
+  Future<List<HostFile>> listHostFiles() async {
+    if (!_hostDir.existsSync()) return const [];
+    final out = <HostFile>[];
+    await for (final entry in _hostDir.list(followLinks: false)) {
+      if (entry is! File) continue;
+      final name = entry.uri.pathSegments.last;
+      if (!_hostFileId.hasMatch(name)) continue;
+      final stat = entry.statSync();
+      out.add(HostFile(
+          url: '/_host/f/$name', sizeBytes: stat.size, modified: stat.modified));
+    }
+    // Sorted so a caller diffing two listings, or a test, sees a stable order rather than the directory's.
+    out.sort((a, b) => a.url.compareTo(b.url));
+    return out;
   }
 
   Future<void> _handle(HttpRequest req) async {

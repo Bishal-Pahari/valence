@@ -137,9 +137,13 @@ The package cannot write native project files, so these are yours:
   `imageQuality` is a request, not a guarantee, so a gallery pick can be PNG bytes in a `.jpg` path,
   and a type taken from the extension is wrong for everything that reads it. Each call makes a
   durable copy with a new URL, even
-  for identical bytes. Reuse that URL; deleting a source or row does not revoke it. There is no
-  built-in quota, expiry or cleanup API in 0.4. See [publication lifetime](../../docs/host-file-lifetime.md)
-  before using it for removable or sensitive media.
+  for identical bytes. Reuse that URL; deleting a source or row does not revoke it. Nothing collects
+  these copies on its own — and nothing can, because the URLs live in rows only the app can read — so
+  **`valence.revokeHostFile(url)` in the same operation that deletes the row that owned it**, and
+  `valence.listHostFiles()` to reconcile away a publish whose row never got written. A revoked URL
+  404s, but the WebView's cache is not the disk. See
+  [publication lifetime](../../docs/host-file-lifetime.md) before using it for removable or sensitive
+  media.
 - **`app.ready()` is what commits an OTA release.** A bundle that never calls it fails its trial twice and
   is rolled back. Call it after the first meaningful paint.
 - **A WebView eviction kills the app on Android, and 0.4 cannot stop it.** The page runs in a separate,

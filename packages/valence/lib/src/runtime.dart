@@ -61,7 +61,7 @@ export 'push.dart' show ValencePush, ValencePushMessage, ValencePushTransport;
 export 'secure.dart'
     show ValenceSecure, secureAuthTokenKey, secureAuthAccountKey;
 export 'server.dart'
-    show ValenceServer, hostFileContentTypes, normaliseRequestPath;
+    show HostFile, ValenceServer, hostFileContentTypes, normaliseRequestPath;
 export 'state.dart' show ValenceState;
 export 'store.dart'
     show
@@ -1281,6 +1281,37 @@ final class Valence {
           BridgeErrorCode.internal, 'the loopback server is not bound yet');
     }
     return server.publishHostFile(bytes, contentType: contentType);
+  }
+
+  /// Revokes a publication made by [publishHostFile]: its bytes and MIME sidecar are deleted.
+  ///
+  /// [url] is the relative URL that call returned, which is what the app's own rows hold. Returns whether
+  /// a copy was there to delete, so revoking twice is not an error.
+  ///
+  /// Call it in the **same operation** that deletes the row or file that owned the URL: nothing collects
+  /// these copies on its own, and a host-side sweep cannot be added safely, because the URLs live in rows
+  /// only the app can read (§3). A revoked URL 404s, but a document that already loaded it may keep
+  /// rendering it from the WebView's cache — this reclaims disk, it is not secure erasure.
+  Future<bool> revokeHostFile(String url) {
+    final server = _server;
+    if (server == null) {
+      throw BridgeError(
+          BridgeErrorCode.internal, 'the loopback server is not bound yet');
+    }
+    return server.revokeHostFile(url);
+  }
+
+  /// Every `/_host/` publication still on disk, to reconcile against the app's own rows (§3).
+  ///
+  /// For the copies no delete path can reach: a publish whose owning row never got written. Compare this
+  /// with the app's rows and [revokeHostFile] what nothing references.
+  Future<List<HostFile>> listHostFiles() {
+    final server = _server;
+    if (server == null) {
+      throw BridgeError(
+          BridgeErrorCode.internal, 'the loopback server is not bound yet');
+    }
+    return server.listHostFiles();
   }
 
   /// How many local writes are still waiting to sync, across every writable bucket.

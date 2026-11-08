@@ -940,6 +940,22 @@ void main() {
             .having((e) => e.code, 'code', BridgeErrorCode.internal)),
       );
     });
+
+    test('revoking and listing fail the same way before the server is bound', () async {
+      final v = await open();
+      // Not a silent `false` and not an empty list: either would read as "nothing published" to a delete
+      // path or a reconcile, and both run at times the server may not be up (§3).
+      expect(
+        () => v.revokeHostFile('/_host/f/0123456789abcdef01234567'),
+        throwsA(isA<BridgeError>()
+            .having((e) => e.code, 'code', BridgeErrorCode.internal)),
+      );
+      expect(
+        () => v.listHostFiles(),
+        throwsA(isA<BridgeError>()
+            .having((e) => e.code, 'code', BridgeErrorCode.internal)),
+      );
+    });
   });
 
   group('sync.now', () {

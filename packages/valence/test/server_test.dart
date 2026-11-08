@@ -523,6 +523,109 @@ void main() {
       expect(hostFileContentTypes, contains('application/pdf'));
     });
 
+    test('revoking a publication deletes its bytes and sidecar, and the URL then 404s', () async {
+      final url = await server.publishHostFile(utf8.encode('PNGDATA'), contentType: 'image/png');
+      final id = url.split('/').last;
+      expect((await request(server, url)).status, 200);
+
+      expect(await server.revokeHostFile(url), isTrue);
+      expect(File('${hostDir.path}/$id').existsSync(), isFalse);
+      expect(File('${hostDir.path}/$id.t').existsSync(), isFalse);
+      final res = await request(server, url);
+      expect(res.status, 404);
+      expect(res.body, isNot(contains('PNGDATA')));
+    });
+
+    test('revoking twice is not an error, so a delete path can be re-run after a crash', () async {
+      final url = await server.publishHostFile(utf8.encode('PNGDATA'), contentType: 'image/png');
+      expect(await server.revokeHostFile(url), isTrue);
+      expect(await server.revokeHostFile(url), isFalse, reason: 'already gone, not a failure');
+    });
+
+    test('revoking one publication leaves the others, even with identical bytes', () async {
+      final a = await server.publishHostFile(utf8.encode('SAME'), contentType: 'image/png');
+      final b = await server.publishHostFile(utf8.encode('SAME'), contentType: 'image/png');
+      expect(a, isNot(b), reason: 'a fresh id even for identical bytes (§3)');
+      await server.revokeHostFile(a);
+      expect((await request(server, a)).status, 404);
+      expect((await request(server, b)).body, 'SAME');
+    });
+
+    test('nothing a caller writes is joined to a directory: only a real publication URL revokes', () async {
+      File('${root.path}/secret.txt').writeAsStringSync('TOP SECRET');
+      for (final bad in [
+        '/_host/f/../../secret.txt',
+        '/_host/f/..%2F..%2Fsecret.txt',
+        '/_host/f/0123456789ABCDEF01234567',
+        '/_host/f/0123456789abcdef',
+        '/_host/f/0123456789abcdef012345678',
+        '/_host/f/0123456789abcdef01234567?x=1',
+        '/_host/f/0123456789abcdef01234567/..',
+        '/_host/alive',
+        '/index.html',
+        '0123456789abcdef01234567',
+        '',
+      ]) {
+        await expectLater(
+            server.revokeHostFile(bad), throwsA(isA<ArgumentError>()),
+            reason: bad);
+      }
+      expect(File('${root.path}/secret.txt').existsSync(), isTrue);
+      // A well-formed id that was never published is a miss, not an error.
+      expect(await server.revokeHostFile('/_host/f/0123456789abcdef01234567'), isFalse);
+    });
+
+    test('the bytes go before the sidecar, so an interrupted revoke still 404s', () async {
+      final url = await server.publishHostFile(utf8.encode('PNGDATA'), contentType: 'image/png');
+      final id = url.split('/').last;
+      // What the process dying between the two deletes leaves behind.
+      File('${hostDir.path}/$id').deleteSync();
+      expect(File('${hostDir.path}/$id.t').existsSync(), isTrue);
+      expect((await request(server, url)).status, 404, reason: 'a serve needs both files');
+      // And the leftover is still collectable.
+      expect(await server.revokeHostFile(url), isTrue);
+      expect(File('${hostDir.path}/$id.t').existsSync(), isFalse);
+    });
+
+    test('two revokes of the same URL race to the same outcome, without throwing', () async {
+      final url = await server.publishHostFile(utf8.encode('PNGDATA'), contentType: 'image/png');
+      final results = await Future.wait(
+          [server.revokeHostFile(url), server.revokeHostFile(url)]);
+      expect(results, contains(true));
+      expect((await request(server, url)).status, 404);
+    });
+
+    test('listHostFiles reports each publication once, with its size, and skips the sidecars', () async {
+      expect(await server.listHostFiles(), isEmpty);
+      final a = await server.publishHostFile(utf8.encode('PNGDATA'), contentType: 'image/png');
+      final b = await server.publishHostFile(utf8.encode('PDF'), contentType: 'application/pdf');
+      File('${hostDir.path}/not-an-id').writeAsStringSync('whatever landed here');
+
+      final listed = await server.listHostFiles();
+      expect(listed.map((f) => f.url).toSet(), {a, b});
+      expect(listed.length, 2, reason: 'the .t sidecars and a non-id name are not publications');
+      expect(listed.firstWhere((f) => f.url == a).sizeBytes, 'PNGDATA'.length);
+      expect(listed.firstWhere((f) => f.url == b).sizeBytes, 'PDF'.length);
+      expect(listed.map((f) => f.url).toList(), [a, b]..sort());
+      for (final f in listed) {
+        expect(f.modified.isAfter(DateTime.now().subtract(const Duration(minutes: 5))), isTrue);
+      }
+    });
+
+    test('a listed URL is the one revoke takes, which is what makes reconciling possible', () async {
+      // The copy whose owning row never got written: a crash between the publish and the insert.
+      final orphan = await server.publishHostFile(utf8.encode('ORPHAN'), contentType: 'image/png');
+      final kept = await server.publishHostFile(utf8.encode('KEPT'), contentType: 'image/png');
+      final rows = {kept};
+
+      for (final f in await server.listHostFiles()) {
+        if (!rows.contains(f.url)) expect(await server.revokeHostFile(f.url), isTrue);
+      }
+      expect((await server.listHostFiles()).map((f) => f.url), [kept]);
+      expect((await request(server, orphan)).status, 404);
+      expect((await request(server, kept)).body, 'KEPT');
+    });
+
     test('the resume probe answers to us and nothing else', () async {
       final res = await request(server, '/_host/alive');
       expect(res.status, 204);

@@ -17,6 +17,7 @@ export 'src/runtime.dart'
     show
         BridgeError,
         BridgeErrorCode,
+        HostFile,
         Valence,
         ValenceAppInfo,
         ValenceAppState,

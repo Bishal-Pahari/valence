@@ -18,6 +18,36 @@ store's `waiting` line is still the only instrument for it.
 **If you were seeing this,** nothing in your app changes; the numbers were always right. Rebuild the
 native host to get the line.
 
+## Unreleased: a published `/_host/` file can be revoked, and the leftovers can be found
+
+`publishHostFile` wrote a durable copy that nothing ever collected: not a restart, not an OTA
+commit or rollback, not bundle GC, not signing out. An app that published on every read of a row
+accumulated copies with no way back — one test app reached 10,155 files and 963 MiB against 224 KiB
+of real source media — and "Remove photo" could not honestly say it removed anything.
+
+Two new native calls, both additive, with no schema bump and no bridge method:
+
+```dart
+await valence.revokeHostFile(url);        // the relative URL publishHostFile returned
+await valence.listHostFiles();            // every publication still on disk: url, sizeBytes, modified
+```
+
+**Revoke in the same operation that deletes the row or file that owned the URL.** `revokeHostFile`
+deletes the publication's bytes and MIME sidecar and returns whether a copy was there, so revoking
+twice is a `false` rather than an error and a delete path is safe to re-run after a crash. Anything
+that is not one of your own publication URLs throws `ArgumentError`. `listHostFiles` is the
+reconcile path for a copy whose owning row never got written: compare it with your rows and revoke
+what nothing references.
+
+**Collection stays manual on purpose.** Your published URLs live in rows only your app can read, so
+a host-side sweep by age or size would blank images you still reference, with nothing in either log.
+And a revoked URL 404s, but the WebView's cache is not the disk: `/_host/` responses stay
+`immutable` for a year, so a document that already loaded one may keep rendering it. Revocation
+reclaims disk and ends new reads; it is not secure erasure of what the page already has.
+
+**If you were seeing this,** nothing you have shipped changes. Add the revoke call to your delete
+path, and run one reconcile pass at startup if your app has been publishing per read.
+
 ## Unreleased: `/_host/` files publish the content type the bytes actually are
 
 A picker's `imageQuality` is a re-encode request, not a guarantee: a gallery pick can come back as
