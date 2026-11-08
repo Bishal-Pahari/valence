@@ -1,5 +1,77 @@
 # Integration review correction - 2026-11-06
 
+## November 9: publication adoption, App C iteration 164
+
+In plain terms: all must-haves and original rebase-queue items remain done.
+Read both findings inventories and newest reports, Kundalini 24 / App C 164.
+There is no eligible must-have to claim. S1 remains deliberately parked, S2
+needs Play, and S10/P1 remain deferred. No item Status cell changed.
+
+Both integrations already contain the newest packages bases, code
+dd1c53dd9ce7a54588d22c54bf3c0183548b4a75 / site
+bb0f34ce600dc73d3f27eae7d9f240ceac5ceb28. Neither base moved during initial
+inspection. Retained the existing assembly rather than creating redundant
+merges: all 46 exact source-tip pairs recorded below are ancestors, with original
+queue order R8, R7, R6, R3, R4, R5, R9, R10, R14 and subsequent follow-ups.
+The integration delta against packages remains documentation only.
+
+App C 164 adopts native-only publication revocation and durable URL reuse. Its
+saved receipts show three reused photo URLs, original mapping continuity from
+PID 5206 to 8017, and both removed fixture publications returning HTTP 404.
+Historical unowned copies and crash-window reconciliation remain unresolved;
+this is neither an automatic collection nor a browser-cache erasure verdict.
+Inspected the app's serialized publication helper read only. No app changes
+were made here. Kundalini's F-83/F-58/F-84 closures remain app-reported evidence;
+there is no newer Kundalini report or fresh local device acceptance.
+
+F-58's failed inner CDP observation remains separate: 122180 ms wrapper time,
+live painted PID 5206, then an independent 389 ms successful read without restart.
+The dependent missing-input failure is also retained. New F-60 repeats the
+debugging sentence already corrected by codex/observer-evidence in this
+integration; the app's saved documentation predates that queued correction.
+A successful later read cannot locate an earlier missing dispatch/reply boundary.
+Decision: security and users' data first; do not add a speculative runtime retry,
+replay potentially completed actions, sweep unowned files or reset owner data.
+No runtime, schema, dependency or release version changed.
+
+Independently checked all 46 report links, both archived APK hashes and five
+embedded signed payload hashes/sizes each. Release: 54875316 bytes, SHA256
+36b5bcd15243551a5a113940528a26344956d27306c9ef3d66265f33980eb784;
+debug: 193243342 bytes, SHA256
+2d9e892c0b72f0ba940c66742aeefdaaaea598149178a01dce805e385b3cf6ac.
+Matched all four worker lease lines to raw logcat and compared activation files
+byte for byte: pending 1794176060, no trial, SHA256
+ddc5568283a6af74c81c11a1dd26ed770256c86780dd0638d5a7d90946a50514.
+The saved scoped audit has 114 passing checks; inspected, not rerun. Inspected
+fresh-painted.png: six seed units, zero photos, widget absent, airplane icon.
+The registered worker was naturally observed once; 663.328 seconds is observation
+time, not execution duration or a cadence guarantee. Release PID 4436's 7522 ms
+Valence.open completion is not paint latency or lock-cause evidence. Historical
+startup/process/observer findings and the KGP warning remain open. No fresh
+emulator session or iOS acceptance is claimed; test repositories stayed read only.
+
+Security checklist: signature/appId/sequence/floor/requires/path/hash verification
+order, nonce, strict decoding, navigation/subframe locks, atomic state, key
+handling and release-build dev exclusion are unchanged. Native-only publication
+authority and existing path/isolation regression coverage are retained.
+
+Fresh combined gates passed November 9. Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, one local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built, Gradle 25.1s |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+Existing app_badge_plus Kotlin migration warning remains. Logs:
+%TEMP%/valence-20261109-164-<gate>.log and
+%TEMP%/valence-20261109-164-results.json. Only validation and handoff notes
+follow these gates. No publication, push or protected-branch mutation.
+
 ## November 9: refresh after host-file revocation, App C iteration 163
 
 In plain terms: all must-haves and original queue items remain done. Read both
