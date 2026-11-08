@@ -144,7 +144,7 @@ void main() {
       final after = syncWith(MockClient((_) async => http.Response('{}', 200)),
           clock: () => taken.subtract(const Duration(minutes: 3)), log: log);
       expect(await after.acquireLease(), isTrue);
-      expect(log.has('further ahead than its 2-minute expiry, so the clock moved'), isTrue);
+      expect(log.has('at or beyond its 2-minute expiry, so the clock moved'), isTrue);
       expect(log.has('dated 180000ms in the future'), isTrue, reason: 'the magnitude, with its direction');
     });
 
@@ -375,23 +375,30 @@ void main() {
         // host correctly reported as 3039. Without the trail on the line there is nothing in the log
         // that accounts for the gap, and §5.6's old cross-reference, §5.1.1's `waiting` line, only fires
         // after ten seconds. A clock that answers later on each call is what a contended device is.
+        // **One driver and one clock**, because the §8 claim is about the two lines *agreeing*: the
+        // release's `heldForMs` minus the `took` line's trail is the gap a reader measures between the
+        // two log timestamps. Two drivers would prove each number separately and tie neither, and a
+        // regression that made the trail exceed the hold would pass.
         final at = DateTime(2026, 11, 4, 9);
-        var calls = 0;
+        // 1: the in-transaction sample. 2: the trail, read when the line is written. 3: the release.
+        const trail = 2951, hold = 4951;
+        final steps = [
+          at,
+          at.add(const Duration(milliseconds: trail)),
+          at.add(const Duration(milliseconds: hold)),
+        ];
+        var call = 0;
         final log = LogSpy();
         final s = syncWith(MockClient((_) async => http.Response('{}', 200)),
-            log: log, clock: () => calls++ == 0 ? at : at.add(const Duration(milliseconds: 2951)));
+            log: log, clock: () => steps[call < steps.length ? call++ : steps.length - 1]);
         expect(await s.acquireLease(), isTrue);
-        expect(log.has('took the lease kind=foreground pid=$pid (dated 2951ms ago)'), isTrue);
+        expect(log.has('took the lease kind=foreground pid=$pid (dated ${trail}ms ago)'), isTrue);
         await s.releaseLease();
-        // And the release still measures from the sample, not from the line, so the two agree: 2951 of
-        // the 4951 below had already elapsed when the `took` line was written.
-        final rel = LogSpy();
-        var n = 0;
-        final t = syncWith(MockClient((_) async => http.Response('{}', 200)),
-            log: rel, clock: () => n++ == 0 ? at : at.add(const Duration(milliseconds: 4951)));
-        expect(await t.acquireLease(), isTrue);
-        await t.releaseLease();
-        expect(rel.has('released the lease kind=foreground heldForMs=4951'), isTrue);
+        // The release measures from the sample, not from the line, so the pair brackets it: a reader
+        // subtracting the two log timestamps sees `hold - trail`, and the trail on the line is what
+        // closes that gap. Both halves asserted against one timeline, and the gap is non-zero.
+        expect(log.has('released the lease kind=foreground heldForMs=$hold'), isTrue);
+        expect(hold - trail, 2000, reason: 'the bracket this test exists to pin is not zero');
         // Never a negative: a clock corrected backwards between the sample and the line reads as 0,
         // for the same reason `leaseAgeMs` floors there (K F-83).
         final back = LogSpy();
@@ -400,6 +407,16 @@ void main() {
             log: back, clock: () => m++ == 0 ? at : at.subtract(const Duration(seconds: 30)));
         expect(await b.acquireLease(), isTrue);
         expect(back.has('(dated 0ms ago)'), isTrue);
+        // And a clock that *throws* on the trail read does not cost the caller its lease: the row is
+        // already committed and `taken` is already true, so a diagnostic that threw here would leak the
+        // lease for the whole TTL while reporting that the acquisition failed.
+        await b.releaseLease();
+        final thrown = LogSpy();
+        var k = 0;
+        final c = syncWith(MockClient((_) async => http.Response('{}', 200)),
+            log: thrown, clock: () => k++ == 0 ? at : throw StateError('a clock may not break a lease'));
+        expect(await c.acquireLease(), isTrue);
+        expect(thrown.has('took the lease kind=foreground pid=$pid (dated 0ms ago)'), isTrue);
       });
 
       test('the pair covers the three paths that take the lease outside run()', () async {
@@ -429,7 +446,7 @@ void main() {
         final at = now.millisecondsSinceEpoch;
         for (final (raw, expected) in [
           ('${at - 180000}:${pid + 1}:background', 'past its 2-minute expiry'),
-          ('${at + 180000}:$pid:foreground', 'further ahead than its 2-minute expiry, so the clock moved'),
+          ('${at + 180000}:$pid:foreground', 'at or beyond its 2-minute expiry, so the clock moved'),
           ('${at + 180000}:$pid:foreground', 'dated 180000ms in the future'),
           // Ahead of us but not ours: the pid settled it, so the clock is not the reason given.
           ('${at + 60000}:${pid + 1}:push', 'which is gone'),

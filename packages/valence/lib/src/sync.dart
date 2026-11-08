@@ -304,7 +304,7 @@ final class ValenceSync {
                         ? 'written by an older host, which records no owner'
                         : owner != pid
                             ? 'left by process $owner, which is gone'
-                            : 'further ahead than its ${syncLeaseTtl.inMinutes}-minute expiry, so the clock moved';
+                            : 'at or beyond its ${syncLeaseTtl.inMinutes}-minute expiry, so the clock moved';
                 diagnosticLog(_log, 'sync: taking over a lease (kind=${leftBy ?? 'unknown'}, $when): $why');
               }
               await txn.insert(
@@ -323,13 +323,24 @@ final class ValenceSync {
       // `holder=foreground` lines with no "took the lease" anywhere to pair them against.
       _leaseTakenAt = now;
       // **The line carries how far back the take-time it records is** (K F-85). This log call happens
-      // after the sample: the `BEGIN IMMEDIATE` wait, the read and the commit all sit between them, so
+      // after the sample — the insert, the commit and the await hops back out all sit between them — so
       // under seed-import load the two lease lines bracketed 91ms around a hold the host correctly
-      // reported as `heldForMs=3039`. A reader who brackets the pair is out by a factor of 33 with
-      // nothing in the log accounting for it, and §5.6 used to send them to §5.1.1's `waiting` line —
-      // which only fires after ten seconds, while every wait observed was under three. Floored at zero,
-      // like every other age this file reports.
-      final trail = _now().millisecondsSinceEpoch - now;
+      // reported as `heldForMs=3039`. A reader who brackets the pair is out by a factor of 33, with
+      // nothing in the log accounting for it. This is **not** the `BEGIN IMMEDIATE` wait: that happens
+      // before the sample, by design (see the K F-83 comment above), and §5.1.1's `waiting` line is
+      // still the instrument for it. This is the latency after it, which is what makes the pair of
+      // lines bracket `heldForMs`.
+      //
+      // Wrapped, because a diagnostic may not change the outcome of the operation it describes: `clock`
+      // is injectable, the row is already committed and `taken` is already true, so a throw here would
+      // leak the lease for the whole TTL while telling the caller the acquisition failed. Floored at
+      // zero, like every other age this file reports.
+      var trail = 0;
+      try {
+        trail = _now().millisecondsSinceEpoch - now;
+      } catch (_) {
+        trail = 0;
+      }
       diagnosticLog(_log,
           'sync: took the lease kind=${kind.name} pid=$pid (dated ${trail < 0 ? 0 : trail}ms ago)');
     }

@@ -1905,14 +1905,22 @@ function runFlutter(args, cwd, timeoutMs = DEFAULT_CHILD_TIMEOUT_MS) {
   // stale UNC entry blocks `where.exe` in name resolution, and an unbounded child here is one
   // `--timeout` cannot move — the same unattributable hang, one spawn earlier.
   const probe = spawnSync('where.exe', ['flutter.bat'], { encoding: 'utf8', timeout: timeoutMs });
-  // A failed discovery is not evidence that Flutter is absent. Preserve timeout, signal and
-  // execution errors so diagnose keeps this check FAIL; only a completed no-match is ENOENT.
-  if (probe.error?.code === 'ENOENT') {
-    return { ...probe, error: new Error('where.exe is unavailable; Flutter discovery did not run') };
+  // A failed discovery is not evidence that Flutter is absent, so only a **completed no-match** reads as
+  // an absent SDK; everything else keeps the row FAIL. And it is named as *itself*, because the callers
+  // below all phrase their own failure as the Flutter command — so returning a failed probe to them put
+  // `where.exe`'s output under "flutter pub deps --json failed; run flutter pub get in the host" and sent
+  // a developer to the pub cache over a dead mapped drive in PATH, which is C F-54's own complaint one
+  // spawn earlier. Throwing is what reaches `check`'s row with this message intact.
+  if (probe.status === 1 && !probe.signal && !probe.error) return { error: { code: 'ENOENT' } };
+  if (probe.status !== 0) {
+    if (killedByTimeout(probe)) {
+      throw timeoutError('where.exe flutter.bat, the Windows Flutter discovery probe',
+        'check PATH for a dead mapped drive or a stale UNC entry, which blocks name resolution', timeoutMs);
+    }
+    const e = new Error(`where.exe flutter.bat could not establish whether Flutter is installed${childTail(probe)}`);
+    e.fix = 'check PATH for a dead mapped drive or a stale UNC entry, and that where.exe is on it';
+    throw e;
   }
-  if (probe.error || probe.signal) return probe;
-  if (probe.status === 1) return { error: { code: 'ENOENT' } };
-  if (probe.status !== 0) return probe;
   return spawnSync('cmd.exe', ['/d', '/c', `flutter ${args.join(' ')}`], options);
 }
 

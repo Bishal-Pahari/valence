@@ -350,6 +350,24 @@ void main() {
         .onMessageReceived(const JavaScriptMessage(message: '{}'));
     await io(tester);
     expect(messages.length, before);
+    // And the drop is **said**, which is the only thing that makes it diagnosable: there is no reply,
+    // so §3's bridge-error line cannot carry it and `traceBridge` sees no finished call, leaving a page
+    // whose every `call()` hangs for ever with nothing anywhere to explain it — §4.3's first candidate,
+    // "the message never dispatched", in its one permanent host-side form.
+    expect(log.has('dropping messages, a store update is required'), isTrue);
+    // Once per state, not once per message: a page that retries in a loop must not bury the reason.
+    final lines = log.lines
+        .where((l) => l.contains('dropping messages, a store update is required'))
+        .length;
+    webview.controller.channel
+        .onMessageReceived(const JavaScriptMessage(message: '{}'));
+    await io(tester);
+    expect(
+        log.lines
+            .where((l) => l.contains('dropping messages, a store update is required'))
+            .length,
+        lines,
+        reason: 'one line per state, like §5.6 refusals');
     await tester.pump(const Duration(seconds: 1));
     expect(runtime.state.trialFails, 0);
     // Taking the page out of the widget tree is not taking it down. The controller and the loopback
