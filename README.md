@@ -294,3 +294,5 @@ Response size grants: compiled `http.maxBodyBytes` raises the decompressed respo
 For API sessions that may survive restart, compiled `http.cookieJar.sessionCookieDays` opts into 1–30 days from receipt; omitted keeps session cookies memory-only. Regenerate and rebuild the host. Restarts never renew the deadline; removing the opt-in revokes stored sessions. See [Persistent sessions](https://getvalence.pages.dev/docs/guides/persistent-sessions/).
 
 Revision 19 adds `bundle.check()` and `bundle.checked` so a page can request a check and learn when an offer needs a newer store host, even when no bundle becomes pending. [Explicit checks and completion](docs/bundle-checks.md).
+
+Sync lease acquisition dates its decision after the transactional database read, preventing a queued read from displacing a live sibling renewal (K F-83). Rebuild the native host; no schema or web-app change is required. See [the reproduction and validation](docs/lease-clock-read.md).

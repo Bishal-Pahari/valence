@@ -70,6 +70,8 @@ re-export, instead of emitting the same name twice and breaking the web build on
 
 ## Unreleased: tapping a reminder takes the user to the reminder, not back to the screen they left
 
+- Fix a queued sync lease acquisition mistaking a sibling renewal for clock rollback and starting a second sync. The native host must be rebuilt; no schema or web-app changes are needed.
+
 **A cold start that carries a destination no longer opens the restored route.** When Android reclaims
 your app's task and the user comes back by tapping a reminder, a deep link or a push notification, the
 OS hands the host both things at once: the saved route *and* the intent. The host used to load the saved
