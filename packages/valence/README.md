@@ -133,7 +133,10 @@ The package cannot write native project files, so these are yours:
   log, visible only after a reload or a back gesture. `valence bundle` warns about it.
 - **The bridge is not a path for bytes.** Messages are capped at 256 KB of UTF-8 each way. Native bytes
   reach the page through `valence.publishHostFile(...)`, which serves them under the reserved `/_host/`
-  prefix with `nosniff` and a locked-down CSP.
+  prefix with `nosniff` and a locked-down CSP. Each call makes a durable copy with a new URL, even
+  for identical bytes. Reuse that URL; deleting a source or row does not revoke it. There is no
+  built-in quota, expiry or cleanup API in 0.4. See [publication lifetime](../../docs/host-file-lifetime.md)
+  before using it for removable or sensitive media.
 - **`app.ready()` is what commits an OTA release.** A bundle that never calls it fails its trial twice and
   is rolled back. Call it after the first meaningful paint.
 - **A WebView eviction kills the app on Android, and 0.4 cannot stop it.** The page runs in a separate,
