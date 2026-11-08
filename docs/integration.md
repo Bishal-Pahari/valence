@@ -1,5 +1,76 @@
 # Integration review correction - 2026-11-06
 
+## November 8: iteration 161 retains the inner observer timeout
+
+In plain terms: every must-have and original queue item remains done. Read both
+findings inventories and newest reports, Kundalini 23 / App C 161. No eligible
+must-have remains; S1 stays parked, S2 needs Play, and S10/P1 remain deferred.
+
+App C retains a failed app.state observer: 122658ms elapsed, with an explicit
+120000ms inner CDP timeout under the 150000ms parent. PID5978 remains alive and
+the page remains painted. A separate isolated read completes in 384ms without
+restart, followed by a separate successful media retry. These observations do
+not locate a dispatch/reply failure or establish a Valence deadlock. The R28
+attempt fails earlier, in adb pidof before dispatch; its retry is separate too.
+The cold-widget assertion initially expects a list while the restored task opens
+detail. A UI-only list reveal shows installed1 in the same PID9011; without a
+post-click document-marker comparison, that alone cannot rule out a reload.
+
+Matched raw R29 log lines to PID5095, store.open id1/isolate258837557: waiting
+10002ms, completed18501ms, Valence.open18891ms. Inspected initial Flutter splash
+and separate offline continuation with the retained inspection/photo. Neither
+the pending future nor the continuation establishes a lock holder, package cause
+or exact meaningful-paint latency. Initial startup and historical process-loss
+findings remain open; Kundalini F-83 still needs its rebuilt-host device recheck.
+
+Independently resolved all 47 local report links and rehashed both APK archives.
+Both contain builtin1794158786, with all five payload hashes and sizes verified.
+Release SHA256: 277de300be2f1ce463d2ebcb556b223200b6ac5f0476894aa85931c950fc679c.
+Debug SHA256: d84acd76598966cd0dada36a0436110195f5ac7e54370f4fa44f2879adb03699.
+Saved artifact audit records 105 passes; its scoped checks do not close the
+qualified failures. Independently counted doctor17PASS/10WARN/zeroFAIL.
+
+Matched all four PID9531 lease lines to raw worker logcat. The receipt explicitly
+records observed=true/forced=true: one eligible explicitly triggered registered
+execution, with 601.719s observation, not execution duration or natural cadence.
+Stable native SQLite receipts before foreground resume record matching outgoing
+objects, outbox0 and inbound present. Activation files independently match byte
+for byte: pending1794159921/no trial, SHA256
+82fab09f058d5b4d345afdc3d800ee04ffe43b6b0af32e349121bebd1012b1db.
+Inspected fresh-painted.png: six seed units, zero photos, no installed widget.
+Its canonical release receipt records an independent offline installation and
+30448ms observation window, not exact paint latency. Final owner receipt retains
+the original inspection with outbox0/current fixtures0.
+
+F-27 remains open: saved host publications978136KiB/10067files versus224KiB source
+media; removed fixture publications still answer200. No leak rate or startup
+cause is inferred. Decision: security and users' data first; preserve failed
+observations and require causal evidence before changing lease ownership,
+database opening, timeouts or publication retention. No runtime/schema/version
+change is justified here.
+
+Both integrations retain packages c091bee/5c17a0d and all 45 exact current source
+tip pairs, independently checked against branch heads and ancestry. Bases and
+tips are unchanged, so no reconstruction is needed. Previous integration tips:
+code b966137/site1d0bb4e. Only mirrored validation notes change. Test apps remain
+read only; no protected-branch mutation, push, publication or fresh emulator run.
+iOS remains experimental and untested.
+
+Fresh combined gates passed November 8: root123/zero skips, generated Dart
+analysis and dispatch executed; core665/clean fatal-info analysis/zero-warning
+pub dry run; push2/clean analysis/zero-warning pub dry run (one local-override
+hint); bridge37/strict-verbatim TypeScript/pack dry run; example codegen
+written: []/29 tests/debug APK; Windows py Firebase audit PASS over core graph,
+manifest and19DEX; site50pages/SEO passed. Flutter gates ran serially. Gradle
+completed in24.1s; the existing app_badge_plus Kotlin warning remains. Logs:
+%TEMP%/valence-20261108-161-results.json and
+%TEMP%/valence-20261108-161-<gate>.log. Read-only artifact audit script:
+%TEMP%/valence-iteration161-readonly-audit.py.
+Security checklist: canonical verification order, nonce, strict decoding,
+navigation lock, atomic state, key handling and release dev-mode exclusion are
+unchanged. No item Status cells changed. Package/build gates and reviewed app
+receipts are distinct from a fresh device acceptance run.
+
 ## November 8: iteration 160 locates a slow database open
 
 In plain terms: every must-have and original rebase-queue item remains done.
