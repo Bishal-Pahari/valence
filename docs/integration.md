@@ -11,27 +11,32 @@ output is inconclusive. Separate a known non-mutating probe from a replay of a
 possibly completed action. Decision: security and users' data first; preserve
 failed evidence without adding speculative retries or resetting owner data.
 
-The follow-up is ready on codex/observer-evidence: code 6c4c0be / site bd93881.
+The follow-up is ready on codex/observer-evidence: code 771b641 / site f190654.
 Spec, source startup guide and website debugging guide agree. No runtime,
 generator, template, dependency, schema or version change.
 [Decision, evidence and security checklist](observer-evidence.md).
 
 Both integrations start from the newest packages bases:
-code 08f072e36fe7b6341c01c5137fab8fc302b82d44,
-site 4650df268513421812ef07f014b3dbf9d63426b9.
-Fast-forwarding from the prior integration was sufficient: packages already
-contains all 45 exact recorded source-tip pairs. Their original merge order
+code d0ce45f8ba50849b90e8892f6b5b462afdfdd161,
+site cdb30e5179bd9a4f1b659ad8e646dee9890e0e35.
+Initially fast-forwarded the prior integration to packages, which already
+contained all 45 exact recorded source-tip pairs. Their original merge order
 is retained in the Exact source-tip inclusion order table below (R8, R7, R6,
-R3, R4, R5, R9, R10, R14 first). No conflicts or schema renumbering were needed.
-Merged the new source commits 87a3645 / 958ecd4 last, producing content integrations
-1bb8b00952812b5efae0fee2b124e397d2a6d76d/
-790dae900c44525a06b95c03598a58adf3dbd5f0.
-Then merged their validation tips, producing 89bd52c / bd78661. All 46 current
-exact branch-tip pairs and both packages bases were checked as ancestors.
+R3, R4, R5, R9, R10, R14 first); the new observer follow-up is last.
+Both packages refs advanced again during final verification. Merged each into
+codex/observer-evidence, retaining all upstream reviewer fixes. Resolved the
+spec and website debugging conflicts by keeping the mandatory-store-update
+drop diagnostic alongside the stricter tracing/probe evidence limits.
+No schema renumbering was needed. Refreshed source merges b400708 / 129e674
+produced tested integrations 9c4aa451911a90b8b345f5262f5ff3d50e97c59c /
+7a4d376f93af685c047aed939c386de4b65b97b9. Merging their final validation tips
+produced 37a6ce6 / 5d8e4c6. All 46 current exact branch-tip pairs and both
+packages bases were checked as ancestors. The feature delta against these
+newest bases is documentation only.
 
 | Order | Branch | Code SHA | Site SHA |
 | --- | --- | --- | --- |
-| 46 | codex/observer-evidence | 6c4c0be1dce1651af928477c5b4a356ac3369c0b | bd93881e4d27fccd73a12c88840cf445ce878743 |
+| 46 | codex/observer-evidence | 771b641a63ba16d67bce787ea5167e76952f3626 | f1906543004823d7c26a778d3b053b1bbb439cd1 |
 
 Kundalini reports its rebuilt-host F-83 contention check passed and closes
 F-58/F-84; those are app-reported device results. Its new F-85 logging lag was
@@ -51,19 +56,23 @@ S1 stays parked, S2 needs Play, S10/P1 deferred; no item Status cells changed.
 
 Fresh combined gates passed November 9; Flutter commands ran serially:
 
+The intermediate refresh was stopped after root passed, while its core run was
+incomplete, because code packages advanced. It supplies no core verdict. The
+complete final run below covers both newest bases and the resolved merge.
+
 | Gate | Result |
 | --- | --- |
 | Root npm test | 123 passed, zero skips; generated Dart analysis/dispatch executed |
 | Core tests / fatal-info analysis / pub dry run | 666 passed / clean / zero warnings |
 | Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, one override hint |
 | Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
-| Example codegen / tests / debug APK | no writes / 29 passed / built, Gradle 37.4s |
+| Example codegen / tests / debug APK | no writes / 29 passed / built, Gradle 21.0s |
 | Standalone Windows py Firebase audit | PASS over core graph, manifest and 19 DEX files |
 | Website build / SEO | 50 pages passed; corrected debugging HTML verified |
 
 Existing app_badge_plus Kotlin migration warning remains. Logs:
-%TEMP%/valence-20261109-162-<gate>.log and
-%TEMP%/valence-20261109-162-results.json. Only validation/handoff notes follow
+%TEMP%/valence-20261109-162-final-<gate>.log and
+%TEMP%/valence-20261109-162-final-results.json. Only validation/handoff notes follow
 these gates. Canonical verification order, nonce, strict decoding, navigation
 lock, atomic state, key handling and release dev-mode exclusion are unchanged.
 Test apps stayed read only; no emulator session, iOS acceptance, push,
