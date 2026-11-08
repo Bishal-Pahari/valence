@@ -1917,6 +1917,15 @@ printing the exception or its arguments, then rethrows the original error. A fin
 `ready()` committed a trial. A phase entry without completion identifies the last
 observed phase; it does not establish the cause of a stall.
 
+App-owned initialization after `open` is outside these phases. Instrument existing
+awaits separately with fixed labels, a monotonic `Stopwatch`, and begin/complete/
+failed markers; rethrow the original error and keep diagnostic logger failures
+from changing startup. Never log arguments, exception bodies, paths or account
+data. Register a Flutter first-frame marker before `runApp` when locating that
+boundary. A Flutter frame can contain only a loading screen: it does not establish
+meaningful web paint or replace the web app's existing `ready()` call. Timing must
+not move awaits, add retries or change trial deadlines.
+
 Runtime-owned database operations (including open/configuration, seed import, prefs,
 sync observations and lease acquisition) report `store: waiting operation=<label>`
 after ten seconds pending and every ten seconds thereafter. Each line carries an
