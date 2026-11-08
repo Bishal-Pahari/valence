@@ -1,5 +1,98 @@
 # Integration review correction - 2026-11-06
 
+## November 8: iteration 149 qualified regression evidence
+
+In plain terms: every must-have and original rebase-queue item remains done.
+No eligible feature or queue refresh remains. Packages heads remain code
+c091bee15ac0cbb0d46139438460acbb46f72578 and site
+5c17a0d940a07cba81a305ea4522d9fd250e7ac6. Independently matched all 42
+current source-tip pairs to the recorded table and checked them and both packages
+heads as integration ancestors. Read both findings inventories and newest
+reports, Kundalini 23 / App C 149. This update changes
+evidence notes only.
+
+App C's saved audit has 96 passing artifact checks and scopedAcceptance=false.
+Independently resolved all 49 report evidence links, rehashed both archived APKs
+and verified hashes and sizes of all five embedded files per APK at
+builtin1794102956:
+
+- Release SHA256: c5b67585ab9b4575bd987ef3de50dfea51a8df64aa2dbb28435aebbb7504cb33.
+- Debug SHA256: d1618c34306e49db4732ec499c7fb954571a88f134602fbb4ca4e3d5cdffeb5b.
+
+Independently compared the isolated offline probe APK's manifest, signature and
+five files byte for byte with the canonical release. The inspected screenshot
+shows six seed units and zero photos; its receipt records an empty sandbox,
+airplane mode and paint after 17466ms. The temporary Android identity
+com.fieldnote.app.offlineprobe149 leaves canonical-package fresh installation
+and credential migration unverified. The owner was never cleared or restored.
+
+Doctor independently counts 17 PASS / 10 WARN / zero FAIL with the configured
+360-second child budget. Its initial extra store-listing warning overlapped the
+temporary package-ID build; the canonical rerun is separate. The stray missing.js
+evaluation failed before evaluating page code. Both observer mistakes remain
+recorded, with no product defect inferred. The inspected initial release screen
+is Flutter splash; the later offline screen paints the original inspection and
+photo. R29 has open timings but no matched long-operation wait/completion pair;
+neither paint latency nor a lock holder or cause follows from those timings.
+
+Reviewed saved native/security, media, queue-cap, reminder, routing, widget and
+signed two-strike rollback/rollforward receipts as app-run evidence. Independently
+matched seven raw PID9239 callback/lease/SUCCESS lines. Saved native SQLite
+receipts show outbox2/inbound absent before isolation, then incoming and outgoing
+rows with outbox0 before foreground resume. Independently compared exact pending
+activation bytes: SHA256
+8e8d344dcf7c32c1442e9e2659b9660f9e52c6575da863b2e0d33d4993283778,
+pending1794104054 with no trial. The worker was explicitly triggered; this one
+execution establishes neither natural periodic cadence nor cancellation/expiry
+correctness. Saved final state commits1794104054. Independently unwrapped the
+final bridge receipt and compared original/final inspection and photo metadata;
+they match. No photo-byte rehash or authenticated-session continuity is claimed.
+Cleanup records empty fixtures/queues/outbox, airplane off, probe removed and
+owned resources stopped.
+
+Kundalini 23 is unchanged: corrected cold launch routing and F-81 have device
+evidence; F-83 still needs a rebuilt-host device recheck against the later
+correction. Its suggested permanent same-PID lease ownership would remove bounded
+recovery after isolate loss. Decision: retain the tested post-query clock sample
+and bounded recovery, protect users' data, and preserve failed evidence. No new
+isolated Valence cause warrants a runtime change. S1 stays parked, S2 needs Play,
+S10/P1 stay deferred. No item Status cells change. No fresh emulator or iOS
+acceptance, test-app writes, protected-branch writes, schema/package version
+changes, pushes or publication.
+
+Fresh gates on November 8:
+
+- Root `npm test`: 123 passed, zero skips; generated Dart analyzed/executed.
+- Core: 665 tests passed serially, fatal-info analysis clean, pub dry run zero warnings.
+- Push: 2 tests passed, fatal-info analysis clean, pub dry run zero warnings/one local override hint.
+- Bridge: 37 tests passed, strict/verbatim TypeScript and pack dry run passed.
+- Example: codegen check wrote nothing, 29 tests passed, debug APK built (Gradle 119.6s).
+- Windows `py tool/check_no_firebase.py`: PASS over core graph, manifest and all 19 DEX files.
+- Site: 50-page build and SEO/link checks passed.
+- Both repository whitespace checks passed; mirrored notes are byte-identical.
+
+Logs: `%TEMP%/valence-20261108-149-*.log`,
+`valence-20261108-149-results.json` and `valence-20261108-149-evidence.txt`.
+Flutter gates ran sequentially. APK build used process-local Gradle settings
+(2 GiB heap, two workers, ActiveProcessorCount=2); the existing app_badge_plus
+Kotlin migration warning remains. The first independent APK-inspection script
+assumed the wrong manifest field layout and failed before verification; the
+corrected read-only script verified the actual files map and h/n fields. No
+package gate failed. Only mirrored validation notes change after these gates.
+
+Evidence: valence-test-kundalini/{VALENCE_FINDINGS.md,ITERATION_23_REPORT.md};
+valence-test-app-c/{VALENCE_FINDINGS.md,ITERATION_149_REPORT.md,
+evidence/iteration-149/{audit.json,archived-release.json,archived-debug.json,
+embedded-file-integrity.json,doctor.txt,doctor-before-gradle-restored.txt,
+r29-device-proof.json,release-retained-airplane.png,release-retained-photo.png,
+fresh-probe-screen.png,fresh-probe-result.json,fresh-probe-builtin-integrity.json,
+background-sqlite-before-worker.json,background-sqlite-before-resume.json,
+background-state-before-raw.json,background-state-after-raw.json,
+worker-full-logcat.txt,worker-completion-proof.json,worker-lease-diagnostics.json,
+worker-execution.json,original-inspection.json,final-inspection-row.json,
+final-state.json,owner-activation-identity.json,cleanup.json,
+runner-observer-notes.md}}.
+
 ## November 8: iteration 148 qualified regression evidence
 
 In plain terms: every must-have and original rebase-queue item remains done.
