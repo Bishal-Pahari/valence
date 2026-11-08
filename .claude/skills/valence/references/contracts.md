@@ -424,7 +424,21 @@ Then three branches, **in this order**:
 - **the URL handed to the page is relative** (`/_host/media/<id>`). The port moves when a bind fails, and when a resume cannot reclaim the socket (below) — and these ids get stored in durable SQLite rows, so an absolute `http://127.0.0.1:<port>/…` is dead after the next rebind and stays dead;
 - **these bytes are not ours, so they must never be a document.** This branch serves whatever a camera, a download or a remote server produced, on the same origin as the bundle. A `/_host/` response therefore carries `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, and a `Content-Type` from an **allow-list of non-scriptable types** — never `text/html`, `application/xhtml+xml`, `image/svg+xml` or anything else a WebView will execute. Without all three, `location.href = '/_host/dl/<id>'` loads attacker-supplied markup same-origin with **no CSP at all**; a `JavaScriptChannel` is per-WebView, not per-document, so that document can `fetch('/')`, read the nonce out of the entry page's `<meta>`, and use the whole bridge. §7's "the bridge is reachable only from our own pages" depends on this branch never serving a page;
 - **the navigation lock is the entry path, not the origin.** `onNavigationRequest` permits `http://127.0.0.1:<port>/` and the bundle's own routes; it does not permit `/_host/…` as a main-frame navigation. Those URLs are for subresources;
-- serve it `Cache-Control: private, max-age=31536000, immutable` — the id is content-addressed by construction.
+- serve it `Cache-Control: private, max-age=31536000, immutable` — the bytes and MIME type at a published id never change.
+
+**Publication lifetime in 0.4.** Each successful `publishHostFile` call writes a separate durable copy
+and MIME sidecar under `host/`, with a fresh random id even for identical bytes. It is not deduplicated
+or tied to the source file or a SQLite row. Reuse the returned relative URL for that publication;
+publishing again on every read accumulates copies. Deleting the source or its row does not revoke a
+published URL. Restart, rebind, OTA commit/rollback, bundle GC and sign-out do not collect these copies.
+There is no built-in age, row-count or byte ceiling, expiry, eviction or public revocation/cleanup API.
+The HTTP cache lifetime is a browser reuse policy, not a disk-retention deadline or deletion promise.
+Already cached bytes cannot be recalled by removing a source file. Do not use publication as an
+account-scoped access-control or secure-erasure mechanism, and do not promise that removing a photo
+removes its published copies. Avoid publishing sensitive material that requires those guarantees.
+Do not sweep `host/` by age or reset app data to reclaim it: durable rows may still reference those
+URLs, and an app-data reset also loses the user's database and unsent writes. A bounded lifecycle
+needs an explicit reference and revocation design; 0.4 does not provide one.
 
 **`/_host/` is same-origin, so the computed CSP's `'self'` already covers it** for `img-src` and `media-src` in the *bundle's* pages. Don't rely on a laxer directive happening to be there.
 
@@ -440,7 +454,7 @@ Then three branches, **in this order**:
 
 It is easy to believe this cannot happen, because a build tool usually puts a content hash in the file name. Two things escape that: anything copied verbatim out of `public/` (icons, fonts, `manifest.webmanifest`, a service worker), and any release where only such a file changed. There is no safe subset, so there is no exception: `no-cache` plus the hash as a strong `ETag` is **always** correct, and it is not `no-store` — the WebView keeps its copy and a revalidation that matches is one loopback round trip with an empty body. Conditional requests to `127.0.0.1` cost microseconds; being wrong costs a release nobody can tell failed.
 
-`/_host/` files are the one exception, and they keep `immutable`: their ids are content-addressed by construction, so that URL can never mean different bytes.
+`/_host/` files are the one exception, and they keep `immutable`: each publication gets a fresh id, so that URL can never mean different bytes.
 
 **A service worker puts the whole hole back, and the server cannot stop it.** A precaching worker answers from Cache Storage without asking the server at all, so `no-cache` and the `ETag` never run and the page that renders is the previous release's — identical to the `immutable` failure above, including the trial committing on the old page's `ready()`. A bundle does not need one: its files are already on the device and served from loopback, which is what a service worker exists to approximate. Register it only when `inHost()` is false, or leave it out of the build the bundle is cut from. `valence bundle` warns when it sees a registration in the output.
 
