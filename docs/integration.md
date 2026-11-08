@@ -1,5 +1,75 @@
 # Integration review correction - 2026-11-06
 
+## November 9: unchanged feature scope, App C iteration 165
+
+In plain terms: all must-haves and original rebase-queue items remain done.
+Read both findings inventories and newest reports, Kundalini 24 / App C 165.
+No eligible must-have or changes-requested item remains. S1 stays deliberately
+parked, S2 needs Play, and S10/P1 stay deferred. No item Status cell changed.
+
+Retained the existing integrations on packages dd1c53d / bb0f34c: both bases
+and all 46 exact recorded source-tip pairs are ancestors, and every recorded
+source tip still matches its branch head. Original queue order remains R8,
+R7, R6, R3, R4, R5, R9, R10, R14, followed by the recorded follow-ups.
+The integration delta against packages remains documentation only.
+
+App C 165 retains publication lifecycle adoption without app-source changes.
+Inspected receipts show three reused URLs, original mapping continuity from
+PID 5363 to 8103, and both removed fixture URLs returning HTTP 404. Historical
+unowned copies and crash-window reconciliation remain open. The 998780 KiB
+footprint is a point observation, not a leak rate. F-60 repeats the advice
+already corrected by the queued observer-evidence change; the app's saved guide
+still predates that correction. A later successful call cannot explain an
+earlier missing dispatch/reply boundary. R28 pendingIds remains a guarded
+diagnostic in this app; production reconciliation uses its legacy native path.
+
+Preserved the initial gallery-fixture ADB connection failure (Windows 10060,
+before source bytes were read) separately from its successful 571 ms serial
+retry. No Valence cause is established. The app's checkpoint encoding repair
+is a runner correction, not a runtime failure. Historical F-35/F-36/F-50/F-58
+remain open; the Kotlin migration warning recurs. Kundalini's reported closures
+remain its device evidence, with no newer report or fresh local acceptance.
+Decision: security and users' data first; preserve failed observations, avoid
+speculative retries or replay, and leave unowned historical files untouched.
+No runtime, schema, dependency or release version changed.
+
+Independently verified 41 report links, both archived APK hashes and five
+embedded payload hashes/sizes each. Release: 54875316 bytes, SHA256
+265098c78c0bd0e7de55384e8ba3766be7b61dea73991d454f45c2e7c4e508d6;
+debug: 193250546 bytes, SHA256
+c9240974d736baa1b194bec0ff56a28982bbba4e4c56be594108b19debafe691.
+Matched all four worker lease lines to raw logcat and compared activation files
+byte for byte: pending 1794179445, no trial, SHA256
+4e9de3d6d1cb4c9f526e0efb9e036fee5ed89c33e578f4289d1d7a9e2b5e3f38.
+Inspected the saved 112-check passing audit without rerunning it, and inspected
+fresh-painted.png: six seed units, zero photos, widget absent, airplane icon.
+The eligible worker was explicitly triggered; 864.781 seconds is observation
+time, not execution duration or cadence evidence. Release open completion at
+9669 ms is not paint latency or lock-cause evidence. No fresh emulator or iOS
+acceptance is claimed. Both test repositories stayed read only.
+
+Security checklist: signature/appId/sequence/floor/requires/path/hash verification
+order, nonce, strict decoding, navigation/subframe locks, atomic state, key
+handling and release-build dev exclusion are unchanged. Native-only publication
+authority and existing path/isolation regression coverage remain intact.
+
+Fresh combined gates passed November 9; Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, one local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built, Gradle 33.2s |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+Existing app_badge_plus Kotlin migration warning remains. Logs:
+%TEMP%/valence-20261109-165-<gate>.log and
+%TEMP%/valence-20261109-165-results.json. Only validation and handoff notes
+follow these gates. No publication, push or protected-branch mutation.
+
 ## November 9: publication adoption, App C iteration 164
 
 In plain terms: all must-haves and original rebase-queue items remain done.
