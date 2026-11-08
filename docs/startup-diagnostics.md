@@ -20,6 +20,76 @@ startup: phase=state status=begin elapsedMs=48 phaseMs=0
 start its server, verify/select a bundle, create a WebView and receive `ready()`.
 A missing completion identifies the last observed phase, not the cause of a stall.
 
+## Time app-owned initialization
+
+An app may await media, reminder or link setup after `Valence.open` and before
+`runApp`. Those awaits are outside the runtime phases. Time the existing calls
+in their existing order before assigning a cause to the gap.
+
+This helper belongs in your host code. Keep labels fixed at source; never pass
+a route, file path, token, user value or exception into the log.
+
+```dart
+import 'package:flutter/widgets.dart';
+
+enum AppStartupPhase { media, reminders, links }
+
+void startupLog(String message) {
+  try {
+    debugPrint(message);
+  } catch (_) {
+    // Diagnostics must not change startup or replace an initialization error.
+  }
+}
+
+Future<T> timeAppStartup<T>(
+  AppStartupPhase phase,
+  Future<T> Function() action,
+) async {
+  final watch = Stopwatch()..start();
+  void report(String status) => startupLog(
+    'app-startup: phase=${phase.name} status=$status '
+    'phaseMs=${watch.elapsedMilliseconds}',
+  );
+  report('begin');
+  try {
+    final result = await action();
+    report('complete');
+    return result;
+  } catch (_) {
+    report('failed');
+    rethrow;
+  } finally {
+    watch.stop();
+  }
+}
+
+void markFirstFlutterFrame() {
+  final watch = Stopwatch()..start();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    watch.stop();
+    startupLog(
+      'app-startup: boundary=firstFrame elapsedMs=${watch.elapsedMilliseconds}',
+    );
+  });
+}
+```
+
+For example, wrap an existing `await initializeMedia()` as
+`await timeAppStartup(AppStartupPhase.media, initializeMedia)`. Use the same
+pattern for your other existing setup calls, preserving their results and order.
+After the existing binding initialization, call `markFirstFlutterFrame()`
+immediately before your existing `runApp`. The marker's elapsed time starts at
+registration, separately from runtime startup and each app phase.
+
+A `begin` without a matching completion locates the last observed await; it
+does not prove a deadlock or identify a blocking plugin. A `firstFrame` can be
+only a Flutter loading screen. Meaningful web paint and the web app's existing
+`ready()` call remain separate observations; do not call `ready()` from this
+callback. Keep the failed attempt, process IDs and resource conditions alongside
+any successful retry. These observations add no retries or timeout changes and
+do not justify clearing the account or database.
+
 Runtime database operations pending for ten seconds produce a line every ten
 seconds until they finish, followed by `completed` or `failed`:
 
