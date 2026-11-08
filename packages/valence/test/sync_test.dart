@@ -369,6 +369,39 @@ void main() {
         expect(ran.has('released the lease kind=foreground heldForMs=0'), isTrue);
       });
 
+      test('the took line dates the take-time it recorded, so the pair brackets heldForMs', () async {
+        // K F-85. The line is emitted after the sample — the `BEGIN IMMEDIATE` wait, the read and the
+        // commit sit between them — so on a device the two lease lines bracketed 91ms around a hold the
+        // host correctly reported as 3039. Without the trail on the line there is nothing in the log
+        // that accounts for the gap, and §5.6's old cross-reference, §5.1.1's `waiting` line, only fires
+        // after ten seconds. A clock that answers later on each call is what a contended device is.
+        final at = DateTime(2026, 11, 4, 9);
+        var calls = 0;
+        final log = LogSpy();
+        final s = syncWith(MockClient((_) async => http.Response('{}', 200)),
+            log: log, clock: () => calls++ == 0 ? at : at.add(const Duration(milliseconds: 2951)));
+        expect(await s.acquireLease(), isTrue);
+        expect(log.has('took the lease kind=foreground pid=$pid (dated 2951ms ago)'), isTrue);
+        await s.releaseLease();
+        // And the release still measures from the sample, not from the line, so the two agree: 2951 of
+        // the 4951 below had already elapsed when the `took` line was written.
+        final rel = LogSpy();
+        var n = 0;
+        final t = syncWith(MockClient((_) async => http.Response('{}', 200)),
+            log: rel, clock: () => n++ == 0 ? at : at.add(const Duration(milliseconds: 4951)));
+        expect(await t.acquireLease(), isTrue);
+        await t.releaseLease();
+        expect(rel.has('released the lease kind=foreground heldForMs=4951'), isTrue);
+        // Never a negative: a clock corrected backwards between the sample and the line reads as 0,
+        // for the same reason `leaseAgeMs` floors there (K F-83).
+        final back = LogSpy();
+        var m = 0;
+        final b = syncWith(MockClient((_) async => http.Response('{}', 200)),
+            log: back, clock: () => m++ == 0 ? at : at.subtract(const Duration(seconds: 30)));
+        expect(await b.acquireLease(), isTrue);
+        expect(back.has('(dated 0ms ago)'), isTrue);
+      });
+
       test('the pair covers the three paths that take the lease outside run()', () async {
         // Step 7's pull, the GC's pair step and the account switch all acquire directly. Without the
         // lines here, F-44's own case — a reconnect whose update check holds the lease across several

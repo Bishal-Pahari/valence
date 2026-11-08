@@ -133,7 +133,10 @@ The package cannot write native project files, so these are yours:
   log, visible only after a reload or a back gesture. `valence bundle` warns about it.
 - **The bridge is not a path for bytes.** Messages are capped at 256 KB of UTF-8 each way. Native bytes
   reach the page through `valence.publishHostFile(...)`, which serves them under the reserved `/_host/`
-  prefix with `nosniff` and a locked-down CSP. Each call makes a durable copy with a new URL, even
+  prefix with `nosniff` and a locked-down CSP. **Pass the type the bytes actually are:** a picker's
+  `imageQuality` is a request, not a guarantee, so a gallery pick can be PNG bytes in a `.jpg` path,
+  and a type taken from the extension is wrong for everything that reads it. Each call makes a
+  durable copy with a new URL, even
   for identical bytes. Reuse that URL; deleting a source or row does not revoke it. There is no
   built-in quota, expiry or cleanup API in 0.4. See [publication lifetime](../../docs/host-file-lifetime.md)
   before using it for removable or sensitive media.
@@ -305,3 +308,5 @@ Sync results retain each committed HTTP page or static chunk even if a later pag
 A sync lease row this process wrote is held whichever side of `now` its timestamp falls, unless it is at least the two-minute TTL ahead. Before this, the clock was sampled before the lease transaction's wait, so a renewal read as future-dated and a foreground run could take a live lease from a background sync. No reported lease age is ever negative. [Startup diagnostics](https://getvalence.pages.dev/docs/guides/startup-diagnostics/).
 
 Lease acquisition samples its clock after the lease query returns inside the transaction. Waiting for the database does not consume a new lease's TTL. No schema change or app code adoption is needed; rebuild the native host (K F-83).
+
+The `took the lease` log line dates the take-time it records — `took the lease kind=foreground pid=1234 (dated 2951ms ago)` — because the line is written after the sample and the transaction's wait sits in between. Bracketing `took` and `released` in `logcat` otherwise understates the hold the host reports, by a factor of 33 on a loaded device. That trail is also how long the acquisition waited on the database, and it floors at zero (K F-85).

@@ -117,7 +117,7 @@ A `busy` reply means a run was refused because another one holds the §5.6 sync
 lease. The log says which, and for how long it had held it:
 
 ```
-sync: took the lease kind=background pid=4893
+sync: took the lease kind=background pid=4893 (dated 2951ms ago)
 sync: another sync holds the lease; skipping this run holder=background heldForMs=7001 refused=foreground
 sync: released the lease kind=background heldForMs=11280
 ```
@@ -132,12 +132,21 @@ connectivity sync, which fire milliseconds apart on a reconnect — read
 `holder=foreground refused=foreground`. That rules out the background isolate,
 which is usually what the question is about; to tell the two foreground triggers
 apart, read the trigger lines immediately above (`sync: connectivity came back`,
-`update: ...`) and match the refused run's `heldForMs` against the timestamp of
-the `took the lease` line.
+`update: ...`) and match the refused run's `heldForMs` against the holder's
+take-time, found as described next.
+
+**Date a hold from `(dated <n>ms ago)`, not from the `took the lease` line's own
+timestamp** (K F-85). The line is written after the time it records: the lease
+transaction's wait, the read and the commit all sit in between. Without the trail,
+bracketing `took` and `released` understates the hold — on a loaded device the two
+lines sat 91 ms apart around a hold the host correctly reported as
+`heldForMs=3039`, a factor of 33. The trail is also how long the acquisition
+waited on the database, and it never goes negative.
 
 Every `heldForMs` — on a refusal and on a release alike — is measured from when
 the holder took the lease, so subtracting it from its own line's timestamp lands on
-the `took the lease` line. Before `0.4.0-beta.0` the refusal lines measured from
+the take-time: the `took the lease` line's timestamp **minus its own trail**.
+Before `0.4.0-beta.0` the refusal lines measured from
 the host's internal lease renewal, which happens after every applied page, so
 during a long sync the number counted up from zero again on each page and a
 refusal could report tens of milliseconds for a lease minutes old (K F-81). Only

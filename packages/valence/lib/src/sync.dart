@@ -322,7 +322,16 @@ final class ValenceSync {
       // step 7 holds the lease across several pairs' downloads, so the page's probe collects twenty
       // `holder=foreground` lines with no "took the lease" anywhere to pair them against.
       _leaseTakenAt = now;
-      diagnosticLog(_log, 'sync: took the lease kind=${kind.name} pid=$pid');
+      // **The line carries how far back the take-time it records is** (K F-85). This log call happens
+      // after the sample: the `BEGIN IMMEDIATE` wait, the read and the commit all sit between them, so
+      // under seed-import load the two lease lines bracketed 91ms around a hold the host correctly
+      // reported as `heldForMs=3039`. A reader who brackets the pair is out by a factor of 33 with
+      // nothing in the log accounting for it, and §5.6 used to send them to §5.1.1's `waiting` line —
+      // which only fires after ten seconds, while every wait observed was under three. Floored at zero,
+      // like every other age this file reports.
+      final trail = _now().millisecondsSinceEpoch - now;
+      diagnosticLog(_log,
+          'sync: took the lease kind=${kind.name} pid=$pid (dated ${trail < 0 ? 0 : trail}ms ago)');
     }
     return taken;
   }

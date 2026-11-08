@@ -5,6 +5,15 @@ a relative `/_host/f/<id>` URL. Each call uses a new random id, including calls 
 identical bytes. Persist and reuse the returned URL for that publication instead
 of publishing again whenever a row is read or an image renders.
 
+**Pass the type the bytes actually are** (C F-56). A picker's `imageQuality` is a
+re-encode request, not a guarantee, so a gallery pick can come back as PNG bytes in
+a `.jpg` path — and a `contentType` taken from the extension then publishes
+`image/jpeg` over `89 50 4E 47`. `nosniff` keeps that safe, which is why it is a
+correctness bug and not a security one: the browser believes the header, the image
+decodes by luck, and everything that reads the stated type is wrong. Derive it from
+the leading bytes. Because a published id is immutable, a correction is a new id:
+the old URL keeps serving the same bytes under the type it was born with.
+
 The published copy is independent of the original file and any SQLite row. Removing
 either does not revoke the URL. Restarting, rebinding the server, committing or
 rolling back an OTA, bundle garbage collection and signing out do not collect it.

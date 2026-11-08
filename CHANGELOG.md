@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased: the `took the lease` log line now dates the take-time it recorded
+
+A reader who bracketed `took the lease` and `released the lease` in `logcat` got a shorter hold than
+the host reported, because the `took` line is written *after* the time it records: the transaction's
+wait, the lease read and the commit all sit in between. Under load on a device the two lines were
+91 ms apart around a hold the host correctly reported as `heldForMs=3039` — a factor of 33, with
+nothing in the log accounting for the gap. The spec sent you to the store's `waiting` line to explain
+it, and that line only fires after ten seconds pending, while every wait observed was under three.
+
+The line now says `took the lease kind=foreground pid=1234 (dated 2951ms ago)`, so the one line a
+reader starts from dates itself and the pair brackets `heldForMs`. The trail is also the measurement
+of the database wait, so the spec names it instead of the ten-second line. It floors at zero, like
+every other age the host reports.
+
+**If you were seeing this,** nothing in your app changes; the numbers were always right. Rebuild the
+native host to get the line.
+
+## Unreleased: `/_host/` files publish the content type the bytes actually are
+
+A picker's `imageQuality` is a re-encode request, not a guarantee: a gallery pick can come back as
+PNG bytes in a `.jpg` path. A host that took the `Content-Type` from the extension then served
+`image/jpeg` over PNG bytes. `nosniff` keeps that safe — the browser believes the header and the
+image decodes by luck — but anything reading the stated type is wrong. Derive the type from the
+leading bytes and keep the non-scriptable allow-list as the gate on the result. A published id is
+immutable, so a correction is a new id: old URLs keep serving the bytes they were born with.
+
+## Unreleased: §6's two background-limited capabilities say so in the table
+
+The paragraph saying that reminders and the home-screen widget are only as fresh as the last UI start
+sat below the §6 table. The table is the gate a reader actually scans before a store submission, so
+both rows now carry the limit themselves.
+
+## Unreleased: a bridge call that seems not to come back has a documented correlation procedure
+
+Three places a call can be stuck — never dispatched, the reply never reached the page, or the reply
+reached the page and whatever was watching the page never saw it — and the instruments that tell them
+apart: `traceBridge` for a round trip that completed, the host's `bridge error` line for a message
+that arrived and was answered, and re-issuing the read for the rest. Every read is safe to repeat, so
+a retry that answers in milliseconds establishes that the dispatch path was never broken. Record the
+failure and the recovery as separate observations.
+
 ## Unreleased: failed Windows SDK discovery stays a failed doctor check
 
 A timeout or failure while locating Flutter no longer becomes a warning that Flutter
@@ -51,8 +92,8 @@ On a device this hit the first two launches after a clean install, logging
 on a clock that never moved, and ending with both holders releasing the lease three milliseconds apart.
 
 Three changes, no API and no schema: the clock is sampled **inside** the transaction; a lease row *this
-process wrote* counts as held whichever side of "now" it falls, until it is further ahead than the
-two-minute expiry — so a clock that really moved back still frees it; and no number reported as an age
+process wrote* counts as held whichever side of "now" it falls, unless it is at least the two-minute
+expiry ahead — so a clock that really moved back still frees it; and no number reported as an age
 can be negative any more.
 
 **If you were seeing this,** nothing in your app changes. If you added a retry or a guard around
