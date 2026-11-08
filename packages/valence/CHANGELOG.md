@@ -2,14 +2,16 @@
 
 ## Unreleased: the `took the lease` log line now dates the take-time it recorded
 
-The line is written *after* the time it records — the transaction's wait, the lease read and the
-commit all sit in between — so bracketing `took the lease` and `released the lease` in `logcat`
+The line is written *after* the time it records — the row insert, the commit and the hops back out
+all sit in between — so bracketing `took the lease` and `released the lease` in `logcat`
 understated the hold. On a device, 91 ms between the two lines around a hold the host correctly
 reported as `heldForMs=3039`. It now reads
-`sync: took the lease kind=foreground pid=1234 (dated 2951ms ago)`, so the pair brackets the number
-and the one line a reader starts from dates itself. That trail is also the measurement of the
-database wait, which §5.6 previously pointed at the store's ten-second `waiting` line to supply.
-Floors at zero. Nothing in your app changes; rebuild the native host to get the line.
+`sync: took the lease kind=foreground pid=1234 (dated 2951ms ago)`: subtract the trail from the
+line's own timestamp and you have the take-time every `heldForMs` is measured from, so the pair
+brackets the number. The trail is **not** the database wait — the clock is sampled after that wait on
+purpose, which is the fix below — and the store's `waiting` line remains the instrument for it.
+Floors at zero, and it cannot cost an acquisition that has already committed: a clock that throws
+while being read for the trail logs a zero. Nothing in your app changes; rebuild the native host.
 
 ## Unreleased: a sibling isolate's live sync lease is no longer taken over as "future-dated"
 

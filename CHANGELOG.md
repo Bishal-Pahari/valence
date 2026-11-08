@@ -3,16 +3,17 @@
 ## Unreleased: the `took the lease` log line now dates the take-time it recorded
 
 A reader who bracketed `took the lease` and `released the lease` in `logcat` got a shorter hold than
-the host reported, because the `took` line is written *after* the time it records: the transaction's
-wait, the lease read and the commit all sit in between. Under load on a device the two lines were
+the host reported, because the `took` line is written *after* the time it records: the row insert, the
+commit and the hops back out all sit in between. Under load on a device the two lines were
 91 ms apart around a hold the host correctly reported as `heldForMs=3039` — a factor of 33, with
-nothing in the log accounting for the gap. The spec sent you to the store's `waiting` line to explain
-it, and that line only fires after ten seconds pending, while every wait observed was under three.
+nothing in the log accounting for the gap.
 
 The line now says `took the lease kind=foreground pid=1234 (dated 2951ms ago)`, so the one line a
-reader starts from dates itself and the pair brackets `heldForMs`. The trail is also the measurement
-of the database wait, so the spec names it instead of the ten-second line. It floors at zero, like
-every other age the host reports.
+reader starts from dates itself: subtract the trail from the line's own timestamp and you have the
+take-time every `heldForMs` is measured from, which is what makes the pair of lines bracket the
+number. It floors at zero, like every other age the host reports. The trail is **not** the database
+wait — the clock is sampled after that wait on purpose, which is the previous fix below — and the
+store's `waiting` line is still the only instrument for it.
 
 **If you were seeing this,** nothing in your app changes; the numbers were always right. Rebuild the
 native host to get the line.
@@ -47,6 +48,13 @@ A timeout or failure while locating Flutter no longer becomes a warning that Flu
 is unavailable. Doctor preserves the failed check and its configured timeout, exits
 nonzero, and never starts Flutter after failed discovery. A completed lookup with no
 match still reports an absent SDK. Update the vendored CLI; no host rebuild is needed.
+
+The row also **names the probe rather than the Flutter command it never launched**:
+`where.exe flutter.bat could not establish whether Flutter is installed`, with a fix
+that says to check PATH for a dead mapped drive or a stale UNC entry. It previously
+borrowed the Flutter row's message and tail, so a PATH fault arrived as
+"flutter pub deps --json failed; run flutter pub get in the host" with `where.exe`'s
+own output attached as Flutter's.
 
 ## Unreleased: `doctor --timeout <seconds>` for a checkout the 180-second default is wrong for
 

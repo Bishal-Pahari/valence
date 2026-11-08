@@ -104,6 +104,9 @@ class _ValenceAppState extends State<ValenceApp>
 
   bool _pageLoaded = false;
 
+  /// Set once the "a store update is required" drop has been logged, so a retrying page gets one line.
+  bool _loggedStoreUpdateDrop = false;
+
   /// The ready timer counts **foreground** time only, so a backgrounded app costs a trial nothing.
   final Stopwatch _readyClock = Stopwatch();
   Timer? _readyTicker;
@@ -293,7 +296,20 @@ class _ValenceAppState extends State<ValenceApp>
   // ---------------------------------------------------------------------------
 
   void _onBridgeMessage(JavaScriptMessage message) {
-    if (!_devMode && _valence.updater.storeUpdateRequired) return;
+    if (!_devMode && _valence.updater.storeUpdateRequired) {
+      // **Say it once.** This is the one host state that drops a message with no reply at all, so every
+      // `call()` the page makes hangs for ever: `traceBridge` sees no finished call, there is no error
+      // reply for §3's bridge-error line to carry, and §4.3's triage would otherwise run out of
+      // instruments on its own first candidate — "the message never dispatched" — which is exactly what
+      // this is. Once per state rather than once per message, like §5.6's refusal line, because a page
+      // that retries in a loop would otherwise bury the reason it is being ignored. No message content:
+      // §3 Logs allows the fact, not the payload.
+      if (!_loggedStoreUpdateDrop) {
+        _loggedStoreUpdateDrop = true;
+        _log('bridge: dropping messages, a store update is required (§2.5); calls will not be answered');
+      }
+      return;
+    }
     unawaited(() async {
       final nonce = _valence.server?.nonce ?? '';
       // bridgeDispatch never throws: it checks the nonce, decodes strictly and turns everything into a
