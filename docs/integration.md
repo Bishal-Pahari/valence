@@ -1,5 +1,78 @@
 # Integration review correction - 2026-11-06
 
+## November 8: iteration 159 separates observer failure from recovery
+
+In plain terms: every must-have and original rebase-queue item remains done.
+Read both findings inventories and newest reports, Kundalini 23 / App C 159.
+App C records same-process Settings return before reinstall (4042) and on the
+rebuilt host (5440). Its initial release XML lacks FIELDNOTE, while the following
+screenshot visibly paints retained content; these are different observations.
+Neither this pass nor the later recovered checks close historical reliability
+findings.
+
+New F-58 retains an app.state observer that exits after 91091ms with no captured
+reply while the page remains painted. The outer wrapper has a 90-second budget
+and the CDP helper a 120-second deadline, so the wrapper can end observation
+before the inner diagnostic. A separate read completes in 386ms without restart.
+This establishes an observer/integration failure, not where dispatch, reply
+delivery or the page callback stopped. Preserve both attempts and correlate
+their process/document, timestamps and request identity before attributing a
+runtime cause. Keep diagnostic labels free of tokens and payloads. No timeout,
+bridge or production behavior is changed on this evidence.
+
+Independently resolved all 54 local report links, rehashed both archived APKs and
+verified all five embedded files per APK against manifest hashes and sizes,
+builtin 1794151592. Release SHA256:
+9b9c8cdbcf5540e3e396abf7ab4a515463372a0d795458555ebc086487ebfc45;
+debug SHA256: 22796c0b026bf82e8221aa41fbf1891e0aad7409c977fa6a8202f816ce048bc5.
+The saved final audit has 95 passing artifact checks with explicit qualifications.
+Doctor independently counts 17 PASS / 10 WARN / zero FAIL. Inspected
+fresh-painted.png: six units, zero photos, no installed widget. Its independent
+offline-install receipt records a 30302ms observation window, not exact paint
+latency.
+
+Matched all four PID8566 lease lines to raw logcat. Stable pre-resume SQLite
+receipts record outgoing objects matching writes, inbound present and outbox
+zero. Independently compared activation files byte for byte: pending 1794152478 /
+no trial stays unchanged, SHA256
+81db99accdb03dbfe20c37508a97c4cf9c1d3df0ffab1aa2f0de3b3cc851112b.
+One explicitly triggered eligible worker execution does not prove natural cadence
+or cancellation recovery. Final receipts retain original inspection and owner
+identity with fixtures/outbox empty. These are saved app-run artifacts, not a new
+device execution here.
+
+F-27 remains open: saved footprint is 962868KiB / 9899 host files versus 224KiB
+private source media; removed fixture publications still answer HTTP200.
+Existing lifetime and migration guidance corrections remain included. No leak
+rate or startup cause is inferred. Kundalini F-83 needs its rebuilt-host device
+recheck. Decision: preserve security, users' data and failed evidence; no
+speculative runtime, dependency, schema or version change. S1 remains parked,
+S2 needs Play, S10/P1 deferred.
+
+Both integrations retain newest packages c091bee / 5c17a0d and all 45 current
+exact source-tip pairs, independently checked against branch heads and ancestry.
+No reconstruction is needed while bases and tips are unchanged. Previous
+integration tips: code 43c1f80 / site ca9045a. Only these validation notes change.
+Test apps were read only; no Status cells changed, emulator acquired, protected
+branch changed, push or publication. iOS remains experimental and untested.
+
+Fresh combined gates passed November 8: root 123 / zero skips, generated Dart
+analysis and dispatch executed; core 665 / clean fatal-info analysis /
+zero-warning pub dry run; push 2 / clean analysis / zero-warning pub dry run
+(one local-override hint); bridge 37 / strict-verbatim TypeScript / pack dry run;
+example codegen written: [] / 29 tests / debug APK; standalone Windows py audit
+PASS over core graph, manifest and 19 DEX files; site 50 pages / SEO passed.
+Flutter gates ran serially. The first APK wrapper treated the existing
+app_badge_plus Kotlin warning on stderr as a terminating PowerShell error and
+did not record an exit code; it is not counted as a pass. The explicit build
+rerun exits zero (Gradle 8.0s), with the warning retained, and the separate
+Firebase audit exits zero. Logs:
+%TEMP%/valence-iteration159-gates-ef9e5c84 and
+%TEMP%/valence-iteration159-web-a51e41ac.
+Security checklist: canonical verification order, nonce, strict decoding,
+navigation lock, atomic state, key handling and release dev-mode exclusion are
+unchanged. No fresh emulator or iOS acceptance.
+
 ## November 8: iteration 157 retains the Settings failure
 
 In plain terms: every must-have and original rebase-queue item remains done.
