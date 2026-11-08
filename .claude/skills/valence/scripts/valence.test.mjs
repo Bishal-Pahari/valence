@@ -1258,8 +1258,10 @@ test('doctor preserves a failed Windows Flutter discovery instead of reporting a
   // subprocess or new production injection seam is needed to exercise the actual probe branch.
   for (const cli of [join(import.meta.dirname, 'valence.mjs'), join(import.meta.dirname, '../../../../packages/valence/example/valence/valence.mjs')]) {
     const source = readFileSync(cli, 'utf8');
-    const wrapper = source.slice(source.indexOf('function runFlutter('), source.indexOf('\nexport async function diagnose('));
-    assert.ok(wrapper.startsWith('function runFlutter('));
+    // From the child-failure helpers, because the probe reports itself through them: a failed discovery
+    // has to name `where.exe flutter.bat` rather than borrow the Flutter row's message and tail.
+    const wrapper = source.slice(source.indexOf('const killedByTimeout'), source.indexOf('\nexport async function diagnose('));
+    assert.ok(wrapper.startsWith('const killedByTimeout') && wrapper.includes('\nfunction runFlutter('));
     for (const probe of [
       { status: null, signal: 'SIGTERM', error: { code: 'ETIMEDOUT' } },
       { status: 1, signal: 'SIGKILL' },
@@ -1285,6 +1287,14 @@ test('doctor preserves a failed Windows Flutter discovery instead of reporting a
         assert.equal(row[0], success ? 'PASS' : absent ? 'WARN' : 'FAIL', `${cli}: ${JSON.stringify(probe)}: ${row}`);
         if (probe.error?.code === 'ETIMEDOUT') assert.match(row[2], /killed by its own 45s timeout; no assertion ran/);
         if (!absent) assert.doesNotMatch(row[2], /Flutter unavailable/);
+        // **The row names the command that actually failed.** Reusing the Flutter row's message and tail
+        // sent a developer to `flutter pub get` over a PATH entry `where.exe` could not resolve, and
+        // appended `where.exe`'s own output as Flutter's — the C F-54 complaint, one spawn earlier.
+        if (!success && !absent) {
+          assert.match(row[2], /where\.exe flutter\.bat/, `${cli}: ${JSON.stringify(probe)}: ${row}`);
+          assert.match(row[2], /PATH/, `${cli}: ${JSON.stringify(probe)}: ${row}`);
+          assert.doesNotMatch(row[2], /flutter pub (deps|get)|flutter test/, `${cli}: ${JSON.stringify(probe)}: ${row}`);
+        }
       }
       assert.equal(calls.filter(({ command }) => command === 'cmd.exe').length, success ? 2 : 0);
       assert.ok(calls.every(({ options }) => options.timeout === 45_000));

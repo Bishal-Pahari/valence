@@ -325,7 +325,10 @@ Report a PASS, WARN or FAIL table, with a fix command for each row that isn't a 
 
 On Windows, a timed-out or failed `where.exe flutter.bat` discovery is a FAIL,
 not evidence that Flutter is unavailable. Only a completed lookup with no match
-reports an absent SDK. Preserve the timeout row and its selected budget.
+reports an absent SDK. Preserve the timeout row and its selected budget. The row
+**names the probe, not the Flutter command it never launched**, and its fix is a
+PATH check: reusing the Flutter row's message sent a developer to the pub cache
+over a dead mapped drive, with `where.exe`'s own output attached as Flutter's.
 
 Both CLI doctors fail with a `Fix:` line on schema/generated bridge drift, invalid store baselines,
 verified local OTA requirements above the store bridge, database paths instead of file names,

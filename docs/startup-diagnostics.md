@@ -136,12 +136,13 @@ apart, read the trigger lines immediately above (`sync: connectivity came back`,
 take-time, found as described next.
 
 **Date a hold from `(dated <n>ms ago)`, not from the `took the lease` line's own
-timestamp** (K F-85). The line is written after the time it records: the lease
-transaction's wait, the read and the commit all sit in between. Without the trail,
+timestamp** (K F-85). The line is written after the time it records: the row
+insert, the commit and the hops back out all sit in between. Without the trail,
 bracketing `took` and `released` understates the hold — on a loaded device the two
 lines sat 91 ms apart around a hold the host correctly reported as
-`heldForMs=3039`, a factor of 33. The trail is also how long the acquisition
-waited on the database, and it never goes negative.
+`heldForMs=3039`, a factor of 33. It is not the database wait: the clock is
+sampled after that wait on purpose (K F-83), and the store's own `waiting` line
+is what reports it. The trail never goes negative.
 
 Every `heldForMs` — on a refusal and on a release alike — is measured from when
 the holder took the lease, so subtracting it from its own line's timestamp lands on
