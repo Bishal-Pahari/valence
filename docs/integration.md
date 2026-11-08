@@ -1,5 +1,67 @@
 # Integration review correction - 2026-11-06
 
+## November 8: iteration 157 retains the Settings failure
+
+In plain terms: every must-have and original rebase-queue item remains done.
+Read both findings inventories and newest reports, Kundalini 23 / App C 157.
+App C's rebuilt Settings test reproduces F-36: Android kills renderer 4403 for
+low memory, Chromium in host 4341 reports unhandled renderer loss and kills the
+application. Replacement 4768 painting is recovery, not same-process survival.
+The initial owner-release Loading/null-accessibility observation also remains a
+failure. The saved 68-check audit validates artifacts and preserves those failed
+observations; it does not establish startup reliability or Settings survival.
+
+Independently resolved all 50 report links, rehashed both archived APKs and
+verified all five embedded files per APK against manifest hashes and sizes,
+builtin 1794144526. Release SHA256:
+07773b250f3140cc40ad6f5e5042fea01e886f4ca7d28558961717dc7ce16d71;
+debug SHA256: 588217922a9c10c793f88411cd865a369294b08f577d3a54ed2f8ddb28d5cecd.
+Inspected fresh-painted.png: the canonical release shows six seed units, zero
+photos and no placed widget. Its saved receipt records an independent AVD and
+offline first launch; the 68749ms observation window is not exact paint latency.
+Doctor independently counts 17 PASS / 10 WARN / zero FAIL.
+
+Matched all four saved worker lease lines to raw logcat for PID 7760. Native
+SQLite receipts record outgoing objects matching their writes, inbound present
+and outbox zero before foreground resume. Independently compared the activation
+files byte for byte: pending 1794145694 / no trial remains unchanged, SHA256
+21b533dddd7713fdc08b6937d7685b9818b4cfbbda1ae5cd41956ed7536f4366.
+Final receipts retain owner installId, original inspection and the sole original
+216195-byte PNG, with zero current fixtures/outbox. One explicitly triggered
+eligible worker run does not prove natural scheduling or cancelled-isolate
+recovery. These are saved app-run artifacts, not a new device execution here.
+
+Decision: preserve security, users' data and failed evidence. No new runtime,
+dependency, schema or version change is justified by this report. F-55 migration
+and F-27 lifetime guidance corrections are already in integration; their older
+captured docs do not justify a second patch or close the open storage finding.
+Kundalini F-83 still requires a rebuilt-host device recheck. S1 remains parked,
+S2 needs Play, S10/P1 remain deferred. Test apps were read only; no Status cells
+changed, no emulator acquired, no iOS acceptance claimed.
+
+Both integrations retain unchanged packages c091bee / 5c17a0d and all 45 exact
+recorded source-tip pairs, checked against current branch heads and ancestry.
+No merge reconstruction is necessary while those bases and tips are unchanged.
+Previous integration tips: code 5f0cc68 / site 326ec17. Only validation notes
+change in this refresh.
+
+Fresh combined gates passed on November 8: root 123 / zero skips, generated
+Dart analysis and dispatch executed; core 665 / clean fatal-info analysis /
+zero-warning pub dry run; push 2 / clean analysis / zero-warning pub dry run
+(one local-override hint); bridge 37 / strict-verbatim TypeScript / pack dry run;
+example codegen no writes / 29 tests / debug APK (Gradle 109.0s); standalone
+Windows py Firebase audit PASS over graph, manifest and 19 DEX files; site 50
+pages / SEO passed. The existing Kotlin migration warning remains. The first
+codegen invocation incorrectly used unsupported --config; the corrected command
+`node .claude/skills/valence/scripts/valence.mjs codegen --root packages/valence/example --check`
+passes with written: []. This was a verification invocation error, not a code
+failure. Flutter gates ran serially. Logs are in
+%TEMP%/valence-iteration157-gates-dik4bho8 and
+%TEMP%/valence-iteration157-web-nsu_qq8_. Later changes add only validation notes.
+Security checklist: signature/check order, nonce, strict decoding, navigation
+lock, atomic state, key handling and release dev-mode exclusion are unchanged.
+No pushes, publications, shared-branch commits or test-app writes.
+
 ## November 8: host-file lifetime and iteration 156
 
 In plain terms: the spec, source guide, package README and website now explain
