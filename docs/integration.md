@@ -1,5 +1,77 @@
 # Integration review correction - 2026-11-06
 
+## November 8: iteration 160 locates a slow database open
+
+In plain terms: every must-have and original rebase-queue item remains done.
+Read both findings inventories and newest reports, Kundalini 23 / App C 160.
+No eligible must-have is available. S1 remains parked against the frozen
+candidate, S2 needs Play, and S10/P1 remain deferred.
+
+App C's raw startup log identifies process 4767, operation store.open, id 1,
+isolate 1001416805: waiting at 10002ms and completed at 19213ms. The store
+phase completes at 20651ms and Valence.open at 20765ms. Independently matched
+the saved R29 receipt to those lines. Inspected the three separate screenshots:
+Flutter splash, FIELDNOTE Loading, then retained inspection/photo painted
+offline. The continuation does not erase the initial failure or establish exact
+meaningful-paint latency. A pending store.open does not establish a SQLite lock,
+its holder, a deadlock, a leak or a package cause. Existing spec and both startup
+guides already distinguish these boundaries; no additional diagnostic or runtime
+change is justified by this observation.
+
+F-58's test parent budget now exceeds the unchanged inner observer deadline
+(150s versus 120s); bridge timeout remains 60s. That makes a future failure more
+observable. No dispatch retry or runtime fix was introduced. Rebuilt Settings
+returns painted in the same process 5782; preinstall process 4135 also survives.
+These successes do not close historical renderer/direct-host-kill failures.
+
+Independently resolved all 42 local report links, rehashed both archived APKs and
+verified all five embedded files per APK against manifest hashes and sizes,
+builtin 1794155196. Release SHA256:
+cdbd09f2888bb1adcb1cb85863004493336c17a3acaf56bebff19a79c3e7bb24;
+debug SHA256: 0d1c975ec768842d880de55b87604322ede59d32b0c385a3557eaa03ba161971.
+Saved audit: 103 passing artifact checks, with its explicit scope preserving
+startup and historical reliability qualifications. Doctor independently counts
+17 PASS / 10 WARN / zero FAIL. Inspected fresh-painted.png: six seed units,
+zero photos, no installed widget. Its independent offline-install receipt
+records a 32009ms observation window, not exact paint latency.
+
+Matched all four PID9148 lease lines to raw worker logcat. The saved receipt
+records one naturally observed registered worker, not a forced execution;
+40.801 seconds is the observation window, not execution duration or a cadence
+guarantee. Stable native SQLite receipts before foreground resume record outgoing
+objects matching writes, inbound present and outbox zero. Independently compared
+activation files byte for byte: pending 1794155994 / no trial stays unchanged,
+SHA256 7fa643eb91831d5194ef96dc87f4a61c2057151ce1f0db433befed6e6ebc2f1e.
+
+F-27 remains open: saved host publications are 970396KiB / 9978 files versus
+224KiB private source media; removed fixture publications still answer HTTP200.
+No leak rate or startup cause is inferred. Kundalini F-83 still needs its
+rebuilt-host device recheck. Decision: prioritize security and users' data;
+preserve failed observations and get causal evidence before changing database
+opening, lease ownership, timeouts or publication retention. No schema, version
+or runtime change accompanies this validation refresh.
+
+Both integrations retain packages c091bee / 5c17a0d and all 45 current exact
+source-tip pairs, independently checked against branch heads and ancestry.
+No reconstruction is needed while bases and tips remain unchanged. Previous
+tips: code 80c7542 / site fc00e62. Only mirrored integration validation notes
+change. Test app repositories are read only. No protected branch, push,
+publication or fresh device execution; iOS remains experimental and untested.
+
+Fresh combined gates passed November 8: root 123 / zero skips, generated Dart
+analysis and dispatch executed; core 665 / clean fatal-info analysis /
+zero-warning pub dry run; push 2 / clean analysis / zero-warning pub dry run
+(one local-override hint); bridge 37 / strict-verbatim TypeScript / pack dry run;
+example codegen written: [] / 29 tests / debug APK; standalone Windows py audit
+PASS over core graph, manifest and 19 DEX files; site 50 pages / SEO passed.
+Flutter gates ran serially. APK Gradle build completed in 123.9s, with the
+existing app_badge_plus Kotlin plugin warning retained. Logs:
+%TEMP%/valence-20261108-160-results.json and
+%TEMP%/valence-20261108-160-<gate>.log.
+Security checklist: canonical verification order, nonce, strict decoding,
+navigation lock, atomic state, key handling and release dev-mode exclusion are
+unchanged. No fresh emulator or iOS acceptance; no item Status cells changed.
+
 ## November 8: iteration 159 separates observer failure from recovery
 
 In plain terms: every must-have and original rebase-queue item remains done.
