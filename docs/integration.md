@@ -1,5 +1,69 @@
 # Integration review correction - 2026-11-06
 
+## November 9: App C iteration 183 scoped regression
+
+In plain terms: all 33 must-have rows remain done. Read both findings inventories
+and newest reports, Kundalini 24 / App C 183. No eligible must-have or changes-
+requested item remains; Status cells stay unchanged. Both integrations contain
+current packages dd1c53d / bb0f34c and all 46 queued source tips. Original order
+remains R8, R7, R6, R3, R4, R5, R9, R10, R14, then the recorded follow-ups.
+The historical example-revision exclusion remains. No merge is needed.
+
+App C reports scoped Android acceptance. Settings continuity passes at preinstall
+PID 3732 and rebuilt PID 5739. This does not close historical F-36 or erase
+iteration 182's renderer-loss failure. Initial release capture shows a loading
+spinner; later same-PID 4368 offline list/detail/photo paint is separate.
+Raw store completion is at elapsed 7126ms (7066ms in phase), open at 7211ms.
+The R29 receipt contains no named wait/completion pairs. These timings establish
+no paint latency, lock holder, current ANR, memory leak or causal owner.
+
+Independently resolved all 29 local report links, rehashed both archived APKs,
+matched installed-path/hash receipts and verified five embedded payload hashes
+and sizes each. Release: 54875316 bytes, SHA256
+212a903a45af1f5d843a22a17e3bb504ee91f890d2e51d02ea1131ed2bd0f5a9;
+debug: 193245485 bytes, SHA256
+58f6440e241cadbe12e5b6f1cd8813fa615fa42a51edd01bcdb5a851b52d549f.
+Inspected initial loading and fresh-painted.png; the latter shows built-in
+1794243397, six seed units, zero photos, widget absent and airplane icon.
+Inspected the saved 121-check audit without rerunning any test-app script.
+
+One naturally observed registered worker has matching raw callback, SUCCESS and
+four lease lines, with native SQLite effects captured before foreground resume.
+Its 40.78s observation window is neither execution duration nor cadence.
+The take line reports "dated 30ms ago", consistent with integrated F-85 guidance.
+Pending activation bytes remain identical, SHA256
+c1997e9f0b895bb59fdb7aabca8d08d7c0e7a23312c7ba9d82b85f3fd325b613.
+Final foreground commitment is separate. Owner proof records original inspection
+equality, outbox zero and no current fixtures. Publication ownership and crash
+recovery remain open.
+
+Decision: preserve security, users' data and inconclusive evidence. Current
+contracts already document the Android plugin limitation and F-85 correction.
+No speculative runtime, schema or package-version change follows from this pass.
+S1 stays parked, S2 needs Play, S10/P1 deferred. Test apps remain read only;
+no fresh emulator or iOS acceptance, publication or push.
+
+Security checklist: canonical verification order, nonce and strict decoding,
+navigation/subframe locks, atomic state, key handling, native publication
+authority and release-build dev exclusion are unchanged.
+
+Fresh combined gates passed November 9; Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+Existing app_badge_plus Kotlin migration warning remains. Logs:
+%TEMP%/valence-20261109-183-<gate>.log and
+%TEMP%/valence-20261109-183-results.json. Only validation and handoff notes
+follow the gates; runtime behavior and schema/version allocations are unchanged.
+
 ## November 9: App C iteration 182 failed Settings continuity
 
 In plain terms: all 33 must-have rows and the original rebase queue remain done.
