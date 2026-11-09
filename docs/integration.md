@@ -1,5 +1,79 @@
 # Integration review correction - 2026-11-06
 
+## November 10: App C iteration 188 qualified regression
+
+In plain terms: all 33 must-have rows remain done. Read both findings inventories
+and newest reports, Kundalini 24 / App C 188. No eligible must-have or changes-
+requested item remains; Status cells stay unchanged. Both integrations contain
+packages dd1c53d / bb0f34c and all 46 queued source tips. Original merge order
+remains R8, R7, R6, R3, R4, R5, R9, R10, R14 followed by the recorded follow-ups;
+the historical example-revision exclusion remains. No merge or schema
+renumbering is needed.
+
+App C reports qualified Android acceptance. Settings continuity passes at
+preinstall PID 3836 and rebuilt PID 5486 before explicit relaunch. This does not
+close historical reliability findings or erase iteration 186's renderer-loss
+failure. Inspected initial Flutter splash, later retained offline detail/photo
+and independent fresh-offline image separately. The fresh image shows built-in
+1794261566, six seed units, zero photos, widget absent and airplane icon. The
+Back continuation is launcher, not a painted list. Raw release logs complete the
+store phase at elapsed 5457ms (5100ms in phase) and startup at 5628ms. R29 has no
+named wait/completion pairs. These observations establish no meaningful paint
+latency, lock holder or cause.
+
+Independently resolved 42 local report links, rehashed both archived APKs against
+installed receipts, and verified five embedded payload hashes and sizes each.
+Release: 54875320 bytes, SHA256
+a5f9947921f0529530410d6bcaa2b8f1f61648143bed3bba1a2a20a851bf16cd;
+debug: 193245485 bytes, SHA256
+d20d7ceb71a5a2467b826ead568675a81effa321cd3098e51293a41be6e0935f.
+Inspected the saved 126-check audit without executing test-app scripts. Its
+consistency result stays separate from device acceptance. Initial observer and
+readiness failures remain separate from later successful observations.
+
+The early forced OS request was explicitly deferred by WorkManager at
+03:57:45.775 before callback. A later registered callback in PID 10616 at
+04:12:39.548 completes at 04:12:40.558, followed by SUCCESS at 04:12:40.583.
+Verified these exact raw lines and all five native lease lines, including a
+past-expiry takeover and the take line's 'dated 37ms ago'. The expired-row log
+alone establishes neither why the earlier run left it nor an expiry violation.
+The early request does not prove that the later callback was forced, and one
+execution proves no cadence. The 902.972s observation window is not execution
+duration. Native SQLite effects precede resume; activation bytes remain identical,
+SHA256 7297ac302cd64db6958f939aff21a5dcf9d08c5fff9e25a1d29da61ff5ffc677.
+Pending 1794262352/no trial remains separate from final foreground commitment.
+Owner proof records original inspection equality, outbox zero and no current
+fixtures. Publication ownership/crash recovery and historical findings stay open.
+
+Decision: preserve security, users' data and inconclusive evidence. Contracts
+section 3 already documents Android renderer recovery's native-plugin limitation;
+weakening trial rollback would hide crashes. The integrated debugging guide
+already corrects the F-60 inference repeated in the app's retrieved snapshot.
+No speculative runtime, dependency, schema or package-version change is justified.
+S1 stays parked, S2 needs Play, S10/P1 deferred. Test apps remain read only; no
+fresh emulator or iOS acceptance, publication or push.
+
+Security checklist: canonical verification order, nonce and strict decoding,
+navigation/subframe locks, atomic state, key handling, native publication
+authority and release-build dev exclusion are unchanged.
+
+Fresh combined gates passed November 10; Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+Existing app_badge_plus Kotlin migration warning remains. Logs:
+%TEMP%/valence-20261110-188-<gate>.log and
+%TEMP%/valence-20261110-188-results.json. Only validation and handoff notes
+follow the gates; runtime behavior and schema/version allocations are unchanged.
+
 ## November 10: App C iteration 187 scoped regression
 
 In plain terms: all 33 must-have rows remain done. Read both findings inventories
