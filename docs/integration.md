@@ -1,5 +1,86 @@
 # Integration review correction - 2026-11-06
 
+## November 9: App C iteration 176 scoped regression and cleanup continuation
+
+In plain terms: all 33 must-have rows and the original rebase queue remain done.
+Read both findings inventories and newest reports, Kundalini 24 / App C 176.
+No eligible must-have or changes-requested item remains; Status cells unchanged.
+Both integrations retain newest packages dd1c53d / bb0f34c and all 46 exact
+source-tip pairs, checked against current branch heads and ancestry. Original
+merge order remains R8, R7, R6, R3, R4, R5, R9, R10, R14, then recorded follow-ups.
+Unchanged bases and source tips require no new integration merge.
+
+App C 176 reports scoped Android acceptance with 122 saved artifact checks.
+Preinstall PID 3892 and rebuilt PID 5274 each survive their Settings return.
+These passes do not close historical F-35/F-36/F-50/F-58 or prior direct
+low-memory kills. Initial retained release list/detail/photo observations pass
+offline. Both installed APK hash receipts survive, including the release APK
+path, and match independently rehashed archives. Six unsuccessful debug
+discovery/readiness observations precede a painted read at 12.452s; polling
+elapsed time is not first meaningful paint. Other readiness retries remain
+separate from eventual success. Release PID 4543 open completion 604ms establishes
+neither paint latency nor a lock owner; no named wait/completion pair was captured.
+
+One naturally observed registered worker has matching raw native
+begin/complete/SUCCESS and four lease lines. Its 40.422s observation is not
+execution duration or a cadence guarantee. Saved stable native SQLite before
+foreground resume records matching outgoing objects, outbox zero and the inbound
+fixture. Pending 1794219000 / no trial remains byte-identical, SHA256
+70caacb3a0dfeb15f4c9a38d0954f6ae65ebd08e3a7346bdee87b568f1a7587e.
+Foreground commitment remains a separate observation.
+
+The enclosing isolated-background runner exited 1 after its worker/owner SQLite
+proof because preparation omitted resource-recovery.json. Its failed execution
+receipt remains retained. A resource baseline was supplied and only final owner
+and resource cleanup were rerun, exiting 0. This successful continuation does
+not make the initial runner pass and establishes no Valence defect; no worker
+or potentially completed mutation was replayed.
+
+Publication receipts show removed fixture URLs returning 404 and original mapping
+continuity from PID 5274 to 8042. Historical unowned copies and interrupted
+ownership registration remain open. The 998780 KiB / 10426-file footprint is not
+a growth rate, leak or startup-cause proof. Decision: security and users' data
+first; preserve unknown ownership, require complete native inventory and
+interruption evidence before reconciliation, and never replay potentially
+completed mutations. No speculative runtime, schema, dependency or version
+change is justified. F-60's observer inference and Kundalini F-85's lease-log
+trail are already addressed in integration; no app adoption closure is claimed.
+S1 stays parked under the recorded candidate freeze, S2 needs Play, and S10/P1
+remain deferred.
+
+Independently resolved 50 report links, rehashed both archived APKs and checked
+all five embedded payload hashes/sizes per APK. Release: 54875320 bytes, SHA256
+9b79a5ab285f7833b39b9f80d77cb08367deb6ff7ab2ca361e51e9f9e1685acf;
+debug: 193245485 bytes, SHA256
+dc7fecb37440eadc4f487865a111c4ad83f2bd88fef4437521af3929c5dfecb0.
+Inspected the saved 122-check audit without rerunning it and actual
+fresh-painted.png: current built-in 1794218255, six seed units, zero photos,
+widget absent, airplane icon. Saved final native owner proof records original-row
+equality, outbox zero and no current iteration fixtures. Test apps stayed read
+only. No fresh emulator or iOS acceptance.
+
+Security checklist: canonical signature/appId/sequence/floor/requires/path/hash
+order, nonce, strict decoding, navigation/subframe locks, atomic state, keys and
+release-build dev exclusion remain unchanged. Publication authority stays native.
+This update adds validation notes only, with no new security implementation.
+
+Fresh combined gates passed November 9; Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+Existing app_badge_plus Kotlin migration warning remains. Logs:
+%TEMP%/valence-20261109-176-<gate>.log and
+%TEMP%/valence-20261109-176-results.json. Only validation and handoff notes
+follow these gates. No publication, push or protected-branch mutation.
+
 ## November 9: App C iteration 175 scoped regression
 
 In plain terms: all 33 must-have rows and the original rebase queue remain done.
