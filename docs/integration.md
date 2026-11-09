@@ -1,5 +1,72 @@
 # Integration review correction - 2026-11-06
 
+## November 9: App C iteration 180 qualified regression
+
+In plain terms: all 33 must-have rows and the original rebase queue remain done.
+Read both findings inventories and newest reports, Kundalini 24 / App C 180.
+No eligible must-have or changes-requested item remains; Status cells are unchanged.
+Both integrations contain current packages dd1c53d / bb0f34c and all 46 queued
+source tips each. Original order remains R8, R7, R6, R3, R4, R5, R9, R10, R14,
+then the recorded follow-ups. Neither base nor queued tip moved; no merge needed.
+The historical example-revision exclusion remains as previously recorded.
+
+App C reports scoped Android acceptance, with 121 saved passing artifact checks.
+Raw PID 5313 startup logs complete the store phase at elapsed 8080ms (7996ms
+in that phase), then complete open at 9663ms. The initial image shows Flutter
+splash; later same-PID offline list/detail/photo paint is separate evidence.
+R29's receipt has an empty named wait/completion-pair list despite the report's
+broader wording. Open completion establishes no paint latency, lock holder,
+current ANR or root cause. Settings continuity passes at preinstall PID 4573
+and rebuilt PID 6321 without closing historical findings or erasing iteration
+177's renderer-loss failure.
+
+Independently resolved all 41 report links, rehashed both archived APKs and
+verified their five embedded payload hashes/sizes each against their manifests.
+Installed-path/hash receipts match both archives. Release: 54875316 bytes,
+SHA256 0316ec6a045abfa9afb4f5b46aff17d61565ebe109c2980e6b71f1af9385b5b7;
+debug: 193245485 bytes,
+SHA256 56c2691fb187a955841cff2b497137994934e68411539c456ec5f5a9fbe4e138.
+Inspected fresh-painted.png: built-in 1794232594, six seed units, zero photos,
+widget absent and airplane icon. Inspected the saved audit without rerunning
+test-app scripts; both test apps remained read only.
+
+One naturally observed registered worker's callback, SUCCESS and four lease
+lines match the raw log, with native SQLite effects captured before foreground
+resume. Its 40.927s observation window is neither execution duration nor cadence.
+The take line reports "dated 34ms ago", consistent with integrated F-85 guidance.
+Pending 1794233447 / no trial has identical raw activation bytes, SHA256
+1b717b91cf79f75f9cfb06ca9f8750f4acc547eca3fcb2a61d50005d8d6bdd32.
+Final foreground commitment is separate. Owner proof records original inspection
+equality, outbox zero and no current fixtures. Publication mapping survives PID
+6321 to 9071; historical crash-window ownership remains open.
+
+Decision: security and users' data first; preserve failures and inconclusive
+evidence without speculative runtime changes, mutation replay or storage sweeps.
+F-60 observer wording and Kundalini F-85 guidance are already in integration.
+S1 remains parked, S2 needs Play, S10/P1 remain deferred. No fresh emulator or
+iOS acceptance, version changes, publication, push or protected-branch mutation.
+
+Security checklist: this documentation-only delta preserves canonical bundle
+verification order, nonce/strict decoding, navigation and subframe locks, atomic
+state, key handling, native publication authority and release-build dev exclusion.
+
+Fresh combined gates passed November 9; Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+Existing app_badge_plus Kotlin migration warning remains. Logs:
+%TEMP%/valence-20261109-180-<gate>.log and
+%TEMP%/valence-20261109-180-results.json. Only validation and handoff notes
+follow the gates; runtime behavior and schema/version allocations are unchanged.
+
 ## November 9: App C iteration 179 qualified startup regression
 
 In plain terms: all 33 must-have rows and the original rebase queue remain done.
