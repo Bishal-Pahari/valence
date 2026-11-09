@@ -1,5 +1,71 @@
 # Integration review correction - 2026-11-06
 
+## November 9: App C iteration 178 scoped regression
+
+In plain terms: all 33 must-have rows and the original rebase queue remain done.
+Read both findings inventories and newest reports, Kundalini 24 / App C 178.
+No eligible must-have or changes-requested item remains; Status cells are unchanged.
+Both integrations contain current packages dd1c53d / bb0f34c and all 46 exact
+current source-tip pairs. No base or source tip moved, so no new merge was needed.
+Original order remains R8, R7, R6, R3, R4, R5, R9, R10, R14, then the recorded
+follow-ups. Schema allocations and runtime versions are unchanged.
+
+App C reports scoped Android acceptance. Its saved audit contains 87 passing
+artifact checks; inspected without rerunning its scripts. Settings continuity
+passes separately at preinstall PID 4194 and rebuilt PID 5709. These passes do
+not close historical F-35/F-36/F-50/F-58 or erase iteration 177's renderer-loss
+failure. Initial debug discovery socket errors and later successful painted
+reads remain separate; they establish no earlier dispatch/reply/observer cause.
+The R29 receipt lists open completions but has an empty named wait/completion
+pair list, despite the report's broader wording. No lock owner or paint latency
+is established by those open timings.
+
+Independently resolved all 41 report links, rehashed both archived APKs and
+verified five embedded payload hashes/sizes each. Release: 54875316 bytes,
+SHA256 528a3f492b3c9af4be1b32c8db0cb7f6a04187a22bbd3fad4ce5c3bd0aa51a98;
+debug: 193245485 bytes,
+SHA256 68ddb23450cd61533c979f77974e0fb34607e69b89552c4df93f7b391aac7e0a.
+Both installed-path/hash receipts match. Inspected fresh-painted.png: built-in
+1794225508, six seed units, zero photos, widget absent and airplane icon.
+
+One eligible explicitly triggered registered worker has raw matching callback,
+SUCCESS and four lease lines, with native SQLite transfer effects captured before
+foreground resume. The 830.67s observation is neither execution duration nor a
+cadence guarantee. Pending 1794226302 / no trial has identical raw activation
+bytes, SHA256 e16b9d7552089a58efa079ca9968aa15889298f2801d02572337ab7b9305933a.
+Final foreground commitment is separate. Native owner proof records original
+inspection equality, outbox zero and no current iteration fixtures. Publication
+mapping survives PID 5709 to 8456; historical ownership/crash-window recovery
+remains open. Retained storage metadata establishes no leak or growth rate.
+
+Decision: security and users' data first; preserve failed and inconclusive evidence
+without speculative runtime changes, mutation replay or file sweeps. F-60 observer
+wording and Kundalini F-85 lease-log timing are already addressed in integration.
+S1 stays parked under the recorded freeze, S2 needs Play, and S10/P1 remain deferred.
+Test apps stayed read only. No fresh emulator or iOS acceptance is claimed.
+
+Security checklist: this documentation-only delta leaves signature/appId/sequence/
+floor/requires/path/hash verification, nonce and strict decoding, navigation and
+subframe locks, atomic state, key handling and release-build dev exclusion unchanged.
+Publication authority remains native.
+
+Fresh combined gates passed November 9; Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+Existing app_badge_plus Kotlin migration warning remains. Logs:
+%TEMP%/valence-20261109-178-<gate>.log and
+%TEMP%/valence-20261109-178-results.json. Only these validation and handoff notes
+follow the gates. No publication, push or protected-branch mutation.
+
 ## November 9: App C iteration 177 failed Settings continuity
 
 In plain terms: the roadmap's 33 must-have rows and original rebase queue remain
