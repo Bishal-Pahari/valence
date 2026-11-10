@@ -1,5 +1,90 @@
 # Integration review correction - 2026-11-06
 
+## November 10: App C iteration 200 reaches eventual offline seed paint after white screens
+
+In plain terms: all 33 must-have rows remain done. Read both findings inventories
+and newest reports, Kundalini 24 / App C 200. No eligible must-have or priority
+queue refresh remains; item Status cells stay unchanged. Both integrations
+contain packages code `dd1c53dd9ce7a54588d22c54bf3c0183548b4a75` / site
+`bb0f34ce600dc73d3f27eae7d9f240ceac5ceb28` and all 47 exact current source
+tips in the assembly table below. No merge or schema renumbering was needed.
+
+App C reports scoped Android acceptance with a current startup qualification.
+Independently inspected all three initial white screens and later unobstructed offline
+seed screen: six cards, six-of-six count, zero photos, widget not added and
+airplane icon. Three saved white captures precede eventual paint on the same
+first launch, without reset, reinstall, Wait or retry. The 97044ms observer
+interval includes capture/diagnostic overhead; it is not exact startup latency.
+The independent AVD matches standard configured 1080x2400 display, density 420,
+4096MiB RAM and four CPUs. Matching configuration does not establish equal
+runtime resource pressure. Preinstall accessibility responded while the launcher
+was still loading. Native verdict records no ANR or environment obstruction;
+neither that verdict nor eventual paint establishes a clean environment, a
+promptly usable first launch or a cause. Historical reliability findings remain open.
+
+Initial retained-release spinner and UIAutomator null-root failure remain
+separate from later same-install offline list/detail/checklist/note/photo paint.
+Rebuilt Settings continuity passes in PID 5134 before explicit relaunch. A
+separate PID 4225 `sync.acquireLease` wait at 10021ms completes at 15022ms;
+matched summary observations against raw native lines. Duplicated lines in
+overlapping captures are not additional events. Native open/first-frame timings
+do not establish web paint, a lock holder or a cause. Permission-change discovery
+failures and unready observations stay separate from eventual paint and denial/
+regrant success; later success does not identify earlier dispatch state.
+
+One eligible registered worker was explicitly triggered. Raw callback/SUCCESS
+and lease lines match PID 8248: take reports dated 20ms ago; release reports
+heldForMs=1503. Native SQLite receipts establish incoming application, two
+outgoing acknowledgements and empty outbox before foreground resume. The
+834.367-second observation is neither callback duration nor periodic cadence.
+Pending activation bytes are identical, SHA256
+`6c416204570b211c9970c188bef809aae8c4637120f79679b1d8f0bccd72a6e2`.
+Later commitment of OTA 1794310889 is a separate state.
+
+Artifact review resolved 53 local report links, checked all 50 saved consistency
+booleans, rehashed both archived APKs and verified five embedded payload hashes
+and byte lengths in each. Release: 54875316 bytes, SHA256
+`32c109c8e6a34fb003c6e52b60e979aa952c4623a8f8fe58786689c2b202f01a`;
+debug: 193245485 bytes, SHA256
+`637e37a61674a702acac1c2cdf844e92fb64b43c90cb25a88a395b56b62ed964`.
+The owner installed-apk receipt matches debug, while the independent fresh
+installation matches release; these are separate installations and receipts.
+Controlled gallery/camera evidence decodes three images with matching MIME/bytes;
+removed publications return 404 and original photo remains. This does not erase
+iteration 197 F-63. Both widget fixes and scoped cleanup have saved receipts.
+No test-app scripts were executed. Review outputs:
+`%TEMP%/valence-iteration200-review.json` and `valence-iteration200-extra.py`.
+
+Decision: security first, then users' data. Preserve the frozen implementation
+and retain the current white-screen finding despite eventual acceptance. The
+observations establish no runtime cause to fix. Historical transaction,
+startup/process, observer, compatibility and publication crash-recovery findings
+remain open. F-60/F-61 corrections already exist in this integration's guides;
+app receipts do not establish their adoption. S1 stays parked, S2 needs Play,
+S10/P1 stay deferred. Verification order, strict decoding/nonce, navigation and
+subframe locks, atomic state, keys and release-build development exclusion remain
+unchanged. No runtime, schema or version change, test-app write, protected-branch
+commit, push or publication. No fresh builder emulator acceptance; iOS remains
+experimental and untested.
+
+All 15 fresh gates passed November 10 against code `979d75c` / site `a323d43`;
+only this mirrored validation note follows those gates. Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root tests | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+The existing app_badge_plus Kotlin migration warning remains. Gate logs:
+`%TEMP%/valence-20261110-iteration200-<gate>.log`; machine-readable results:
+`%TEMP%/valence-20261110-iteration200-results.json`. Gates do not close device
+reliability findings or erase earlier failed acceptance.
+
 ## November 10: App C iteration 199 passes scoped acceptance on a smaller independent AVD
 
 In plain terms: all 33 must-have rows remain done. Read both findings inventories
