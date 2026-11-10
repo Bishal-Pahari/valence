@@ -1,5 +1,90 @@
 # Integration review correction - 2026-11-06
 
+## November 10: App C iteration 193 qualified regression
+
+In plain terms: all 33 must-have rows remain done. Read both apps' findings
+inventories and newest reports, Kundalini 24 / App C 193. No eligible must-have
+or queue refresh remains; item Status cells stay unchanged. S1 remains parked,
+S2 needs Play, S10/P1 remain deferred. Both integrations contain current packages
+code `dd1c53dd9ce7a54588d22c54bf3c0183548b4a75` / site
+`bb0f34ce600dc73d3f27eae7d9f240ceac5ceb28` and all 47 exact current source tips
+in the assembly table below. No merge or schema renumbering is necessary.
+The original queue order and historical example-revision exclusion remain.
+
+App C reports qualified Android acceptance. Rebuilt Settings continuity passes
+in PID 5765 before explicit relaunch. Initial release Flutter logo/spinner,
+follow-on UI Automator failure and transient debug discovery/unready observations
+remain separate from successful continuations. Inspected the retained offline
+Flat 1 checklist/photo screenshot. The separate release reinstall/detail-route
+observation took 54082ms, which is not startup duration. Saved native diagnostics
+record PID 4271 store.open waiting at 10003ms and completed at 17013ms, followed
+by native startup completion at 17828ms. Repeated copies in overlapping captures are not
+independent events. These timings establish neither meaningful paint latency
+nor a lock holder or cause.
+
+The early forced scheduler request was accepted but explicitly deferred by
+WorkManager before callback. A later separate eligible request records Ready:true,
+earliest passed and no current callback before dispatch; one registered callback
+then completes. The worker receipt's forced flag refers to the earlier attempt,
+so the separate eligible-trigger receipt is needed to qualify it. Raw logcat
+matches all four saved worker/lease lines in PID 8737; release reports 880ms.
+Native SQLite and HTTP receipts record incoming application, two outgoing
+acknowledgements and empty outbox before resume. The 852.507-second observation
+window is neither callback duration nor natural cadence. Raw pending activation
+bytes are identical, SHA256
+`fd8c56279cab4bce7d5929948ac16d223af13f45d6d31a6af922a93b4bd08761`.
+The later committed OTA 1794280496 is separate from the pending/no-trial snapshot.
+
+The first observer test command named a nonexistent file; its failure remains
+alongside the corrected six-test suite. The eligible-trigger helper's initial
+ENOBUFS failure occurred during read-only logcat capture before scheduler mutation;
+its separate invocation used an explicit 64 MiB buffer. The intentionally unresolved
+pure-JS budget probe self-fails in 1755ms without leaving a new forward. These
+are observer results, not evidence of a native runtime cause or a fix for F-58.
+
+Artifact review resolved 57 report links, checked all 73 saved audit booleans,
+rehashed both archived APKs and verified five embedded payload hashes/byte lengths
+in each. Release: 54875316 bytes, SHA256
+`4334aa0358d4e01ee35d1a6d88000d7a48567162b096aa44fb32a0732b472e10`;
+debug: 193245485 bytes, SHA256
+`2ca08d63c1be5cce3d8134767cbfc8d7327fb48fdb9a6b14ee8572e9066298c5`.
+Saved installed-release and independent fresh-offline receipts match the release
+archive. Artifact consistency does not establish unqualified device reliability.
+No test-app scripts were executed. Supplemental review initially checked the early
+worker deferral against the final buffer and expected timing strings with a units
+suffix; the preserved worker-full-logcat and elapsedMs fields corrected those
+review assumptions and passed. Review output:
+`%TEMP%/valence-iteration193-review.json`.
+
+Decision: preserve security, users' data and the candidate freeze. No new runtime
+cause or actionable unimplemented must-have is established. Historical transaction,
+startup/process, observer, plugin compatibility and publication crash-recovery
+findings remain open. F-61's periodic scheduling correction is already in both
+integrations; continued wording in captured app docs does not prove its adoption.
+Canonical verification order, nonce/strict decoding, navigation/subframe locks,
+atomic state, keys and release-build development exclusion remain unchanged.
+No runtime, schema or package-version change, test-app write, protected-branch
+commit, push or publication. No fresh emulator/iOS acceptance; iOS remains
+experimental and untested.
+
+All 15 fresh gates passed November 10 against code `71c2987` / site `e49176e`;
+only this mirrored validation note follows those gates. Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root tests | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+The existing app_badge_plus Kotlin migration warning remains. Gate logs:
+`%TEMP%/valence-20261110-iteration193-<gate>.log`; machine-readable results:
+`%TEMP%/valence-20261110-iteration193-results.json`. Gates do not close F-33 or
+any other device reliability finding.
+
 ## November 10: App C iteration 192 and the retained COMMIT failure
 
 In plain terms: all 33 must-have rows remain done. Read both findings inventories
