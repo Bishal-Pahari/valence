@@ -1,5 +1,73 @@
 # Integration review correction - 2026-11-06
 
+## November 10: App C iteration 190 qualified regression
+
+In plain terms: all 33 must-have rows remain done. Reviewed both findings
+inventories and newest reports, Kundalini 24 / App C 190. No eligible must-have
+or changes-requested item remains; Status cells stay unchanged. Both integrations
+contain current packages dd1c53d / bb0f34c and all 46 recorded source branches.
+Original merge order remains R8, R7, R6, R3, R4, R5, R9, R10, R14, followed by
+the recorded follow-ups; the historical example-revision exclusion remains.
+No merge or schema renumbering is needed.
+
+App C reports qualified Android acceptance. Rebuilt Settings continuity passes
+in PID 5892 before explicit relaunch; historical reliability findings, including
+iteration 186's failure, remain open. Independently inspected the initial Flutter
+splash, later retained offline detail/photo and independent fresh-offline paint.
+Fresh built-in 1794268789 shows six seed units, zero photos and widget absent.
+Native PID 4815 startup completes at 10184ms with no matched named operation
+wait/completion pair. This establishes neither paint latency nor lock ownership
+or cause. Three preinstall discovery sockets closed before dispatch; separate
+later readiness succeeded. This differs from the previous inner CDP timeout.
+
+Resolved 39 report links, rehashed both archived APKs against archive receipts
+and verified five embedded payload hashes and sizes each. Release SHA256:
+db9a65e2def387dd6dae6df10cd6b5a1ce878a0f80165e740b67dff519ca6038
+(54875316 bytes); debug SHA256:
+0ee6901b16f0b285980624c3426834edffdb8ed385c7b620542d95ef46e962cd
+(193245485 bytes). Release installation receipt matches the release archive.
+Inspected the saved 65-check audit without executing test-app scripts; artifact
+consistency remains separate from device acceptance.
+
+One registered worker ran without a test-triggered jobscheduler request.
+Raw callback/SUCCESS and four lease lines agree in PID 8984; the take line dates
+its sample 11ms earlier and release reports heldForMs=985. The 41.843-second
+observation window is neither execution duration nor evidence of cadence.
+Native SQLite proves bidirectional transfer before resume; pending activation
+bytes are identical, SHA256
+8bc3b979c5a0e2deab2c23ab21c48d81435af312cac893d38d7d8443c66ca71e.
+Final committed OTA 1794269576 remains separate from that pending/no-trial state.
+Final owner proof retains original inspection equality and zero outbox/current
+fixtures. Publication ownership/crash recovery remains open.
+
+Decision: preserve security, users' data and inconclusive evidence. Existing
+contracts document the Android renderer plugin limitation and lease-log timing;
+the integrated debugging guide already corrects the successful-retry inference.
+No speculative runtime, dependency, schema or package-version change is justified.
+S1 remains parked, S2 needs Play, S10/P1 deferred. Test apps remain read only;
+no fresh emulator or iOS acceptance, publication or push.
+
+Security checklist: canonical verification order, nonce/strict decoding,
+navigation/subframe locks, atomic state, key handling, publication authority
+and release-build development exclusion are unchanged.
+
+All 15 fresh gates passed November 10; Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root npm test | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+Existing app_badge_plus Kotlin migration warning remains. Logs:
+%TEMP%/valence-20261110-190-<gate>.log and
+%TEMP%/valence-20261110-190-results.json. Only validation and handoff notes
+follow these gates; runtime behavior and schema/version allocations are unchanged.
+
 ## November 10: App C iteration 189 qualified regression
 
 In plain terms: all 33 must-have rows remain done. Reviewed both findings
