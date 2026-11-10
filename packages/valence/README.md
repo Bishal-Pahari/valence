@@ -253,6 +253,14 @@ Sync correctness: pull cursors advance only through returned rows, never push ec
 
 ValenceApp publishes --valence-inset-top/right/bottom/left CSS variables, applies Android system text zoom and emits schema-7 app.appearance snapshots. ValenceAppearance supports custom hosts. Add optional fontScale: "num?" to AppInfo and regenerate; older schemas still compile. Apply inset padding in HTML, without an extra native SafeArea. [Guide](../../docs/accessibility.md); iOS is experimental and untested.
 
+## Background work
+
+Periodic sync needs a host-owned scheduler; `valence` does not register one for you.
+Android WorkManager's minimum repeat interval is 15 minutes, and constraints or system
+optimizations can delay or skip a run. Keep foreground and reconnect sync enabled;
+periodic work gives no freshness deadline. BGTaskScheduler is best effort on iOS,
+which remains experimental and untested. See [background setup](https://getvalence.pages.dev/docs/guides/host/#background-work).
+
 ### Remote push
 
 Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** Initialize Firebase and install `valence_push`, import `package:valence_push/valence_push.dart` and pass `push: createFirebasePush()` to `Valence.open`; register a top-level background callback using `ValencePush.handleBackground` and `Valence.backgroundSync`. [Setup](https://getvalence.pages.dev/docs/guides/remote-push/).
