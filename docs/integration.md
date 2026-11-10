@@ -1,5 +1,87 @@
 # Integration review correction - 2026-11-06
 
+## November 10: App C iteration 195 failed fresh first-launch acceptance
+
+In plain terms: all 33 must-have rows remain done, but App C's current device
+acceptance is false. Read both findings inventories and newest reports,
+Kundalini 24 / App C 195. No eligible must-have or queue refresh remains; item
+Status cells stay unchanged. S1 stays parked, S2 needs Play, S10/P1 stay deferred.
+Both integrations contain current packages code
+`dd1c53dd9ce7a54588d22c54bf3c0183548b4a75` / site
+`bb0f34ce600dc73d3f27eae7d9f240ceac5ceb28` and all 47 exact current source tips
+in the assembly table below. No merge or schema renumbering is needed.
+
+App C's independent fresh offline first launch fails acceptance. Full native
+logcat names PID 3084 and a 5002ms FocusEvent input-dispatch ANR. Inspected the
+actual ANR dialog over the six-seed-unit list. The main-thread sample records
+state D and WebViewGoogle.apk frames; CPU/I/O pressure and another system ANR
+are correlated observations, not a proven Valence blocking frame or cause.
+Underlying seed paint and later readiness do not erase the ANR. The bounded
+observer records painted=false and then stops the temporary app/emulator;
+the proposed Wait recovery refuses at the missing-device precondition. No Wait
+tap or same-process recovery occurred. The earlier launcher wrapper timeout
+happened before installation and remains a separate infrastructure failure.
+
+Rebuilt Settings continuity passes in PID 5642 before explicit relaunch.
+Initial retained-release splash/blank and debug discovery/readiness failures
+remain separate from later same-install offline checklist/photo paint.
+PID 4711 store.open waits at 10003ms, completes at 13952ms, then native startup
+completes at 15453ms. Repeated copies in overlapping logs are not new events;
+these boundaries establish neither meaningful paint latency nor a lock owner.
+
+One registered worker was explicitly triggered after eligibility and earliest
+time passed; natural cadence remains unverified. Raw captures match all four
+lease/isolate lines in PID 8602 and the separate callback/SUCCESS lines.
+The take line reports dated 21ms ago; release heldForMs=1220. Native SQLite
+and HTTP receipts record incoming application, two outgoing acknowledgements
+and empty outbox before resume. The 642.809-second observation is not callback
+duration. Pending activation bytes are identical, SHA256
+`b5d8aa7c64af33c84349748b459782d6753c84fc66d151af6f557d6e8cf50f2c`.
+Later committed OTA 1794289500 is separate from that pending/no-trial state.
+
+Artifact review resolved 55 local report links, checked all 72 saved audit
+booleans, rehashed both archived APKs and verified five embedded payload hashes
+and byte lengths in each. Release: 54875316 bytes, SHA256
+`8cf4d4a28d01f82cf2f3f525afb3c055bb22b8782fcd55b69beffc62f956c5df`;
+debug: 193245485 bytes, SHA256
+`025cb3ef8bed9f2c79688783e1e33cec3e5a39f6cbafcad71cfd9213100bd61f`.
+Installed-release and fresh-offline receipts match the release archive.
+The saved audit passes consistency with acceptancePassed=false. The intentional
+pure-JavaScript budget test fails itself in 1784ms with no new forward; three
+other observations lack cleanup markers. The saved scoped stale-forward removal
+and final resource audit are separate evidence, not blanket helper-cleanup proof.
+No test-app scripts were executed. Review outputs:
+`%TEMP%/valence-iteration195-{review.json,extra.py}`.
+
+Decision: security first, then users' data. Preserve the failed first-launch
+acceptance and candidate freeze; the evidence does not isolate a runtime fix.
+Historical transaction, startup/process, observer, plugin compatibility and
+publication crash-recovery findings remain open. F-60/F-61 documentation
+corrections are already queued; older captured app wording does not establish
+adoption. Verification order, nonce/strict decoding, navigation/subframe locks,
+atomic state, keys and release-build development exclusion remain unchanged.
+No runtime, schema or version change, test-app write, protected-branch commit,
+push or publication. No fresh builder emulator acceptance; iOS stays experimental
+and untested. Passing build gates cannot override this device acceptance failure.
+
+All 15 fresh gates passed November 10 against code `9dfca4d` / site `d583586`;
+only this mirrored validation note follows those gates. Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root tests | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+The existing app_badge_plus Kotlin migration warning remains. Gate logs:
+`%TEMP%/valence-20261110-iteration195-<gate>.log`; machine-readable results:
+`%TEMP%/valence-20261110-iteration195-results.json`. Gates do not close F-33 or
+any other device reliability finding.
+
 ## November 10: App C iteration 194 qualified regression
 
 In plain terms: all 33 must-have rows remain done. Read both findings inventories
