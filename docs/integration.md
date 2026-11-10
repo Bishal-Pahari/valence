@@ -1,5 +1,92 @@
 # Integration review correction - 2026-11-06
 
+## November 10: App C iteration 196 has inconclusive fresh first-launch acceptance
+
+In plain terms: all 33 must-have rows remain done, but App C has not established
+responsive fresh first-launch acceptance. Read both findings inventories and
+newest reports, Kundalini 24 / App C 196. No eligible must-have or queue refresh
+remains; item Status cells stay unchanged. Both integrations contain packages
+code `dd1c53dd9ce7a54588d22c54bf3c0183548b4a75` / site
+`bb0f34ce600dc73d3f27eae7d9f240ceac5ceb28` and all 47 exact current source tips
+in the assembly table below. No merge or schema renumbering is needed.
+
+App C's initial fresh screenshot and XML show "System UI isn't responding"
+over the six-seed-unit page. The same native log records System UI ANR at
+13:19:28.584 and Fieldnote PID 2652 starting at 13:20:02.779. These timestamps
+establish ordering within one device log; host receipt times use a separate
+clock. Current captures establish no new Fieldnote ANR. Manual Wait preserves
+PID 2652 and permits later offline seed paint, verified in the later screenshot.
+That continuation does not turn the obstructed first launch into acceptance.
+The raw app-only observer's firstLaunchAcceptance=true remains saved beside the
+broader inconclusive_environment verdict and audit acceptancePassed=false.
+Iteration 195's Fieldnote ANR remains open; neither a cause nor a fix follows.
+The launcher-wrapper timeout before installation is a separate failure.
+
+Rebuilt Settings continuity passes in PID 5497 before explicit relaunch. Both
+widget fixes retain current receipts. Initial retained-release blank captures
+and preinstall discovery failures remain separate from later same-install
+offline paint. PID 4596 store.open waits at 10003ms, completes at 13551ms,
+and native startup completes at 14957ms. Duplicate lines in overlapping logs
+are not extra events. These boundaries establish neither meaningful paint
+latency nor the identity of a lock holder or cause.
+
+One registered worker was explicitly triggered after eligibility and earliest
+time passed; natural cadence remains unverified. Raw logs match lease/isolate
+lines and callback/SUCCESS in PID 8588. Lease take reports dated 21ms ago and
+release heldForMs=1223. Native SQLite and HTTP receipts show incoming application,
+two outgoing acknowledgements and empty outbox before foreground resume.
+The 479.9-second observation is not callback duration. Pending activation bytes
+are identical, SHA256
+`2a043908174669ab2c750469de3745baf6fb79210c812e1397213da8550688e1`.
+Later committed OTA 1794295419 is separate from that pending/no-trial state.
+
+Artifact review resolved 57 local report links, checked all 71 saved audit
+booleans, rehashed both archived APKs and verified five embedded payload hashes
+and byte lengths in each. Release: 54875316 bytes, SHA256
+`e5634060ecdf5a8f5e05aea2ea991865c218105652a45ce0e731762779683340`;
+debug: 193245485 bytes, SHA256
+`d1593f9258bfdcd7978d2089e5aa0b9f357b36fa943cb70f5cb208efdd4c345c`.
+The installed-apk receipt is for debug; the separate fresh-installed sha256sum
+receipt matches the release archive. Cleanup first refused reused mock PID
+420088 before any signal. Different creation timestamps establish the recorded
+process was gone; the successful continuation leaves the reused PID untouched.
+Temporary AVD removal and final resource cleanup have separate receipts.
+No test-app scripts were executed. Review outputs:
+`%TEMP%/valence-iteration196-review.json` and `valence-iteration196-extra.py`.
+The supplemental review initially assumed the previous iteration's receipt name
+and release mode; checking this iteration's debug/fresh receipts corrected that
+assumption before the successful review.
+
+Decision: security first, then users' data. Preserve candidate freeze and the
+inconclusive initial acceptance; the evidence does not isolate a runtime fix.
+Historical transaction, startup/process, observer, plugin compatibility and
+publication crash-recovery findings remain open. Current F-62 is an environment
+obstruction. Existing startup guidance already requires Android boot completion
+and package-specific ANR evidence. S1 stays parked, S2 needs Play, S10/P1 stay
+deferred. Verification order, nonce/strict decoding, navigation/subframe locks,
+atomic state, keys and release-build development exclusion remain unchanged.
+No runtime, schema or version change, test-app write, protected-branch commit,
+push or publication. No fresh builder emulator acceptance; iOS stays experimental
+and untested. Passing build gates cannot override device acceptance evidence.
+
+All 15 fresh gates passed November 10 against code `b135db8` / site `ddf4094`;
+only this mirrored validation note follows those gates. Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root tests | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+The existing app_badge_plus Kotlin migration warning remains. Gate logs:
+`%TEMP%/valence-20261110-iteration196-<gate>.log`; machine-readable results:
+`%TEMP%/valence-20261110-iteration196-results.json`. Gates do not close device
+reliability findings or resolve the obstructed first-launch acceptance.
+
 ## November 10: App C iteration 195 failed fresh first-launch acceptance
 
 In plain terms: all 33 must-have rows remain done, but App C's current device
