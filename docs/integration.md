@@ -1,5 +1,98 @@
 # Integration review correction - 2026-11-06
 
+## November 10: App C iteration 192 and the retained COMMIT failure
+
+In plain terms: all 33 must-have rows remain done. Read both findings inventories
+and newest reports, Kundalini 24 / App C 192. No eligible must-have or queue refresh
+remains; item Status cells stay unchanged. S1 remains explicitly parked, S2 needs
+Play, S10/P1 remain deferred. Both integrations contain current packages code
+`dd1c53dd9ce7a54588d22c54bf3c0183548b4a75` / site
+`bb0f34ce600dc73d3f27eae7d9f240ceac5ceb28`, and all 47 exact current source tips
+in the assembly table below. No merge, schema renumbering or new feature branch
+is needed. The original queue order and historical example-revision exclusion
+remain unchanged.
+
+App C reports qualified Android acceptance. Rebuilt Settings continuity passes
+in PID 5158 before explicit relaunch. The initial Flutter splash/UI Automator
+exit 137, initial 122044ms media observer timeout, separate unready-page failure
+and supplemental background discovery failure remain distinct from successful
+continuations. Inspected the retained offline Flat 1 checklist/photo screenshot.
+The saved startup summary contains no named wait/completion pair and establishes
+neither meaningful paint latency nor a lock owner or cause.
+
+F-58's observer evidence is narrower this iteration: later pure liveness probes
+in PID 5158 find the selected old target hidden and a newer target visible.
+The pending native request was not replayed. The app-owned observer mitigation
+prefers a live visible/newer document and checks readiness; a later replacement
+is still possible. Its intentionally unresolved pure-JS probe self-fails in
+1718ms without leaving a new adb forward. Six saved Node test results pass.
+These observations do not establish native dispatch/reply for the original
+timeout or close historical F-58. Three supplemental background discovery
+failures occurred before evaluation, independently of the native worker proof.
+
+**The raw log also retains F-33's transaction-error signature.** In PID 8367,
+foreground acquisition is logged at 08:02:39.837; release at 08:13:36.047 reports
+`heldForMs=656219`. At 08:13:36.048 the foreground run reports
+`DatabaseException(Cannot perform this operation because there is no current
+transaction.) sql 'COMMIT' args []`. The background isolate enters at
+08:13:36.067, takes its lease at .109, releases at 08:13:37.236 with
+`heldForMs=1146`, and leaves at .240. These lines were independently matched
+against `evidence/iteration-192/final-logcat.txt`, not just the derived JSON.
+The later callback succeeds; it does not repair or explain the earlier failed
+run. The error shares historical F-33's signature, but these logs identify no
+transaction owner, originating operation, stack or causal mechanism. Do not
+convert an unknown transaction state into `busy`/`ok` or change lease ownership
+on this evidence. A focused Android reproduction with transaction-boundary
+correlation remains necessary; no fix or closure is claimed.
+
+One registered worker was explicitly triggered while eligible. Native SQLite
+and HTTP receipts prove incoming application, two outgoing acknowledgements
+and empty outbox before resume. Its 696.752-second observation window is neither
+callback duration nor natural cadence. Raw pending activation bytes are identical,
+SHA256 `20d3c57b8eb2451b321f546f6f89df53123c78414034d680f9acb345c3809fa8`.
+The final committed OTA 1794277017 remains separate from the pending/no-trial
+snapshot. F-61's periodic scheduling correction is already queued in both
+integrations; its continued appearance in the app's local docs is not evidence
+that the correction was adopted there.
+
+Artifact review resolved 52 local report links, checked all 74 saved audit
+booleans, rehashed both archived APKs and verified five embedded payload hashes
+and byte lengths in each. Release: 54875316 bytes, SHA256
+`064a0faa030a8c0487b4548f0b9b0fa145f50060907c26a3db756999bec8a468`;
+debug: 193245485 bytes, SHA256
+`427eecbce5870aff554d1a58e84dc828659443b21459f6228637810f92010ec1`.
+The release install receipt matches that archive. Saved audit success establishes
+artifact consistency, not unqualified device reliability. No test-app scripts
+were executed. The local review initially used the wrong signature filename;
+the corrected `manifest.json.sig` and content-addressed `files/<sha256>` reads
+passed. Review output: `%TEMP%/valence-iteration192-review.json`.
+
+Decision: preserve security, users' data and the candidate freeze; record the
+actual failure rather than infer a concurrency fix from temporal proximity.
+Canonical verification order, nonce/strict decoding, navigation/subframe locks,
+atomic state, key handling and release-build development exclusion are unchanged.
+No runtime, schema or package-version change, test-app write, protected-branch
+commit, push or publication. No fresh emulator/iOS acceptance; iOS remains
+experimental and untested. Historical reliability findings remain open.
+
+All 15 fresh gates passed November 10 against code `c583007` / site `d89c36c`;
+only this mirrored validation note follows those gates. Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root tests | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+The existing app_badge_plus Kotlin migration warning remains. Gate logs:
+`%TEMP%/valence-20261110-iteration192-<gate>.log`; machine-readable results:
+`%TEMP%/valence-20261110-iteration192-results.json`. Gates do not close F-33 or
+any other device reliability finding.
+
 ## November 10: periodic scheduling correction and iteration 191
 
 In plain terms: App C F-61 exposed a reversed scheduling promise in contracts
