@@ -1,5 +1,91 @@
 # Integration review correction - 2026-11-06
 
+## November 10: App C iteration 197 passes scoped acceptance after a separate gallery continuation
+
+In plain terms: all 33 must-have rows remain done. Read both findings inventories
+and newest reports, Kundalini 24 / App C 197. No eligible must-have or priority
+queue refresh remains; item Status cells stay unchanged. Both integrations
+contain packages code `dd1c53dd9ce7a54588d22c54bf3c0183548b4a75` / site
+`bb0f34ce600dc73d3f27eae7d9f240ceac5ceb28` and all 47 exact current source
+tips in the assembly table below. No merge or schema renumbering is needed.
+
+App C's saved fresh-offline evidence now passes scoped acceptance. Inspected the
+initial and confirmed screenshots: unobstructed six-of-six seeded-unit count,
+zero photos and airplane icon. Native verdict records no Fieldnote ANR or
+environment obstruction during this observation. Package absence before install
+and installed release hash match the archived release. The initial launcher
+wrapper timed out before installation; a bounded continuation of that existing
+AVD performed the first app launch. That infrastructure failure stays separate.
+Current success does not close iteration 195's Fieldnote ANR, iteration 196's
+System UI obstruction or historical startup/process findings.
+
+New F-63 retains an initial gallery failure: MediaProvider cannot find
+`content://media/external/file/498`, followed by bridge `E_INTERNAL: Cannot find
+the selected image.` The failed row has only the original and camera images.
+The runner omitted its gallery-fixture setup. A separate fresh-fixture
+continuation decodes three images with matching MIME/bytes; removed camera and
+gallery publications return 404. The continuation does not erase the initial
+failure or establish a repair to Android's media catalog. Retain the provider
+error boundary; no runtime cause or patch follows from this evidence.
+
+Rebuilt Settings continuity passes in PID 5863 before explicit relaunch; both
+widget fixes retain current receipts. Initial retained-release splash/blank
+captures remain separate from a later reinstall continuation and explicit detail
+link. PID 4652 store.open waits at 10002/20002/30002/40003ms, then completes at
+43401ms; native startup completes at 46745ms. Duplicate lines in overlapping
+captures are not extra events. These boundaries establish neither meaningful
+paint latency nor a lock holder or cause.
+
+One registered worker was explicitly triggered after eligibility and earliest
+time passed; natural cadence remains unverified. Raw callback/SUCCESS and lease
+lines match PID 8996: take reports dated 15ms ago, release heldForMs=1180.
+Native SQLite and HTTP receipts establish incoming application, two outgoing
+acknowledgements and empty outbox before resume. The 733.148-second observation
+is not callback duration. Raw pending activation bytes remain identical, SHA256
+`f437b0b8e26d1d89f688d36458a14e0115daac918f797f98994fb2294bc69a59`.
+Later committed OTA 1794300229 is separate from that pending/no-trial state.
+
+Artifact review resolved 54 local report links, checked all 39 saved audit
+booleans, rehashed both archived APKs and verified five embedded payload hashes
+and byte lengths in each. Release: 54875316 bytes, SHA256
+`6e14cb0310eef58439e682d16d6679e291fdb0512beaf7f26d35e5fd7d9bda3e`;
+debug: 193245485 bytes, SHA256
+`bad8fdcc20b8205b18e285d75295660c002c38788e50039fe6a159fd127c3bd8`.
+The owner installed-apk receipt matches debug; the independent fresh-installed
+receipt matches release. Scoped cleanup and temporary AVD removal have separate
+receipts. Original doctor-filename and unguarded runner failures remain recorded
+beside corrected invocations. No test-app scripts were executed. Review outputs:
+`%TEMP%/valence-iteration197-review.json` and `valence-iteration197-extra.py`.
+
+Decision: security first, then users' data. Preserve candidate freeze, the
+provider error and the failed-attempt/continuation boundary. Historical
+transaction, startup/process, observer, plugin compatibility and publication
+crash-recovery findings remain open. F-60/F-61 documentation corrections are
+already queued; the app's retained wording does not establish their adoption.
+S1 stays parked, S2 needs Play, S10/P1 stay deferred. Verification order,
+nonce/strict decoding, navigation/subframe locks, atomic state, keys and
+release-build development exclusion remain unchanged. No runtime, schema or
+version change, test-app write, protected-branch commit, push or publication.
+No fresh builder emulator acceptance; iOS stays experimental and untested.
+
+All 15 fresh gates passed November 10 against code `5de717b` / site `ae0b542`;
+only this mirrored validation note follows those gates. Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root tests | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+The existing app_badge_plus Kotlin migration warning remains. Gate logs:
+`%TEMP%/valence-20261110-iteration197-<gate>.log`; machine-readable results:
+`%TEMP%/valence-20261110-iteration197-results.json`. Gates do not close device
+reliability findings or erase earlier failed acceptance.
+
 ## November 10: App C iteration 196 has inconclusive fresh first-launch acceptance
 
 In plain terms: all 33 must-have rows remain done, but App C has not established
