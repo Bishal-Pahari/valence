@@ -1,5 +1,75 @@
 # Integration review correction - 2026-11-06
 
+## November 10: iteration 202 separates painted screens from accessibility readiness
+
+In plain terms: all 33 must-have rows remain done. Read both findings inventories
+and newest reports, Kundalini 24 / App C 202. No eligible must-have or queue
+refresh remains. Both integrations contain current packages code `dd1c53d` /
+site `bb0f34c` and all 47 exact source tips in the assembly table. No merge,
+schema renumbering or version change was needed; item Status cells stay unchanged.
+
+Independently inspected the saved first fresh app screenshot: all six seed cards,
+six-of-six count, zero photos, widget not added and airplane icon. The settled
+preinstall launcher also paints. Release archive and installed hash match; package
+absence and offline settings have receipts. Native verdict records no ANR or
+obstruction. The 50141ms observer interval is not exact startup latency, and
+matching standard AVD configuration does not establish equal runtime pressure.
+
+Initial retained-release screenshot shows Flutter splash; later same-install
+detail paints the original checklist, note and photo offline. That run overlapped
+the debug build. A separate release reinstall after builds and worker cleanup
+preserves install ID/current sequence. Its first PNG already paints seven units,
+six left, original completed and one photo, although its first accessibility
+XML is empty and its checker reports false; the next XML gate passes. The app's
+`retained-isolated-startup-review.json` already acknowledges this distinction.
+Matched both startup summaries against raw logs: PID 4903 native open/store/frame
+registration 8587/7988/7ms; separate PID 9895 1706/1591/10ms. Different scopes and
+runs do not establish exact web-paint latency, a cause or an improvement trend.
+Settings continuation preserves PID 6057; its original null-root failure remains
+separate. Historical startup/process and observer findings remain open.
+
+Artifact review resolved 49 report links, checked all 66 saved consistency
+booleans, rehashed both APKs and verified five embedded payload hashes/lengths
+each. Release: 54875316 bytes, SHA256
+`31d8b13de34e5eb7f1f14be0b1b2fca4e27458514955818cfb4a4f6e6d8e34aa`;
+debug: 193245485 bytes, SHA256
+`d0833cc14d32b4e5b4529c80f09262c818fa3cc1f7210c5d04668a972159a49b`.
+Owner installed receipt matches debug; fresh installation matches release.
+Raw callback/SUCCESS/lease lines match PID 9131, take dated 16ms ago and release
+heldForMs=1127. Native SQLite receipts show incoming application, two outgoing
+acknowledgements and empty outbox before foreground resume. One eligible
+explicitly triggered worker proves transfer, not periodic cadence; 667.257s is
+observation time. Pending activation bytes are identical, SHA256
+`09d90acc617ab54303775a4f3510f1c59dfd0a690a7cd22955fad78fa390a909`.
+Later OTA 1794320347 commitment is separate. Three images decode with matching
+MIME/bytes; removed fixture publications return 404. Historical F-63 stays open.
+
+Decision: preserve security, users' data and the frozen candidate. Evidence does
+not establish a runtime cause to repair. K F-85 and C F-60/F-61 corrections
+already exist in this integration; current app receipts do not establish adoption.
+S1 remains parked, S2 needs Play and S10/P1 remain deferred. Canonical verification,
+nonce/strict decoding, navigation/subframe locks, atomic state, keys and release
+build exclusion of development mode are unchanged. No app scripts executed or
+test-app writes. No fresh emulator acceptance; iOS remains experimental/untested.
+
+Fresh gates against code `3345bcc` / site `4b56594`:
+
+| Gate | Result |
+| --- | --- |
+| Root tests | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+All 15 gates passed November 10; Flutter commands ran serially. The existing
+app_badge_plus Kotlin migration warning remains. Only this mirrored validation
+note follows the gates. Logs/results: `%TEMP%/valence-20261110-iteration202-*`.
+Read-only artifact review: `%TEMP%/valence-iteration202-review.json` and
+`valence-iteration202-extra.py`. Gates do not close historical reliability findings.
+
 ## November 10: App C iteration 201 paints fresh offline seed; retained startup remains qualified
 
 In plain terms: all 33 must-have rows remain done. Read both findings inventories
