@@ -20,6 +20,29 @@ startup: phase=state status=begin elapsedMs=48 phaseMs=0
 start its server, verify/select a bundle, create a WebView and receive `ready()`.
 A missing completion identifies the last observed phase, not the cause of a stall.
 
+## Separate bridge failures from observer failures
+
+An external observer timeout does not identify whether a request dispatched,
+whether its reply reached the page, or whether the observer read the result.
+Record both the wrapper and inner-tool deadlines and the last completed phase.
+A shorter outer deadline can suppress the inner failure diagnostic. A painted
+page, live process and absent ANR leave these boundaries unresolved.
+
+With a listener installed before a generated `call()`, a correlated `traceBridge`
+success in host mode establishes that call's round trip. An error trace can be
+a client-side refusal; shim traces are not native round trips. Missing output
+can also mean the listener or capture was absent. Traces identify the method,
+not the request, so overlapping calls need app-owned correlation. `connect()`
+and `ready()` bypass tracing. A host `bridge error` line is emitted before reply
+delivery is attempted and cannot prove the page received it.
+
+Use a known non-mutating read (`app.state`, `app.info`, `sync.status` or `data.get`)
+as a separate probe. Success establishes only that later call's request/reply
+path. Check app/plugin method semantics before repeating other calls; never
+automatically replay a write, native action or network request after an observer
+timeout, since the original may already have taken effect. Keep failed attempts
+and recoveries separate. No transport retry or timeout behavior changes here.
+
 ## Time app-owned initialization
 
 An app may await media, reminder or link setup after `Valence.open` and before
