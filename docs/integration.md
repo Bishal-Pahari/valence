@@ -1,5 +1,88 @@
 # Integration review correction - 2026-11-06
 
+## November 10: iteration 203 fails retained startup despite passing feature checks
+
+In plain terms: all 33 must-have rows remain done. Reviewed both findings
+inventories and newest reports, Kundalini 24 / App C 203. No eligible must-have
+or priority queue refresh remains. Both integrations contain newest packages
+code `dd1c53d` / site `bb0f34c` and all 47 recorded source tips. No merge,
+schema renumbering or version change is needed; item Status cells stay unchanged.
+
+App C's startup acceptance is **failed**. Initial PID 3818 and rebuilt retained
+release PID 4854 have native startup ANRs with `failed to complete startup`.
+Independently inspected the rebuilt screenshot: Fieldnote's ANR dialog offers
+Close app and Wait over a blank surface. Wrapper exit zero and later app.ready
+do not establish responsive startup. Wait recovery and subsequent successful
+feature checks remain separate results. Matched the rebuilt startup summary
+against raw native logs: open 17776ms, store phase 14833ms, named store.open
+completion 14714ms and first-frame registration 67ms measure different scopes.
+They do not identify a blocker, exact web-paint latency or the ANR's cause.
+
+The independent fresh-install screenshot paints six seed cards offline, six
+units left, zero photos, widget not added and airplane indicator. Package absence,
+installed release hash and offline settings have receipts; its native verdict
+records no ANR. Earlier splash/spinner/blank captures remain part of that first
+launch. The 188314ms observer interval includes diagnostics and is not exact
+startup latency. Equal configured AVD resources do not establish equal runtime
+pressure, and fresh acceptance cannot erase either retained-start failure.
+
+Settings continuity passes separately in PID 5466. Widget sync first changes
+the placed count to seven, then restoration exhausts bounded busy retries.
+The saved native diagnostic records a background lease. A separate continuation
+consumes the already published original row and restores the count to six;
+no lease clearing or process reset was used. This does not isolate a new cause
+or turn the first restoration attempt into a pass.
+
+One eligible registered worker was explicitly triggered. Raw callback/SUCCESS
+and lease lines match PID 9022: take dated 19ms ago; release heldForMs=1535.
+Native SQLite receipts establish incoming application, outgoing acknowledgements
+and empty outbox before foreground resume. The 593.374-second observation is
+neither callback duration nor natural cadence. Pending activation bytes remain
+identical, SHA256 `8890cceb815a1f1b970b42829e4bf119492bd07a15a5ad4928c9ffe2a3ab998f`.
+Later commitment of OTA 1794326718 remains a separate transition.
+
+Artifact review resolved 52 local report links, checked all 67 saved consistency
+booleans, rehashed both APKs and verified five embedded payload hashes and sizes
+in each. Release: 54875316 bytes, SHA256
+`2570774f50a79e4b2780380521fc4da0dbc7bc55bb52c5c77f496e30e9aa2279`;
+debug: 193245485 bytes, SHA256
+`3ae9ddd8b7e5a4a4b45da596029b7f96ff58b647dc12a3e0b4e1f11a1eefa0c7`.
+Owner installed receipt matches debug; fresh installation matches release.
+Three images decode with matching MIME/bytes; removed fixture publications
+return 404 and the original photo remains. Historical F-63 stays open.
+Read-only review outputs: `%TEMP%/valence-iteration203-review.json` and
+`valence-iteration203-extra.py`. Artifact consistency is separate from device
+acceptance; the saved audit correctly retains `productAcceptance=false`.
+
+Decision: preserve security, users' data and the frozen implementation. These
+receipts establish failed startup acceptance without an isolated runtime cause
+to repair. The release check remains open. Canonical verification, nonce/strict
+decoding, navigation/subframe locks, atomic state, keys and release exclusion of
+development mode are unchanged. K F-85 and C F-60/F-61 corrections already exist
+in integration; current app receipts do not establish adoption. Historical
+startup/process, transaction, observer, publication and compatibility findings
+remain open. S1 remains parked, S2 needs Play and S10/P1 remain deferred.
+No test-app scripts executed or test-app writes; no fresh emulator acceptance.
+iOS remains experimental and untested.
+
+Fresh gates against code `c6b1ddc` / site `1ad82e5`:
+
+| Gate | Result |
+| --- | --- |
+| Root tests | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+All 15 gates passed November 10; Flutter commands ran serially. The existing
+app_badge_plus Kotlin migration warning remains. Only this mirrored validation
+note follows the gates. Logs/results:
+`%TEMP%/valence-20261110-iteration203-*`.
+Passing implementation gates do not close failed startup acceptance.
+
 ## November 10: iteration 202 separates painted screens from accessibility readiness
 
 In plain terms: all 33 must-have rows remain done. Read both findings inventories
