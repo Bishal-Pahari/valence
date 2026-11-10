@@ -53,4 +53,23 @@ Initial gates: root 123 tests with zero skips (generated Dart analyzed and
 exercised), core 675 tests and fatal-info analysis passed. The first core pub dry
 run exited 65 because the changed package README was uncommitted. This is a
 packaging-state warning; commit the documentation before rerunning that gate.
-Remaining results will be recorded after the gates finish.
+After committing, the repeated core pub dry run passed with zero warnings. All
+15 branch gates now pass (November 10):
+
+| Gate | Result |
+| --- | --- |
+| Root tests | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+Existing app_badge_plus Kotlin migration warning remains. Initial logs:
+`%TEMP%/valence-20261110-periodic-<gate>.log`; continuation logs:
+`%TEMP%/valence-20261110-periodic-continuation-<gate>.log`.
+Flutter commands ran serially. Only this validation note follows the gates.
+Branch `codex/periodic-sync-docs` is ready for integration on packages code
+`dd1c53dd9ce7a54588d22c54bf3c0183548b4a75` / site
+`bb0f34ce600dc73d3f27eae7d9f240ceac5ceb28`.
