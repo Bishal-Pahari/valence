@@ -1,5 +1,81 @@
 # Integration review correction - 2026-11-06
 
+## November 10: App C iteration 194 qualified regression
+
+In plain terms: all 33 must-have rows remain done. Read both findings inventories
+and newest reports, Kundalini 24 / App C 194. No eligible must-have or queue refresh
+remains; item Status cells stay unchanged. S1 remains parked, S2 needs Play,
+S10/P1 remain deferred. Both integrations contain current packages code
+`dd1c53dd9ce7a54588d22c54bf3c0183548b4a75` / site
+`bb0f34ce600dc73d3f27eae7d9f240ceac5ceb28` and all 47 exact current source tips
+in the assembly table below. No merge or schema renumbering is necessary.
+The original queue order and historical example-revision exclusion remain.
+
+App C reports qualified Android acceptance. Rebuilt Settings continuity preserves
+PID 5317 before explicit relaunch. Initial release Flutter splash/UI Automator
+exit 137 and transient debug discovery/readiness failures remain separate from
+successful continuations. Inspected the retained offline Flat 1 checklist/photo
+screenshot. Saved native startup evidence has no named waiting/completion pair;
+the recorded store-open durations establish neither meaningful web paint latency
+nor a lock owner or cause. Repeated lines in overlapping captures are not separate
+events. The independent fresh-offline receipt matches the current release hash;
+the initial emulator exit, boot-observer timeout and later USB authorization gate
+remain distinct from the successful installation and app observation.
+
+The worker's eligibility receipt records Ready:true, earliest passed and no
+timing bypass. It was explicitly triggered: this proves no natural cadence.
+Raw captures match the four saved lease/isolate lines in PID 8287, including
+`took the lease ... (dated 18ms ago)` and release `heldForMs=1220`.
+The full worker log also contains the native WorkManager SUCCESS line; the final
+app-filtered capture does not include that platform line. Native SQLite and HTTP
+receipts record incoming application, two outgoing acknowledgements and empty
+outbox before resume. The 765.078-second observation is not callback duration.
+Raw pending activation bytes are identical, SHA256
+`4d632b640c52480f891a22c67c4fc0c4091d10c7d08948a0a62518e9182d3727`.
+Later committed OTA 1794284233 remains separate from that pending/no-trial state.
+
+Artifact review resolved 56 local report links, checked all 72 saved audit
+booleans, rehashed both archived APKs and verified five embedded payload hashes
+and byte lengths in each. Release: 54875316 bytes, SHA256
+`aaab15ed099b37d5e64b1b0a1e9c3341e1cdb5cd2f0b2e207f10c3089507970c`;
+debug: 193245485 bytes, SHA256
+`f7b18a73b6dfe4d31176fbba7440696beba059a3e147619a54b89ed6ea46253a`.
+Installed-release and independent fresh-offline receipts match the release archive.
+The intentional unresolved pure-JavaScript probe self-fails in 1734ms and leaves
+no new forward. Discovery failures before evaluation do not establish bridge
+dispatch timeouts. No test-app scripts were executed. Supplemental review initially
+looked for WorkManager SUCCESS in the app-filtered log; the full worker capture
+supplied it. Review output: `%TEMP%/valence-iteration194-review.json`.
+
+Decision: preserve security, users' data and the candidate freeze. No new runtime
+cause or actionable unimplemented must-have is established. Historical transaction,
+startup/process, observer, plugin compatibility and publication crash-recovery
+findings remain open. F-60's debugging correction and F-61's periodic scheduling
+correction are already in these integrations; the app's captured older wording
+does not establish adoption. Canonical verification order, nonce/strict decoding,
+navigation/subframe locks, atomic state, keys and release-build development
+exclusion remain unchanged. No runtime, schema or package-version change,
+test-app write, protected-branch commit, push or publication. No fresh emulator
+acceptance in this builder run; iOS remains experimental and untested.
+
+All 15 fresh gates passed November 10 against code `a8cd736` / site `4db7e5b`;
+only this mirrored validation note follows those gates. Flutter commands ran serially.
+
+| Gate | Result |
+| --- | --- |
+| Root tests | 123 passed, zero skips; generated Dart analyzed and exercised |
+| Core tests / fatal-info analysis / pub dry run | 675 passed / clean / zero warnings |
+| Push tests / fatal-info analysis / pub dry run | 2 passed / clean / zero warnings, local override hint |
+| Bridge tests / strict-verbatim TypeScript / pack dry run | 37 passed / passed / passed |
+| Example codegen / tests / debug APK | no writes / 29 passed / built |
+| Standalone Windows py Firebase audit | PASS over graph, manifest and 19 DEX files |
+| Website build / SEO | 50 pages passed |
+
+The existing app_badge_plus Kotlin migration warning remains. Gate logs:
+`%TEMP%/valence-20261110-iteration194-<gate>.log`; machine-readable results:
+`%TEMP%/valence-20261110-iteration194-results.json`. Gates do not close F-33 or
+any other device reliability finding.
+
 ## November 10: App C iteration 193 qualified regression
 
 In plain terms: all 33 must-have rows remain done. Read both apps' findings
