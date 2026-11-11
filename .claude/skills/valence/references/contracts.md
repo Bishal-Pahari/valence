@@ -1011,7 +1011,7 @@ It emits three files:
 
 **A bridge call that appears not to come back has three places to be stuck, and they are told apart by different instruments** (C F-58). The three are: the message never dispatched; the host ran the method and the reply never reached the page; or the reply reached the page and whatever was *watching* the page never saw it. Work from the outside in, because the cheapest signal rules out the most:
 
-- **`traceBridge` observes settlement of generated `call()` promises.** A correlated trace without an error code in host mode establishes a successful round trip for that call. An error trace can also be a client-side refusal before dispatch; a shim trace makes no native round trip. A missing trace is inconclusive unless the listener was installed before the call and its output was captured reliably. The trace carries a method name, not a request id: overlapping calls to the same method need app-owned correlation. `connect()` and `ready()` use the raw transport and are not traced.
+- **`traceBridge` observes settlement of generated `call()` promises.** A correlated trace without an error code in host mode establishes a successful round trip for that call. An error trace can also be a client-side refusal before dispatch; a shim trace makes no native round trip. A missing trace is inconclusive unless the listener was installed before the call and its output was captured reliably. The trace carries a method name, not a request id: overlapping calls to the same method need app-owned correlation. `connect()`, `ready()` and the `link.initial` call `onLink()` makes internally use the raw transport and are not traced.
 - **The host logs error replies before attempting delivery** (§3 Logs). A `bridge error` line establishes that dispatch produced an error reply, including refusals during nonce validation or strict decoding. It does not establish successful delivery to the page. The host emits no corresponding line for a successful reply.
 - **Rule out the one state that drops a message outright.** A host under a §2.5 mandatory store update discards every bridge message without a reply, so there is nothing for either instrument above to carry — that is "never dispatched" in its one permanent form. It **logs one line** when it starts doing so (`bridge: dropping messages, a store update is required`), once per state rather than once per message, so a page retrying in a loop does not bury it.
 - **Probe with a known non-mutating read, not an automatic replay.** `app.state`, `app.info`, `sync.status` and `data.get` take no sync lease and start no sync. A successful probe establishes that its own request/reply path worked at that later time; it cannot rule out a lost or stalled earlier request. Check app/plugin method semantics before repeating any other call, and do not replay writes, native actions or network requests merely because an observer timed out: the first call may already have taken effect. Record the wrapper and inner-tool deadlines and the last completed phase. A shorter outer deadline can suppress the inner diagnostic. A painted page, live process and absent ANR do not locate the failed dispatch/reply/observer boundary.
@@ -1967,13 +1967,24 @@ observed phase; it does not establish the cause of a stall.
 
 **Name what each phase does, because a duration with nothing to compare it against is
 not yet a judgement** (K F-86). `binding` is in-process. `state` reads `state.json`.
-`seed` is a filesystem and database import that runs on a first launch and after a host
-upgrade (§5.2), not on every launch. `store` opens SQLite and may run a migration.
-**The remaining four each cross a platform channel**, which is where a cold start's time
-actually goes: `links` and `push` initialize their transports, `directories` resolves
-the application support directory, `services` constructs the platform secure store
-alongside the sync and update services, and `notifications` initializes the local
-notification plugin when one is configured.
+`store` opens SQLite and may run a migration. **The remaining five each cross a platform
+channel**, which is where a cold start's time actually goes: `links` and `push`
+initialize their transports, `directories` resolves the application support directory,
+`services` constructs the platform secure store alongside the sync and update services,
+and `notifications` initializes the local notification plugin when one is configured.
+
+**`seed` does not cost nothing after the first launch.** For any app declaring a `data`
+bucket, the phase loads the whole seed asset *before* it can test the completion stamp,
+because the stamp is the host build and the asset's byte length together — so its floor
+is proportional to the seed's size on every launch, plus one pref read. What is
+first-launch-and-after-a-host-upgrade is the **import**, not the phase. The import also
+re-runs when `seed.db` is missing or when the asset's length changed at the same host
+build, which is the OTA-era rebuild §5.2 exists to catch.
+
+**`links` is skipped entirely when the app declares no link origins,** and it is first
+precisely so it can take the OS intent before anything else. For those apps the one-off
+registration cost below lands on whichever phase crosses a channel first, which is
+`directories`.
 
 **The plugin phases carry a one-off registration cost on the first launch after an
 install that is not proportional to what the app declared.** On one device, one app

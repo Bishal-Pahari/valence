@@ -4,10 +4,16 @@
 
 `Valence.open` has logged a per-phase breakdown since 0.4, and a reader could find the slowest phase
 without having anything to judge the number against. §5.1.1 and the startup-diagnostics guide now name
-what each phase *does*: `binding` is in-process; `state` reads `state.json`; `seed` imports only on a
-first launch and after a host upgrade; `store` opens SQLite and may migrate; and the remaining four —
-`directories`, `links`, `push`, `services` and `notifications` — each cross a **platform channel**,
-which is where a cold start's time actually goes.
+what each phase *does*: `binding` is in-process; `state` reads `state.json`; `store` opens SQLite and
+may migrate; and the remaining five — `directories`, `links`, `push`, `services` and `notifications` —
+each cross a **platform channel**, which is where a cold start's time actually goes.
+
+Two of them have a caveat worth knowing. **`seed` is not free after the first launch:** for any app
+declaring a `data` bucket it loads the whole seed asset *before* it can test the completion stamp,
+because the stamp is the host build and the asset's byte length together — so its floor is proportional
+to your seed's size on every launch. Only the *import* is first-launch-and-after-an-upgrade. And
+**`links` is skipped entirely when you declare no link origins**, in which case the one-off cost below
+lands on `directories` instead.
 
 **The plugin phases carry a one-off registration cost on the first launch after an install, and it is
 not proportional to what you declared.** On one device, an app with a single custom-scheme origin and

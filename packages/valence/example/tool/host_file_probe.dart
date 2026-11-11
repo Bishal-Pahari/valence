@@ -19,14 +19,20 @@ Future<void> main() async {
   // and the runtime's three `/_host/` methods are a null check in front of the server's own. So the
   // probe binds its own server and calls it directly, which exercises every byte of the §3 lifecycle
   // without `activateForUiStart` counting a trial strike against whatever this device is serving.
+  //
+  // `bind` can rotate `state.port` in memory and leaves saving it to the caller. **Nothing here saves
+  // state**, so a rotation is discarded and the real app keeps its origin — which matters, because a
+  // moved port rotates the nonce and orphans the page's storage for the old one. Do not add anything
+  // to this probe that calls `updater.save()`.
   final server = await ValenceServer.bind(
     config: valence.config,
     state: valence.state,
     casDir: Directory('${valence.dir.path}${Platform.pathSeparator}cas'),
     hostDir: Directory('${valence.dir.path}${Platform.pathSeparator}host'),
   );
-  final before = (await server.listHostFiles()).map((f) => f.url).toSet();
+  var before = <String>{};
   try {
+    before = (await server.listHostFiles()).map((f) => f.url).toSet();
     final kept = await server.publishHostFile(utf8.encode('KEPT'),
         contentType: 'image/png');
     final orphan = await server.publishHostFile(utf8.encode('ORPHANED'),
@@ -77,13 +83,25 @@ Future<void> main() async {
     lines.add(await server.revokeHostFile(kept) && await status(kept) == 404
         ? 'PASS cleanup revoked the probe\'s own copy'
         : 'FAIL cleanup left bytes behind');
+  } on Object catch (e) {
+    // A probe that throws its way out of `main` never reaches `runApp`, so the operator gets a blank
+    // screen and not one `r35:` line. Record the failure and keep going, like the sibling probes.
+    lines.add('FAIL $e');
   } finally {
-    // Leave nothing behind even if an expectation above threw.
-    for (final f in await server.listHostFiles()) {
-      if (!before.contains(f.url)) await server.revokeHostFile(f.url);
+    // Leave nothing behind even if an expectation above threw — and close the socket even if the
+    // cleanup itself throws, because a listening port outliving the probe is the one piece of mess
+    // the next run would inherit.
+    try {
+      for (final f in await server.listHostFiles()) {
+        if (!before.contains(f.url)) await server.revokeHostFile(f.url);
+      }
+      lines.add(
+          'left=${(await server.listHostFiles()).length} started=${before.length}');
+    } on Object catch (e) {
+      lines.add('FAIL cleanup $e');
+    } finally {
+      await server.close();
     }
-    lines.add('left=${(await server.listHostFiles()).length} started=${before.length}');
-    await server.close();
   }
   for (final line in lines) {
     debugPrint('r35: $line');
