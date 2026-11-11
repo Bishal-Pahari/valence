@@ -4,10 +4,10 @@
 
 `Valence.open` has logged a per-phase breakdown since 0.4, and a reader could find the slowest phase
 without having anything to judge the number against. §5.1.1 and the startup-diagnostics guide now name
-what each phase *does*: `binding`, `state` and `notifications` are in-process work; `directories` and
-`seed` touch the filesystem, and `seed` imports only on a first launch and after a host upgrade;
-`store` opens SQLite and may migrate; `links`, `push` and `services` initialize platform plugins and
-make platform-channel round trips.
+what each phase *does*: `binding` is in-process; `state` reads `state.json`; `seed` imports only on a
+first launch and after a host upgrade; `store` opens SQLite and may migrate; and the remaining four —
+`directories`, `links`, `push`, `services` and `notifications` — each cross a **platform channel**,
+which is where a cold start's time actually goes.
 
 **The plugin phases carry a one-off registration cost on the first launch after an install, and it is
 not proportional to what you declared.** On one device, an app with a single custom-scheme origin and

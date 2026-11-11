@@ -1966,19 +1966,23 @@ printing the exception or its arguments, then rethrows the original error. A fin
 observed phase; it does not establish the cause of a stall.
 
 **Name what each phase does, because a duration with nothing to compare it against is
-not yet a judgement** (K F-86). `binding`, `state` and `notifications` are in-process
-work. `directories` and `seed` touch the filesystem, and `seed` is a first-launch and
-post-upgrade import (§5.2) rather than a per-launch cost. `store` opens SQLite and may
-run a migration. `links` and `push` each initialize a platform plugin and make a
-platform-channel round trip, and `services` resolves the rest. **The plugin phases
-carry a one-off registration cost on the first launch after an install that is not
-proportional to what the app declared**: on one device, one app with a single
-custom-scheme origin and no App Links measured `links` at 2292 ms of a 3268 ms first
-`open`, against `directories` 25 ms, `store` 105 ms and `state` 0 ms — and at 732 ms
-on a warm restart, still the largest phase by roughly an order of magnitude. That is
-one device and one app, so it is a shape and not a budget: it says which phases are
-expected to dominate, which is what stops a reader attributing a platform-channel cost
-to their own code.
+not yet a judgement** (K F-86). `binding` is in-process. `state` reads `state.json`.
+`seed` is a filesystem and database import that runs on a first launch and after a host
+upgrade (§5.2), not on every launch. `store` opens SQLite and may run a migration.
+**The remaining four each cross a platform channel**, which is where a cold start's time
+actually goes: `links` and `push` initialize their transports, `directories` resolves
+the application support directory, `services` constructs the platform secure store
+alongside the sync and update services, and `notifications` initializes the local
+notification plugin when one is configured.
+
+**The plugin phases carry a one-off registration cost on the first launch after an
+install that is not proportional to what the app declared.** On one device, one app
+with a single custom-scheme origin and no App Links measured `links` at 2292 ms of a
+3268 ms first `open`, against `directories` 25 ms, `store` 105 ms, `state` 0 ms and
+`services` 610 ms — and `links` at 732 ms on a warm restart, still the largest phase by
+roughly an order of magnitude. That is one device and one app, so it is a shape and not
+a budget: it says which phases are expected to dominate, which is what stops a reader
+attributing a platform-channel cost to their own code.
 
 App-owned initialization after `open` is outside these phases. Instrument existing
 awaits separately with fixed labels, a monotonic `Stopwatch`, and begin/complete/

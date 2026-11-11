@@ -3,10 +3,10 @@
 ## Unreleased: the startup phases now say what they normally cost
 
 The per-phase breakdown `Valence.open` logs gains a description of what each phase does, so a
-duration has something to be judged against. `binding`, `state` and `notifications` are in-process;
-`directories` and `seed` touch the filesystem, and `seed` imports only on a first launch and after a
-host upgrade; `store` opens SQLite and may migrate; `links`, `push` and `services` initialize platform
-plugins and make platform-channel round trips. The plugin phases carry a one-off registration cost on
+duration has something to be judged against. `binding` is in-process; `state` reads `state.json`;
+`seed` imports only on a first launch and after a host upgrade; `store` opens SQLite and may migrate;
+and the remaining four — `directories`, `links`, `push`, `services` and `notifications` — each cross a
+platform channel. The plugin phases carry a one-off registration cost on
 the first launch after an install that is not proportional to what the app declared: on one device,
 `links` was 2292 ms of a 3268 ms first `open` for an app with a single custom-scheme origin and no App
 Links. Nothing changed in the host; the numbers were always these. [Startup
