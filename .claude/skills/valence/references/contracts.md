@@ -450,6 +450,10 @@ owned it.
   written — a crash between the publish and the insert: compare the list with the app's own rows and
   revoke what nothing references. It reads the directory and the entries' sizes, not the sidecars, so
   it reports no content types, and it skips anything that is not a valid id.
+- **A lifecycle probe owns only the URLs it published.** Restrict its reconciliation
+  and cleanup to those exact URLs, even after a failed inventory. A publication
+  appearing after the initial listing can belong to another operation; a listing
+  difference alone grants no deletion authority.
 - **Both are native-only, and that is also a decision.** There is no bridge method for either:
   publishing is native-only, so the page never holds the authority to delete bytes out of app-private
   storage or to enumerate what is there. It asks one of the app's own methods, which decides.
@@ -1967,33 +1971,39 @@ observed phase; it does not establish the cause of a stall.
 
 **Name what each phase does, because a duration with nothing to compare it against is
 not yet a judgement** (K F-86). `binding` is in-process. `state` reads `state.json`.
-`store` opens SQLite and may run a migration. **The remaining five each cross a platform
-channel**, which is where a cold start's time actually goes: `links` and `push`
-initialize their transports, `directories` resolves the application support directory,
-`services` constructs the platform secure store alongside the sync and update services,
-and `notifications` initializes the local notification plugin when one is configured.
+`store` opens SQLite and may run a migration. `links` and `push` initialize their
+configured transports; `directories` resolves the application support directory
+(unless supplied by the caller) and creates the runtime directory. These operations
+can involve platform channels. `services` constructs the secure store, sync and update
+services, restores cached store policy and revokes cookie grants when needed; constructing
+a secure-store wrapper alone does not establish a platform call. `notifications`
+initializes the local notification plugin when configured. Timings cover each whole
+phase, including filesystem work and scheduling delays, not individual channel calls.
 
 **`seed` does not cost nothing after the first launch.** For any app declaring a `data`
 bucket, the phase loads the whole seed asset *before* it can test the completion stamp,
-because the stamp is the host build and the asset's byte length together — so its floor
-is proportional to the seed's size on every launch, plus one pref read. What is
-first-launch-and-after-a-host-upgrade is the **import**, not the phase. The import also
+because the stamp is the host build and the asset's byte length together. Every launch
+includes an asset load and one pref read; elapsed time also depends on caching and
+scheduling. The **import** runs on first launch and after a host upgrade. It also
 re-runs when `seed.db` is missing or when the asset's length changed at the same host
 build, which is the OTA-era rebuild §5.2 exists to catch.
 
-**`links` is skipped entirely when the app declares no link origins,** and it is first
-precisely so it can take the OS intent before anything else. For those apps the one-off
-registration cost below lands on whichever phase crosses a channel first, which is
-`directories`.
+**`links` skips transport initialization when the app declares no link origins,**
+though its timed phase and wrapper construction remain. It is first
+precisely so it can take the OS intent before anything else. With default directory
+resolution, `directories` is then the first phase to request a platform service;
+this ordering does not measure registration cost.
 
-**The plugin phases carry a one-off registration cost on the first launch after an
-install that is not proportional to what the app declared.** On one device, one app
+**Compare equivalent launches before attributing a cost.** On one device, one app
 with a single custom-scheme origin and no App Links measured `links` at 2292 ms of a
 3268 ms first `open`, against `directories` 25 ms, `store` 105 ms, `state` 0 ms and
 `services` 610 ms — and `links` at 732 ms on a warm restart, still the largest phase by
 roughly an order of magnitude. That is one device and one app, so it is a shape and not
-a budget: it says which phases are expected to dominate, which is what stops a reader
-attributing a platform-channel cost to their own code.
+a budget. It establishes that the measured `links` phase dominated those launches;
+it does not isolate plugin registration, platform execution or scheduling as the cause,
+or establish a normal duration for another app or device. Compare the same host build,
+configuration, install state and device conditions, then instrument the dominant phase
+more narrowly if attribution is needed. No startup phase has a universal millisecond budget.
 
 App-owned initialization after `open` is outside these phases. Instrument existing
 awaits separately with fixed labels, a monotonic `Stopwatch`, and begin/complete/
@@ -2896,6 +2906,7 @@ R12 regression rows: batch reads preserve requested order, deduplicate, isolate 
 
 | Layer | Tests |
 |---|---|
+| Example host-file lifecycle probe (§3) | With a real loopback server, pre-existing and concurrently published bytes survive successful reconciliation and an injected request failure; a failed initial inventory never authorizes deletion. Cleanup attempts only URLs returned by the probe's own publishes and closes the server. |
 | Deep-link registration (`valence.test.mjs`, K F-63) | `doctor`'s `deep links` row passes with neither origins nor manifest; warns when origins are declared and the manifest is absent; **fails for a declared origin no `VIEW` intent filter serves, including a filter registering the same scheme on another host**; passes once a filter serves it; treats every scheme in a filter as combining with every host in that filter, and a scheme with no host as matching every host; **warns for a registered scheme/host the allowlist does not declare**; passes over a Gradle placeholder; and passes for a canonical HTTPS origin whose filter names the default port |
 | Legacy link migration (`valence.test.mjs`, app-c F-26) | A recorded schema-3 app's since-2 `link.initial(): string?` and custom `link.opened` survive codegen/check and a repeated store bundle without rewriting the baseline; removal, return/since changes and event payload changes remain refused. Schema-9 `Link?` delegates; a modern shape below 9 without a baseline and a redefined shape at 9 are refused. |
 | reference HTTP config (§4.5) | example source and generated config grant cleartext only to loopback; off-device hosts and wrong loopback ports denied before token lookup; release-device probe with a synthetic bearer distinguishes transport policy from origin permission |

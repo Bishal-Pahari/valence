@@ -1,17 +1,24 @@
 # Changelog
 
-## Unreleased: the startup phases now say what they normally cost
+## Unreleased: example probe deletes only its own publications
+
+The host-file lifecycle probe tracks its own returned URLs for reconciliation and
+cleanup, preserving pre-existing and concurrent publications on success or failure.
+Startup guidance no longer attributes whole-phase timings to platform registration.
+No runtime API or adopter changes.
+
+## Unreleased: the startup phases now say what they do
 
 The per-phase breakdown `Valence.open` logs gains a description of what each phase does, so a
 duration has something to be judged against. `binding` is in-process; `state` reads `state.json`;
-`store` opens SQLite and may migrate; and the remaining five — `directories`, `links`, `push`,
-`services` and `notifications` — each cross a platform channel. `seed` is **not** free after the first
+`store` opens SQLite and may migrate; other phases can involve platform channels, filesystem work
+and scheduling delays. `seed` is **not** free after the first
 launch: it loads the whole seed asset before it can test its completion stamp, so only the *import* is
-first-launch-and-after-an-upgrade. `links` is skipped entirely with no link origins, and the one-off
-cost then lands on `directories`. The plugin phases carry a one-off registration cost on
-the first launch after an install that is not proportional to what the app declared: on one device,
+first-launch-and-after-an-upgrade. `links` skips transport initialization with no link origins;
+the timed phase and wrapper remain. On one device,
 `links` was 2292 ms of a 3268 ms first `open` for an app with a single custom-scheme origin and no App
-Links. Nothing changed in the host; the numbers were always these. [Startup
+Links. These measurements identify the dominant phase in that app, not its cause or a universal
+budget. Nothing changed in the runtime. [Startup
 diagnostics](https://getvalence.pages.dev/docs/guides/startup-diagnostics/)
 
 

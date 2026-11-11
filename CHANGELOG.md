@@ -1,27 +1,35 @@
 # Changelog
 
-## Unreleased: the startup phases now say what they normally cost
+## Unreleased: host-file probes preserve other publications
+
+The example's host-file lifecycle probe now reconciles and cleans up only URLs
+it created. A failed initial inventory or a concurrent publication no longer makes
+someone else's file eligible for deletion. Three real-server regression cases cover
+success, an injected request failure and failed initial inventory. No runtime API or app migration changes.
+
+Startup phase descriptions also distinguish measured duration from cause: one
+device's slow `links` phase does not establish a registration cost or a time budget.
+
+## Unreleased: the startup phases now say what they do
 
 `Valence.open` has logged a per-phase breakdown since 0.4, and a reader could find the slowest phase
 without having anything to judge the number against. §5.1.1 and the startup-diagnostics guide now name
 what each phase *does*: `binding` is in-process; `state` reads `state.json`; `store` opens SQLite and
-may migrate; and the remaining five — `directories`, `links`, `push`, `services` and `notifications` —
-each cross a **platform channel**, which is where a cold start's time actually goes.
+may migrate; several other phases can cross platform channels. Phase timings include
+filesystem work and scheduling delays, so they do not isolate channel execution.
 
 Two of them have a caveat worth knowing. **`seed` is not free after the first launch:** for any app
 declaring a `data` bucket it loads the whole seed asset *before* it can test the completion stamp,
-because the stamp is the host build and the asset's byte length together — so its floor is proportional
-to your seed's size on every launch. Only the *import* is first-launch-and-after-an-upgrade. And
-**`links` is skipped entirely when you declare no link origins**, in which case the one-off cost below
-lands on `directories` instead.
+because the stamp is the host build and the asset's byte length together. Elapsed time also depends
+on caching and scheduling. Only the *import* is first-launch-and-after-an-upgrade. And
+**`links` skips transport initialization when you declare no link origins**; the timed phase and
+wrapper remain. Default directory resolution then requests the next platform service.
 
-**The plugin phases carry a one-off registration cost on the first launch after an install, and it is
-not proportional to what you declared.** On one device, an app with a single custom-scheme origin and
+**The measured phase is evidence of where to investigate, not its cause.** On one device, an app with a single custom-scheme origin and
 no App Links measured `links` at 2292 ms of a 3268 ms first `open` — against `directories` 25 ms,
 `store` 105 ms and `state` 0 ms — and 732 ms on a warm restart, still the largest phase by roughly an
-order of magnitude. One device and one app is a shape rather than a budget, but it is enough to say
-which phases are expected to dominate: if `links` or `push` is your largest number, that is the
-platform channel and not your own code.
+order of magnitude. One device and one app establish no universal budget or registration-cost
+attribution. Compare equivalent launches and instrument the dominant phase more narrowly.
 
 **If you were seeing this,** nothing in your app changes and no number moved. This is documentation
 for numbers the host was already printing.
