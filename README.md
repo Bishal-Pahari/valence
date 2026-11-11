@@ -144,7 +144,7 @@ an app bridge version and no package knows yours. Strict decoding and the
 store baseline cover the merged schema. Regenerated handlers check required plugin
 namespaces and exact method registrations at startup in every build mode. Native additions require a store release.
 Distribution is ordinary pub and npm publishing; there is no registry or marketplace,
-and the site's [plugin directory](https://getvalence.pages.dev/docs/guides/plugin-directory/)
+and the site's [plugin directory](https://getvalence.dev/docs/guides/plugin-directory/)
 is a docs listing of what exists. A package can also extend the host without being a
 plugin — `valence_push` implements `ValencePushTransport` for the core `push.*`
 namespace, so it needs no fragment and no `plugins` entry.
@@ -170,6 +170,8 @@ host with a stub native WebView; Android device verification remains a separate 
 
 **0.4 beta, package-first.** The runtime is no longer generated per app: `valence` (pub.dev) is the whole Flutter host and `@getvalence/bridge` (npm) is the whole web client, both with their own test suites, and `valence codegen` emits only the typed, app-specific half and imports the rest. Moving from 0.3 is [one documented pass](docs/migrating-from-0.3.md) that keeps your data, your update state and your signing key.
 
+**Want Valence set up in your app?** Write to [hello@getvalence.dev](mailto:hello@getvalence.dev).
+
 **Android is tested. iOS is experimental and untested** — its rules are implemented and specified, but there is no Apple hardware here, so nothing about them is claimed as verified.
 
 **Not in scope:**
@@ -180,7 +182,7 @@ host with a stub native WebView; Android device verification remains a separate 
 
 ## Your own backend in 0.4
 
-`http.request` calls your own API natively, restricted to exact `http.origins` origins compiled into the host. It attaches the stored user token, returns redirects without following them, and supports bounded UTF-8 text bodies. Failures are `E_TIMEOUT`, `E_OFFLINE` (no network interface) or `E_INTERNAL`, and a size refusal names the size and the limit. `http.cookieJar` optionally gives one compiled origin a host-held cookie jar — host-only, cleared with the token, invisible to the page — so the default Django and Rails POST shape (a `csrftoken` cookie plus `X-CSRFToken`) is reachable; without it a session-cookie API is out of scope for this method. New at schema 4; guard with `has()` on older hosts. An origin change needs codegen and a store build. Online HTTP does not replace offline sync: the [reference REST adapter](examples/rest-sync-adapter/) shows durable cursors, tombstones and idempotent pushes. [Guide](https://getvalence.pages.dev/docs/guides/your-backend/). Android is tested; iOS is experimental and untested.
+`http.request` calls your own API natively, restricted to exact `http.origins` origins compiled into the host. It attaches the stored user token, returns redirects without following them, and supports bounded UTF-8 text bodies. Failures are `E_TIMEOUT`, `E_OFFLINE` (no network interface) or `E_INTERNAL`, and a size refusal names the size and the limit. `http.cookieJar` optionally gives one compiled origin a host-held cookie jar — host-only, cleared with the token, invisible to the page — so the default Django and Rails POST shape (a `csrftoken` cookie plus `X-CSRFToken`) is reachable; without it a session-cookie API is out of scope for this method. New at schema 4; guard with `has()` on older hosts. An origin change needs codegen and a store build. Online HTTP does not replace offline sync: the [reference REST adapter](examples/rest-sync-adapter/) shows durable cursors, tombstones and idempotent pushes. [Guide](https://getvalence.dev/docs/guides/your-backend/). Android is tested; iOS is experimental and untested.
 
 ## Task restoration in 0.4
 
@@ -204,9 +206,9 @@ the current cursor. [Seed recovery](docs/seed-recovery.md).
 
 `data.getMany` reads up to 500 keys in one bridge call; `sync.status` reports pending operations (including deletes) without a network call. Both are schema-3 additions: guard them with `has()`. `ota.channel` selects the host channel, and OTA builds now default to the recorded store bridge version; guard newer calls or explicitly raise `--requires-bridge`. `seedSchemas` plus `<bucket>.v<N>.json` seeds multiple declared schemas together. Test doubles can opt into generated `BridgeHandlersDefaults`.
 
-**Web code standard:** the [web app checklist](https://getvalence.pages.dev/docs/guides/web-app-checklist/) lists everything a web app must do to run inside the host. **Debugging:** debug builds work with `chrome://inspect`, and `traceBridge` shows native requests that a browser network panel cannot see. See [Debugging](https://getvalence.pages.dev/docs/guides/debugging/).
+**Web code standard:** the [web app checklist](https://getvalence.dev/docs/guides/web-app-checklist/) lists everything a web app must do to run inside the host. **Debugging:** debug builds work with `chrome://inspect`, and `traceBridge` shows native requests that a browser network panel cannot see. See [Debugging](https://getvalence.dev/docs/guides/debugging/).
 
-Run `node valence/valence.mjs doctor --tests` for mechanical checks and mapped unit tests. Broken bridge versions, incompatible local OTA requirements, database paths, PEM keys inside Git and invalid connection URLs fail with a fix. WARN means missing or unexecuted evidence; installed database adoption and device behavior still need a device run. Each check streams its name and duration to stderr as it runs, so a run killed by a CI timeout still names the check it was on, and a child command killed by its own 180-second bound is reported as a timeout that says no assertion ran rather than as a failing test. `--timeout <seconds>` (1 to 3600) moves that per-command bound for a checkout the default is wrong for — the private-key scan grows with the repository rather than with the app. [Full guide](https://getvalence.pages.dev/docs/guides/offline-tooling/).
+Run `node valence/valence.mjs doctor --tests` for mechanical checks and mapped unit tests. Broken bridge versions, incompatible local OTA requirements, database paths, PEM keys inside Git and invalid connection URLs fail with a fix. WARN means missing or unexecuted evidence; installed database adoption and device behavior still need a device run. Each check streams its name and duration to stderr as it runs, so a run killed by a CI timeout still names the check it was on, and a child command killed by its own 180-second bound is reported as a timeout that says no assertion ran rather than as a failing test. `--timeout <seconds>` (1 to 3600) moves that per-command bound for a checkout the default is wrong for — the private-key scan grows with the repository rather than with the app. [Full guide](https://getvalence.dev/docs/guides/offline-tooling/).
 
 Sync correctness: pull cursors advance only through returned rows, never push echoes or a later server-head max. Fresh pairs satisfy OTA activation only after all pages or static chunks complete. Progress resumes after an interruption. Pending publication retains the data lease; GC protects in-flight manifests and retries stale snapshots. Step 7 waits up to five seconds for ordinary sync. Outbox operations use a durable insertion ordinal; database version 2 migrates legacy queued ids, values and deletes without changing bucket cursors or user rows.
 
@@ -241,7 +243,7 @@ check stopped, from a closed set of eleven: `rejected` means a release no device
 polling on resume races the check, so a page otherwise hears about an update one resume late.
 Foreground connectivity reports now retry the signed update check, including Wi-Fi/cellular handovers.
 The last `offline` result remains historical until a check completes; reconnecting does not prove success.
-[Full guide](https://getvalence.pages.dev/docs/guides/lifecycle/).
+[Full guide](https://getvalence.dev/docs/guides/lifecycle/).
 
 ### Reading a bucket bigger than 500 rows
 
@@ -274,7 +276,7 @@ Deep links in 0.4: [setup and routing](docs/deep-links.md) covers store-compiled
 
 Schema 9 adds check/request/settings and resume change events for seven permission kinds. Enable only `permissions.kinds` in a store build, add native declarations, and regenerate; OTA cannot expand the allowlist. Permission grants are separate from feature implementations. See [Permissions](docs/permissions.md). iOS is experimental and untested.
 
-Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent; revision 20 adds nullable SyncStatus.leaseKind and SyncStatus.leaseAgeMs, which name the run holding the sync lease and how long it has held it, so a busy reply can be diagnosed. The age counts from when the holder took the lease, so it only increases while one run holds it. Older hosts omit them. See [capability revisions and durable status](https://getvalence.pages.dev/docs/guides/capabilities-and-status/).
+Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent; revision 20 adds nullable SyncStatus.leaseKind and SyncStatus.leaseAgeMs, which name the run holding the sync lease and how long it has held it, so a busy reply can be diagnosed. The age counts from when the holder took the lease, so it only increases while one run holds it. Older hosts omit them. See [capability revisions and durable status](https://getvalence.dev/docs/guides/capabilities-and-status/).
 
 Development startup logs `dev: serving upstream <origin>` and says OTA checks, trials, ready
 commits and `bundle.applyUpdate` are disabled. Each skipped ready, signed reload, update check
@@ -293,9 +295,9 @@ Cache selected REST responses for offline reads with revision-18 `data.cache`,
 behind a compiled per-bucket grant. See [REST caching](docs/rest-cache.md) for
 pull precedence, account clearing, retention and schema lifetimes.
 
-Response size grants: compiled `http.maxBodyBytes` raises the decompressed response cap (default 65536, range 1..262144); requests remain 64 KiB and escaped replies remain capped at 256 KiB. Regenerate and ship a store build. [Limits and adoption](https://getvalence.pages.dev/docs/guides/http-response-limits/).
+Response size grants: compiled `http.maxBodyBytes` raises the decompressed response cap (default 65536, range 1..262144); requests remain 64 KiB and escaped replies remain capped at 256 KiB. Regenerate and ship a store build. [Limits and adoption](https://getvalence.dev/docs/guides/http-response-limits/).
 
-For API sessions that may survive restart, compiled `http.cookieJar.sessionCookieDays` opts into 1–30 days from receipt; omitted keeps session cookies memory-only. Regenerate and rebuild the host. Restarts never renew the deadline; removing the opt-in revokes stored sessions. See [Persistent sessions](https://getvalence.pages.dev/docs/guides/persistent-sessions/).
+For API sessions that may survive restart, compiled `http.cookieJar.sessionCookieDays` opts into 1–30 days from receipt; omitted keeps session cookies memory-only. Regenerate and rebuild the host. Restarts never renew the deadline; removing the opt-in revokes stored sessions. See [Persistent sessions](https://getvalence.dev/docs/guides/persistent-sessions/).
 
 Revision 19 adds `bundle.check()` and `bundle.checked` so a page can request a check and learn when an offer needs a newer store host, even when no bundle becomes pending. [Explicit checks and completion](docs/bundle-checks.md).
 

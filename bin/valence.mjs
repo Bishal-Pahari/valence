@@ -480,7 +480,7 @@ async function init(o) {
     const freshSession = [
       dim('  That starts a new session, which matters: the skill was installed during this run, so'),
       dim('  /valence is not registered in a session that is already open. Without Claude Code, add'),
-      dim('  the two runtimes above and follow https://getvalence.pages.dev/docs/getting-started/quick-start/'),
+      dim('  the two runtimes above and follow https://getvalence.dev/docs/getting-started/quick-start/'),
       '',
     ].join('\n');
     const claude = tool('claude --version', root);

@@ -100,7 +100,7 @@ The signed page displays app.appearance and logical insets, pads content with th
 
 ## Task restoration
 
-Schema 8 adds `state.save({json})` and `state.restore()` for a task-local UI blob (65,536 JSON UTF-8 bytes). ValenceApp restores the local path/query/hash after OS process reclamation. Explicit task closure starts fresh; a different bundle seq clears the snapshot. Save promptly and keep durable records in SQLite. iOS is experimental and untested. [Guide](https://getvalence.pages.dev/docs/guides/state-restoration/).
+Schema 8 adds `state.save({json})` and `state.restore()` for a task-local UI blob (65,536 JSON UTF-8 bytes). ValenceApp restores the local path/query/hash after OS process reclamation. Explicit task closure starts fresh; a different bundle seq clears the snapshot. Save promptly and keep durable records in SQLite. iOS is experimental and untested. [Guide](https://getvalence.dev/docs/guides/state-restoration/).
 
 Task snapshots are bound to the native account as well as the signed bundle: switching or signing out clears the route and draft, including stale OS snapshots. Refresh and first-account adoption retain the live draft.
 
@@ -111,7 +111,7 @@ The R6 surfaces were added at schema 9. This merged example reports schema 16 an
 
 ## Permissions demo
 
-Schema 10 adds a Permissions section: choose any of the seven kinds, Check, Request or open App settings. Resume deltas appear separately. All kinds are declared solely for this demonstration; production apps must enable and declare only the kinds they use. The Android manifest and iOS SPM usage strings are wired; iOS remains experimental and untested. [Setup guide](https://getvalence.pages.dev/docs/guides/permissions/).
+Schema 10 adds a Permissions section: choose any of the seven kinds, Check, Request or open App settings. Resume deltas appear separately. All kinds are declared solely for this demonstration; production apps must enable and declare only the kinds they use. The Android manifest and iOS SPM usage strings are wired; iOS remains experimental and untested. [Setup guide](https://getvalence.dev/docs/guides/permissions/).
 
 
 
@@ -130,7 +130,7 @@ A native rebuild is required; no signing or bridge-schema change is needed for
 these existing controls. Device delivery needs a maintainer Firebase project;
 iOS/APNs remains experimental and untested.
 
-Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent. Older hosts omit them. See [capability revisions and durable status](https://getvalence.pages.dev/docs/guides/capabilities-and-status/).
+Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent. Older hosts omit them. See [capability revisions and durable status](https://getvalence.dev/docs/guides/capabilities-and-status/).
 
 Development startup logs `dev: serving upstream <origin>` and says OTA checks, trials, ready
 commits and `bundle.applyUpdate` are disabled. Each skipped ready, signed reload, update check

@@ -1,7 +1,7 @@
 # Writing a Valence plugin
 
 The contract is [§4.10](../.claude/skills/valence/references/contracts.md#410-native-plugins).
-The complete [guide](https://getvalence.pages.dev/docs/guides/plugins/) covers
+The complete [guide](https://getvalence.dev/docs/guides/plugins/) covers
 fragments, handlers, events, web types and platform setup. A runnable local
 [Dart plugin and matching npm types package](../packages/valence/example/plugins/haptics/)
 are wired into the example app.
@@ -80,7 +80,7 @@ implements `ValencePushTransport` for `push.*`, a namespace core already owns, s
 has no fragment, no namespace and no `plugins` entry: it is a pub dependency and a
 constructor argument. Which shape a package uses decides how it is installed.
 
-The site's [plugin directory](https://getvalence.pages.dev/docs/guides/plugin-directory/)
+The site's [plugin directory](https://getvalence.dev/docs/guides/plugin-directory/)
 lists both shapes and says what a listing asks for. It is a hand-maintained docs page:
 being listed records that a package exists and declares a fragment, not that anyone
 read the code — and a plugin is trusted native code with host privileges.

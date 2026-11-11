@@ -53,4 +53,4 @@ Keep these tests in the runtime package. App suites test their handlers and gene
 not need to copy the host state machine. This harness does not render HTML, execute JavaScript, prove
 native WebView isolation, or replace offline/rollback checks on Android. Android device evidence is
 separate; iOS remains experimental and untested. See contracts §8 and the
-[local testing guide](https://getvalence.pages.dev/docs/guides/local-testing/).
+[local testing guide](https://getvalence.dev/docs/guides/local-testing/).

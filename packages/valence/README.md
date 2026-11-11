@@ -4,10 +4,10 @@
 active signed bundle image, plus a caption. The runtime checks paths, size, magic
 and bundle integrity before opening native sharing. Results report selection,
 dismissal or an unavailable outcome, never delivery. See
-[image sharing](https://getvalence.pages.dev/docs/guides/image-sharing/).
+[image sharing](https://getvalence.dev/docs/guides/image-sharing/).
 iOS sharing remains experimental and untested.
 
-The Flutter host runtime for [Valence](https://getvalence.pages.dev): your web app runs inside a native
+The Flutter host runtime for [Valence](https://getvalence.dev): your web app runs inside a native
 app as a **signed over-the-air bundle**, on top of an **offline-first SQLite** store with incremental sync
 and a **typed bridge**. UI changes ship without an app-store review; the native shell is reviewed rarely.
 
@@ -37,7 +37,7 @@ Migrating custom notification events requires preserving their payload types as 
 Regenerate config to exclude pre-11 events from automatic native emission, and pass
 `notificationEventAdapter` to `Valence.open` for your generated legacy event builder.
 Cold taps stay consume-once and need the same app-owned conversion.
-[Migration recipe](https://getvalence.pages.dev/docs/guides/local-notifications/#keeping-a-shipped-custom-tap-event).
+[Migration recipe](https://getvalence.dev/docs/guides/local-notifications/#keeping-a-shipped-custom-tap-event).
 
 Seed imports record completion separately from row insertion. A locked completion marker retries
 up to five times, one second apart; exhausted retries retain rows and leave the marker for the
@@ -49,7 +49,7 @@ it provides no encryption or authentication. Start your web dev server and run
 `flutter run --debug --dart-define=VALENCE_DEV_URL=http://10.0.2.2:5173`.
 The loopback proxy injects the normal bridge nonce and forwards HMR WebSockets. Release/profile
 builds exclude this path. Use a separate development app id and test accounts; the page has the
-full native bridge and SQLite access. See the [development guide](https://getvalence.pages.dev/docs/guides/development/).
+full native bridge and SQLite access. See the [development guide](https://getvalence.dev/docs/guides/development/).
 
 Native features can also come from a `ValencePlugin` package. List its schema
 fragment in config `plugins`, regenerate, and pass its instance to the generated
@@ -59,7 +59,7 @@ throw `StateError` naming the fix. Test construction of your real app handlers.
 Doctor lists these requirements as a warning, since it cannot execute registration.
 Generated strict decoding owns the bridge boundary; the registry is not a WebView dispatcher. The plugin owns
 native setup, initialization and cleanup, and needs a store release. See
-[Writing a Valence plugin](https://getvalence.pages.dev/docs/guides/plugins/) and
+[Writing a Valence plugin](https://getvalence.dev/docs/guides/plugins/) and
 the example's `plugins/haptics` package. The built-in `open.external` uses this
 API too, with its existing scheme restrictions and reserved owner.
 
@@ -155,7 +155,7 @@ The package cannot write native project files, so these are yours:
   10% first. Where the platform does report the loss, the host reloads the same bundle at the same route
   and spends no strike. Keep anything the user would miss in SQLite. See contracts §3, "Renderer loss",
   and the
-  [startup diagnostics guide](https://getvalence.pages.dev/docs/guides/startup-diagnostics/).
+  [startup diagnostics guide](https://getvalence.dev/docs/guides/startup-diagnostics/).
 
 ## Rollback
 
@@ -168,7 +168,7 @@ seq. Pointing the channel at an older seq only cancels pending downloads.
 
 ## Testing
 
-For startup stalls and database waits, see [Startup diagnostics](https://getvalence.pages.dev/docs/guides/startup-diagnostics/).
+For startup stalls and database waits, see [Startup diagnostics](https://getvalence.dev/docs/guides/startup-diagnostics/).
 The existing logger reports `Valence.open` phase timings and database operations pending
 for ten seconds, without changing retries or transaction behavior. `startup: complete`
 means open returned, not that the WebView painted or a trial committed.
@@ -178,12 +178,12 @@ with the CLI's exported `PLUGIN_RESERVED` set. Update vendored tooling and
 regenerate when upgrading the runtime. Malformed typed plugin results are
 `E_INTERNAL`; parameter failures remain `E_PARAMS`. Separate npm plugin types
 are hand-maintained, and plugins have native host privileges; see
-[the plugin guide](https://getvalence.pages.dev/docs/guides/plugins/).
+[the plugin guide](https://getvalence.dev/docs/guides/plugins/).
 
 `flutter test` in this package runs the contracts §8 matrix: every canonical check rejecting, the state
 machine's strikes and promotions, the server's three branches in order, the store, sync and the lease.
 
-[The host widget tests](https://getvalence.pages.dev/docs/guides/host-widget-tests/) pump the real
+[The host widget tests](https://getvalence.dev/docs/guides/host-widget-tests/) pump the real
 `ValenceApp` against a test-only WebView platform, with signed bundles, SQLite and a loopback socket, so
 `flutter test test/app_widget_test.dart` covers the lifecycle, the startup resume guard, the navigation
 lock, bridge nonce forwarding, event buffering and the ready timer.
@@ -203,11 +203,11 @@ and its shape stay, so `has()` and every shipped bundle are unchanged, and codeg
 native code go. A built-in, `app.ready`/`app.info` and a plugin method cannot be retired.
 
 MIT. The spec is `contracts.md`, which ships inside the `/valence` Claude Code skill and is restated at
-<https://getvalence.pages.dev/docs/>.
+<https://getvalence.dev/docs/>.
 
 ## Native HTTP (contracts section 4.5)
 
-Generated `http.request` delegates to `Valence.httpRequest`. Configure exact trusted `http.origins` origins, regenerate, and ship a host; they become `ValenceConfig.httpOrigins` (default deny all). The host reads the R1 token per request, with `authToken` callback precedence, and emits `auth.expired` for an authenticated 401. Redirects are returned without following them. Request bodies: 64 KiB; decompressed responses: 64 KiB by default, configurable with compiled http.maxBodyBytes (1..262144); headers: 16 KiB; total deadline: 20 seconds (`E_TIMEOUT`). A transport failure while the OS reports no network interface is `E_OFFLINE`; a captive portal or a server that is down stays `E_INTERNAL`. Every size refusal names the observed size and the limit. `ValenceConfig.cookieJar` (compiled from `http.cookieJar`) optionally holds cookies for one origin, which must also be in `http.origins` and must be HTTPS unless it is loopback, and mirrors a named CSRF cookie into a named header the page may not supply — so a cookie-paired CSRF token can be completed. It is host-only by `Domain`, caps at 16 cookies / 8 KiB, keeps a session cookie in memory by default (`sessionCookieDays: 1..30` opts into a fixed lifetime from receipt; [guide](https://getvalence.pages.dev/docs/guides/persistent-sessions/)), is cleared by every path that clears the token, and is revoked at `Valence.open` when a build drops or moves the grant. Without it a session-cookie API is out of scope. Raise compiled `http.maxBodyBytes` and ship a host for larger responses; the escaped 256 KiB bridge envelope still applies. Send `Range` or paginate to read less. Use HTTPS in production and no shared server secrets in an APK. [API and adapter guide](https://getvalence.pages.dev/docs/guides/your-backend/). iOS remains experimental and untested.
+Generated `http.request` delegates to `Valence.httpRequest`. Configure exact trusted `http.origins` origins, regenerate, and ship a host; they become `ValenceConfig.httpOrigins` (default deny all). The host reads the R1 token per request, with `authToken` callback precedence, and emits `auth.expired` for an authenticated 401. Redirects are returned without following them. Request bodies: 64 KiB; decompressed responses: 64 KiB by default, configurable with compiled http.maxBodyBytes (1..262144); headers: 16 KiB; total deadline: 20 seconds (`E_TIMEOUT`). A transport failure while the OS reports no network interface is `E_OFFLINE`; a captive portal or a server that is down stays `E_INTERNAL`. Every size refusal names the observed size and the limit. `ValenceConfig.cookieJar` (compiled from `http.cookieJar`) optionally holds cookies for one origin, which must also be in `http.origins` and must be HTTPS unless it is loopback, and mirrors a named CSRF cookie into a named header the page may not supply — so a cookie-paired CSRF token can be completed. It is host-only by `Domain`, caps at 16 cookies / 8 KiB, keeps a session cookie in memory by default (`sessionCookieDays: 1..30` opts into a fixed lifetime from receipt; [guide](https://getvalence.dev/docs/guides/persistent-sessions/)), is cleared by every path that clears the token, and is revoked at `Valence.open` when a build drops or moves the grant. Without it a session-cookie API is out of scope. Raise compiled `http.maxBodyBytes` and ship a host for larger responses; the escaped 256 KiB bridge envelope still applies. Send `Range` or paginate to read less. Use HTTPS in production and no shared server secrets in an APK. [API and adapter guide](https://getvalence.dev/docs/guides/your-backend/). iOS remains experimental and untested.
 ## Account switching (contracts section 4.4)
 
 `Valence.authSetToken(token, {account, discardPending})` records your own opaque account id beside the
@@ -259,11 +259,11 @@ Periodic sync needs a host-owned scheduler; `valence` does not register one for 
 Android WorkManager's minimum repeat interval is 15 minutes, and constraints or system
 optimizations can delay or skip a run. Keep foreground and reconnect sync enabled;
 periodic work gives no freshness deadline. BGTaskScheduler is best effort on iOS,
-which remains experimental and untested. See [background setup](https://getvalence.pages.dev/docs/guides/host/#background-work).
+which remains experimental and untested. See [background setup](https://getvalence.dev/docs/guides/host/#background-work).
 
 ### Remote push
 
-Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** Initialize Firebase and install `valence_push`, import `package:valence_push/valence_push.dart` and pass `push: createFirebasePush()` to `Valence.open`; register a top-level background callback using `ValencePush.handleBackground` and `Valence.backgroundSync`. [Setup](https://getvalence.pages.dev/docs/guides/remote-push/).
+Remote push is opt-in in schema 12: `push.token`, passive/explicit `push.permission`, consuming `push.initial`, `push.received`, `push.tapped` and `push.tokenChanged`. Firebase runs only in configured hosts; exact data-only sync hints use the existing native sync without touching OTA state. Android notification images use FCM background display; foreground messages reach the page. **Device validation is blocked: needs Firebase project. iOS/APNs is experimental and untested.** Initialize Firebase and install `valence_push`, import `package:valence_push/valence_push.dart` and pass `push: createFirebasePush()` to `Valence.open`; register a top-level background callback using `ValencePush.handleBackground` and `Valence.backgroundSync`. [Setup](https://getvalence.dev/docs/guides/remote-push/).
 
 Firebase native dependencies ship only through an installed push package or another app dependency. Hosts using `valence_push` must target iOS 15.0 or later and initialize Firebase explicitly; core-only hosts do not inherit that Firebase requirement. iOS is experimental and untested.
 
@@ -275,16 +275,16 @@ Compile `links.origins` with codegen and register matching native filters. The r
 
 ## Permissions (contracts §4.7)
 
-Use the generated `permissions.check`, `permissions.request`, `permissions.openSettings` and `permissions.changed` (introduced in the template at 10). For new declarations use `since >= max(10, shipped store schema version + 1)` and an app schema `version` at least that high; preserve already-shipped declarations and gate new names with `has()` on older hosts. The runtime serializes prompts and restricts them to a foreground attached host and its compiled `permissionKinds`. Empty denies all. Add native declarations and ship a store build; see the [permissions guide](https://getvalence.pages.dev/docs/guides/permissions/). iOS is experimental and untested.
+Use the generated `permissions.check`, `permissions.request`, `permissions.openSettings` and `permissions.changed` (introduced in the template at 10). For new declarations use `since >= max(10, shipped store schema version + 1)` and an app schema `version` at least that high; preserve already-shipped declarations and gate new names with `has()` on older hosts. The runtime serializes prompts and restricts them to a foreground attached host and its compiled `permissionKinds`. Empty denies all. Add native declarations and ship a store build; see the [permissions guide](https://getvalence.dev/docs/guides/permissions/). iOS is experimental and untested.
 
 
 `Valence.dataList(bucket, prefix:, limit:, after:)` pages past the 500-row clamp: `after` is the last key of the previous page and the scan resumes strictly after it, which is the only complete read of a bucket larger than the clamp. `Valence.dataCount(bucket, prefix:)` counts live rows without reading them. Both are exposed as the version-5 built-ins `data.list`'s `after` param and `data.count`. The store opens at `<applicationSupportDirectory>/<databaseName>` and adopts a 0.3 database left in the application documents directory, moving its `-wal` and `-shm` sidecars with it and never overwriting an existing destination. A `SQLITE_BUSY` open — a schema migration's `BEGIN EXCLUSIVE` racing the WorkManager job the same launch fires — is retried five times a second apart; `Valence.backgroundSync` then returns `ValenceSyncReason.busy` rather than throwing, while `Valence.open` rethrows, and a failed open is never cached.
 
 ## Local reminders
 
-Schema 11 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. Schema 16 adds notify.pendingIds, the same native queue as bare IDs, because a full queue of maximum-size requests is over the bridge reply cap and notify.pending cannot answer the cancel-by-difference refill on the apps that queue the most. iOS is experimental and untested. See [setup and adoption](https://getvalence.pages.dev/docs/guides/local-notifications/).
+Schema 11 adds built-in local reminders: notify.schedule/cancel/pending/channels.set, notify.permission, consuming notify.initial, notify.tapped/notify.action and best-effort badge.set/clear. Opt in with notifications.enabled, regenerate, install native receivers/icon/desugaring and ship a store build. Exact requests report downgrades honestly; one-shot epoch times need no device timezone lookup. Images are bounded PNG/JPEG bytes; every action opens the UI. Schema 16 adds notify.pendingIds, the same native queue as bare IDs, because a full queue of maximum-size requests is over the bridge reply cap and notify.pending cannot answer the cancel-by-difference refill on the apps that queue the most. iOS is experimental and untested. See [setup and adoption](https://getvalence.dev/docs/guides/local-notifications/).
 
-Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent; revision 20 adds nullable SyncStatus.leaseKind and SyncStatus.leaseAgeMs, which name the run holding the sync lease and how long it has held it, so a busy reply can be diagnosed. The age counts from when the holder took the lease, so it only increases while one run holds it. Older hosts omit them. See [capability revisions and durable status](https://getvalence.pages.dev/docs/guides/capabilities-and-status/).
+Schema 15 adds nullable AppInfo.builtins, SyncStatus.reason and BundleStatus.urgent; revision 20 adds nullable SyncStatus.leaseKind and SyncStatus.leaseAgeMs, which name the run holding the sync lease and how long it has held it, so a busy reply can be diagnosed. The age counts from when the holder took the lease, so it only increases while one run holds it. Older hosts omit them. See [capability revisions and durable status](https://getvalence.dev/docs/guides/capabilities-and-status/).
 
 Development startup logs `dev: serving upstream <origin>` and says OTA checks, trials, ready
 commits and `bundle.applyUpdate` are disabled. Each skipped ready, signed reload, update check
@@ -309,15 +309,15 @@ need valid sync endpoints when sync is configured; serve a valid empty page/inde
 for an empty bucket, not a 404. **Retention is the page's, and nothing backs it up:**
 one value is capped at 65,536 UTF-8 bytes and the row count, total bytes and age are
 not, so a page that never prunes fills the device. `doctor`'s `REST cache` row names
-the grant and the missing ceiling. See the [REST cache guide](https://getvalence.pages.dev/docs/guides/rest-cache/).
+the grant and the missing ceiling. See the [REST cache guide](https://getvalence.dev/docs/guides/rest-cache/).
 
-Response size grants: compiled `http.maxBodyBytes` raises the decompressed response cap (default 65536, range 1..262144); requests remain 64 KiB and escaped replies remain capped at 256 KiB. Regenerate and ship a store build. [Limits and adoption](https://getvalence.pages.dev/docs/guides/http-response-limits/).
+Response size grants: compiled `http.maxBodyBytes` raises the decompressed response cap (default 65536, range 1..262144); requests remain 64 KiB and escaped replies remain capped at 256 KiB. Regenerate and ship a store build. [Limits and adoption](https://getvalence.dev/docs/guides/http-response-limits/).
 
-Revision 19 adds explicit `bundle.check` through the attached host policy path and schema-opted `bundle.checked` for completed checks, including `needsStoreUpdate`. It never auto-applies. [Usage and host migration](https://getvalence.pages.dev/docs/guides/bundle-checks/).
+Revision 19 adds explicit `bundle.check` through the attached host policy path and schema-opted `bundle.checked` for completed checks, including `needsStoreUpdate`. It never auto-applies. [Usage and host migration](https://getvalence.dev/docs/guides/bundle-checks/).
 
-Sync results retain each committed HTTP page or static chunk even if a later page or lease renewal locks. Acquisition locks remain `busy`. A release-only lock retains the completed outcome, and so does a lock on the final `pendingWrites` read, which reports `0 pending`; cleanup cannot hide a primary non-lock error. [Sync outcomes](https://getvalence.pages.dev/docs/guides/sync-outcomes/).
+Sync results retain each committed HTTP page or static chunk even if a later page or lease renewal locks. Acquisition locks remain `busy`. A release-only lock retains the completed outcome, and so does a lock on the final `pendingWrites` read, which reports `0 pending`; cleanup cannot hide a primary non-lock error. [Sync outcomes](https://getvalence.dev/docs/guides/sync-outcomes/).
 
-A sync lease row this process wrote is held whichever side of `now` its timestamp falls, unless it is at least the two-minute TTL ahead. Before this, the clock was sampled before the lease transaction's wait, so a renewal read as future-dated and a foreground run could take a live lease from a background sync. No reported lease age is ever negative. [Startup diagnostics](https://getvalence.pages.dev/docs/guides/startup-diagnostics/).
+A sync lease row this process wrote is held whichever side of `now` its timestamp falls, unless it is at least the two-minute TTL ahead. Before this, the clock was sampled before the lease transaction's wait, so a renewal read as future-dated and a foreground run could take a live lease from a background sync. No reported lease age is ever negative. [Startup diagnostics](https://getvalence.dev/docs/guides/startup-diagnostics/).
 
 Lease acquisition samples its clock after the lease query returns inside the transaction. Waiting for the database does not consume a new lease's TTL. No schema change or app code adoption is needed; rebuild the native host (K F-83).
 

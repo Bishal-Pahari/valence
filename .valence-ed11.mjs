@@ -68,7 +68,7 @@ Phases 1, 4 and 6 spawn agents. If your harness can't (headless, or subagents di
     const freshSession =
       \`  \${dim('That starts a new session, which matters: the skill was installed during this run, so /valence is not')}\\n\` +
       \`  \${dim('registered in a session that is already open. Without Claude Code the host is yours to write against')}\\n\` +
-      \`  \${dim('the spec: https://getvalence.pages.dev/docs/reference/spec/')}\\n\`;`],
+      \`  \${dim('the spec: https://getvalence.dev/docs/reference/spec/')}\\n\`;`],
 ];
 
 for (const [f, from, to] of edits) {

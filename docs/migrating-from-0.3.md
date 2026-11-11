@@ -61,7 +61,7 @@ Gradle Plugin and warns on every Android build — so if you register background
 
 **The old notification dependency conflict is historical.** The current built-in reminder stack uses
 `flutter_local_notifications` 22.3.2+ with `connectivity_plus` 7.3.2 and resolves without a `dbus`
-override. Follow the [current local-reminder setup](https://getvalence.pages.dev/docs/guides/local-notifications/).
+override. Follow the [current local-reminder setup](https://getvalence.dev/docs/guides/local-notifications/).
 The conflict observed on 2026-10-17 involved the older 19.x notification plugin's Linux dependencies
 (`dbus ^0.7.8` versus `^0.8.0`). Do not copy that stack's override into a current host. If your app still
 pins 19.x directly, review its app-owned notification calls before upgrading. If you added a `dbus`
@@ -219,11 +219,11 @@ somewhere to keep a token. Add five methods and one event to `valence/bridge.sch
 ```
 
 They are built-ins, so there is no handler to write — `ValenceBuiltins` delegates them to the package.
-What they do and what they deliberately do not do is on the [Login and secrets](https://getvalence.pages.dev/docs/guides/auth/) page.
+What they do and what they deliberately do not do is on the [Login and secrets](https://getvalence.dev/docs/guides/auth/) page.
 
 If more than one person can use the device, take the account switch with them — two more params on
 `auth.setToken` and `auth.account`, at version 13 rather than 2:
-[Signing users in and out](https://getvalence.pages.dev/docs/guides/accounts/).
+[Signing users in and out](https://getvalence.dev/docs/guides/accounts/).
 
 **The bump has one consequence:** `requires.bridge` follows the schema version, so your next OTA release
 declares `2` and the hosts already in the field stop taking it until your store build lands. If you need

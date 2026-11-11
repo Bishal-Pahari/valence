@@ -9,7 +9,7 @@
     "url": "git+https://github.com/Bishal-Pahari/valence.git",
     "directory": "packages/bridge"
   },
-  "homepage": "https://getvalence.pages.dev/docs/guides/bridge/",
+  "homepage": "https://getvalence.dev/docs/guides/bridge/",
   "bugs": {
     "url": "https://github.com/Bishal-Pahari/valence/issues"
   },

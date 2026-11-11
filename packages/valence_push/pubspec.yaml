@@ -3,8 +3,8 @@ description: Opt-in Firebase Messaging transport for Valence push notifications 
 version: 0.4.0-beta.0
 repository: https://github.com/Bishal-Pahari/valence
 issue_tracker: https://github.com/Bishal-Pahari/valence/issues
-homepage: https://getvalence.pages.dev
-documentation: https://getvalence.pages.dev/docs/guides/remote-push/
+homepage: https://getvalence.dev
+documentation: https://getvalence.dev/docs/guides/remote-push/
 environment:
   sdk: ^3.6.0
   flutter: ">=3.44.0"

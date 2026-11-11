@@ -5,8 +5,8 @@ description: >-
 version: 0.4.0-beta.0
 repository: https://github.com/Bishal-Pahari/valence
 issue_tracker: https://github.com/Bishal-Pahari/valence/issues
-homepage: https://getvalence.pages.dev
-documentation: https://getvalence.pages.dev/docs/guides/host/
+homepage: https://getvalence.dev
+documentation: https://getvalence.dev/docs/guides/host/
 topics:
   - webview
   - ota
