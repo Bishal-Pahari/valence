@@ -15,13 +15,23 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final lines = <String>['release=$kReleaseMode debug=$kDebugMode'];
   final valence = await Valence.open(valenceConfig, hostBuild: 1);
-  final before = (await valence.listHostFiles()).map((f) => f.url).toSet();
+  // `Valence.open` deliberately does not bind the loopback server — `ValenceApp` does, at `bound()`,
+  // and the runtime's three `/_host/` methods are a null check in front of the server's own. So the
+  // probe binds its own server and calls it directly, which exercises every byte of the §3 lifecycle
+  // without `activateForUiStart` counting a trial strike against whatever this device is serving.
+  final server = await ValenceServer.bind(
+    config: valence.config,
+    state: valence.state,
+    casDir: Directory('${valence.dir.path}${Platform.pathSeparator}cas'),
+    hostDir: Directory('${valence.dir.path}${Platform.pathSeparator}host'),
+  );
+  final before = (await server.listHostFiles()).map((f) => f.url).toSet();
   try {
-    final kept = await valence.publishHostFile(utf8.encode('KEPT'),
+    final kept = await server.publishHostFile(utf8.encode('KEPT'),
         contentType: 'image/png');
-    final orphan = await valence.publishHostFile(utf8.encode('ORPHANED'),
+    final orphan = await server.publishHostFile(utf8.encode('ORPHANED'),
         contentType: 'image/png');
-    final origin = valence.server!.origin;
+    final origin = server.origin;
 
     Future<int> status(String url) async {
       final client = HttpClient();
@@ -38,13 +48,13 @@ Future<void> main() async {
 
     // What the list is for: the app's rows know about `kept` and nothing knows about `orphan`, which no
     // delete path can reach.
-    final listed = await valence.listHostFiles();
+    final listed = await server.listHostFiles();
     final mine = listed.where((f) => !before.contains(f.url)).toList();
     lines.add('listed=${mine.length} bytes=${mine.map((f) => f.sizeBytes).join(',')}');
     final rows = {kept};
     var revoked = 0;
     for (final f in mine) {
-      if (!rows.contains(f.url) && await valence.revokeHostFile(f.url)) revoked++;
+      if (!rows.contains(f.url) && await server.revokeHostFile(f.url)) revoked++;
     }
 
     final orphanStatus = await status(orphan);
@@ -54,25 +64,26 @@ Future<void> main() async {
         : 'FAIL revoked=$revoked orphan=$orphanStatus kept=$keptStatus');
 
     // Revoking twice is a false rather than an error, which is what lets a delete path be re-run.
-    lines.add(await valence.revokeHostFile(orphan) == false
+    lines.add(await server.revokeHostFile(orphan) == false
         ? 'PASS second revoke is a miss'
         : 'FAIL second revoke claimed a deletion');
     try {
-      await valence.revokeHostFile('/_host/f/../../../databases/valence.db');
+      await server.revokeHostFile('/_host/f/../../../databases/valence.db');
       lines.add('FAIL a path outside a publication was accepted');
     } on ArgumentError {
       lines.add('PASS a non-publication URL is refused');
     }
 
-    lines.add(await valence.revokeHostFile(kept) && await status(kept) == 404
+    lines.add(await server.revokeHostFile(kept) && await status(kept) == 404
         ? 'PASS cleanup revoked the probe\'s own copy'
         : 'FAIL cleanup left bytes behind');
   } finally {
     // Leave nothing behind even if an expectation above threw.
-    for (final f in await valence.listHostFiles()) {
-      if (!before.contains(f.url)) await valence.revokeHostFile(f.url);
+    for (final f in await server.listHostFiles()) {
+      if (!before.contains(f.url)) await server.revokeHostFile(f.url);
     }
-    lines.add('left=${(await valence.listHostFiles()).length} started=${before.length}');
+    lines.add('left=${(await server.listHostFiles()).length} started=${before.length}');
+    await server.close();
   }
   for (final line in lines) {
     debugPrint('r35: $line');
