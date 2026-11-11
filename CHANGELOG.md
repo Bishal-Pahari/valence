@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased: the startup phases now say what they normally cost
+
+`Valence.open` has logged a per-phase breakdown since 0.4, and a reader could find the slowest phase
+without having anything to judge the number against. §5.1.1 and the startup-diagnostics guide now name
+what each phase *does*: `binding`, `state` and `notifications` are in-process work; `directories` and
+`seed` touch the filesystem, and `seed` imports only on a first launch and after a host upgrade;
+`store` opens SQLite and may migrate; `links`, `push` and `services` initialize platform plugins and
+make platform-channel round trips.
+
+**The plugin phases carry a one-off registration cost on the first launch after an install, and it is
+not proportional to what you declared.** On one device, an app with a single custom-scheme origin and
+no App Links measured `links` at 2292 ms of a 3268 ms first `open` — against `directories` 25 ms,
+`store` 105 ms and `state` 0 ms — and 732 ms on a warm restart, still the largest phase by roughly an
+order of magnitude. One device and one app is a shape rather than a budget, but it is enough to say
+which phases are expected to dominate: if `links` or `push` is your largest number, that is the
+platform channel and not your own code.
+
+**If you were seeing this,** nothing in your app changes and no number moved. This is documentation
+for numbers the host was already printing.
+
+
 ## Unreleased: the `took the lease` log line now dates the take-time it recorded
 
 A reader who bracketed `took the lease` and `released the lease` in `logcat` got a shorter hold than

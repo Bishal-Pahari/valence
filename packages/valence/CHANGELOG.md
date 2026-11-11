@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased: the startup phases now say what they normally cost
+
+The per-phase breakdown `Valence.open` logs gains a description of what each phase does, so a
+duration has something to be judged against. `binding`, `state` and `notifications` are in-process;
+`directories` and `seed` touch the filesystem, and `seed` imports only on a first launch and after a
+host upgrade; `store` opens SQLite and may migrate; `links`, `push` and `services` initialize platform
+plugins and make platform-channel round trips. The plugin phases carry a one-off registration cost on
+the first launch after an install that is not proportional to what the app declared: on one device,
+`links` was 2292 ms of a 3268 ms first `open` for an app with a single custom-scheme origin and no App
+Links. Nothing changed in the host; the numbers were always these. [Startup
+diagnostics](https://getvalence.pages.dev/docs/guides/startup-diagnostics/)
+
+
 ## Unreleased: the `took the lease` log line now dates the take-time it recorded
 
 The line is written *after* the time it records — the row insert, the commit and the hops back out
