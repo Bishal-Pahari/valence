@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and earlier (`fullBackupContent`). A restore has to start clean from the built-in bundle:
+     a cloned `installId` would clone the rollout cohort and carry a stale trial onto a new device. The
+     SQLite database lives *outside* valence/ and is deliberately backed up, because it holds user data. -->
+<full-backup-content>
+    <exclude domain="file" path="valence/" />
+</full-backup-content>

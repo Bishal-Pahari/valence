@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "appId": "com.getvalence.example",
+  "seq": 1793567181,
+  "version": "2026-11-01+1793567181",
+  "floor": 0,
+  "requires": {
+    "bridge": 18,
+    "data": {
+      "plants": 1
+    }
+  },
+  "entry": "index.html",
+  "csp": "default-src 'self'; script-src 'self' 'sha256-Ff7nMnfoPBTS+6OZU7bdgZLFXuPCTtotbO/QFffM4a0='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://sync.example.invalid; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
+  "urgent": false,
+  "routes": [
+    "/",
+    "/shelf"
+  ],
+  "files": {
+    "index.html": {
+      "h": "1aba78cc3d75d5893019f465393892c226af90a5333e24acdcf78416472a178c",
+      "n": 26145
+    },
+    "share.png": {
+      "h": "dae77b1f264e572c86c9714db5bc07f2002afd4f5d54b8e1f4d43239d2d6aff3",
+      "n": 1152
+    }
+  },
+  "createdAt": "2026-11-01T21:06:21.840Z",
+  "keyId": "k1"
+}

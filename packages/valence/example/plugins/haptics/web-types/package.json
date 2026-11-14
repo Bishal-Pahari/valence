@@ -1,0 +1,6 @@
+{
+  "name": "@valence-example/haptics",
+  "private": true,
+  "type": "module",
+  "types": "index.d.ts"
+}

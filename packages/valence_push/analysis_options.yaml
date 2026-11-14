@@ -1,0 +1,11 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # The package is published, so a missing doc comment on a public member is a real gap.
+    public_member_api_docs: warning
+
+linter:
+  rules:
+    - prefer_final_locals
+    - unawaited_futures

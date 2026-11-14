@@ -1,0 +1,10 @@
+name: valence_example_haptics
+description: A local example of a store-compiled Valence native plugin.
+publish_to: none
+environment:
+  sdk: ^3.6.0
+dependencies:
+  flutter:
+    sdk: flutter
+  valence:
+    path: ../../..

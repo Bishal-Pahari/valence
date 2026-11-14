@@ -1,0 +1,38 @@
+﻿10-27 10:16:38.140  9213  9213 I flutter : [valence] serving bundle 1793062826 on http://127.0.0.1:13882
+10-27 10:17:03.266  9213  9213 I flutter : [valence] bridge error E_UNSUPPORTED: push is not configured
+10-27 10:17:03.289  9213  9213 I flutter : [valence] webview started http://127.0.0.1:13882/
+10-27 10:17:03.302  9213  9213 I flutter : [valence] webview finished http://127.0.0.1:13882/
+10-27 10:17:03.488  9213  9213 I flutter : [valence] webview http 404 for http://127.0.0.1:13882/favicon.ico
+10-27 10:17:06.177  9213  9213 I flutter : [valence] lifecycle: inactive -> inactive
+10-27 10:17:07.507  9213  9213 I flutter : [valence] sync: connectivity came back
+10-27 10:17:07.562  9213  9213 I flutter : [valence] sync: another sync holds the lease; skipping this run
+10-27 10:17:07.852  9213  9213 I flutter : [valence] ready: app.ready from a page that is not serving a trial; nothing to commit
+10-27 10:17:08.279  9213  9213 I flutter : [valence] update: step 1 stopped, pointer fetch failed: ClientException with SocketException: Failed host lookup: 'ota.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://ota.example.invalid/com.getvalence.example/channels/production.json
+10-27 10:17:08.282  9213  9213 I flutter : [valence] sync: offline pulling plants v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/plants?since=3&schema=1&limit=500
+10-27 10:17:09.297  9213  9213 I flutter : [valence] sync: offline pulling shelf v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/shelf?since=0&schema=1&limit=500
+10-27 10:17:39.960  9213  9213 I flutter : [valence] sync: connectivity came back
+10-27 10:17:40.110  9213  9213 I flutter : [valence] sync: offline pulling plants v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/plants?since=3&schema=1&limit=500
+10-27 10:17:40.190  9213  9213 I flutter : [valence] sync: offline pulling shelf v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/shelf?since=0&schema=1&limit=500
+10-27 10:17:44.099  9213  9213 I flutter : [valence] sync: connectivity came back
+10-27 10:17:54.850  9213  9213 I flutter : [valence] sync: offline pulling plants v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/plants?since=3&schema=1&limit=500
+10-27 10:17:59.958  9213  9213 I flutter : [valence] lifecycle: resumed -> foreground
+10-27 10:18:00.408  9213  9213 I flutter : [valence] sync: another sync holds the lease; skipping this run
+10-27 10:18:00.435  9213  9213 I flutter : [valence] sync: offline pulling shelf v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/shelf?since=0&schema=1&limit=500
+10-27 10:18:00.947  9213  9213 I flutter : [valence] update: step 1 stopped, pointer fetch failed: ClientException with SocketException: Failed host lookup: 'ota.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://ota.example.invalid/com.getvalence.example/channels/production.json
+10-27 10:18:04.988  9213  9213 I flutter : [valence] lifecycle: inactive -> inactive
+10-27 10:18:07.750  9213  9213 I flutter : [valence] sync: connectivity came back
+10-27 10:18:07.918  9213  9213 I flutter : [valence] sync: offline pulling plants v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/plants?since=3&schema=1&limit=500
+10-27 10:18:08.051  9213  9213 I flutter : [valence] sync: offline pulling shelf v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/shelf?since=0&schema=1&limit=500
+10-27 10:18:11.666  9213  9213 I flutter : [valence] sync: connectivity came back
+10-27 10:18:22.702  9213  9213 I flutter : [valence] sync: offline pulling plants v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/plants?since=3&schema=1&limit=500
+10-27 10:18:28.306  9213  9213 I flutter : [valence] sync: offline pulling shelf v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/shelf?since=0&schema=1&limit=500
+10-27 10:18:41.470  9213  9213 I flutter : [valence] lifecycle: resumed -> foreground
+10-27 10:18:42.318  9213  9213 I flutter : [valence] sync: connectivity came back
+10-27 10:18:42.320  9213  9213 I flutter : [valence] update: connectivity came back in the foreground
+10-27 10:18:42.351  9213  9213 I flutter : [valence] sync: another sync holds the lease; skipping this run
+10-27 10:18:46.486  9213  9213 I flutter : [valence] lifecycle: inactive -> inactive
+10-27 10:18:46.787  9213  9213 I flutter : [valence] update: step 1 stopped, pointer fetch failed: TimeoutException after 0:00:05.000000: Future not completed
+10-27 10:18:46.861  9213  9213 I flutter : [valence] sync: offline pulling plants v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/plants?since=3&schema=1&limit=500
+10-27 10:18:46.986  9213  9213 I flutter : [valence] sync: offline pulling shelf v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/shelf?since=0&schema=1&limit=500
+10-27 10:18:47.756  9213  9213 I flutter : [valence] sync: connectivity came back
+10-27 10:18:58.600  9213  9213 I flutter : [valence] sync: offline pulling plants v1: ClientException with SocketException: Failed host lookup: 'sync.example.invalid' (OS Error: No address associated with hostname, errno = 7), uri=https://sync.example.invalid/plants?since=3&schema=1&limit=500

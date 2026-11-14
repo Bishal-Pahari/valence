@@ -1,0 +1,7 @@
+--------- beginning of main
+11-02 23:48:47.228  8611  8635 I flutter : [IMPORTANT:flutter/shell/platform/android/android_context_gl_impeller.cc(104)] Using the Impeller rendering backend (OpenGLES).
+11-02 23:48:47.477  8611  8641 I flutter : The Dart VM service is listening on http://127.0.0.1:35063/rWInoPTy7Ew=/
+11-02 23:48:57.085  8611  8611 I flutter : r32: PASS default refuses decompressed 133712 bytes
+11-02 23:48:57.088  8611  8611 I flutter : r32: PASS compiled 196608 grant returns 133712 bytes
+11-02 23:48:57.088  8611  8611 I flutter : r32: PASS escaped reply returns bounded E_TOO_LARGE
+11-02 23:48:57.089  8611  8611 I flutter : r32: PASS request cap remains 65536 bytes
